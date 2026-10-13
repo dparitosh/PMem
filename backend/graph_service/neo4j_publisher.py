@@ -1,6 +1,8 @@
 """Minimal, direct Neo4j publisher with no dependency on the legacy graph proxy."""
 from __future__ import annotations
 
+from backend.depo_platform.ontology_maintenance import ontology_writer
+
 import os
 import json
 from datetime import datetime, timezone
@@ -45,6 +47,7 @@ class Neo4jPublisher:
         except Exception as exc:
             return {"status": "unavailable", "database": self.database, "detail": f"{type(exc).__name__}: {exc}"}
 
+    @ontology_writer
     def publish_turtle(self, *, content: bytes, ontology_id: str, prefix: str, publication_id: str | None = None) -> dict[str, Any]:
         """Upsert an ontology's RDF resources and hierarchy into Neo4j.
 

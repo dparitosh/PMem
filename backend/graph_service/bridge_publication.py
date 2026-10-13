@@ -1,4 +1,5 @@
 """Atomic mapping publication and graph receipt under a stable publication ID."""
+from backend.depo_platform.ontology_maintenance import ontology_writer
 import json
 import os
 from contextlib import contextmanager
@@ -25,6 +26,7 @@ def receipt(publication_id):
         return json.loads(row['receipt']) if row and row['receipt'] else None
 
 
+@ontology_writer
 def publish(command):
     expected = digest({k:v for k,v in command.items() if k != 'request_digest'})
     if expected != command.get('request_digest'):

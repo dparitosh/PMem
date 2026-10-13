@@ -246,26 +246,30 @@ const TD = (extra = {}) => ({
 
 // Shared UI configuration
 function RelBadge({ type }) {
-  const s = REL_COLORS[type] || { bg: C.bg, text: C.textSec, border: C.border };
+  const label = String(type || '').split(/[#/]/).pop() || type;
+  const s = REL_COLORS[label] || { bg: C.bg, text: C.textSec, border: C.border };
   return (
-    <span style={{
+    <span title={type} style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: '12px',
       background: s.bg, color: s.text, border: `1px solid ${s.border}`,
       fontWeight: 700, fontSize: '11px', whiteSpace: 'nowrap',
-    }}>{type}</span>
+    }}>{label}</span>
   );
 }
 
 // Shared UI configuration
-export function VocabularyTable({ edges, filter }) {
+export function VocabularyTable({ edges, filter, truncated = false }) {
+  const [relationFilter, setRelationFilter] = useState('');
   const [selectedRow, setSelectedRow] = useState(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const tableScroll = useRef(null);
+  useEffect(() => { if (relationFilter && !edges.some(edge => edge.mapping_type === relationFilter)) setRelationFilter(''); }, [edges, relationFilter]);
   const lc = filter.toLowerCase();
   const visible = useMemo(() => {
-    if (!lc) return edges;
     return edges.filter(e => {
+      if (relationFilter && e.mapping_type !== relationFilter) return false;
+      if (!lc) return true;
       return (
         e.source_term.toLowerCase().includes(lc) ||
         e.target_term.toLowerCase().includes(lc) ||
@@ -274,13 +278,13 @@ export function VocabularyTable({ edges, filter }) {
         (e.target_label || '').toLowerCase().includes(lc)
       );
     });
-  }, [edges, lc]);
+  }, [edges, lc, relationFilter]);
 
   const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
   const currentPage = Math.min(page, pageCount - 1);
   const offset = currentPage * pageSize;
   const pageRows = visible.slice(offset, offset + pageSize);
-  useEffect(() => { setPage(0); setSelectedRow(null); }, [edges, lc, pageSize]);
+  useEffect(() => { setPage(0); setSelectedRow(null); }, [edges, lc, pageSize, relationFilter]);
   useEffect(() => {
     setSelectedRow(null);
     if (tableScroll.current) tableScroll.current.scrollTop = 0;
@@ -297,11 +301,12 @@ export function VocabularyTable({ edges, filter }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', color: C.textSec, marginRight: '4px' }}>Relation types:</span>
+          <button type="button" aria-pressed={!relationFilter} onClick={() => setRelationFilter('')}>All relations</button>
           {Object.entries(typeGroups).map(([type, count]) => (
-            <span key={type} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <button type="button" aria-pressed={relationFilter === type} onClick={() => setRelationFilter(relationFilter === type ? '' : type)} key={type} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <RelBadge type={type} />
               <span style={{ fontSize: '11px', color: C.textMuted }}>({count})</span>
-            </span>
+            </button>
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -322,6 +327,8 @@ export function VocabularyTable({ edges, filter }) {
           ><Download size={12} /> Export CSV</button>
         </div>
       </div>
+      {truncated && <p role="status">Only the first returned mappings are shown. Counts and CSV export cover this subset.</p>}
+      <p>Domain, range and subclass relations describe ontology structure; exact and close matches describe vocabulary alignment. Select a relation type to filter.</p>
       <div ref={tableScroll} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '520px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
           <thead>
@@ -342,6 +349,9 @@ export function VocabularyTable({ edges, filter }) {
               return (
                 <React.Fragment key={e.source_term + '-' + e.mapping_type + '-' + e.target_term}>
                   <tr
+                    tabIndex={0}
+                    aria-expanded={selected}
+                    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedRow(selected ? null : rowId); } }}
                     onClick={() => setSelectedRow(selected ? null : rowId)}
                     style={{ background: selected ? C.primaryLight : i % 2 === 0 ? C.surface : C.bg, cursor: 'pointer' }}
                     onMouseEnter={ev => { if (!selected) ev.currentTarget.style.background = C.primaryLight; }}
@@ -359,7 +369,7 @@ export function VocabularyTable({ edges, filter }) {
                     </td>
                   </tr>
                   {selected && (
-                    <tr style={{ background: '#EBF5FF' }}>
+                    <tr style={{ background: C.primaryLight }}>
                       <td colSpan={4} style={{ padding: '12px 20px', borderBottom: `1px solid ${C.border}` }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '16px', alignItems: 'start' }}>
                           <div>
@@ -1581,6 +1591,7 @@ export default function OntologyMapper() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [mappingTruncated, setMappingTruncated] = useState(false);
   const [selectedMapping, setSelectedMapping] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('target') || '');
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
@@ -1951,6 +1962,9 @@ export default function OntologyMapper() {
     // Load data dictionary and vocabulary for selected mapping
     const loadMappingData = async () => {
       if (!cancelled) {
+        setVocabEdges([]);
+        setMappingEdges([]);
+        setMappingTruncated(false);
         setLoading(true);
         setError(null);
       }
@@ -2044,6 +2058,7 @@ export default function OntologyMapper() {
         setOntologyDictionary(dictData);
         setDictionarySourceMode(usingFallbackDictionary ? 'taxonomy-fallback' : 'primary');
         setData({ nodes, edges });
+        setMappingTruncated(mapPayload.truncated === true);
         setMappingEdges(edges);
         setVocabEdges(edges.length ? edges : vocabFromDict);
         setStats({
@@ -2683,20 +2698,6 @@ export default function OntologyMapper() {
             </div>
           )}
 
-          {/* Legend for relation types (vocabulary view) */}
-          {activeView === 'vocabulary' && (
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '12px', padding: '8px 12px', background: C.surface, borderRadius: '8px', border: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '2px' }}>Mapping types:</span>
-              {Object.keys(REL_COLORS).map(type => (
-                <span key={type} style={{
-                  display: 'inline-block', padding: '1px 6px', borderRadius: '10px', fontSize: '9px',
-                  background: REL_COLORS[type].bg, color: REL_COLORS[type].text, border: `1px solid ${REL_COLORS[type].border}`,
-                  fontWeight: 600, whiteSpace: 'nowrap',
-                }}>{type}</span>
-              ))}
-            </div>
-          )}
-
           {activeView === 'taxonomy' && (
             <>
               {(semanticDetailsLoading || semanticDetailsError) && (
@@ -2714,7 +2715,7 @@ export default function OntologyMapper() {
           {activeView === 'vocabulary' && (
             <div>
               {!loading && !error && !vocabEdges.length && <p>No mapping vocabulary exists for this ontology and source format. Import instance data and review Semantic Bridge mappings; ontology registration alone creates no mappings.</p>}
-              <VocabularyTable edges={vocabEdges} filter={filter} />
+              <VocabularyTable edges={vocabEdges} filter={filter} truncated={mappingTruncated} />
             </div>
           )}
           {activeView === 'inference' && (

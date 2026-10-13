@@ -754,9 +754,11 @@ async def get_generic_mappings(
 
         # Browsers select immutable catalog IDs, while graph vocabulary retains
         # the human-facing prefix. Resolve the selected artifact before querying.
+        ontology_id = normalized_prefix
         from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
         try:
             metadata = OntologyTaxonomyService._resolve_metadata(normalized_prefix)
+            ontology_id = metadata.get("ontology_id") or normalized_prefix
             normalized_prefix = metadata.get("prefix") or metadata.get("ontology_prefix") or normalized_prefix
         except ValueError:
             pass  # Graph-only baseline ontologies remain browseable by prefix.
@@ -776,27 +778,39 @@ async def get_generic_mappings(
                      ''
                    )
                  ) AS src_fmt
-                        WHERE coalesce(a.ontology_prefix, a.prefix) = $prefix
-                            AND coalesce(b.ontology_prefix, b.prefix) = $prefix
-              AND (src_fmt = '' OR src_fmt = $source_format)
+            WHERE (
+              ((coalesce(a.ontology_id, a.source_ontology) = $ontology_id
+                 OR ($ontology_id = $prefix AND coalesce(a.ontology_id, a.source_ontology) IS NULL
+                     AND coalesce(a.ontology_prefix, a.prefix) = $prefix))
+               AND (coalesce(b.ontology_id, b.source_ontology) = $ontology_id
+                 OR ($ontology_id = $prefix AND coalesce(b.ontology_id, b.source_ontology) IS NULL
+                     AND coalesce(b.ontology_prefix, b.prefix) = $prefix)
+                 OR r.predicate IN $alignment_predicates))
+              OR (r.predicate IN $alignment_predicates
+                  AND coalesce(b.ontology_id, b.source_ontology) = $ontology_id)
+            )
+              AND (src_fmt = '' OR src_fmt = $source_format OR r.predicate IN $alignment_predicates)
             RETURN DISTINCT
-              CASE
-                WHEN 'OntologyClass' IN labels(a) THEN coalesce(a.name, labels(a)[0])
-                WHEN 'OntologyProperty' IN labels(a) THEN coalesce(a.name, labels(a)[0])
-                ELSE labels(a)[0]
-              END AS from_label,
-              CASE
-                WHEN 'OntologyClass' IN labels(b) THEN coalesce(b.name, labels(b)[0])
-                WHEN 'OntologyProperty' IN labels(b) THEN coalesce(b.name, labels(b)[0])
-                ELSE labels(b)[0]
-              END AS to_label,
-              type(r) AS rel
+              coalesce(a.iri, a.uri, a.name, elementId(a)) AS source_term,
+              coalesce(b.iri, b.uri, b.name, elementId(b)) AS target_term,
+              coalesce(a.label, a.name, a.iri, a.uri, elementId(a)) AS from_label,
+              coalesce(b.label, b.name, b.iri, b.uri, elementId(b)) AS to_label,
+              coalesce(r.predicate, type(r)) AS rel
+            ORDER BY source_term, rel, target_term
             LIMIT toInteger($mapping_limit)
             """,
             {
                 "prefix": normalized_prefix,
+                "ontology_id": ontology_id,
                 "source_format": normalized_source_format,
-                "mapping_limit": mapping_limit,
+                "alignment_predicates": [
+                    "http://www.w3.org/2002/07/owl#equivalentClass",
+                    "http://www.w3.org/2002/07/owl#equivalentProperty",
+                    "http://www.w3.org/2002/07/owl#sameAs",
+                    *["http://www.w3.org/2004/02/skos/core#" + name for name in
+                      ("exactMatch", "closeMatch", "broadMatch", "narrowMatch", "relatedMatch")],
+                ],
+                "mapping_limit": mapping_limit + 1,
             },
         )
 
@@ -805,11 +819,11 @@ async def get_generic_mappings(
                 "source_label": row.get("from_label"),
                 "target_label": row.get("to_label"),
                 "mapping_type": row.get("rel", "mapsTo"),
-                "source_term": f"{source_format}:{row.get('from_label')}",
-                "target_term": f"{normalized_prefix}:{row.get('to_label')}",
+                "source_term": row.get("source_term"),
+                "target_term": row.get("target_term"),
             }
-            for row in (rows or [])
-            if row.get("from_label") and row.get("to_label")
+            for row in (rows or [])[:mapping_limit]
+            if row.get("source_term") and row.get("target_term")
         ]
 
         # Keep legacy dict format for backwards compatibility,
@@ -826,7 +840,12 @@ async def get_generic_mappings(
             "mappings": mappings,
             "mapping_edges": mapping_edges,
             "mapping_count": len(mapping_edges),
+            "truncated": len(rows or []) > mapping_limit,
+            "mapping_limit": mapping_limit,
+            "ontology_id": ontology_id,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Failed to retrieve mappings for '{prefix}' / '{source_format}'")
         raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e

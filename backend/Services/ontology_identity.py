@@ -50,8 +50,8 @@ def normalize_ontology_entry(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         namespace,
     )
 
-    node_count = int(data.get("node_count") or data.get("neo4j_nodes_merged") or 0)
-    relationship_count = int(data.get("relationship_count") or data.get("neo4j_relationships_merged") or 0)
+    node_count = int((data.get("node_count") if data.get("node_count") is not None else data.get("neo4j_nodes_merged")) or 0)
+    relationship_count = int((data.get("relationship_count") if data.get("relationship_count") is not None else data.get("neo4j_relationships_merged")) or 0)
     status = _first(data.get("status"), data.get("availability"), "uploaded")
     source = _first(data.get("source"), "registered")
 

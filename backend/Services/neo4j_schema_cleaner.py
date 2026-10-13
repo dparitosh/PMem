@@ -633,6 +633,22 @@ class Neo4jSchemaCleaner:
                 return {'status': 'FAIL', 'message': 'Data was deleted, but index recreation failed: ' + msg,
                         'data_deleted': True, 'before': stats_before.__dict__}
         
+        # Do not use get_schema_stats here: it returns zero-filled defaults on
+        # read failure. A destructive reset needs an explicit successful read-back.
+        try:
+            with self.driver.session(database=self.database) as session:
+                node_row = session.run("MATCH (n) RETURN count(n) AS count").single()
+                rel_row = session.run("MATCH ()-[r]->() RETURN count(r) AS count").single()
+                if node_row is None or rel_row is None:
+                    raise RuntimeError("Missing graph verification counts")
+                nodes, relationships = node_row['count'], rel_row['count']
+                if nodes != 0 or relationships != 0:
+                    return {'status': 'FAIL', 'data_deleted': True,
+                            'message': 'Graph reset is incomplete: records remain.',
+                            'after': {'nodes': nodes, 'relationships': relationships}}
+        except Exception:
+            return {'status': 'FAIL', 'data_deleted': True,
+                    'message': 'Graph reset could not be verified. Check graph connectivity and service logs.'}
         stats_after = self.get_schema_stats()
         
         return {
@@ -643,8 +659,8 @@ class Neo4jSchemaCleaner:
                 "relationships": stats_before.total_relationships
             },
             "after": {
-                "nodes": stats_after.total_nodes,
-                "relationships": stats_after.total_relationships
+                "nodes": nodes,
+                "relationships": relationships
             }
         }
     

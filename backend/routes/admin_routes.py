@@ -3,6 +3,7 @@ Admin Routes - Schema Management
 Provides endpoints for database cleaning and schema operations
 """
 
+from backend.depo_platform.ontology_maintenance import ontology_cleanup
 from fastapi import APIRouter, Depends, HTTPException, Request
 import hmac
 from pydantic import BaseModel
@@ -603,6 +604,7 @@ except Exception as e:
 
 @router.post("/clean-schema", dependencies=[Depends(require_admin_api_key)])
 @_maintenance_worker
+@ontology_cleanup
 def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
     """
     Clean Neo4j database: delete all nodes, relationships, AND ontology metadata
@@ -627,33 +629,15 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         finally:
             cleaner.close()
 
-        if result.get("status") != "SUCCESS":
-            if result.get('data_deleted'):
-                _reconcile_reset()
+        graph_complete = result.get("status") == "SUCCESS"
+        if not graph_complete and not result.get('data_deleted'):
             raise HTTPException(status_code=500, detail=result.get("message", "Schema cleanup failed"))
+        # Once graph data has been deleted, complete metadata cleanup even when
+        # dropping constraints/indexes failed. Preserve that failure in the result.
         reconciliation = _reconcile_reset()
-        
-        # 2. ✅ FIXED: Also clear ontology metadata so names don't persist
-        metadata_result = {'status': 'error', 'cleared': 0}
-        try:
-            # Import using absolute path to avoid relative-import failures in tests
-            try:
-                from backend.Services.ontology_upload_manager import OntologyUploadManager
-            except ImportError:
-                from Services.ontology_upload_manager import OntologyUploadManager
-            metadata_result = OntologyUploadManager.clear_all_metadata()
-            from backend.ontology_service.catalog import catalog
-            native_cleanup = catalog.clear_registration_metadata()
-            metadata_result['cleared'] = metadata_result.get('cleared', 0) + native_cleanup['cleared']
-            metadata_result['failed'] = metadata_result.get('failed', []) + native_cleanup['failed']
-            if native_cleanup['status'] != 'success':
-                metadata_result['status'] = 'partial'
-            metadata_cleared = metadata_result.get('cleared', 0)
-        except Exception as e:
-            logger.warning(f"Could not clear metadata: {e}")
-            metadata_result['status'] = 'partial'
-            metadata_result.setdefault('failed', []).append('native_catalog_cleanup')
-            metadata_cleared = metadata_result.get('cleared', 0)
+        from backend.depo_platform.ontology_cleanup import clear_ontology_registrations
+        metadata_result = clear_ontology_registrations()
+        metadata_cleared = metadata_result['cleared']
         # Publish again after file deletion so peers cannot retain a list cached
         # between graph reset and the filesystem cleanup.
         try:
@@ -673,16 +657,19 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
 
         return {
-            "success": metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial',
-            "status": result.get("status") if metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' else 'partial',
+            "success": graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial',
+            "status": "SUCCESS" if graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' else 'partial',
             "registry_reconciliation": reconciliation,
-            "message": result.get("message") + f" [Metadata files cleared: {metadata_cleared}]",
+            "graph_cleanup_status": result.get("status"),
+            "graph_cleanup_message": result.get("message") if not graph_complete else None,
+            "registry_verification": metadata_result["verification"],
+            "message": result.get("message", "Graph cleanup processed") + f" [Metadata files cleared: {metadata_cleared}]",
             "before": result.get("before"),
             "after": result.get("after"),
             "metadata_cleared": metadata_cleared,
             "metadata_cleanup_status": metadata_result.get('status'),
             "metadata_failed": metadata_result.get('failed', []),
-            "metadata_cleanup_message": 'Some ontology files could not be removed; check storage permissions and server logs.' if metadata_result.get('status') != 'success' else None,
+            "metadata_cleanup_message": 'Ontology registry cleanup is incomplete or unverified; inspect registry_verification and server logs.' if metadata_result.get('status') != 'success' else None,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

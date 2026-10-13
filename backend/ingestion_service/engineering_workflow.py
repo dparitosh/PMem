@@ -1,5 +1,6 @@
 """Service-to-service workflow for engineering schema and exchange conversion."""
 from __future__ import annotations
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 import os
 import hashlib
@@ -60,6 +61,7 @@ class EngineeringWorkflow:
         self.publication_timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
         self.timeout = bounded_timeout_seconds('SERVICE_REQUEST_TIMEOUT_SECONDS', default=30, maximum=300)
 
+    @ontology_writer
     async def run(
         self, **kwargs,
     ) -> dict[str, Any]:

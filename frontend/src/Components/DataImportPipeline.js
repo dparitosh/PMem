@@ -143,6 +143,7 @@ export default function DataImportPipeline() {
   const importRequestControllersRef = useRef(new Set());
   const ontologyRegistrationsRef = useRef(new Set());
   const xsdFolderBundlesRef = useRef(new WeakMap());
+  const fileSelectionGeneration = useRef(0);
   const isMountedRef = useMountedRef();
   const { activePollersRef, clearPoller, schedulePoller } = usePollerRegistry(isMountedRef);
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
@@ -308,6 +309,7 @@ export default function DataImportPipeline() {
 
   useEffect(() => {
     const resetProjection = () => {
+      fileSelectionGeneration.current += 1;
       ontologyLoadAbortRef.current?.abort();
       importRequestControllersRef.current.forEach(controller => controller.abort());
       setXsdDependencies([]);
@@ -349,16 +351,23 @@ export default function DataImportPipeline() {
     }
   }, [selectedWorkflow, workflowSourceFileId]);
 
+  useEffect(() => {
+    fileSelectionGeneration.current += 1;
+    return () => { fileSelectionGeneration.current += 1; };
+  }, [selectedWorkflow]);
+
   const handleFileInput = async (e) => {
+    const selectionGeneration = ++fileSelectionGeneration.current;
     const selected = Array.from(e.target.files || []);
     e.target.value = '';
     if (!selected.length) return;
     if (selected.length > 1 && selected.every(file => file.name.toLowerCase().endsWith('.xsd'))) {
       try {
         const bundle = await combineXsdFiles(selected);
+        if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
         xsdFolderBundlesRef.current.set(bundle.root, bundle);
         handleFiles([bundle.root]);
-      } catch (failure) { setError(failure.message); }
+      } catch (failure) { if (isMountedRef.current && selectionGeneration === fileSelectionGeneration.current) setError(failure.message); }
     } else handleFiles(selected);
   };
 
@@ -587,8 +596,8 @@ export default function DataImportPipeline() {
 
     const shouldPublish = publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
     const folderBundle = xsdFolderBundlesRef.current.get(file.fileObj);
-    const selectedDependencies = folderBundle?.files || xsdDependencies;
-    const selectedPaths = folderBundle?.paths ?? xsdDependencyPaths;
+    const selectedDependencies = folderBundle?.files || [];
+    const selectedPaths = folderBundle?.paths || '';
     const hasXsdDependencies = file.fileType === 'xsd' && selectedDependencies.length > 0;
     if (hasXsdDependencies && file.generationType !== 'owl') {
       setError('Companion XSD conversion requires OWL generation. Reopen ontology details and choose OWL.');
@@ -730,6 +739,7 @@ export default function DataImportPipeline() {
         return next;
       });
       if (file.fileType === 'xsd' && /schema dependency|schemaLocation|companion/i.test(String(detail))) {
+        setXsdDependencies(folderBundle?.files || []); setXsdDependencyPaths(folderBundle?.paths || '');
         setDependencyTarget(file);
       }
       setError(`Error uploading ontology: ${detail}`);
@@ -1285,6 +1295,18 @@ export default function DataImportPipeline() {
     return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
   }, [pipelineStatus, isMountedRef]);
 
+  const isRunnableUpload = useCallback(file => {
+    if (!file.fileObj || startedFiles.has(file.fileId) || ontologyRegistrationsRef.current.has(file.fileId)) return false;
+    if ((file.workflowId || selectedWorkflow) !== selectedWorkflow) return false;
+    const status = pipelineStatus[file.fileId] || {};
+    if (status.outcomeUnknown || status.registered || ['completed', 'processing', 'running'].includes(status.status)) return false;
+    if (selectedWorkflow === 'ontology.create') return !file.pendingMetadata;
+    if (selectedWorkflow === 'instance.import') return !getAlignmentPolicy(file.name).isDirectOntology;
+    if (selectedWorkflow === 'document.unstructured') return inferFileTypeFromExtension(file.name) === 'document';
+    if (selectedWorkflow === 'architecture.archimate') return inferFileTypeFromExtension(file.name) === 'archimate' || getFileExtensionFromName(file.name) === '.xml';
+    return false;
+  }, [startedFiles, selectedWorkflow, pipelineStatus]);
+
   const startAllImports = async () => {
     const workflow = workflowOptions.find(w => w.id === selectedWorkflow) || resolveWorkflow(selectedWorkflow);
     if (workflow?.status !== 'available') {
@@ -1292,24 +1314,7 @@ export default function DataImportPipeline() {
       return;
     }
 
-    const filesToImport = files.filter(f => {
-      if (startedFiles.has(f.fileId)) return false;
-      if ((f.workflowId || selectedWorkflow) !== selectedWorkflow) return false;
-      if (selectedWorkflow === 'instance.import') {
-        const policy = getAlignmentPolicy(f.name);
-        return !policy.isDirectOntology;
-      }
-      if (selectedWorkflow === 'document.unstructured') {
-        return inferFileTypeFromExtension(f.name) === 'document';
-      }
-      if (selectedWorkflow === 'architecture.archimate') {
-        return inferFileTypeFromExtension(f.name) === 'archimate' || getFileExtensionFromName(f.name) === '.xml';
-      }
-      if (selectedWorkflow === 'ontology.create') {
-        return !f.pendingMetadata;
-      }
-      return false;
-    });
+    const filesToImport = files.filter(isRunnableUpload);
     if (filesToImport.length === 0) {
       setError(selectedWorkflow === 'ontology.create'
         ? 'Complete ontology details before starting registration.'
@@ -1578,6 +1583,9 @@ export default function DataImportPipeline() {
   };
 
   const removeFile = (fileId) => {
+    if (dependencyTarget?.fileId === fileId) {
+      setDependencyTarget(null); setXsdDependencies([]); setXsdDependencyPaths('');
+    }
     const fileStatus = pipelineStatus[fileId];
     if (fileStatus?.taskId) {
       clearPoller(`${fileStatus.taskId}:${fileId}`);
@@ -1782,8 +1790,8 @@ export default function DataImportPipeline() {
   );
   const canRunSelectedWorkflow = fallbackWorkflow.status === 'available';
   const pendingFileCount = useMemo(
-    () => files.reduce((count, f) => count + (startedFiles.has(f.fileId) ? 0 : 1), 0),
-    [files, startedFiles]
+    () => files.filter(isRunnableUpload).length,
+    [files, isRunnableUpload]
   );
   const workflowRequiresOntology = !isImportWorkflow(selectedWorkflow);
   const workflowRequiresTargetOntology = selectedWorkflow === 'ontology.merge';
@@ -2897,7 +2905,8 @@ export default function DataImportPipeline() {
             Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
             <span style={{ color: C.primaryText, fontWeight: '700' }}> Import instance graph</span>.
           </div>
-          <XsdDependencies files={xsdDependencies} paths={xsdDependencyPaths} disabled={workflowLoading}
+          <p>Use Add Files once: select one XSD or select several XSDs to combine into one ontology registration. Complete one name and prefix, then Start. Use Resolve XSD dependencies on a row only when its companion files are needed.</p>
+          {dependencyTarget && <XsdDependencies key={dependencyTarget.fileId} files={xsdDependencies} paths={xsdDependencyPaths} disabled={workflowLoading}
             selectedRoot={dependencyTarget?.fileObj}
             selectedSources={dependencyTarget ? xsdFolderBundlesRef.current.get(dependencyTarget.fileObj)?.sources : null}
             onRoot={(root, bundle) => {
@@ -2908,7 +2917,14 @@ export default function DataImportPipeline() {
                 startOntologyRegistration(target);
               } else { xsdFolderBundlesRef.current.set(root, bundle); handleFiles([root]); }
             }}
-            onChange={(nextFiles, nextPaths) => { setXsdDependencies(nextFiles); setXsdDependencyPaths(nextPaths); }} />
+            onChange={(nextFiles, nextPaths) => {
+              setXsdDependencies(nextFiles); setXsdDependencyPaths(nextPaths);
+              const previous = xsdFolderBundlesRef.current.get(dependencyTarget.fileObj);
+              xsdFolderBundlesRef.current.set(dependencyTarget.fileObj, {
+                ...previous, root: dependencyTarget.fileObj, files: nextFiles, paths: nextPaths,
+              });
+            }} />}
+          {dependencyTarget && <button type="button" onClick={() => setDependencyTarget(null)}>Close dependency recovery</button>}
           {ontologyCatalogState.message && (
             <div style={{
               fontSize: '9px',
@@ -3545,6 +3561,13 @@ export default function DataImportPipeline() {
                       <X size={12} />
                     </button>
                   </div>
+                  {file.workflowId === 'ontology.create' && file.fileType === 'xsd' && file.fileObj && !status.registered && !ontologyRegistrationsRef.current.has(fileId) && (
+                    <button type="button" style={{gridColumn:'1 / -1'}} onClick={() => {
+                      const bundle = xsdFolderBundlesRef.current.get(file.fileObj);
+                      setXsdDependencies(bundle?.files || []); setXsdDependencyPaths(bundle?.paths || '');
+                      setDependencyTarget(file);
+                    }}>Resolve XSD dependencies</button>
+                  )}
                   {file.workflowId === 'ontology.create' && status.registered && status.taskId && (
                     <details style={{ gridColumn: '1 / -1', marginTop: 8 }} onToggle={event => {
                       const open = event.currentTarget.open;

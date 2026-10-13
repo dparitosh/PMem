@@ -5,6 +5,8 @@ replacement persistence boundary for newly published ontology artifacts.
 """
 from __future__ import annotations
 
+from backend.depo_platform.ontology_maintenance import ontology_writer
+
 from contextlib import nullcontext
 import json
 import os
@@ -147,6 +149,7 @@ class OntologyCatalog:
         parse_result = self._parse_ontology(content, safe_filename)
         return prefix, safe_filename, parse_result
 
+    @ontology_writer
     def register(self, **kwargs) -> dict[str, Any]:
         started = time.monotonic()
         logging.getLogger(__name__).warning('Ontology registration started; bytes=%s', len(kwargs['content']))
@@ -244,6 +247,7 @@ class OntologyCatalog:
         logging.getLogger(__name__).warning('Ontology registration metadata persistence completed')
         return result
 
+    @ontology_writer
     def adopt_legacy(
         self,
         *,
@@ -333,6 +337,7 @@ class OntologyCatalog:
             raise ValueError(f"Ontology artifact is missing: {ontology_id}")
         return metadata, path.read_bytes()
 
+    @ontology_writer
     def mark_superseded(self, *, ontology_id: str, successor_id: str) -> dict[str, Any]:
         """Retire an accidental or replaced catalog version without deleting it."""
         metadata = self.get(ontology_id)
@@ -341,6 +346,7 @@ class OntologyCatalog:
         metadata.update({"status": "superseded", "superseded_by": _safe_token(successor_id, field="successor_id"), "superseded_at": _now()})
         return self._save_metadata(metadata)
 
+    @ontology_writer
     def with_publication_lock(self, ontology_id: str, operation):
         """Keep approval transitions serialized with a complete publication."""
         _safe_token(ontology_id, field='ontology_id')
@@ -351,6 +357,7 @@ class OntologyCatalog:
                     raise ValueError('Ontology lifecycle is being updated; retry')
                 return operation()
 
+    @ontology_writer
     def transition(self, *, ontology_id: str, target: str, actor: str, reason: str = "") -> dict[str, Any]:
         """Move an ontology through the minimal review lifecycle with evidence."""
         _safe_token(ontology_id, field="ontology_id")
@@ -390,6 +397,7 @@ class OntologyCatalog:
         })
         return self._save_metadata(metadata)
 
+    @ontology_writer
     def backfill_analytics(self, *, ontology_ids: list[str], actor: str) -> dict[str, Any]:
         """Add missing draft metadata and RDF analytics to legacy catalog records.
 

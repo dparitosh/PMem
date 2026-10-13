@@ -47,3 +47,37 @@ test('failed direct upload resolves its selected schema without asking for a roo
   await waitFor(() => expect(onRoot).toHaveBeenCalledTimes(1));
   expect(onRoot.mock.calls[0][1].paths).toBe('Library/part.xsd');
 });
+
+
+test('folder selected before failed target becomes resolvable when the target arrives', () => {
+  const root = new File(['schema'], 'QIFProduct.xsd');
+  Object.defineProperty(root, 'webkitRelativePath', {value:'xsd/Apps/QIFProduct.xsd'});
+  const props = {files:[],paths:'',onChange:vi.fn(),onRoot:vi.fn()};
+  const view = render(<XsdDependencies {...props} />);
+  fireEvent.change(screen.getByLabelText('Select complete XSD folder'), {target:{files:[root]}});
+  view.rerender(<XsdDependencies {...props} selectedRoot={new File(['schema'], 'QIFProduct.xsd')} />);
+  expect(screen.getByRole('button', {name:'Resolve companions and retry'})).toBeEnabled();
+});
+
+test('missing root explains why resolution cannot continue', () => {
+  render(<XsdDependencies files={[]} paths="" onChange={vi.fn()} onRoot={vi.fn()} selectedRoot={new File([''], 'QIFProduct.xsd')} />);
+  fireEvent.change(screen.getByLabelText('Select complete XSD folder'), {target:{files:[new File([''], 'part.xsd')]}});
+  expect(screen.getByRole('alert')).toHaveTextContent('does not contain QIFProduct.xsd');
+  expect(screen.getByRole('button', {name:'Resolve companions and retry'})).toBeDisabled();
+});
+
+
+test('a dependency result cannot retry a target that changed during reading', async () => {
+  let finish;
+  const root = new File(['schema'], 'root.xsd');
+  root.text = () => new Promise(resolve => {finish = resolve;});
+  const onRoot = vi.fn();
+  const props = {files:[], paths:'', onChange:vi.fn(), onRoot};
+  const view = render(<XsdDependencies {...props} selectedRoot={root} />);
+  fireEvent.change(screen.getByLabelText('Select complete XSD folder'), {target:{files:[root]}});
+  fireEvent.click(screen.getByRole('button', {name:'Resolve companions and retry'}));
+  view.rerender(<XsdDependencies {...props} selectedRoot={new File([''], 'other.xsd')} />);
+  finish('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>');
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('other.xsd'));
+  expect(onRoot).not.toHaveBeenCalled();
+});

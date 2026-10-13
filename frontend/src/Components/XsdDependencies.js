@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { folderPaths, prepareXsdFolder, combineXsdFiles } from './xsdFolderBundle';
 
 export function appendXsdDependencies(form, rootFile, dependencies, pathsText) {
@@ -20,8 +20,25 @@ export default function XsdDependencies({ files, paths, onChange, onRoot, select
   const [rootPath, setRootPath] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const generation = useRef(0);
+  useEffect(() => {
+    generation.current += 1;
+    setBusy(false);
+    return () => { generation.current += 1; };
+  }, [folder, selectedRoot, selectedSources, disabled]);
+  const rootMatches = folderPaths(folder).filter(path => path.split('/').at(-1) === selectedRoot?.name);
+  useEffect(() => {
+    if (!folder.length) { setRootPath(''); return; }
+    if (selectedSources?.length) { setRootPath('combined'); setError(''); return; }
+    if (!selectedRoot) { setRootPath(''); return; }
+    const matches = folderPaths(folder).filter(path => path.split('/').at(-1) === selectedRoot.name);
+    setRootPath(matches.length === 1 ? matches[0] : '');
+    setError(matches.length === 0
+      ? `The selected folder does not contain ${selectedRoot.name}. Select its parent folder containing the root XSD and all companion folders.`
+      : matches.length > 1 ? `Multiple copies of ${selectedRoot.name} were found. Select the matching root path below.` : '');
+  }, [folder, selectedRoot, selectedSources]);
   return <details open={selectedRoot ? true : undefined}>
-    <summary>Optional: resolve missing XSD companions</summary>
+    <summary>Resolve companions for this upload</summary>
     <fieldset disabled={disabled} style={{ minWidth: 0, margin: '8px 0', padding: 12 }}>
     <legend>Companion XSD files</legend>
     <p>Add your XSD with Add Files, complete its details, and click Start. Use this section only if companion files are missing.</p>
@@ -30,25 +47,24 @@ export default function XsdDependencies({ files, paths, onChange, onRoot, select
       <label>Select complete XSD folder<input type="file" webkitdirectory="" multiple disabled={busy} onChange={event => {
         const selected = Array.from(event.target.files || []).filter(file => file.name.toLowerCase().endsWith('.xsd'));
         setFolder(selected); setError('');
-        const matches = folderPaths(selected).filter(path => path.split('/').at(-1) === selectedRoot?.name);
-        setRootPath(selectedSources ? 'combined' : matches.length === 1 ? matches[0] : '');
-        if (selectedRoot && !selectedSources && matches.length !== 1) setError('Choose a folder containing exactly one copy of the selected XSD and its companions.');
       }} /></label>
       {folder.length > 0 && <>
-        {!selectedRoot && <label>Root schema<select value={rootPath} disabled={busy} onChange={event => setRootPath(event.target.value)}>
+        {(!selectedRoot || (!selectedSources?.length && rootMatches.length > 1)) && <label>Root schema<select value={rootPath} disabled={busy} onChange={event => setRootPath(event.target.value)}>
           <option value="">Select root XSD</option>
-          {folderPaths(folder).map(path => <option key={path} value={path}>{path}</option>)}
+          {(selectedRoot ? rootMatches : folderPaths(folder)).map(path => <option key={path} value={path}>{path}</option>)}
         </select></label>}
         <button type="button" disabled={!rootPath || busy} onClick={async () => {
+          const requestGeneration = ++generation.current;
           setBusy(true); setError('');
-          try { const bundle = selectedSources ? await combineXsdFiles(selectedSources, folder, true) : await prepareXsdFolder(folder, rootPath); onChange(bundle.files, bundle.paths); onRoot(bundle.root, bundle); }
-          catch (failure) { setError(failure.message); }
-          finally { setBusy(false); }
+          try { const bundle = selectedSources?.length ? await combineXsdFiles(selectedSources, folder, true) : await prepareXsdFolder(folder, rootPath); if (requestGeneration !== generation.current) return; onChange(bundle.files, bundle.paths); onRoot(bundle.root, bundle); }
+          catch (failure) { if (requestGeneration === generation.current) setError(failure.message); }
+          finally { if (requestGeneration === generation.current) setBusy(false); }
         }}>{busy ? 'Checking schema dependencies...' : selectedRoot ? 'Resolve companions and retry' : 'Check folder and add root'}</button>
       </>}
       {error && <p role="alert">{error}</p>}
       <p>Select the parent folder containing all schema directories. Only the selected root and its required companions are uploaded; references are adjusted in memory and source files stay unchanged.</p>
     </div>}
+    <details><summary>Advanced: select companion files and edit relative paths</summary>
     <p>For schemas that import other XSDs, select the companion files here. They are sent with the root XSD as one schema set. Files stay in this tab and must be selected again after reload.</p>
     <label>Companion XSD files<input type="file" accept=".xsd" multiple onChange={event => {
       const selected = Array.from(event.target.files || []);
@@ -60,5 +76,6 @@ export default function XsdDependencies({ files, paths, onChange, onRoot, select
       <button type="button" onClick={() => onChange([], '')}>Clear companion files</button>
     </>}
     <p>For the bundled bom.xsd, select the bundled Edition 2 common.xsd with relative path common.xsd. Choose OWL generation. External schemas are not downloaded automatically.</p>
+    </details>
   </fieldset></details>;
 }

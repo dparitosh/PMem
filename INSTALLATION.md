@@ -4176,3 +4176,43 @@ If startup fails, correct the first reported error before retrying. If listeners
 exist, compare their address with the browser request host and root routing
 configuration; restarting frontend after root routing changes regenerates its
 runtime configuration.
+
+
+### Verify Full Schema Cleanup
+
+Full Schema Cleanup is destructive. Its response must report `success: true`,
+`status: SUCCESS`, and `registry_verification.ingestion` and
+`registry_verification.catalog` with `status: empty` and `remaining: 0`.
+A `partial` result is not a completed cleanup: inspect `graph_cleanup_message`,
+`metadata_failed`, and `registry_verification`. After graph data deletion,
+metadata cleanup is attempted even if removing graph indexes/constraints fails.
+Read-back verification covers the cleanup service's configured PostgreSQL catalog
+and ingestion storage. All services must use the same database/schema and shared
+ontology storage; it does not certify differently configured service instances.
+Clear Cache only invalidates caches and does not delete registrations.
+
+Full cleanup now takes an exclusive PostgreSQL maintenance lock; guarded ontology
+registration, engineering ingestion and publication take shared locks. A busy
+cleanup returns HTTP 409 without starting deletion. Allow active jobs to finish
+and stop scheduling new imports before retrying. All service instances must be
+updated together and use the same PostgreSQL control plane for this coordination.
+The no-PostgreSQL fallback coordinates only one process. External database writers
+are outside this lock; final graph read-back reports remaining records as failure.
+
+
+### XSD upload and companion recovery sequence
+
+1. Open Import and select Create ontology. Click Add Files once. Select one XSD,
+   or select several XSDs to combine them into one ontology registration.
+2. Complete the ontology name and prefix, select OWL generation, then click Start.
+3. If dependencies are missing, use Resolve XSD dependencies on that upload row.
+   Select the parent folder containing the root and its companion directories.
+   Click Resolve companions and retry; the same row and ontology details are reused.
+4. Manual companion selection and path editing are under Advanced in that recovery
+   panel. Companion selections belong to the selected row, not later uploads.
+5. Close dependency recovery when finished. Removing the row also closes its recovery
+   panel. Files must be selected again after a browser reload.
+6. After registration, expand the row's review, approval and publication controls.
+
+Run all starts the queued upload rows. It does not select new companion files or
+approve ontology publication.

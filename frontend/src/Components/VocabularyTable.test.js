@@ -37,3 +37,18 @@ test('page size resets selection and empty filters disable navigation', () => {
   expect(screen.getByRole('button', {name:'Previous'})).toBeDisabled();
   expect(screen.getByRole('button', {name:'Next'})).toBeDisabled();
 });
+
+
+test('relation pills filter actual rows and support keyboard details', () => {
+  const rows = [edges[0], {...edges[1], mapping_type:'http://www.w3.org/2004/02/skos/core#exactMatch'}];
+  render(<VocabularyTable edges={rows} filter="" truncated />);
+  fireEvent.click(screen.getByRole('button', {name:/exactMatch/}));
+  expect(screen.getByText('1 of 2 mappings')).toBeInTheDocument();
+  expect(screen.queryByText('Source 1')).toBeNull();
+  expect(screen.getByText(/Only the first returned mappings/)).toBeInTheDocument();
+  const row = screen.getByText('Source 2').closest('tr');
+  fireEvent.keyDown(row, {key:'Enter'});
+  expect(row).toHaveAttribute('aria-expanded','true');
+  fireEvent.click(screen.getByRole('button', {name:'All relations'}));
+  expect(screen.getByText('2 of 2 mappings')).toBeInTheDocument();
+});

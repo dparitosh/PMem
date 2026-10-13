@@ -23,3 +23,13 @@ test('current zero counts are preserved and historical import counts are not liv
   expect(invalid.node_count).toBeNull();
   expect(invalid.relationship_count).toBeNull();
 });
+
+
+test('graph discovery and catalog rows share canonical identity while preserving the registered name', () => {
+  const [catalog, graph] = normalizeOntologyRows([
+    {ontology_id: 'splm_123', ontology_name: 'Teamcenter PLMXML ontology', prefix: 'splm', file_type: 'owl'},
+    {ontology_id: 'splm_123', ontology_name: 'splm', prefix: 'splm', source: 'neo4j', file_type: 'neo4j'},
+  ]);
+  expect(graph.value).toBe(catalog.value);
+  expect(mergeOntologyMetadata(catalog, graph).label).toBe('Teamcenter PLMXML ontology');
+});

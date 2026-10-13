@@ -284,6 +284,7 @@ describe('DataImportPipeline workflow routing', () => {
     fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    fireEvent.click(screen.getByRole('button', {name:'Resolve XSD dependencies'}));
     fireEvent.change(screen.getByLabelText('Companion XSD files'), { target: { files: [
       new File(['common'], 'common.xsd'), new File(['part'], 'part.xsd'),
     ] } });
@@ -314,6 +315,7 @@ describe('DataImportPipeline workflow routing', () => {
       await flushAsyncEffects();
     });
     expect(screen.getByText('uploaded-schema-set.xsd')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:'Run all'})).not.toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Combined Ontology' } });
     fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'combined' } });
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
@@ -330,6 +332,7 @@ describe('DataImportPipeline workflow routing', () => {
     expect(screen.getByText('Processing details')).toBeInTheDocument();
     await screen.findAllByText(/registered; graph publication has not run/);
     expect(screen.getByText('Review, approve and publish this ontology to Neo4j')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name:'Run all'})).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Clear finished/failed history' }));
     await waitFor(() => expect(screen.queryByText('uploaded-schema-set.xsd')).not.toBeInTheDocument());
   });
@@ -367,6 +370,25 @@ describe('DataImportPipeline workflow routing', () => {
     fireEvent.click(screen.getByRole('button', {name:/^Start$/i}));
     await screen.findByText(/Document processing did not complete successfully/);
     expect(screen.queryByText('Document retained and indexed for GraphRAG search.')).not.toBeInTheDocument();
+  });
+
+  it('cleanup invalidates bulk schema reads that finish later', async () => {
+    await renderPipeline();
+    const xml = '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>';
+    let finish;
+    const first = new File([xml], 'first.xsd');
+    first.text = () => new Promise(resolve => {finish = resolve;});
+    const second = new File([xml], 'second.xsd');
+    second.text = async () => xml;
+    fireEvent.change(document.querySelector('input[type="file"]'), {target:{files:[first,second]}});
+    await waitFor(() => expect(finish).toBeDefined());
+    await act(async () => {
+      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      finish(xml);
+      await flushAsyncEffects();
+    });
+    expect(screen.queryByText('uploaded-schema-set.xsd')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/e.g., Product Model/i)).not.toBeInTheDocument();
   });
 
 });

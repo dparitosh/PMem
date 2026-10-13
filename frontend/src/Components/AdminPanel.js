@@ -204,7 +204,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const metadataCleared = res.data?.metadata_cleared ?? 0;
       const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
       setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
-      const cleanupWarning = res.data?.status === 'partial' ? res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
+      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
       await fetchOntologies(true);

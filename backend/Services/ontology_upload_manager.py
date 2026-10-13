@@ -3,6 +3,8 @@ AP239 Ontology Upload Handler
 Captures ontology metadata and stores files for reuse
 """
 
+
+from backend.depo_platform.ontology_maintenance import ontology_writer
 import os
 import json
 import time
@@ -256,6 +258,7 @@ class OntologyUploadManager:
             return result
 
     @classmethod
+    @ontology_writer
     def save_ontology_file(
         cls,
         file_content: bytes,
@@ -439,6 +442,7 @@ class OntologyUploadManager:
             return {'status': 'error', 'error': str(e)}
 
     @classmethod
+    @ontology_writer
     def refresh_semantic_artifacts(cls, ontology_id: str) -> Dict[str, Any]:
         """Backfill generated OWL/SHACL artifacts for an already-registered ontology."""
         try:
@@ -552,7 +556,7 @@ class OntologyUploadManager:
         for source_row in normalize_ontology_entries(ontologies):
             row = dict(source_row)
             prefix = str(row.get("prefix") or row.get("ontology_prefix") or "").strip()
-            registry_key = prefix or str(row.get("ontology_id") or "").strip()
+            registry_key = str(row.get("ontology_id") or "").strip() or prefix
             if not registry_key:
                 continue
             row["prefix"] = prefix
@@ -561,16 +565,16 @@ class OntologyUploadManager:
             row.setdefault("node_count", row.get("neo4j_nodes_merged", 0) or 0)
             row.setdefault("relationship_count", row.get("neo4j_relationships_merged", 0) or 0)
             row["availability"] = "metadata_only"
-            indexed[registry_key.lower()] = row
+            indexed[registry_key] = row
         return indexed
 
     @classmethod
     def _enrich_registry_counts(cls, by_prefix: Dict[str, Dict[str, Any]], graph=None) -> None:
         count_query = """
         MATCH (n)
-        WHERE n.prefix = $prefix
-           OR n.ontology_prefix = $prefix
-           OR n.source_ontology = $ontology_id
+        WHERE n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id
+           OR ($prefix_identity AND coalesce(n.ontology_id, n.source_ontology) IS NULL
+               AND coalesce(n.prefix, n.ontology_prefix) = $prefix)
         WITH collect(DISTINCT n) AS nodes
         UNWIND CASE WHEN size(nodes) = 0 THEN [NULL] ELSE nodes END AS a
         OPTIONAL MATCH (a)-[r]-(b)
@@ -583,6 +587,7 @@ class OntologyUploadManager:
                 counts = cls._query_configured_neo4j(count_query, params={
                     "prefix": row.get("prefix"),
                     "ontology_id": row.get("ontology_id") or row.get("prefix"),
+                    "prefix_identity": not row.get("ontology_id") or row.get("ontology_id") == row.get("prefix"),
                 }, graph=graph)
                 first = counts[0] if counts else {}
                 node_count = int(first.get("node_count") or 0)
@@ -606,7 +611,7 @@ class OntologyUploadManager:
         node_count = int(direct.get("node_count") or 0)
         relationship_count = int(direct.get("relationship_count") or 0)
         return {
-            "ontology_id": prefix, "ontology_name": name, "name": name,
+            "ontology_id": str(direct.get("ontology_id") or prefix), "ontology_name": name, "name": name,
             "prefix": prefix, "ontology_prefix": prefix,
             "namespace": "", "source_namespace": "", "file_type": "neo4j",
             "generation_type": "direct", "schema_type": "schema", "source": "neo4j",
@@ -622,12 +627,12 @@ class OntologyUploadManager:
             MATCH (n)
             WHERE n.prefix IS NOT NULL
               AND NOT (n:DatasheetChunk OR n:GraphChunk)
-            WITH n.prefix AS prefix, collect(DISTINCT n) AS nodes
+            WITH n.prefix AS prefix, coalesce(n.ontology_id, n.source_ontology) AS ontology_id, collect(DISTINCT n) AS nodes
             UNWIND nodes AS a
             OPTIONAL MATCH (a)-[r]-(b)
             WHERE b IN nodes
-            WITH prefix, nodes, count(DISTINCT r) AS relationship_count
-            RETURN prefix,
+            WITH prefix, ontology_id, nodes, count(DISTINCT r) AS relationship_count
+            RETURN prefix, ontology_id,
                    coalesce(head([n IN nodes WHERE n.ontology_name IS NOT NULL | n.ontology_name]), prefix) AS ontology_name,
                    size(nodes) AS node_count,
                    relationship_count
@@ -637,8 +642,8 @@ class OntologyUploadManager:
         )
         for direct in direct_rows:
             entry = cls._neo4j_only_entry(direct)
-            if entry and entry["prefix"].lower() not in by_prefix:
-                by_prefix[entry["prefix"].lower()] = entry
+            if entry and entry["ontology_id"] not in by_prefix:
+                by_prefix[entry["ontology_id"]] = entry
 
     @classmethod
     def list_ontologies_with_neo4j_counts(cls, graph=None, include_neo4j_only: bool = True) -> Dict[str, Any]:
@@ -1257,6 +1262,7 @@ MERGE (p)-[:PROPERTY_OF]->(c)
             return 0
 
     @classmethod
+    @ontology_writer
     def push_to_neo4j(cls, ontology_id: str, graph, schema_type: str = "schema") -> Dict[str, Any]:
         """Parse the stored ontology file and MERGE its entities into Neo4j as OntologyClass or Instance nodes.
 
@@ -1438,6 +1444,7 @@ RETURN count(c) AS merged
             logger.exception("Could not update status for %s", ontology_id)
 
     @classmethod
+    @ontology_writer
     def update_metadata(cls, ontology_id: str, fields: Dict[str, Any]) -> None:
         """Merge arbitrary fields into an ontology's metadata.json (public helper)."""
         try:

@@ -1,5 +1,6 @@
 """Explicit HTTP orchestration for profile-driven semantic ingestion."""
 from __future__ import annotations
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 import os
 import hashlib
@@ -18,6 +19,7 @@ class SemanticIngestionWorkflow:
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "30"))
 
+    @ontology_writer
     async def run(
         self, *, normalized: dict[str, Any], name: str, prefix: str, base_uri: str, publish: bool,
         enforce_quality: bool = True, policy_exception_ids: list[str] | None = None,
