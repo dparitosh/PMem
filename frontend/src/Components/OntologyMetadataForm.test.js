@@ -41,7 +41,7 @@ describe('OntologyMetadataForm Component', () => {
       renderForm();
 
       expect(screen.getByLabelText(/Ontology Name/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Namespace Prefix/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Namespace Prefix/i)).not.toBeInTheDocument();
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
 
@@ -84,7 +84,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should show error when prefix contains invalid characters', async () => {
-      renderForm();
+      renderForm({ selectedFile: new File([''], 'model.xmi') });
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Test Ontology');
@@ -115,8 +115,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
-      const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await userEvent.type(prefixInput, 'domain');
+      expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
 
       const selectElement = screen.getByRole('combobox');
       await userEvent.selectOptions(selectElement, 'shacl');
@@ -128,7 +127,7 @@ describe('OntologyMetadataForm Component', () => {
         expect(mockOnSubmit).toHaveBeenCalledWith(
           expect.objectContaining({
             ontologyName: 'Domain Model',
-            prefix: 'domain',
+            prefix: '',
             generationType: 'shacl'
           })
         );
@@ -138,7 +137,7 @@ describe('OntologyMetadataForm Component', () => {
 
   describe('User Interactions', () => {
     it('should convert prefix to lowercase automatically', async () => {
-      renderForm();
+      renderForm({ selectedFile: new File([''], 'model.xmi') });
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
       await userEvent.type(prefixInput, 'TestPrefix');
@@ -171,8 +170,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
-      const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await userEvent.type(prefixInput, 'domain');
+      expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
 
       const descriptionInput = screen.getByPlaceholderText(/Optional description/i);
       await userEvent.type(descriptionInput, 'Test description');

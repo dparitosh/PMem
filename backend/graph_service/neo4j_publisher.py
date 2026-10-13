@@ -17,8 +17,7 @@ from typing import Any
 
 from neo4j import GraphDatabase, Query, unit_of_work
 from backend.depo_platform.network import bounded_timeout_seconds
-from rdflib import Graph, Literal, URIRef
-from rdflib.compare import to_canonical_graph
+from rdflib import Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
 from . import query_repository as cypher
@@ -63,12 +62,23 @@ class Neo4jPublisher:
         """
         if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
+        publication_id = str(publication_id or "").strip() or None
+        if publication_id == '__lock__':
+            raise ValueError('publication_id is reserved for internal publication locking')
         logger = logging.getLogger(__name__)
         started = time.monotonic()
         logger.warning('Ontology publication phase=parse ontology_id=%s bytes=%s', ontology_id, len(content))
         rdf_graph = prepare_rdf(content, 'turtle', canonical=True)
         logger.warning('Ontology publication phase=prepare ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
-        labels = {str(subject): str(label) for subject, label in rdf_graph.subject_objects(RDFS.label)}
+        # Stable preference: English, then untagged labels, then other languages.
+        # Sorting also resolves multiple labels in the same language predictably.
+        label_rows = sorted(rdf_graph.subject_objects(RDFS.label), key=lambda pair: (
+            str(pair[0]), 0 if (getattr(pair[1], 'language', None) or '').lower().split('-')[0] == 'en'
+            else 1 if not getattr(pair[1], 'language', None) else 2,
+            (getattr(pair[1], 'language', None) or '').lower(), str(pair[1])))
+        labels = {}
+        for subject, label in label_rows:
+            labels.setdefault(str(subject), str(label))
         class_iris = {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.Class)}
         property_iris = {
             str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.ObjectProperty)
@@ -88,7 +98,7 @@ class Neo4jPublisher:
              "description": next((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), None),
              "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource",
              "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
-            for iri in resource_iris
+            for iri in sorted(resource_iris)
         ]
         ceim_relationships = {
             "hasPart": "HAS_PART", "hasGeometry": "HAS_GEOMETRY", "hasFeature": "HAS_FEATURE",
@@ -117,7 +127,6 @@ class Neo4jPublisher:
 
         now = datetime.now(timezone.utc).isoformat()
         projection_revision = uuid.uuid4().hex
-        publication_id = str(publication_id or "").strip() or None
         resource_query = """
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
@@ -144,10 +153,10 @@ class Neo4jPublisher:
             # The permanent, uniquely constrained receipt key serializes writers.
             tx.run("MERGE (lock:OntologyPublication {ontology_id: $ontology_id, publication_id: '__lock__'}) SET lock.publication_lock = $updated_at",
                    ontology_id=ontology_id, updated_at=now).consume()
-            tx.run("MATCH (a:OntologyResource {ontology_id: $ontology_id})-[edge]->(b:OntologyResource {ontology_id: $ontology_id}) WHERE edge.ontology_id = $ontology_id AND type(edge) IN $types DELETE edge",
-                   ontology_id=ontology_id, types=list(relationships)).consume()
-            tx.run("UNWIND $iris AS iri MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id, iri: iri}) SET node:OntologyResource REMOVE node:RetainedOntologyIdentity",
-                   ontology_id=ontology_id, iris=list(resource_iris)).consume()
+            # Restore referenced identities in bounded requests before resource upserts.
+            for offset in range(0, len(resources), 1000):
+                tx.run("UNWIND $iris AS iri MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id, iri: iri}) SET node:OntologyResource REMOVE node:RetainedOntologyIdentity",
+                       ontology_id=ontology_id, iris=[row["iri"] for row in resources[offset:offset + 1000]]).consume()
             for offset in range(0, len(resources), 1000):
                 tx.run(resource_query, rows=resources[offset:offset + 1000], ontology_id=ontology_id,
                        prefix=prefix, updated_at=now, projection_revision=projection_revision).consume()
@@ -159,9 +168,14 @@ class Neo4jPublisher:
                 MATCH (source:OntologyResource {{ontology_id: $ontology_id, iri: row.source}})
                 MATCH (target:OntologyResource {{ontology_id: $ontology_id, iri: row.target}})
                 {relation_queries[relation_type]}
+                SET edge.publication_revision = $projection_revision
                 """
                 for offset in range(0, len(rows), 1000):
-                    tx.run(query, rows=rows[offset:offset + 1000], ontology_id=ontology_id).consume()
+                    tx.run(query, rows=rows[offset:offset + 1000], ontology_id=ontology_id, projection_revision=projection_revision).consume()
+            # Only remove edges absent from this exact RDF revision. Matching
+            # edges retain identity, including links referenced by other features.
+            tx.run("MATCH (a:OntologyResource {ontology_id: $ontology_id})-[edge]->(b:OntologyResource {ontology_id: $ontology_id}) WHERE edge.ontology_id = $ontology_id AND type(edge) IN $types AND (edge.publication_revision IS NULL OR edge.publication_revision <> $projection_revision) DELETE edge",
+                   ontology_id=ontology_id, types=list(relationships), projection_revision=projection_revision).consume()
             # Keep externally referenced identities, but remove their projection
             # label so stale records cannot inflate RDF metrics or search.
             tx.run("MATCH (node:OntologyResource {ontology_id: $ontology_id}) WHERE node.publication_revision IS NULL OR node.publication_revision <> $projection_revision REMOVE node:OntologyResource SET node:RetainedOntologyIdentity",

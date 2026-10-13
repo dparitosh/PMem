@@ -18,6 +18,15 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+from contextlib import contextmanager
+from functools import wraps
+
+
+def task_writer(function):
+    @wraps(function)
+    def guarded(cls, task_id, *args, **kwargs):
+        with cls._task_lock(task_id): return function(cls, task_id, *args, **kwargs)
+    return guarded
 
 
 class WorkflowArtifactService:
@@ -26,6 +35,34 @@ class WorkflowArtifactService:
         or str(Path(__file__).parent.parent.parent / "uploads" / "workflow_artifacts")
     )
     _manifest_lock = threading.RLock()
+    _held_locks = threading.local()
+
+    @classmethod
+    def _registry(cls):
+        if not (os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')): return None
+        from backend.mesh_store import PostgresRegistry
+        return PostgresRegistry('workflow_artifact_manifests_v1')
+
+    @classmethod
+    @contextmanager
+    def _task_lock(cls, task_id):
+        key = str(cls.task_dir(task_id).resolve())
+        with cls._manifest_lock:
+            held = getattr(cls._held_locks, 'tasks', set())
+            if key in held:
+                yield
+                return
+            registry = cls._registry()
+            if registry is not None:
+                lock = registry.advisory_lock(task_id)
+            else:
+                from backend.artifact_store import ArtifactStore
+                lock = ArtifactStore(root=cls.ARTIFACT_ROOT)._write_lock(cls.task_dir(task_id))
+            with lock as acquired:
+                if acquired is False: raise ValueError('Workflow artifact task is being updated; retry')
+                cls._held_locks.tasks = held | {key}
+                try: yield
+                finally: cls._held_locks.tasks = held
 
     @staticmethod
     def _now() -> str:
@@ -47,7 +84,7 @@ class WorkflowArtifactService:
 
     @classmethod
     def ensure_task(cls, task_id: str, workflow_id: str = "", filename: str = "") -> Path:
-        with cls._manifest_lock:
+        with cls._task_lock(task_id):
             root = cls.task_dir(task_id)
             for folder in ("source", "preview", "ontology", "validation", "reports", "manifests"):
                 (root / folder).mkdir(parents=True, exist_ok=True)
@@ -69,7 +106,7 @@ class WorkflowArtifactService:
 
     @classmethod
     def _write_manifest(cls, task_id: str, manifest: Dict[str, Any]) -> None:
-        with cls._manifest_lock:
+        with cls._task_lock(task_id):
             path = cls.manifest_path(task_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             manifest["updated_at"] = cls._now()
@@ -80,16 +117,20 @@ class WorkflowArtifactService:
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temp_path, path)
+                registry = cls._registry()
+                if registry is not None: registry.put(task_id, manifest)
             finally:
                 if temp_path.exists():
                     temp_path.unlink(missing_ok=True)
 
     @classmethod
     def get_manifest(cls, task_id: str) -> Optional[Dict[str, Any]]:
+        registry = cls._registry()
+        retained = registry.get(task_id) if registry is not None else None
         path = cls.manifest_path(task_id)
-        if not path.exists():
+        if retained is None and not path.exists():
             return None
-        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest = retained if retained is not None else json.loads(path.read_text(encoding="utf-8"))
         for artifact in manifest.get("artifacts", []):
             artifact.pop("absolute_path", None)
         return manifest
@@ -109,6 +150,7 @@ class WorkflowArtifactService:
         return candidate if candidate.exists() else None
 
     @classmethod
+    @task_writer
     def write_bytes(
         cls,
         task_id: str,
@@ -134,6 +176,7 @@ class WorkflowArtifactService:
         return cls._record(task_id, rel_path, artifact_type, metadata)
 
     @classmethod
+    @task_writer
     def copy_file(
         cls,
         task_id: str,
@@ -212,7 +255,7 @@ class WorkflowArtifactService:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         abs_path = cls.task_dir(task_id) / rel_path
-        with cls._manifest_lock:
+        with cls._task_lock(task_id):
             manifest = cls.get_manifest(task_id) or {
                 "task_id": task_id,
                 "created_at": cls._now(),

@@ -152,6 +152,16 @@ class OntologyUploadManager:
             "semantic_artifacts_status": "not_generated",
         }
         try:
+            if file_type == 'xsd' and generation_type == 'as_is':
+                from lxml import etree
+                root = etree.fromstring(file_content, etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True))
+                if root.getroottree().docinfo.doctype:
+                    raise ValueError('DTD declarations are not supported in schemas')
+                if root.tag != '{http://www.w3.org/2001/XMLSchema}schema':
+                    raise ValueError('Expected an XML Schema root')
+                result['semantic_artifacts_status'] = 'source_registered'
+                result['ontology_export_artifacts'] = [{'format': 'xsd', 'path': str(file_path), 'source': True}]
+                return result
             if file_type == "ontology":
                 if file_path.suffix.lower() in {".ttl", ".rdf", ".owl", ".xml"}:
                     result["owl_file_path"] = str(file_path)
@@ -169,7 +179,9 @@ class OntologyUploadManager:
             from .owl_generation_service import OWLGenerationService
             from .shacl_service import ShaclValidationService
 
-            ttl_text, owl_metadata = OWLGenerationService.generate_owl(file_content, filename)
+            from backend.ingestion_service.conversion_process import convert_engineering
+            conversion = convert_engineering(filename=filename, content=file_content)
+            ttl_text, owl_metadata = conversion['ontology']['turtle'], conversion['statistics']
             owl_path = ontology_dir / f"{Path(filename).stem}.generated.ttl"
             owl_path.write_text(ttl_text, encoding="utf-8")
 
@@ -270,6 +282,7 @@ class OntologyUploadManager:
         description: str = "",
         schema_type: str = "schema",
         source_namespace: str = "",
+        schema_files: Optional[Dict[str, bytes]] = None,
     ) -> Dict[str, Any]:
         """
         Save ontology file and metadata
@@ -298,8 +311,11 @@ class OntologyUploadManager:
             cls._metadata_lock.acquire()
             lock_acquired = True
             cls.initialize()
+            if schema_files:
+                from .schema_upload_paths import validate_schema_upload
+                validate_schema_upload(filename, file_content, schema_files, require_dependencies=generation_type != 'as_is')
 
-            user_prefix = str(prefix or "").strip()
+            user_prefix = '' if file_type == 'xsd' else str(prefix or "").strip()
             if file_type == "xsd" and file_content:
                 try:
                     root = ET.fromstring(file_content)
@@ -316,7 +332,7 @@ class OntologyUploadManager:
             prefix = user_prefix or derived_prefix
 
             # ── Versioning: detect existing entry for same prefix+file_type+generation_type ──
-            existing = cls._find_existing(prefix, file_type, generation_type)
+            existing = cls._find_existing(prefix, file_type, generation_type, source_namespace=source_namespace, source_filename=filename)
             version = (existing.get('version', 1) + 1) if existing else 1
             replaces = existing.get('ontology_id') if existing else None
             # Carry forward full version history
@@ -339,6 +355,12 @@ class OntologyUploadManager:
             file_path = ontology_dir / safe_filename
             with open(file_path, 'wb') as f:
                 f.write(file_content)
+            retained_sources = []
+            for relative_path, data in (schema_files or {}).items():
+                destination = ontology_dir / 'schema_sources' / relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(data)
+                retained_sources.append({'relative_path': relative_path, 'path': str(destination), 'sha256': __import__('hashlib').sha256(data).hexdigest()})
 
             semantic_artifacts = cls._materialize_semantic_artifacts(
                 ontology_dir=ontology_dir,
@@ -373,6 +395,8 @@ class OntologyUploadManager:
                 'schema_type': schema_type or 'schema',
                 'source_namespace': source_namespace or '',
                 'original_filename': safe_filename,
+                'source_sha256': __import__('hashlib').sha256(file_content).hexdigest(),
+                'retained_schema_sources': retained_sources,
                 'stored_filename': safe_filename,
                 'file_path': str(file_path),
                 'file_size': len(file_content),
@@ -788,7 +812,7 @@ class OntologyUploadManager:
     # ──────────────────────────────────────────────────────────────
 
     @classmethod
-    def _find_existing(cls, prefix: str, file_type: str, generation_type: str) -> Optional[Dict[str, Any]]:
+    def _find_existing(cls, prefix: str, file_type: str, generation_type: str, *, source_namespace: str = '', source_filename: str = '') -> Optional[Dict[str, Any]]:
         """Return the current latest entry for the given prefix+file_type+generation_type, or None."""
         try:
             result = cls.list_ontologies()
@@ -796,7 +820,9 @@ class OntologyUploadManager:
                 return None
             matches = [
                 o for o in result['ontologies']
-                if o.get('prefix') == prefix
+                if (str(o.get('source_namespace') or o.get('namespace') or o.get('target_namespace') or '').strip().rstrip('#/') == source_namespace
+                    and (bool(source_namespace) or o.get('original_filename') == source_filename)
+                    if file_type == 'xsd' and source_filename else o.get('prefix') == prefix)
                 and o.get('file_type') == file_type
                 and o.get('generation_type') == generation_type
                 and o.get('is_latest', True)  # only consider the current latest
@@ -904,8 +930,9 @@ class OntologyUploadManager:
     def _generate_rdf_for_source(cls, file_content: bytes, filename: str, file_type: str, generation_type: str) -> tuple[Any, str, Dict[str, Any]]:
         if file_type in {"xsd", "xmi"}:
             from rdflib import Graph as RDFGraph
-            from .owl_generation_service import OWLGenerationService
-            ttl, metadata = OWLGenerationService.generate_owl(file_content, filename)
+            from backend.ingestion_service.conversion_process import convert_engineering
+            conversion = convert_engineering(filename=filename, content=file_content)
+            ttl, metadata = conversion['ontology']['turtle'], conversion['statistics']
             rdf_graph = RDFGraph()
             rdf_graph.parse(data=ttl, format="turtle")
             return rdf_graph, ttl, metadata

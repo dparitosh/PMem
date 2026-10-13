@@ -29,13 +29,17 @@ let lastActivity = Date.now();
 let lastRenewalAttempt = 0;
 if (typeof window !== 'undefined') {
   const activity = () => {
+    if (document.visibilityState === 'hidden') return;
     lastActivity = Date.now();
     if (browserSession && browserSession.deadline - Date.now() < 60000 && Date.now() - lastRenewalAttempt >= 10000) {
       renewBrowserSession().catch(() => {});
     }
   };
-  window.addEventListener('pointerdown', activity, { passive: true });
-  window.addEventListener('keydown', activity, { passive: true });
+  // Capture activity from nested panels and controls that stop propagation.
+  // Polling and network traffic deliberately do not count as user activity.
+  for (const event of ['pointerdown', 'keydown', 'input', 'wheel', 'scroll']) {
+    window.addEventListener(event, activity, { passive: true, capture: true });
+  }
 }
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
 function connectionScope() {
@@ -141,7 +145,7 @@ export function setBrowserSessionExpiry(token, expiresAt, absoluteExpiresAt = nu
   if (absoluteDeadline && absoluteDeadline > deadline) {
     renewalTimer = setTimeout(() => {
       // Passive/background tabs do not keep an authentication session alive.
-      if (Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
+      if (document.visibilityState !== 'hidden' && Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
     }, Math.max(1000, (deadline - Date.now()) - Math.min(60000, (deadline - Date.now()) / 3)));
   }
   persistBrowserSession();
@@ -176,7 +180,7 @@ export async function renewBrowserSession() {
       if (browserSession?.token === current.token && current.deadline - Date.now() > 11000) {
         clearTimeout(renewalTimer);
         renewalTimer = setTimeout(() => {
-          if (Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
+          if (document.visibilityState !== 'hidden' && Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
         }, 10000);
       }
       throw error;

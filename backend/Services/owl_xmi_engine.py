@@ -278,6 +278,7 @@ def convert_xmi_to_ttl(
     version_info: str = "1.0.0",
     extra_namespaces: Optional[Dict[str, Namespace]] = None,
     strict_semantics: Optional[bool] = None,
+    raise_on_error: bool = False,
 ) -> bool:
     """
     Convert an XMI file to OWL2/Turtle ontology.
@@ -413,6 +414,8 @@ def convert_xmi_to_ttl(
         
     except Exception as e:
         logger.error(f"Failed to convert XMI to TTL: {e}")
+        if raise_on_error:
+            raise ValueError(f"XMI conversion failed: {e}") from e
         return False
 
 def _convert_xmi_nodes(

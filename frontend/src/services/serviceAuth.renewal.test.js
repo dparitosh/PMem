@@ -7,7 +7,7 @@ vi.mock('../config', () => ({
 }));
 
 beforeEach(() => clearServiceAuthToken());
-afterEach(() => { clearServiceAuthToken(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { clearServiceAuthToken(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 function connect() {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_test');
@@ -78,4 +78,32 @@ test('revoked delegation clears all delegated credentials', async () => {
   await expect(renewBrowserSession()).rejects.toThrow('403');
   expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('');
   expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('');
+});
+
+test.each(['scroll', 'wheel', 'input', 'keydown'])('nested %s activity keeps the session renewable across pages', async eventName => {
+  vi.useFakeTimers();
+  installBrowserSession({token:'depo_session_test', profiles:['GRAPH_READ_TOKEN'],
+    expires_at:new Date(Date.now()+900000).toISOString(), absolute_expires_at:new Date(Date.now()+3600000).toISOString()});
+  vi.stubGlobal('fetch', vi.fn(async () => ({ok:true, json:async () => ({token:'depo_session_test',
+    expires_at:new Date(Date.now()+900000).toISOString(), absolute_expires_at:new Date(Date.now()+3600000).toISOString()})})));
+  await vi.advanceTimersByTimeAsync(780000);
+  const panel = document.createElement('div');
+  document.body.appendChild(panel);
+  panel.addEventListener(eventName, event => event.stopPropagation());
+  panel.dispatchEvent(new Event(eventName, {bubbles:false}));
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_test');
+  panel.remove();
+});
+
+test('a hidden tab does not renew from timers or background activity', async () => {
+  vi.useFakeTimers();
+  connect();
+  vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  vi.stubGlobal('fetch', vi.fn());
+  window.dispatchEvent(new Event('scroll'));
+  await vi.advanceTimersByTimeAsync(120001);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(getBrowserSessionStatus()).toBeNull();
 });

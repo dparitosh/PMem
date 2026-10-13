@@ -20,5 +20,19 @@ async function execute(tool, inputs, approvedBy) {
 
 export const ontologyMergeAgent = {
   preview: (sources, options, actor) => execute('ontology.merge.preview', { source_ontology_ids: sources, ...options }, actor),
-  apply: (previewId, actor) => execute('ontology.merge.apply', { preview_id: previewId, publish: true }, actor),
+  apply: async (previewId, actor) => {
+    const response = await execute('ontology.merge.apply', { preview_id: previewId, publish: true }, actor);
+    const result = response.result;
+    const ontologyId = result.ontology?.ontology_id;
+    const publication = result.publication;
+    const receipt = publication?.receipt;
+    if (result.status !== 'merged' || result.preview_id !== previewId || !ontologyId || result.publication_status !== 'published' ||
+        publication?.status !== 'published' || publication.ontology_id !== ontologyId || !publication.publication_id ||
+        receipt?.status !== 'published' || receipt.current !== true || receipt.ontology_id !== ontologyId || receipt.publication_id !== publication.publication_id ||
+        ['resources','relationships'].some(field => !Number.isInteger(receipt[field]) || receipt[field] < 0) ||
+        (publication.artifact_sha256 && publication.artifact_sha256 !== publication.publication_id)) {
+      throw new Error('Merge publication receipt is unverified. Retry the same reviewed preview to reconcile its result.');
+    }
+    return response;
+  },
 };

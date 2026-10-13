@@ -48,3 +48,14 @@ class BatchTests(unittest.TestCase):
         self.assertIn('publication_revision',cleanup[0])
         markers={params['projection_revision'] for query,params in calls if 'projection_revision' in params}
         self.assertEqual(len(markers),1)
+        restores=[params['iris'] for query,params in calls if 'iris' in params]
+        self.assertEqual([len(rows) for rows in restores], [1000,1000,402])
+        edge_writes=[index for index,(query,params) in enumerate(calls) if 'SET edge.publication_revision' in query]
+        deletes=[(index,query) for index,(query,params) in enumerate(calls) if 'DELETE edge' in query]
+        self.assertEqual(len(deletes),1)
+        self.assertGreater(deletes[0][0],max(edge_writes))
+        self.assertIn('edge.publication_revision IS NULL OR edge.publication_revision <> $projection_revision',deletes[0][1])
+        calls.clear()
+        with self.assertRaisesRegex(ValueError, 'reserved'):
+            scope['publish_turtle'](publisher,content=b'ttl',ontology_id='demo',prefix='d',publication_id='__lock__')
+        self.assertEqual(calls, [])

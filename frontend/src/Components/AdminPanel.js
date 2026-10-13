@@ -484,7 +484,12 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
           <section style={cardStyle} aria-label="Agent operations telemetry">
             <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
-              Agent Operations{agentOps?.status === 'degraded' ? ' — Needs attention' : ''}
+              Agent Operations — Retained history{agentOps?.status === 'degraded' ? ' — Historical alerts' : ''}
+            </div>
+            <div style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
+              PostgreSQL retains agent run and tool history after cache, schema and graph cleanup.
+              These totals cover the latest {agentOps?.window_limit || 500} recorded runs, not the current Neo4j graph.
+              Historical failures do not by themselves indicate a current service outage.
             </div>
             {agentOps ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>

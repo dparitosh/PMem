@@ -16,8 +16,9 @@ class ImpactTests(unittest.TestCase):
 
     def test_merge_publication_has_time_for_preparation_and_dispatch(self):
         with patch.dict('os.environ',{'AGENTIC_TOOL_TIMEOUT_SECONDS':'30','GRAPH_PUBLICATION_TIMEOUT_SECONDS':'180'}):
-            self.assertEqual(tool_timeout_seconds({'id':'ontology.merge.apply'},{'publish':True}),390)
-            self.assertEqual(tool_timeout_seconds({'id':'ontology.merge.apply'},{'publish':False}),30)
+            self.assertEqual(tool_timeout_seconds({'id':'ontology.merge.apply'},{'publish':True}),810)
+            self.assertEqual(tool_timeout_seconds({'id':'ontology.merge.apply'},{'publish':False}),210)
+            self.assertEqual(tool_timeout_seconds({'id':'ontology.merge.preview'},{}),210)
             self.assertEqual(tool_timeout_seconds({'id':'ontology.export'},{}),30)
 
     def test_current_receipt_passes(self):

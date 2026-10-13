@@ -358,6 +358,9 @@ class OntologyCatalog:
     @ontology_writer
     def mark_superseded(self, *, ontology_id: str, successor_id: str) -> dict[str, Any]:
         """Retire an accidental or replaced catalog version without deleting it."""
+        return self.with_publication_lock(ontology_id, lambda: self._mark_superseded(ontology_id, successor_id))
+
+    def _mark_superseded(self, ontology_id: str, successor_id: str) -> dict[str, Any]:
         metadata = self.get(ontology_id)
         if metadata is None:
             raise ValueError(f"Ontology artifact not found: {ontology_id}")

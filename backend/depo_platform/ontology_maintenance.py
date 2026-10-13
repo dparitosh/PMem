@@ -19,7 +19,7 @@ def ontology_operation(*, cleanup=False):
         # Shared writers may call other services holding the same shared lock.
         # Cleanup requires exclusive access and fails immediately if any writer is active.
         suffix = '' if cleanup else '_shared'
-        with PostgresRegistry('maintenance_state')._connect() as db, db.cursor() as cursor:
+        with PostgresRegistry('maintenance_state')._session_connect() as db, db.cursor() as cursor:
             cursor.execute(f'SELECT pg_try_advisory_lock{suffix}(hashtextextended(%s, 0))', ('depo:ontology-maintenance',))
             if not cursor.fetchone()[0]:
                 raise OntologyMaintenanceBusy('Ontology maintenance or publication is active. Wait for it to finish, then retry.')

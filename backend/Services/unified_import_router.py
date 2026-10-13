@@ -182,7 +182,9 @@ async def upload_ontology_file(
     prefix: str = Form("", description="Optional namespace prefix; derived from the source namespace when omitted"),
     generation_type: str = Form(..., description="Generation type: shacl, owl, or both"),
     description: str = Form("", description="Optional ontology description"),
-    schema_type: str = Form("schema", description="File classification: schema or instance")
+    schema_type: str = Form("schema", description="File classification: schema or instance"),
+    dependencies: list[UploadFile] | None = File(None, description="Original companion XSDs retained with a source-only schema registration"),
+    dependency_paths: str = Form("[]", description="JSON array of relative companion paths")
 ):
     """
     Upload and register an ontology file (XSD/XMI/OWL/RDF/TTL) with metadata.
@@ -244,6 +246,23 @@ async def upload_ontology_file(
         file_content = await _read_upload_with_limit(file, MAX_FILE_SIZE)
         if not file_content:
             raise HTTPException(status_code=400, detail="File is empty")
+        schema_files = {}
+        if dependencies:
+            import json
+            if file_type.value != 'xsd' or generation_type != 'as_is':
+                raise HTTPException(422, 'Use the engineering workflow for schema-set conversion')
+            try:
+                paths = json.loads(dependency_paths)
+                if not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63 or any(not isinstance(path, str) for path in paths) or len(set(paths)) != len(paths):
+                    raise ValueError('Expected one distinct relative path per companion')
+                for path, companion in zip(paths, dependencies):
+                    remaining = 25 * 1024 * 1024 - len(file_content) - sum(len(data) for data in schema_files.values())
+                    if remaining <= 0: raise HTTPException(413, 'Schema set exceeds 25 MiB')
+                    schema_files[path] = await _read_upload_with_limit(companion, remaining)
+                from .schema_upload_paths import validate_schema_upload
+                validate_schema_upload(file.filename, file_content, schema_files, require_dependencies=False)
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(422, str(exc)) from exc
         
         if len(file_content) > MAX_FILE_SIZE:
             raise HTTPException(
@@ -266,6 +285,7 @@ async def upload_ontology_file(
             description=description or "",
             schema_type=schema_type or "schema",
             source_namespace=source_namespace,
+            **({'schema_files': schema_files} if schema_files else {}),
         )
         
         if save_result['status'] != 'success':
@@ -400,13 +420,13 @@ async def get_registered_ontology(ontology_id: str):
 
 @ontology_router.post(
     "/merge",
-    summary="Merge two ontologies",
-    description="Merge all nodes/relationships from the source ontology into the target ontology in Neo4j. Sets ontology_prefix on source nodes to the target prefix.",
+    summary="Preview legacy ontology merge impact",
+    description="Read-only impact preview when dry_run=true. Direct writes return 409; use the governed merge preview and approval workflow to create a merged draft.",
     tags=["ontology"],
 )
 async def merge_ontologies(body: LegacyMergeBody):
     """
-    Merge FROM ontology into TO ontology in Neo4j.
+    Read-only legacy impact preview; writes require the governed merge workflow.
     Body: { "from_ontology_id": "...", "to_ontology_id": "..." }
     """
     from_id = body.get("from_ontology_id", "").strip()
@@ -416,6 +436,9 @@ async def merge_ontologies(body: LegacyMergeBody):
         dry_run = raw_dry_run.strip().lower() in {"1", "true", "yes", "y", "on"}
     else:
         dry_run = bool(raw_dry_run)
+
+    if not dry_run:
+        raise HTTPException(409, detail='Direct graph prefix mutation is retired. Create a governed merge preview in Ontology Junction, review it, and approve that exact preview.')
 
     if not from_id or not to_id:
         raise HTTPException(status_code=422, detail="Both from_ontology_id and to_ontology_id are required.")
@@ -435,21 +458,7 @@ async def merge_ontologies(body: LegacyMergeBody):
     to_prefix = all_onts[to_id].get("prefix", to_id)
     to_name = all_onts[to_id].get("ontology_name", to_id)
 
-    # Make sure ontology/search indexes exist before any merge mutation runs.
-    index_audit = {"ensured": False, "warning": None}
-    try:
-        try:
-            from Services.graph_embeddings import ensure_indexes_standalone as _ensure_indexes
-        except ModuleNotFoundError:
-            from ..Services.graph_embeddings import ensure_indexes_standalone as _ensure_indexes
-        if _ensure_indexes is not None:
-            _ensure_indexes()
-            index_audit["ensured"] = True
-    except Exception as idx_err:
-        logger.warning("Ontology merge index preflight skipped: %s", idx_err)
-        index_audit["warning"] = f"{type(idx_err).__name__}: {idx_err}"
-
-    # Neo4j: count candidates before mutation (used for dry-run and post-merge checks)
+    # Read-only candidate count; this endpoint performs no mutation.
     try:
         try:
             from core.graph import graph as _g
@@ -469,44 +478,12 @@ async def merge_ontologies(body: LegacyMergeBody):
         )
         candidate_nodes = count_rows[0]["total"] if count_rows else 0
 
-        if dry_run:
-            return {
-                "status": "success",
-                "mode": "dry_run",
-                "message": (
-                    f"Dry run: would merge '{from_prefix}' into '{to_prefix}' ({to_name})"
-                ),
-                "candidate_nodes": candidate_nodes,
-                "from_ontology_id": from_id,
-                "to_ontology_id": to_id,
-                "index_audit": index_audit,
-            }
-
-        # Update ontology_prefix property
-        updated = _g.query(
-            f"MATCH (n) WHERE {ontology_scope} AND (coalesce(n.ontology_prefix, n.prefix) = $from_p OR n.ontology_id = $from_id) "
-            "SET n.ontology_prefix = $to_p, n.prefix = $to_p, "
-            "n.merged_from_ontology_id = $from_id, n.merged_into_ontology_id = $to_id "
-            "RETURN count(n) AS updated",
-            {"from_p": from_prefix, "from_id": from_id, "to_id": to_id, "to_p": to_prefix, "ontology_labels": ontology_labels},
-        )
-        nodes_updated = updated[0]["updated"] if updated else 0
-
-        # Create a MERGED_INTO relationship between the two ontology root nodes (if any)
-        _g.query(
-            "MATCH (src) WHERE src.ontology_id = $fid "
-            "MATCH (tgt) WHERE tgt.ontology_id = $tid "
-            "MERGE (src)-[:MERGED_INTO]->(tgt)",
-            {"fid": from_id, "tid": to_id}
-        )
-
-        # Best-effort consistency check. Non-fatal because concurrent writes may alter counts.
-        consistency_warning = None
-        if nodes_updated != candidate_nodes:
-            consistency_warning = (
-                f"Updated {nodes_updated} nodes but pre-count was {candidate_nodes}. "
-                "Concurrent graph writes may have occurred during merge."
-            )
+        return {
+            "status": "success", "mode": "dry_run",
+            "message": f"Read-only impact preview for '{from_prefix}' and '{to_prefix}' ({to_name}); use the governed merge workflow to create a draft.",
+            "candidate_nodes": candidate_nodes,
+            "from_ontology_id": from_id, "to_ontology_id": to_id,
+        }
     except Exception as neo_err:
         logger.exception("Neo4j merge failed")
         raise HTTPException(
@@ -514,37 +491,6 @@ async def merge_ontologies(body: LegacyMergeBody):
             detail=f"Merge failed in Neo4j: {type(neo_err).__name__}: {neo_err}",
         )
 
-    # Update metadata: mark source as merged (best-effort; Neo4j-discovered ontologies may not have metadata.json)
-    try:
-        OntologyUploadManager.update_metadata(from_id, {"merged_into": to_id, "is_latest": False})
-    except Exception:
-        # Non-fatal
-        pass
-
-    try:
-        OSLCTRSService.publish_event(
-            OSLCTRSService.ontology_resource_uri(to_id),
-            "Modification",
-            title=f"Ontology merge from {from_id} into {to_id}",
-            metadata={"from_ontology_id": from_id, "to_ontology_id": to_id, "from_prefix": from_prefix, "to_prefix": to_prefix, "nodes_updated": nodes_updated},
-        )
-    except Exception as exc:
-        logger.warning("OSLC TRS publish skipped for ontology merge %s -> %s: %s", from_id, to_id, exc)
-
-    response = {
-        "status": "success",
-        "message": f"Merged '{from_prefix}' into '{to_prefix}' ({to_name})",
-        "nodes_updated": nodes_updated,
-        "candidate_nodes": candidate_nodes,
-        "from_ontology_id": from_id,
-        "to_ontology_id": to_id,
-        "index_audit": index_audit,
-    }
-
-    if consistency_warning:
-        response["warning"] = consistency_warning
-
-    return response
 
 
 @ontology_router.post(

@@ -125,7 +125,7 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "graph.chunk",
-        "label": "Chunk and index graph",
+        "label": "Export graph chunks",
         "category": "Graph",
         "execution_surface": "artifact",
         "inputs": "Ontology or graph",

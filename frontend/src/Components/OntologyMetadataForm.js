@@ -7,7 +7,8 @@ const getGenerationOptionsForFileType = (fileType) => {
     return [
       { value: 'shacl', label: 'SHACL (RDF Shapes) - Recommended for XSD' },
       { value: 'owl', label: 'OWL (Web Ontology Language)' },
-      { value: 'both', label: 'Both SHACL and OWL' }
+      { value: 'both', label: 'Both SHACL and OWL' },
+      { value: 'as_is', label: 'Register source XSD — no conversion or graph publication' }
     ];
   }
   if (fileType === 'xmi' || fileType === 'mdxml') {
@@ -87,7 +88,7 @@ export default function OntologyMetadataForm({
       errors.ontologyName = 'Ontology name is required';
     }
     
-    if (formData.prefix.trim() && !/^[a-z][a-z0-9_]{0,49}$/.test(formData.prefix.trim())) {
+    if (fileType !== 'xsd' && formData.prefix.trim() && !/^[a-z][a-z0-9_]{0,49}$/.test(formData.prefix.trim())) {
       errors.prefix = 'Prefix must start with a lowercase letter and contain only lowercase letters, numbers, or underscores';
     }
     
@@ -111,7 +112,7 @@ export default function OntologyMetadataForm({
     
     onSubmit({
       ...formData,
-      prefix: formData.prefix.trim(),
+      prefix: normalizedFileType === 'xsd' ? '' : formData.prefix.trim(),
       fileType: normalizedFileType,
       selectedFile: selectedFile,
       schemaType: formData.schemaType || 'schema'
@@ -213,7 +214,7 @@ export default function OntologyMetadataForm({
           </div>
 
           {/* Prefix */}
-          <div style={{ marginBottom: '20px' }}>
+          {fileType !== 'xsd' && <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ontology-prefix-input" style={{
               display: 'block',
               marginBottom: '6px',
@@ -226,6 +227,7 @@ export default function OntologyMetadataForm({
             <input
               id="ontology-prefix-input"
               type="text"
+              readOnly={fileType === 'xsd'}
               placeholder={prefixPlaceholder}
               value={formData.prefix}
               onChange={(e) => setFormData({ ...formData, prefix: e.target.value.toLowerCase() })}
@@ -251,7 +253,8 @@ export default function OntologyMetadataForm({
             }}>
               {formData.prefix ? `Used in URIs: ${formData.prefix}:Entity` : 'Leave blank to derive a prefix from the source namespace.'}
             </div>
-          </div>
+          </div>}
+          {fileType === 'xsd' && <p>The namespace prefix is generated automatically from the schema namespace.</p>}
 
           {/* Generation Type */}
           <div style={{ marginBottom: '20px' }}>

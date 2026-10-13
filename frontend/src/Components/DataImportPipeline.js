@@ -14,6 +14,7 @@ import OntologyMetadataForm from './OntologyMetadataForm';
 import OntologyPublicationPanel from './OntologyPublicationPanel';
 import { combineXsdFiles } from './xsdFolderBundle';
 import XsdDependencies, { appendXsdDependencies } from './XsdDependencies';
+import { fileSha256 } from '../utils/fileDigest';
 import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
@@ -143,7 +144,9 @@ export default function DataImportPipeline() {
   const importRequestControllersRef = useRef(new Set());
   const ontologyRegistrationsRef = useRef(new Set());
   const xsdFolderBundlesRef = useRef(new WeakMap());
+  const fileDigestsRef = useRef(new WeakMap());
   const fileSelectionGeneration = useRef(0);
+  const artifactWorkflowRequest = useRef(null);
   const isMountedRef = useMountedRef();
   const { activePollersRef, clearPoller, schedulePoller } = usePollerRegistry(isMountedRef);
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
@@ -353,17 +356,33 @@ export default function DataImportPipeline() {
 
   useEffect(() => {
     fileSelectionGeneration.current += 1;
+    artifactWorkflowRequest.current?.abort();
+    setWorkflowRun(null);
+    setWorkflowLoading(false);
     return () => { fileSelectionGeneration.current += 1; };
-  }, [selectedWorkflow]);
+  }, [selectedWorkflow, workflowOntologyId, workflowTargetOntologyId, workflowSourceFileId]);
 
   const handleFileInput = async (e) => {
     const selectionGeneration = ++fileSelectionGeneration.current;
     const selected = Array.from(e.target.files || []);
     e.target.value = '';
     if (!selected.length) return;
+    try {
+      for (const source of selected) fileDigestsRef.current.set(source, await fileSha256(source));
+      if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
+    } catch (failure) { setError(failure.message); return; }
     if (selected.length > 1 && selected.every(file => file.name.toLowerCase().endsWith('.xsd'))) {
       try {
-        const bundle = await combineXsdFiles(selected);
+        // Resolve supplied dependencies before queuing an upload. Keep the
+        // original selection for recovery when companion files are missing.
+        let bundle;
+        try { bundle = await combineXsdFiles(selected, selected, true); }
+        catch (failure) {
+          if (!/Missing companion|Select exactly one local companion|Schema dependency escapes/.test(failure.message)) throw failure;
+          bundle = await combineXsdFiles(selected);
+        }
+        if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
+        fileDigestsRef.current.set(bundle.root, await fileSha256(bundle.root));
         if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
         xsdFolderBundlesRef.current.set(bundle.root, bundle);
         handleFiles([bundle.root]);
@@ -377,6 +396,7 @@ export default function DataImportPipeline() {
       name: file.name,
       size: file.size,
       fileObj: file,
+      sourceDigest: fileDigestsRef.current.get(file),
       workflowId: 'ontology.create',
       createdAt: new Date().toLocaleTimeString(),
       pendingMetadata: true,
@@ -414,6 +434,7 @@ export default function DataImportPipeline() {
       name: file.name,
       size: file.size,
       fileObj: file,
+      sourceDigest: fileDigestsRef.current.get(file),
       workflowId,
       createdAt: new Date().toLocaleTimeString()
     }));
@@ -594,11 +615,12 @@ export default function DataImportPipeline() {
       return;
     }
 
-    const shouldPublish = publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
+    const sourceOnly = file.fileType === 'xsd' && file.generationType === 'as_is';
+    const shouldPublish = !sourceOnly && publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
     const folderBundle = xsdFolderBundlesRef.current.get(file.fileObj);
     const selectedDependencies = folderBundle?.files || [];
     const selectedPaths = folderBundle?.paths || '';
-    const hasXsdDependencies = file.fileType === 'xsd' && selectedDependencies.length > 0;
+    const hasXsdDependencies = !sourceOnly && file.fileType === 'xsd' && selectedDependencies.length > 0;
     if (hasXsdDependencies && file.generationType !== 'owl') {
       setError('Companion XSD conversion requires OWL generation. Reopen ontology details and choose OWL.');
       return;
@@ -655,14 +677,15 @@ export default function DataImportPipeline() {
         }
       } else {
         requestSubmitted = true;
-        uploadData = await API_METHODS.ontology.upload(file.fileObj, {
+        uploadData = await API_METHODS.ontology.upload(sourceOnly ? (folderBundle?.root || file.fileObj) : file.fileObj, {
         ontologyName: file.ontologyName,
         prefix: file.prefix,
         description: file.description || '',
         generationType: file.generationType,
         schemaType: file.schemaType || 'schema',
         fileType: file.fileType,
-      }, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'));
+      }, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'), { signal: controller.signal,
+        ...(sourceOnly && folderBundle?.files?.length ? { dependencies: folderBundle.files, dependencyPaths: folderBundle.paths.split(/\r?\n/).filter(Boolean) } : {}) });
       }
       if (controller.signal.aborted) return;
       const responseBody = uploadData.data || uploadData;
@@ -1324,11 +1347,11 @@ export default function DataImportPipeline() {
 
     for (const file of filesToImport) {
       if (selectedWorkflow === 'ontology.create') {
-        startOntologyRegistration(file);
+        await startOntologyRegistration(file);
       } else if (selectedWorkflow === 'document.unstructured') {
-        startDocumentPipeline(file);
+        await startDocumentPipeline(file);
       } else {
-        startImport(file);
+        await startImport(file);
       }
     }
   };
@@ -1355,56 +1378,34 @@ export default function DataImportPipeline() {
       payload.target_ontology_id = workflowTargetOntologyId;
     }
 
+    const controller = new AbortController();
+    artifactWorkflowRequest.current?.abort();
+    artifactWorkflowRequest.current = controller;
+    importRequestControllersRef.current.add(controller);
     setWorkflowLoading(true);
     setWorkflowRun(null);
     setError(null);
     try {
-      const response = await API_METHODS.workflow.execute(selectedWorkflow, payload);
+      const response = await API_METHODS.workflow.execute(selectedWorkflow, payload, { signal: controller.signal });
+      if (controller.signal.aborted || !isMountedRef.current) return;
       setWorkflowRun(response.data || response);
     } catch (err) {
+      if (controller.signal.aborted || !isMountedRef.current) return;
       const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
-      setError(String(detail));
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
-      setWorkflowLoading(false);
+      importRequestControllersRef.current.delete(controller);
+      if (artifactWorkflowRequest.current === controller && !controller.signal.aborted && isMountedRef.current) setWorkflowLoading(false);
     }
   };
 
   const runNeo4jOntologyMerge = async () => {
-    if (!workflowOntologyId) {
-      setError('Select a source ontology before merging.');
+    if (!workflowOntologyId || !workflowTargetOntologyId || workflowOntologyId === workflowTargetOntologyId) {
+      setError('Select two different ontologies before reviewing a merge.');
       return;
     }
-    if (!workflowTargetOntologyId) {
-      setError('Select a target ontology before merging.');
-      return;
-    }
-    if (workflowTargetOntologyId === workflowOntologyId) {
-      setError('Choose two different ontologies for merge.');
-      return;
-    }
-
-    setWorkflowLoading(true);
-    setError(null);
-    try {
-      const response = await API_METHODS.ontology.merge(workflowOntologyId, workflowTargetOntologyId, { dry_run: false });
-      setWorkflowRun((previous) => ({
-        ...(previous || {}),
-        workflow_id: 'ontology.merge.commit',
-        status: 'completed',
-        result: {
-          ...(previous?.result || {}),
-          ...(response.data || response),
-        },
-      }));
-      await loadOntologyOptions({ forceLive: true });
-    } catch (err) {
-      const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
-      setError(String(detail));
-    } finally {
-      setWorkflowLoading(false);
-    }
+    window.location.hash = `/ontology?target=${encodeURIComponent(workflowTargetOntologyId)}&merge_source=${encodeURIComponent(workflowOntologyId)}&view=alignment&mode=merge`;
   };
-
   const commitImport = async (taskId) => {
     // ── Pre-commit check ────────────────────────────────────────────────────
     // Show a quick checking state in the modal before closing it
@@ -1831,7 +1832,15 @@ export default function DataImportPipeline() {
       return `${fallbackWorkflow.title} is not connected to backend services yet.`;
     }
     if (isImportWorkflow(selectedWorkflow)) {
-      if (pendingFileCount === 0) return 'Add at least one new file to start this workflow.';
+      if (pendingFileCount === 0) {
+        const uncertain = files.find(file => pipelineStatus[file.fileId]?.outcomeUnknown);
+        if (uncertain) return 'An earlier submission has an unverified outcome. Check its server status before retrying.';
+        const restored = files.find(file => file.persisted && !file.fileObj && !pipelineStatus[file.fileId]?.registered && ['pending', 'failed', undefined].includes(pipelineStatus[file.fileId]?.status));
+        if (restored) return 'Re-attach the original source file using its upload row. Refresh preserves history, not browser file attachments.';
+        const otherWorkflow = files.find(file => file.workflowId && file.workflowId !== selectedWorkflow && !pipelineStatus[file.fileId]?.registered);
+        if (otherWorkflow) return `This file belongs to ${getWorkflowDisplayName(otherWorkflow.workflowId)}. Switch to that workflow using the upload row.`;
+        return 'Add at least one new file to start this workflow.';
+      }
       return '';
     }
     if (workflowRequiresImportArtifact && !selectedImportArtifactEntry) {
@@ -2419,7 +2428,7 @@ export default function DataImportPipeline() {
                     cursor: workflowLoading ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {workflowLoading ? 'Running...' : 'Merge into Neo4j'}
+                  {workflowLoading ? 'Running...' : 'Review governed merge'}
                 </button>
               )}
             </div>
@@ -2905,7 +2914,7 @@ export default function DataImportPipeline() {
             Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
             <span style={{ color: C.primaryText, fontWeight: '700' }}> Import instance graph</span>.
           </div>
-          <p>Use Add Files once: select one XSD or select several XSDs to combine into one ontology registration. Complete one name and prefix, then Start. Use Resolve XSD dependencies on a row only when its companion files are needed.</p>
+          {!dependencyTarget && <ol><li>Choose Add Files and select your schema files. Multiple XSDs become one ontology registration.</li><li>Enter the ontology name and prefix, then save the details.</li><li>Choose Start on the upload row. If a referenced XSD is missing, the app will ask for its containing folder.</li><li>After registration, review, approve and publish using the controls on that row.</li></ol>}
           {dependencyTarget && <XsdDependencies key={dependencyTarget.fileId} files={xsdDependencies} paths={xsdDependencyPaths} disabled={workflowLoading}
             selectedRoot={dependencyTarget?.fileObj}
             selectedSources={dependencyTarget ? xsdFolderBundlesRef.current.get(dependencyTarget.fileObj)?.sources : null}
@@ -2924,7 +2933,7 @@ export default function DataImportPipeline() {
                 ...previous, root: dependencyTarget.fileObj, files: nextFiles, paths: nextPaths,
               });
             }} />}
-          {dependencyTarget && <button type="button" onClick={() => setDependencyTarget(null)}>Close dependency recovery</button>}
+          {dependencyTarget && <button type="button" onClick={() => setDependencyTarget(null)}>Back to upload list</button>}
           {ontologyCatalogState.message && (
             <div style={{
               fontSize: '9px',
@@ -2959,6 +2968,7 @@ export default function DataImportPipeline() {
         <button
           type="button"
           onClick={runSelectedWorkflow}
+          hidden={!!dependencyTarget}
           disabled={!!workflowBlockReason || workflowLoading}
           style={{
             padding: '4px 12px',
@@ -3341,6 +3351,23 @@ export default function DataImportPipeline() {
                     gap: '6px',
                     justifyContent: 'flex-end',
                   }}>
+                    {file.workflowId && file.workflowId !== selectedWorkflow && <button type="button" onClick={() => setSelectedWorkflow(file.workflowId)}>Open {getWorkflowDisplayName(file.workflowId)}</button>}
+                    {!file.fileObj && file.persisted && !status.registered && !status.outcomeUnknown && ['pending', 'failed', undefined].includes(status.status) && <label>Re-attach source<input type="file" accept={getFileExtensionFromName(file.name)} onChange={async event => {
+                      const generation = fileSelectionGeneration.current;
+                      const source = event.target.files?.[0];
+                      event.target.value = '';
+                      if (!source) return;
+                      if (source.name !== file.name || (file.size && source.size !== file.size)) { setError('Select the original file with the same filename and size, or create a new upload.'); return; }
+                      if (!file.sourceDigest) { setError('This older history entry has no content fingerprint. Create a new upload so the source can be verified.'); return; }
+                      let digest;
+                      try { digest = await fileSha256(source); } catch (failure) { setError(failure.message); return; }
+                      if (!isMountedRef.current || generation !== fileSelectionGeneration.current) return;
+                      if (digest !== file.sourceDigest) { setError('The selected file content differs from the original upload. Create a new upload for changed content.'); return; }
+                      setFiles(previous => previous.map(item => item.fileId === fileId ? {...item, fileObj: source, persisted: false} : item));
+                      setStartedFiles(previous => { const next = new Set(previous); next.delete(fileId); return next; });
+                      setPipelineStatus(previous => ({...previous, [fileId]: {...previous[fileId], status:'pending', stage:'upload', progress:0, error:false, message:'Source re-attached. Review details before starting.'}}));
+                      if (file.workflowId) setSelectedWorkflow(file.workflowId);
+                    }} /></label>}
                     {!isStarted && (status.stage === 'upload' || status.error) && (
                       <button
                         onClick={() => {

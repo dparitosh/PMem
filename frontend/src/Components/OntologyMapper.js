@@ -1595,7 +1595,7 @@ export default function OntologyMapper() {
   const [selectedMapping, setSelectedMapping] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('target') || '');
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
-  const [bridgeMode, setBridgeMode] = useState('instance');
+  const [bridgeMode, setBridgeMode] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('mode') === 'merge' ? 'merge' : 'instance');
   const [activeView, setActiveView] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('view') === 'alignment' ? 'alignment' : 'taxonomy');
   const [filter, setFilter] = useState('');
   const [mappingOptions, setMappingOptions] = useState([]);
@@ -1619,7 +1619,7 @@ export default function OntologyMapper() {
   const [bridgeTargetTerm, setBridgeTargetTerm] = useState('');
   const [bridgeComment, setBridgeComment] = useState('');
   const [bridgeApproved, setBridgeApproved] = useState(false);
-  const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState('');
+  const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_source') || '');
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeAutomationActive, setMergeAutomationActive] = useState(false);
   const mergeGeneration = useRef(0);
@@ -1632,6 +1632,8 @@ export default function OntologyMapper() {
   const [mergeApprover, setMergeApprover] = useState('');
   const [mergeEntitySource, setMergeEntitySource] = useState('');
   const [mergeEntityTarget, setMergeEntityTarget] = useState('');
+  const [mergeSuggestions, setMergeSuggestions] = useState([]);
+  useEffect(() => { setMergeSuggestions([]); setMergeEntitySource(''); setMergeEntityTarget(''); }, [mergeSourceOntologyId, selectedMapping]);
   useEffect(() => { mergeGeneration.current += 1; setMergeResult(null); setMergeBusy(false); }, [mergeEntitySource, mergeEntityTarget]);
   useEffect(() => {
     const invalidate = () => {
@@ -1693,8 +1695,7 @@ export default function OntologyMapper() {
     ?? 0,
   );
   const mergePlanReady = Boolean(
-    mergeResult?.kind === 'success'
-    && mergeResult?.report
+    mergeResult?.report
     && mergeResult?.governedPreview?.preview_id
     && mergeConflictCount === 0,
   );
@@ -2247,6 +2248,7 @@ export default function OntologyMapper() {
         mergeApprover,
       );
       if (generation !== mergeGeneration.current) return;
+      setMergeSuggestions(governed.result.entity_suggestions || []);
       setMergeResult({
         kind: 'success',
         text: 'Merge plan ready. Review overlaps, additions, conflicts, and subclass gaps before commit.',
@@ -2278,7 +2280,7 @@ export default function OntologyMapper() {
     }
     const generation = ++mergeGeneration.current;
     setMergeBusy(true);
-    setMergeResult(null);
+    setMergeResult(previous => ({...previous, text:'Publishing the reviewed merge; waiting for its receipt.'}));
     if (!mergeApprover.trim()) {
       setMergeBusy(false);
       setMergeResult({ kind: 'error', text: 'Enter the approving steward identity before committing the governed merge.' });
@@ -2463,6 +2465,9 @@ export default function OntologyMapper() {
 
   const runInferencePreview = async () => {
     const generation = ++inferenceGeneration.current;
+    if (!Number.isInteger(Number(inferenceLimit)) || Number(inferenceLimit) < 25 || Number(inferenceLimit) > 1000) {
+      setInferenceError('Enter a whole-number preview limit between 25 and 1000.'); return;
+    }
     if (!selectedOntologyApi) {
       setInferenceError('Select an active ontology before running inference preview.');
       return;
@@ -2505,10 +2510,10 @@ export default function OntologyMapper() {
       outcome: 'A shared language for search, alignment, and reporting.',
     },
     alignment: {
-      title: 'Connect data to meaning',
-      description: 'Link imported entities, attributes, relationships, and metadata to ontology concepts.',
-      action: 'Select an instance import and review suggested mappings',
-      outcome: 'Approved, traceable instance-to-ontology mappings.',
+      title: bridgeMode === 'merge' ? 'Combine ontologies' : 'Connect data to meaning',
+      description: bridgeMode === 'merge' ? 'Compare two ontologies, review proposed changes, then approve the merge.' : 'Link imported entities, attributes, relationships, and metadata to ontology concepts.',
+      action: bridgeMode === 'merge' ? 'Select both ontologies below and generate a review plan' : 'Select an instance import and review suggested mappings',
+      outcome: bridgeMode === 'merge' ? 'A reviewed merged ontology with source provenance.' : 'Approved, traceable instance-to-ontology mappings.',
     },
     inference: {
       title: 'Test what the ontology implies',
@@ -3004,7 +3009,7 @@ export default function OntologyMapper() {
               <details open className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
                 <summary>Merge two ontologies</summary>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
-                  Run the governor to combine RDF statements, the steward to check the conflict-free union policy, and the governor to create a new draft. Starting automation authorizes draft creation using your connected governed access. Source ontologies remain unchanged; graph publication is separate.
+                  1. Select two ontologies. 2. Generate a merge plan and inspect changes and conflicts. 3. Optionally select a suggested entity match and regenerate the plan. 4. Approve the reviewed plan to create and publish the merged ontology.
                 </div>
                 <div className="depo-merge-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                   <div>
@@ -3021,18 +3026,10 @@ export default function OntologyMapper() {
                     </select>
                   </div>
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: '6px', background: C.surface, padding: '10px 12px', minHeight: '42px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Second source (active ontology)</div>
-                    <div style={{ fontSize: '12px', color: C.textPrimary }}>{selectedOntologyOption?.label || 'Select the active ontology in the header above'}</div>
+                    <label>Second ontology<select aria-label="Second ontology" value={selectedMapping} onChange={event => applyOntologySelection(event.target.value)} style={{width:'100%'}}><option value="">Select second ontology</option>{mappingOptions.map(option => <option key={option.value} value={option.value} disabled={option.value === mergeSourceOntologyId}>{option.label}</option>)}</select></label>
                   </div>
                 </div>
-                <WorkflowTaskPanel workflowId="ontology-union-automation" inputs={{source_ontology_ids:[mergeSourceOntologyId,selectedMapping]}} stepInputs={[
-                  {source_ontology_ids:[mergeSourceOntologyId,selectedMapping],ontology_name:`Merged ${selectedOntologyOption?.label || selectedMapping}`,prefix:'merged'}, {}, {}
-                ]} governed onActivityChange={setMergeAutomationActive} label="Run automatic merge and create draft" disabled={mergeBusy || !mergeSourceOntologyId || !selectedMapping || mergeSourceOntologyId === selectedMapping} onResult={run => {
-                  const plan = run.traces.find(trace => trace.tool_id === 'ontology.merge.preview')?.result;
-                  const result = run.traces.find(trace => trace.tool_id === 'ontology.merge.apply_automatic')?.result;
-                  setMergeResult({kind:result?.status === 'merged' ? 'success' : 'error',text:result?.status === 'merged' ? 'Merged draft created. Source ontologies are unchanged; graph publication is separate.' : `Merge held: ${(result?.reasons || ['Inspect retained workflow report']).join(', ')}`,agentRunId:run.run_id,governedPreview:plan,report:{governed:result}});
-                }} />
-                <details><summary>Advanced: reviewed entity consolidation and manual merge</summary>
+                <details open><summary>Review and approve the merge plan</summary>
                 <div className="depo-merge-fields" style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:16}}>
                   <div>
                     <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approver</label>
@@ -3041,13 +3038,15 @@ export default function OntologyMapper() {
                   <div>
                     <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Connect governed agent access in Admin → Service credentials. Both sources require retained RDF artifacts. The reviewed merge is approved and published to Neo4j.</label>
                   </div>
-                  <label>Entity to consolidate (full IRI)<input aria-label="Merge source entity IRI" value={mergeEntitySource} onChange={event => setMergeEntitySource(event.target.value)} placeholder="https://example.org/source#Part" /></label>
-                  <label>Retained entity identity (full IRI)<input aria-label="Merge target entity IRI" value={mergeEntityTarget} onChange={event => setMergeEntityTarget(event.target.value)} placeholder="https://example.org/target#Component" /></label>
-                  <p>Optional: copy a reviewed mapping into these fields. The preview rewrites the source identity and its references to the retained identity. Leave both empty to combine statements without changing entity identities.</p>
+                  <label>Suggested entity match (optional)<select aria-label="Suggested entity match" value={mergeSuggestions.findIndex(item => item.source_iri === mergeEntitySource && item.target_iri === mergeEntityTarget)} onChange={event => {
+                    const candidate = mergeSuggestions[Number(event.target.value)];
+                    setMergeEntitySource(candidate?.source_iri || ''); setMergeEntityTarget(candidate?.target_iri || '');
+                  }}><option value={-1}>Keep entity identities unchanged</option>{mergeSuggestions.map((candidate,index) => <option key={`${candidate.source_iri}:${candidate.target_iri}`} value={index}>{candidate.source_label} → {candidate.target_label} ({candidate.kind})</option>)}</select></label>
+                  <p>Generate the plan to discover same-kind, same-label candidates. A suggested match is not proof of equivalence. Selecting one requires a new preview before approval; IRIs are supplied automatically.</p>
                   <button
                     type="button"
                     onClick={handlePreviewOntologyMerge}
-                    disabled={mergeBusy || mergeAutomationActive || !mergeSourceOntologyId || !selectedMapping}
+                    disabled={mergeBusy || mergeAutomationActive || !mergeSourceOntologyId || !selectedMapping || mergeSourceOntologyId === selectedMapping || !mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? 'not-allowed' : 'pointer' }}
                   >
                     {mergeBusy ? 'Working...' : 'Review merge plan'}
@@ -3063,6 +3062,8 @@ export default function OntologyMapper() {
                   </button>
                 </div>
                 </details>
+                {(!mergeSourceOntologyId || !selectedMapping) && <p role="status">Select both ontologies above to continue.</p>}
+                {mergeSourceOntologyId && selectedMapping && (!mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')) && <p role="status">Enter the reviewing steward and connect governed agent access in Admin to generate the retained preview.</p>}
                 {mergeResult && (
                   <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
@@ -3074,7 +3075,10 @@ export default function OntologyMapper() {
                       <p>Compared with the active ontology: {mergeResult.governedPreview.changes.added} added statements; {mergeResult.governedPreview.changes.removed} removed; {mergeResult.governedPreview.changes.unchanged} unchanged; {mergeResult.governedPreview.changes.modified_entity_count} consolidated identities. Source ontologies remain unchanged.</p>
                       {['added', 'removed', 'unchanged'].map(kind => <details key={kind}><summary>{kind} statements (first 200)</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{(mergeResult.governedPreview.changes[`${kind}_sample`] || []).join('\n') || 'None'}</pre></details>)}
                     </details>}
-                    {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements. No formal reasoning is performed; differently named entities require reviewed mappings. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
+                    {mergeResult.governedPreview?.conflicts?.length > 0 && <div role="alert"><strong>Conflicts block approval</strong><pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{JSON.stringify(mergeResult.governedPreview.conflicts,null,2)}</pre></div>}
+                    {mergeSuggestions.length > 0 && <details open><summary>Suggested entity matches — review required</summary><div style={{overflowX:'auto'}}><table><thead><tr><th>First ontology entity</th><th>Second ontology entity</th><th>Kind</th><th>Why suggested</th></tr></thead><tbody>{mergeSuggestions.map(candidate => <tr key={`${candidate.source_iri}:${candidate.target_iri}`}><td>{candidate.source_label}<details><summary>Identity</summary>{candidate.source_iri}</details></td><td>{candidate.target_label}<details><summary>Identity</summary>{candidate.target_iri}</details></td><td>{candidate.kind}</td><td>{candidate.reason}</td></tr>)}</tbody></table></div></details>}
+                    {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements and checks SHACL with OWL-RL inference. Full OWL-DL consistency is not established; entity equivalence still requires review. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
+                    {mergeResult.governedPreview?.semantic_checks && <details><summary>Semantic validation evidence</summary><p>SHACL: {mergeResult.governedPreview.semantic_checks.shacl_conforms ? 'Conforms' : 'Does not conform'}. Shapes: {mergeResult.governedPreview.semantic_checks.shape_sources?.join(', ')}</p><pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{mergeResult.governedPreview.semantic_checks.report}</pre></details>}
                     {mergeResult.report?.summary && (
                       <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
                         Overlaps {mergeResult.report.summary.overlap_count ?? 0} | Additions {mergeResult.report.summary.addition_count ?? 0} | Conflicts {mergeResult.report.summary.conflict_count ?? mergeResult.report.conflict_count ?? 0} | Subclass gaps {mergeResult.report.summary.subclass_gap_count ?? 0}

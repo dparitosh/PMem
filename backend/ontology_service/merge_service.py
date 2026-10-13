@@ -62,6 +62,8 @@ class GovernedMergeService:
         if len(source_ids) > 16:
             raise ValueError('Merge at most 16 ontologies per preview')
         merged, occurrences, sources = Graph(), {}, []
+        candidate_graphs = []
+        source_metadata = []
         baseline = set()
         for ontology_id in source_ids:
             if self.catalog.get(ontology_id) is not None:
@@ -80,7 +82,11 @@ class GovernedMergeService:
             parsed = self.catalog._parse_ontology(content, metadata.get('original_filename') or 'ontology.ttl')
             source = Graph()
             source.parse(data=content, format=parsed['rdf_format'])
-            sources.append({"ontology_id": ontology_id, "ontology_name": metadata["ontology_name"]})
+            candidate_graphs.append(source)
+            if metadata.get('status') == 'superseded' or metadata.get('lifecycle_status') in {'deprecated', 'retired'}:
+                raise ValueError('Select current, non-retired ontology sources for a merge')
+            sources.append({"ontology_id": ontology_id, "ontology_name": metadata["ontology_name"], 'artifact_sha256': hashlib.sha256(content).hexdigest()})
+            source_metadata.append(metadata)
             for triple in self._scoped_triples(source):
                 key = tuple(term.n3() for term in triple)
                 occurrences[key] = occurrences.get(key, 0) + 1
@@ -88,6 +94,7 @@ class GovernedMergeService:
                 if ontology_id == source_ids[-1]:
                     baseline.add(triple)
         mappings = payload.get('entity_mappings', [])
+        suggestions = self._entity_suggestions(candidate_graphs[0], candidate_graphs[-1])
         if not isinstance(mappings, list) or len(mappings) > 200:
             raise ValueError('entity_mappings must be a list of at most 200 reviewed mappings')
         replacements = {}
@@ -96,6 +103,8 @@ class GovernedMergeService:
             if not isinstance(item, dict) or not all(isinstance(item.get(key), str) and item[key].startswith(('http://', 'https://', 'urn:')) for key in ('source_iri', 'target_iri')):
                 raise ValueError('Each entity mapping requires absolute source_iri and target_iri')
             source, target = URIRef(item['source_iri']), URIRef(item['target_iri'])
+            if len(source_ids) != 2 or not any(candidate_graphs[0].triples((source, RDF.type, None))) or not any(candidate_graphs[-1].triples((target, RDF.type, None))):
+                raise ValueError('Reviewed mappings must link declared entities from the first source to the second source')
             source_types = set(merged.objects(source, RDF.type)) & kinds
             target_types = set(merged.objects(target, RDF.type)) & kinds
             source_types = {OWL.Class if value == RDFS.Class else value for value in source_types}
@@ -120,6 +129,10 @@ class GovernedMergeService:
                    'unchanged_sample': sorted(' '.join(term.n3() for term in triple) for triple in unchanged)[:200]}
         from .merge_validation import explicit_conflicts
         conflicts = self._literal_conflicts(merged) + explicit_conflicts(merged)
+        from .merge_semantics import validate_merge
+        semantic_checks = validate_merge(merged, source_metadata, mappings)
+        conflicts.extend(semantic_checks['inferred_conflicts'])
+        if not semantic_checks['shacl_conforms']: conflicts.append({'kind':'shacl_nonconformance','message':'Review the retained SHACL report before approval'})
         preview_id = uuid.uuid4().hex
         record = {"preview_id": preview_id, "created_at": datetime.now(timezone.utc).isoformat(),
                   "source_ontology_ids": source_ids, "sources": sources,
@@ -129,8 +142,10 @@ class GovernedMergeService:
                   "triple_count": len(merged), "duplicate_triple_count": sum(occurrences.values()) - len(occurrences),
                   "consolidated_triple_count": len(original) - len(merged),
                   "conflicts": conflicts, "publish_recommended": not conflicts, "changes": changes,
+                  "entity_suggestions": suggestions,
+                  'semantic_checks': semantic_checks,
                   "validation": {"scope": "RDF union, functional literal conflicts and explicit OWL declaration contradictions",
-                      "formal_reasoning_performed": False,
+                      "formal_reasoning_performed": False, 'owl_rl_performed': True,
                       "limitations": ["Different IRIs are not automatically equivalent",
                           "Logical consistency and domain/range compatibility require separate validation"]},
                   "turtle": merged.serialize(format="turtle")}
@@ -139,11 +154,63 @@ class GovernedMergeService:
         self._save(values, preview_id)
         return {key: value for key, value in record.items() if key != "turtle"}
 
+    @staticmethod
+    def _entity_suggestions(source_graph, target_graph):
+        """Review-only same-kind label matches; never rewrite an identity automatically."""
+        kinds = {OWL.Class, RDFS.Class, OWL.ObjectProperty, OWL.DatatypeProperty, OWL.AnnotationProperty}
+        def index(graph):
+            result = {}
+            for subject, kind in graph.subject_objects(RDF.type):
+                if kind not in kinds or not isinstance(subject, URIRef): continue
+                labels = sorted(graph.objects(subject, RDFS.label), key=lambda value: value.n3())
+                if not labels: labels = [str(subject).rsplit('#', 1)[-1].rsplit('/', 1)[-1]]
+                for label_value in labels:
+                    label = str(label_value)
+                    key = (OWL.Class if kind == RDFS.Class else kind, label.strip().casefold(), getattr(label_value, 'language', '') or '')
+                    if key[1]:
+                        bucket = result.setdefault(key, [])
+                        if not any(item[0] == subject for item in bucket): bucket.append((subject, label))
+            return result
+        source, target = index(source_graph), index(target_graph)
+        suggestions = []
+        pairs = set()
+        for key in sorted(set(source) & set(target), key=lambda item: (str(item[0]), item[1])):
+            if len(source[key]) != 1 or len(target[key]) != 1: continue
+            left, right = source[key][0], target[key][0]
+            if left[0] == right[0]: continue
+            if (left[0],right[0]) in pairs: continue
+            pairs.add((left[0],right[0]))
+            source_kinds = {OWL.Class if value == RDFS.Class else value for value in source_graph.objects(left[0], RDF.type) if value in kinds}
+            target_kinds = {OWL.Class if value == RDFS.Class else value for value in target_graph.objects(right[0], RDF.type) if value in kinds}
+            if source_kinds != target_kinds: continue
+            def evidence(graph, subject):
+                return {'definitions': sorted(str(value) for value in graph.objects(subject, RDFS.comment))[:5],
+                    'domains': sorted(str(value) for value in graph.objects(subject, RDFS.domain))[:10],
+                    'ranges': sorted(str(value) for value in graph.objects(subject, RDFS.range))[:10]}
+            suggestions.append({'source_iri': str(left[0]), 'target_iri': str(right[0]),
+                'source_label': left[1], 'target_label': right[1], 'kind': str(key[0]).rsplit('#', 1)[-1],
+                'source_evidence': evidence(source_graph,left[0]), 'target_evidence': evidence(target_graph,right[0]),
+                'reason': 'Same label and declared kind; compare definitions, domain and range. Semantic equivalence requires your review.'})
+            if len(suggestions) >= 200: break
+        return suggestions
+
     def apply(self, preview_id: str, approved_by: str) -> dict[str, Any]:
         with self._operation_lock() as acquired:
             if acquired is False:
                 raise ValueError('A merge operation is already running; refresh and retry')
-            return self._apply(preview_id, approved_by)
+            return self._with_source_locks(preview_id, lambda: self._apply(preview_id, approved_by))
+
+    def _with_source_locks(self, preview_id, operation):
+        record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
+        if not record: raise ValueError('Merge preview not found')
+        identifiers = sorted(record['source_ontology_ids'])
+        def acquire(index):
+            if index == len(identifiers): return operation()
+            identifier = identifiers[index]
+            if self.catalog.get(identifier) is None:
+                raise ValueError('Migrate legacy sources to the governed ontology catalog before approving a merge')
+            return self.catalog.with_publication_lock(identifier, lambda: acquire(index + 1))
+        return acquire(0)
 
     def evaluate_policy(self, preview_id: str) -> dict[str, Any]:
         record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
@@ -183,7 +250,7 @@ class GovernedMergeService:
             decision = self.evaluate_policy(preview_id)
             if decision['status'] == 'held':
                 return decision
-            return {**self._apply(preview_id, approved_by, approval_policy=decision), 'approval_policy': decision}
+            return {**self._with_source_locks(preview_id, lambda: self._apply(preview_id, approved_by, approval_policy=decision)), 'approval_policy': decision}
 
     def _apply(self, preview_id: str, approved_by: str, approval_policy=None) -> dict[str, Any]:
         if not str(approved_by).strip():
@@ -200,11 +267,35 @@ class GovernedMergeService:
             raise ValueError("Merge preview contains unresolved RDF/OWL conflicts")
         if record.get('applied_result'):
             return record['applied_result']
+        source_metadata = []
+        for source in record.get('sources', []):
+            ontology_id = source['ontology_id']
+            if self.catalog.get(ontology_id) is not None:
+                metadata, content = self.catalog.read_artifact(ontology_id)
+            else:
+                from .domain.reasoning import OntologyReasoningService
+                from backend.depo_platform.upload_limits import ontology_upload_limit
+                context = OntologyReasoningService.semantic_context(ontology_id)
+                metadata = context['meta']
+                with context['file_path'].open('rb') as stream:
+                    content = stream.read(ontology_upload_limit() + 1)
+                if len(content) > ontology_upload_limit(): raise ValueError('Merge source exceeds upload limit')
+            if not source.get('artifact_sha256') or hashlib.sha256(content).hexdigest() != source['artifact_sha256'] or metadata.get('status') == 'superseded' or metadata.get('lifecycle_status') in {'deprecated', 'retired'}:
+                raise ValueError('A merge source changed or became inactive. Generate and review a new preview')
+            source_metadata.append(metadata)
+        if not record.get('sources'):
+            raise ValueError('Merge preview lacks verified sources; generate a new preview')
         from .merge_validation import explicit_conflicts
         retained_graph = Graph()
         retained_graph.parse(data=record['turtle'], format='turtle')
-        if explicit_conflicts(retained_graph):
+        if explicit_conflicts(retained_graph) or self._literal_conflicts(retained_graph):
             raise ValueError('Merge contains explicit RDF/OWL contradictions; create and review a new preview')
+        from .merge_semantics import validate_merge
+        semantic_checks = validate_merge(retained_graph, source_metadata, record.get('changes', {}).get('entity_mappings', []))
+        if semantic_checks['shape_digests'] != (record.get('semantic_checks') or {}).get('shape_digests'):
+            raise ValueError('Merge validation shapes changed; generate and review a new preview')
+        if not semantic_checks['shacl_conforms'] or semantic_checks['inferred_conflicts']:
+            raise ValueError('Reviewed merge no longer passes SHACL/OWL-RL checks; create a new preview')
         if not record.get('approved_by'):
             record['approved_by'] = approved_by
             if approval_policy is not None:

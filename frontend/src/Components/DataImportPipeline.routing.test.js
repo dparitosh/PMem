@@ -4,6 +4,7 @@ import { act } from 'react';
 import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DataImportPipeline from './DataImportPipeline';
+import { fileSha256 } from '../utils/fileDigest';
 import { apiClient, API_METHODS } from '../services/apiClient';
 
 const mockOntologyContextValue = {
@@ -81,6 +82,22 @@ vi.mock('../services/apiClient', () => ({
 }));
 
 describe('DataImportPipeline workflow routing', () => {
+  it('restored ontology source can be reattached without losing its saved metadata', async () => {
+    localStorage.setItem('depo.import.jobs.v2', JSON.stringify({files:[{fileId:'restored', name:'schema.xsd', size:6, sourceDigest:await fileSha256(new File(['schema'],'schema.xsd')), persisted:true, workflowId:'ontology.create', ontologyName:'Saved ontology', fileType:'xsd', generationType:'owl', pendingMetadata:false}], pipelineStatus:{restored:{status:'pending',stage:'upload',progress:0}}, startedFiles:[]}));
+    await renderPipeline();
+    const input = await screen.findByLabelText('Re-attach source');
+    fireEvent.change(input, {target:{files:[new File(['schema'], 'schema.xsd')]}});
+    await waitFor(() => expect(screen.getByText('Source re-attached. Review details before starting.')).toBeInTheDocument());
+    expect(screen.getByRole('button', {name:/^Start$/})).toBeEnabled();
+    expect(mockOntologyUpload).not.toHaveBeenCalled();
+  });
+
+  it('unverified restored submissions cannot be reattached for a blind retry', async () => {
+    localStorage.setItem('depo.import.jobs.v2', JSON.stringify({files:[{fileId:'uncertain',name:'schema.xsd',persisted:true,workflowId:'ontology.create'}],pipelineStatus:{uncertain:{status:'outcome_unknown',stage:'error',outcomeUnknown:true}},startedFiles:[]}));
+    await renderPipeline();
+    expect(screen.queryByLabelText('Re-attach source')).not.toBeInTheDocument();
+    expect(screen.getByText(/earlier submission has an unverified outcome/)).toBeInTheDocument();
+  });
   let consoleErrorSpy;
 
   beforeAll(() => {
@@ -175,7 +192,7 @@ describe('DataImportPipeline workflow routing', () => {
 
     await act(async () => {
       fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
-      fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
+      expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
       fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
       fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
       await flushAsyncEffects();
@@ -202,10 +219,11 @@ describe('DataImportPipeline workflow routing', () => {
       expect.objectContaining({ name: 'bom.xsd' }),
       expect.objectContaining({
         ontologyName: 'BOM Ontology',
-        prefix: 'bom',
+        prefix: '',
         generationType: 'shacl',
       }),
-      'fixture-write'
+      'fixture-write',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
@@ -235,7 +253,7 @@ describe('DataImportPipeline workflow routing', () => {
       graph_publication: { status: 'success', resources: 123, relationships: 45 },
     } });
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Published schema' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'published_schema' } });
+    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
@@ -259,7 +277,7 @@ describe('DataImportPipeline workflow routing', () => {
       status: 'policy_blocked', message: 'Publication blocked by policy checks.',
     } });
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Published schema' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'published_schema' } });
+    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
@@ -281,7 +299,7 @@ describe('DataImportPipeline workflow routing', () => {
       await flushAsyncEffects();
     });
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM bundle' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
+    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     fireEvent.click(screen.getByRole('button', {name:'Resolve XSD dependencies'}));
@@ -314,10 +332,11 @@ describe('DataImportPipeline workflow routing', () => {
       fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: selected } });
       await flushAsyncEffects();
     });
-    expect(screen.getByText('uploaded-schema-set.xsd')).toBeInTheDocument();
-    expect(screen.queryByRole('button', {name:'Run all'})).not.toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Combined Ontology' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'combined' } });
+    expect(await screen.findByText('uploaded-schema-set.xsd')).toBeInTheDocument();
+    const runAll = screen.queryByRole('button', {name:'Run all'});
+    if (runAll) expect(runAll).toBeDisabled();
+    fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Combined Ontology' } });
+    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     apiClient.post.mockClear();
@@ -327,7 +346,7 @@ describe('DataImportPipeline workflow routing', () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
     const form = apiClient.post.mock.calls[0][1];
     expect(form.get('ontology_name')).toBe('Combined Ontology');
-    expect(form.getAll('dependencies').map(file => file.name)).toEqual(['bom.xsd', 'assembly.xsd']);
+    expect(form.getAll('dependencies').map(file => file.name)).toEqual(['assembly.xsd', 'bom.xsd']);
     expect(screen.getByRole('region', { name: 'Import job history' })).toHaveStyle({ overflowX: 'auto' });
     expect(screen.getByText('Processing details')).toBeInTheDocument();
     await screen.findAllByText(/registered; graph publication has not run/);

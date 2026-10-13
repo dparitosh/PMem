@@ -56,7 +56,7 @@ def _connection_context() -> dict[str, str]:
     try:
         from psycopg.conninfo import conninfo_to_dict
         values = conninfo_to_dict(url)
-        return {key: str(values[key]) for key in ('host', 'port', 'dbname', 'user', 'sslmode') if values.get(key)}
+        return {key: str(values[key]) for key in ('host', 'hostaddr', 'port', 'dbname', 'user', 'sslmode') if values.get(key)}
     except Exception:
         return {}  # Invalid DSNs must not be echoed even when parsing fails.
 
@@ -85,7 +85,7 @@ def _failure_action(exc: Exception) -> dict:
     elif 'no pg_hba.conf entry' in diagnostic:
         action = 'PostgreSQL has no pg_hba.conf rule for this application VM, user, database and SSL mode. Add the matching rule on the database VM, reload PostgreSQL, and retry.'
     elif not sqlstate and ('timeout' in diagnostic or 'timed out' in diagnostic or 'connection refused' in diagnostic):
-        action = 'The application VM cannot reach PostgreSQL. Verify the configured host and port, firewall, listen_addresses and server status.'
+        action = 'PostgreSQL connection did not complete in time or was refused. Run infra/postgres/test-postgres-connectivity.ps1 -EnvFile .env.local -NetworkCheck to distinguish TCP reachability from PostgreSQL login/TLS negotiation; check the database server logs if TCP succeeds.'
     elif not sqlstate and ('certificate verify failed' in diagnostic or 'root certificate' in diagnostic):
         action = 'PostgreSQL TLS certificate validation failed. Check sslmode, the trusted CA and the hostname in DEPO_DATABASE_URL.'
     else:
@@ -212,11 +212,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check-only', action='store_true', help='Verify existing columns and migration versions without DDL or data writes')
     parser.add_argument('--connection-only', action='store_true', help='Verify PostgreSQL login without requiring or modifying the application schema')
+    parser.add_argument('--network-check', action='store_true', help='Check explicit PostgreSQL TCP endpoints without login or schema changes')
     args = parser.parse_args()
-    if args.check_only and args.connection_only:
-        parser.error('--check-only and --connection-only cannot be combined')
+    if sum((args.check_only, args.connection_only, args.network_check)) > 1:
+        parser.error('Choose only one diagnostic mode')
     try:
-        print(json.dumps(setup_database(check_only=args.check_only, connection_only=args.connection_only)))
+        if args.network_check:
+            from .postgres_connectivity import network_check
+            result = network_check()
+            print(json.dumps(result))
+            if result['status'] != 'ok': raise SystemExit(1)
+        else:
+            print(json.dumps(setup_database(check_only=args.check_only, connection_only=args.connection_only)))
     except Exception as exc:
         # Driver exception strings can contain connection details. Emit only a
         # SQLSTATE-based action and DEPO-authored RuntimeError messages.

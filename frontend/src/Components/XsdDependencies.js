@@ -38,14 +38,18 @@ export default function XsdDependencies({ files, paths, onChange, onRoot, select
       : matches.length > 1 ? `Multiple copies of ${selectedRoot.name} were found. Select the matching root path below.` : '');
   }, [folder, selectedRoot, selectedSources]);
   return <details open={selectedRoot ? true : undefined}>
-    <summary>Resolve companions for this upload</summary>
+    <summary>Additional schema files are needed</summary>
     <fieldset disabled={disabled} style={{ minWidth: 0, margin: '8px 0', padding: 12 }}>
-    <legend>Companion XSD files</legend>
-    <p>Add your XSD with Add Files, complete its details, and click Start. Use this section only if companion files are missing.</p>
-    {selectedRoot && <p>Resolving companions for {selectedRoot.name}. Your ontology details will be preserved.</p>}
+    <legend>Continue this upload</legend>
+    {selectedRoot && <p><strong>Selected sources:</strong> {selectedSources?.length ? selectedSources.map(file => file.name).join(', ') : selectedRoot.name}</p>}
+    <ol>
+      <li>Select the folder containing your original XSD files and their referenced XSD files.</li>
+      <li>Choose Resolve companions and retry. The app finds the required files and retries this upload with your saved ontology name and prefix.</li>
+    </ol>
     {onRoot && <div>
       <label>Select complete XSD folder<input type="file" webkitdirectory="" multiple disabled={busy} onChange={event => {
         const selected = Array.from(event.target.files || []).filter(file => file.name.toLowerCase().endsWith('.xsd'));
+        event.target.value = '';
         setFolder(selected); setError('');
       }} /></label>
       {folder.length > 0 && <>
@@ -62,20 +66,21 @@ export default function XsdDependencies({ files, paths, onChange, onRoot, select
         }}>{busy ? 'Checking schema dependencies...' : selectedRoot ? 'Resolve companions and retry' : 'Check folder and add root'}</button>
       </>}
       {error && <p role="alert">{error}</p>}
-      <p>Select the parent folder containing all schema directories. Only the selected root and its required companions are uploaded; references are adjusted in memory and source files stay unchanged.</p>
+      <p>Your files stay unchanged. For example, if the source is in QIFApplications and its references are in QIFLibrary, select the parent folder containing both. External references use matching files in your selected folder; they are not downloaded.</p>
     </div>}
     <details><summary>Advanced: select companion files and edit relative paths</summary>
     <p>For schemas that import other XSDs, select the companion files here. They are sent with the root XSD as one schema set. Files stay in this tab and must be selected again after reload.</p>
-    <label>Companion XSD files<input type="file" accept=".xsd" multiple onChange={event => {
+    <label>Companion XSD files<input type="file" accept=".xsd" multiple disabled={busy} onChange={event => {
       const selected = Array.from(event.target.files || []);
+      event.target.value = '';
       onChange(selected, selected.map(file => file.name).join('\n'));
     }} /></label>
     {files.length > 0 && <>
       <p>Selected order: {files.map(file => file.name).join(', ')}</p>
-      <label>Companion relative paths (one per selected file)<textarea value={paths} onChange={event => onChange(files, event.target.value)} style={{ display: 'block', width: '100%', minHeight: 72 }} /></label>
-      <button type="button" onClick={() => onChange([], '')}>Clear companion files</button>
+      <label>Companion relative paths (one per selected file)<textarea disabled={busy} value={paths} onChange={event => onChange(files, event.target.value)} style={{ display: 'block', width: '100%', minHeight: 72 }} /></label>
+      <button type="button" disabled={busy} onClick={() => onChange([], '')}>Clear companion files</button>
     </>}
-    <p>For the bundled bom.xsd, select the bundled Edition 2 common.xsd with relative path common.xsd. Choose OWL generation. External schemas are not downloaded automatically.</p>
+    <p>Use manual paths only when folder selection is unavailable. Paths must match the XSD references.</p>
     </details>
   </fieldset></details>;
 }

@@ -12,13 +12,16 @@ class PromptPolicyTests(unittest.TestCase):
         self.assertEqual(len(identifiers), len(set(identifiers)))
         for agent in source['agents']:
             self.assertIn(agent['id'],agent['system_prompt'])
-            self.assertEqual(agent['prompt_policy_version'],'proposal-v2')
+            self.assertEqual(agent['prompt_policy_version'],'proposal-v3')
             for mode in ('native','structured'):
                 text=proposal_instructions(agent,mode)
                 self.assertIn(agent['system_prompt'],text)
                 self.assertIn('Never invent missing required values',text)
                 self.assertIn('never policy',text)
                 self.assertIn('server approval contract',text)
+                self.assertIn('immutable ontology IDs',text)
+                self.assertIn('review-only suggestions',text)
+                self.assertIn('distinct outcomes',text)
     def test_custom_role_policy_is_preserved_in_both_modes(self):
         for mode in ('native','structured'):
             self.assertTrue(proposal_instructions({'system_prompt':'Only inspect retained QIF evidence.'},mode).startswith('Only inspect retained QIF evidence.'))

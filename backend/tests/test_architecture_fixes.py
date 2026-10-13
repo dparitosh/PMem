@@ -65,7 +65,11 @@ class ArchitectureTests(TestCase):
         store=InMemoryRegistry(); store.put('x',{'status':'pending_catalog_registration'})
         async def register(record): store.put('x',{'status':'revoked'}); return {'status':'published'}
         node=next(n for n in ast.parse(Path('backend/data_product_service/router.py').read_text()).body if isinstance(n,ast.AsyncFunctionDef) and n.name=='reconcile_pending')
-        scope={'store':store,'_register_catalog':register}
+        from contextlib import asynccontextmanager
+        async def io(function,*args,**kwargs): return function(*args,**kwargs)
+        @asynccontextmanager
+        async def lock(key): yield True
+        scope={'store':store,'_register_catalog':register,'_product_io':io,'_product_lock':lock}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'outbox','exec'),scope)
         result=asyncio.run(scope['reconcile_pending']())
         self.assertEqual(result['published'],0)

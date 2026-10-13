@@ -323,7 +323,7 @@ export const chatAPI = {
 
 // ========== ONTOLOGY ENDPOINTS ==========
 export const ontologyAPI = {
-  upload: (file, metadata, writeToken = '') => {
+  upload: (file, metadata, writeToken = '', options = {}) => {
     const formData = new FormData();
     formData.append('file', file);
     
@@ -338,10 +338,15 @@ export const ontologyAPI = {
       const backendKey = keyMap[key] || key;
       formData.append(backendKey, value);
     });
+    if (options.dependencies?.length) {
+      options.dependencies.forEach(source => formData.append('dependencies', source));
+      formData.append('dependency_paths', JSON.stringify(options.dependencyPaths));
+    }
     
     return apiClient.post(buildUrl(API.ontology.upload), formData, {
       headers: { ...(writeToken ? { Authorization: `Bearer ${writeToken.trim()}` } : {}) },
-      timeout: 300000, // 5 minutes for ontology uploads
+      timeout: 3660000,
+      signal: options.signal,
     });
   },
   listRegistered: (options = {}) =>
@@ -374,12 +379,12 @@ export const ontologyAPI = {
     const suffix = fileType ? `?file_type=${encodeURIComponent(fileType)}` : '';
     return apiClient.get(buildUrl(`${API.ontology.alignmentOptions}${suffix}`));
   },
-  merge: (fromOntologyId, toOntologyId, options = {}) =>
+  merge: (fromOntologyId, toOntologyId, options = {}, requestOptions = {}) =>
     apiClient.post(buildUrl(API.ontology.merge), {
       from_ontology_id: fromOntologyId,
       to_ontology_id: toOntologyId,
       ...(options || {}),
-    }),
+    }, { signal: requestOptions.signal }),
   governedMergePreview: (sourceOntologyIds, options = {}) =>
     apiClient.post(buildUrl(API.ontology.governedMergePreview), {
       source_ontology_ids: sourceOntologyIds,
@@ -563,12 +568,13 @@ export const importAPI = {
 // ========== WORKFLOW ENDPOINTS ==========
 export const workflowAPI = {
   getOptions: () => apiClient.get(buildUrl(API.workflow.options)),
-  execute: (workflowId, payload = {}) =>
+  execute: (workflowId, payload = {}, options = {}) =>
     apiClient.post(buildUrl(API.workflow.execute), {
       workflow_id: workflowId,
       payload,
     }, {
       timeout: 300000,
+      signal: options.signal,
     }),
   artifactUrl: (taskId, artifactPath) =>
     buildUrl(replaceParams(API.workflow.artifactFile, {

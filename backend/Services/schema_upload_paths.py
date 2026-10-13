@@ -5,7 +5,7 @@ from defusedxml import ElementTree as ET
 from urllib.parse import urlsplit, unquote
 
 
-def validate_schema_upload(filename: str, content: bytes, dependencies=None) -> dict[str, bytes]:
+def validate_schema_upload(filename: str, content: bytes, dependencies=None, *, require_dependencies=True) -> dict[str, bytes]:
     if (not isinstance(filename, str) or not filename or filename in {'.', '..'}
             or '/' in filename or '\\' in filename or ':' in filename or '\x00' in filename
             or PureWindowsPath(filename).is_absolute()):
@@ -40,6 +40,8 @@ def validate_schema_upload(filename: str, content: bytes, dependencies=None) -> 
                 raise ValueError(f'{name}: malformed or unsafe XML Schema; check the source file before retrying') from exc
             if root.tag != '{http://www.w3.org/2001/XMLSchema}schema':
                 raise ValueError(f'{name}: expected an XML Schema root')
+            if not require_dependencies:
+                continue
             for element in root.iter():
                 if element.tag not in {'{http://www.w3.org/2001/XMLSchema}' + tag for tag in ('include', 'import', 'redefine')}:
                     continue

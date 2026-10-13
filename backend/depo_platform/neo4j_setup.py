@@ -7,10 +7,31 @@ from pathlib import Path
 
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "neo4j-publication-index.cypher"
 REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id"}
+CONSTRAINT_DEFINITIONS = {
+    'uq_ontologyresource_identity': ('OntologyResource', ['ontology_id', 'iri']),
+    'uq_ontologypublication_identity': ('OntologyPublication', ['ontology_id', 'publication_id']),
+    'depo_bridge_publication_id': ('DepoBridgePublication', ['publication_id']),
+}
 REQUIRED_INDEXES = {
     'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
     'idx_depo_ontologyresource_scope': ('OntologyResource', ['ontology_id']),
 }
+
+
+def verify_constraints(records):
+    rows = {row['name']:row for row in records}
+    missing = REQUIRED_CONSTRAINTS - rows.keys()
+    if missing:
+        raise RuntimeError('Missing Neo4j publication constraints: ' + ', '.join(sorted(missing)))
+    invalid = []
+    for name, (label, properties) in CONSTRAINT_DEFINITIONS.items():
+        row = rows[name]
+        if (row.get('type') != 'UNIQUENESS' or row.get('entityType') != 'NODE'
+                or row.get('labelsOrTypes') != [label] or row.get('properties') != properties):
+            invalid.append(name)
+    if invalid:
+        raise RuntimeError('Incompatible Neo4j publication constraints: ' + ', '.join(sorted(invalid)))
+    return sorted(REQUIRED_CONSTRAINTS)
 
 
 def verify_indexes(records):
@@ -38,6 +59,11 @@ def failure_details(exc: Exception) -> dict:
                 result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap with schema creation privileges, then rerun -Production.'
         elif reason.startswith('Missing or unavailable Neo4j performance indexes: '):
             result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap to apply the matching release indexes, then rerun -Production.'
+        elif reason.startswith('Incompatible Neo4j publication constraints: '):
+            names = reason.removeprefix('Incompatible Neo4j publication constraints: ').split(', ')
+            if set(names) <= REQUIRED_CONSTRAINTS:
+                result['action'] = 'Have the database administrator reconcile the named publication constraints with infra/deployment/neo4j-publication-index.cypher; IF NOT EXISTS does not repair incompatible definitions.'
+                result['reason'] = reason
         elif reason in {'NEO4J_AUTH_MODE must be token or none',
                         'Neo4j credentials are required when NEO4J_AUTH_MODE=token', 'NEO4J_URI is required'}:
             result['reason'] = reason
@@ -82,18 +108,15 @@ def provision(*, check_only: bool = False) -> dict:
             for statement in _statements(SCHEMA_FILE.read_text(encoding="utf-8")):
                 driver.execute_query(statement, database_=database)
         records, _, _ = driver.execute_query(
-            "SHOW CONSTRAINTS YIELD name WHERE name IN $names RETURN name ORDER BY name",
+            "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties WHERE name IN $names RETURN name, type, entityType, labelsOrTypes, properties ORDER BY name",
             names=sorted(REQUIRED_CONSTRAINTS), database_=database, routing_="r",
         )
         index_records, _, _ = driver.execute_query(
             'SHOW INDEXES YIELD name, state, labelsOrTypes, properties WHERE name IN $names RETURN name, state, labelsOrTypes, properties',
             names=sorted(REQUIRED_INDEXES), database_=database, routing_='r')
     verified_indexes = verify_indexes([dict(row) for row in index_records])
-    found = {record["name"] for record in records}
-    missing = REQUIRED_CONSTRAINTS - found
-    if missing:
-        raise RuntimeError("Missing Neo4j publication constraints: " + ", ".join(sorted(missing)))
-    return {"status": "ok", "database": database, "constraints": sorted(found), "indexes": verified_indexes}
+    verified_constraints = verify_constraints([dict(row) for row in records])
+    return {"status": "ok", "database": database, "constraints": verified_constraints, "indexes": verified_indexes}
 
 
 if __name__ == "__main__":

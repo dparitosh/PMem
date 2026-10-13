@@ -18,7 +18,9 @@ def test_publication_preserves_typed_and_language_literals_as_supported_properti
         )
     session.execute_write.assert_called_once()
     session.run.assert_not_called()
-    rows = tx.run.call_args_list[0].kwargs["rows"]
+    rows = [row for call in tx.run.call_args_list
+            if 'node.rdf_properties' in call.args[0]
+            for row in call.kwargs['rows']]
     properties = json.loads(next(row["rdf_properties"] for row in rows if row["iri"] == "urn:test:part"))
     assert properties["urn:test:mass"][0] == {"value": "42", "datatype": "http://www.w3.org/2001/XMLSchema#integer", "language": None}
     assert properties["urn:test:description"][0]["language"] == "en"

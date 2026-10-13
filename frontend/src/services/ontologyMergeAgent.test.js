@@ -14,9 +14,14 @@ test('bridge preview uses the governor and unwraps its tool result and telemetry
   expect(preview.runId).toBe('run-preview');
 });
 test('commit requests graph publication of the reviewed merge through the governor', async () => {
-  agenticAPI.runAgent.mockResolvedValue({ data: { agent_id: 'ontology-governor', tool_id: 'ontology.merge.apply', run_id: 'run-apply', result: { status: 'merged' } } });
+  agenticAPI.runAgent.mockResolvedValue({ data: { agent_id: 'ontology-governor', tool_id: 'ontology.merge.apply', run_id: 'run-apply', result: { status: 'merged',preview_id:'reviewed',ontology:{ontology_id:'merged'},publication_status:'published',publication:{status:'published',ontology_id:'merged',publication_id:'receipt',receipt:{status:'published',current:true,ontology_id:'merged',publication_id:'receipt',resources:10,relationships:5}} } } });
   await ontologyMergeAgent.apply('reviewed', 'steward');
   expect(agenticAPI.runAgent).toHaveBeenCalledWith('ontology-governor', 'ontology.merge.apply', { preview_id: 'reviewed', publish: true }, { approved_by: 'steward', approval_token: 'agent-approval' });
+});
+
+test('publication status alone cannot establish a verified merge', async () => {
+  agenticAPI.runAgent.mockResolvedValue({data:{agent_id:'ontology-governor',tool_id:'ontology.merge.apply',run_id:'run',result:{status:'merged',preview_id:'reviewed',ontology:{ontology_id:'merged'},publication_status:'published'}}});
+  await expect(ontologyMergeAgent.apply('reviewed','steward')).rejects.toThrow('receipt is unverified');
 });
 test('missing approval prevents dispatch', async () => {
   getCredentialProfile.mockReturnValue('');

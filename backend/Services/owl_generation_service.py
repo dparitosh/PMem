@@ -349,11 +349,14 @@ class OWLGenerationService:
             tmp_in = _write_tmp(file_content, ".xmi")
             tmp_out = tmp_in.with_suffix(".ttl")
             from .owl_xmi_engine import convert_xmi_to_ttl
-            convert_xmi_to_ttl(
+            converted = convert_xmi_to_ttl(
                 xmi_path=str(tmp_in),
                 output_path=str(tmp_out),
                 base_uri=f"http://depo-onto.local/xmi#{Path(filename).stem}/",
+                raise_on_error=True,
             )
+            if converted is not True or not tmp_out.is_file():
+                raise ValueError("XMI conversion did not produce an ontology; inspect the conversion diagnostics")
             ttl_str, report = _read_and_validate(tmp_out)
             metadata = {
                 "format": "XMI",

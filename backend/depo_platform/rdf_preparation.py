@@ -37,11 +37,17 @@ def prepare_rdf(content, rdf_format, *, canonical=False):
 
 
 def main():
-    from rdflib import Graph
+    from rdflib import Graph, BNode
     from rdflib.compare import to_canonical_graph
     content, rdf_format, canonical = pickle.loads(sys.stdin.buffer.read())
     graph = Graph().parse(data=content, format=rdf_format)
-    value = list(to_canonical_graph(graph)) if canonical else graph.serialize(format='turtle').encode('utf-8')
+    # URI/literal-only graphs already have stable resource identities. Avoid
+    # canonicalization overhead unless blank nodes actually need stable IDs.
+    if canonical:
+        has_blank_nodes = any(isinstance(value, BNode) for triple in graph for value in triple)
+        value = list(to_canonical_graph(graph) if has_blank_nodes else graph)
+    else:
+        value = graph.serialize(format='turtle').encode('utf-8')
     sys.stdout.buffer.write(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))
 
 

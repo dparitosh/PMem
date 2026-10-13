@@ -39,6 +39,7 @@ graph_publications = PostgresRegistry('ontology_graph_publications_v1')
 @ontology_writer
 async def ontology_publication_status(ontology_id: str) -> dict:
     record = await run_in_threadpool(graph_publications.get, ontology_id)
+    original_record = record
     if record:
         metadata, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
         digest = hashlib.sha256(content).hexdigest()
@@ -75,7 +76,12 @@ async def ontology_publication_status(ontology_id: str) -> dict:
         if receipt.get('current') is False:
             return {**record, 'status': 'not_published', 'receipt': None}
         verified = {**record, 'status': 'published', 'receipt': receipt, 'active_until': None}
-        await run_in_threadpool(graph_publications.put, ontology_id, verified)
+        # Verification is a reader: never overwrite state changed by a publisher
+        # while the graph request was in flight. Missing rows need no repair write.
+        if original_record is not None:
+            updated = await run_in_threadpool(graph_publications.compare_and_put, ontology_id, original_record, verified)
+            if not updated:
+                return {'ontology_id': ontology_id, 'status': 'unverified', 'recovery_action': 'refresh_and_verify'}
         return verified
     except (httpx.HTTPError, ValueError):
         return {**record, 'status': 'unverified'}
@@ -119,14 +125,15 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
         preparation_started = time.monotonic()
         from backend.depo_platform.network import bounded_timeout_seconds
         limit = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
-        # Preparation and graph dispatch each have a bounded stage deadline.
-        record['active_until'] = (datetime.now(timezone.utc) + timedelta(seconds=limit * 2 + 30)).isoformat()
+        from backend.depo_platform.network import graph_dispatch_timeout_seconds
+        # Retained-source preparation precedes graph-side preparation and writing.
+        record['active_until'] = (datetime.now(timezone.utc) + timedelta(seconds=limit + graph_dispatch_timeout_seconds() + 30)).isoformat()
         await run_in_threadpool(graph_publications.put, ontology_id, record)
         logging.getLogger(__name__).warning('Ontology publication phase=retained_rdf_prepare ontology_id=%s bytes=%s', ontology_id, len(content))
         turtle = await run_in_threadpool(prepare_rdf, content, metadata['validation']['rdf_format'])
         logging.getLogger(__name__).warning('Ontology publication phase=retained_rdf_ready ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - preparation_started)
         from backend.depo_platform.network import bounded_timeout_seconds
-        publication_timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+        publication_timeout = graph_dispatch_timeout_seconds()
         record['phase'] = 'graph_dispatch'
         await run_in_threadpool(graph_publications.put, ontology_id, record)
         async with httpx.AsyncClient(timeout=publication_timeout, trust_env=False) as client:
@@ -452,7 +459,8 @@ async def publish_vocabulary(scheme_id: str, version: str, payload: ApprovalBody
     graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
     graph_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        from backend.depo_platform.network import graph_dispatch_timeout_seconds
+        async with httpx.AsyncClient(timeout=graph_dispatch_timeout_seconds(), trust_env=False) as client:
             response = await client.post(
                 f"{graph_root}/graph/ontologies/publish",
                 data={"ontology_id": f"skos-{scheme_id}-{version.replace('.', '-')}", "prefix": "skos"},

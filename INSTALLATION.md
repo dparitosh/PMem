@@ -4317,3 +4317,71 @@ probe requests allow up to 20 minutes by default; the QIF agent review no longer
 uses its former hardcoded 120-second limit. Chat streaming defaults to 20 minutes.
 These are browser wait limits, not permission to exceed backend workflow deadlines.
 Rebuild the frontend through the updater to apply them.
+
+### Architecture safeguards on redeployment
+
+The legacy direct graph-prefix merge now rejects writes. Use Ontology Junction's
+merge preview, review the evidence, and approve that exact preview. The import
+page's merge action opens this governed flow.
+
+Engineering conversion and merge semantic validation use separate processes with
+deadlines. Optional root environment settings are
+`ENGINEERING_CONVERSION_TIMEOUT_SECONDS=180` (maximum 900),
+`MERGE_VALIDATION_TIMEOUT_SECONDS=180` (maximum 900), and
+`DEPO_POSTGRES_POOL_SIZE=8` (range 1–32, per service process).
+Conversion also respects the enclosing engineering workflow budget. Increase
+conversion budgets for measured conversion delays; Ollama uses its separate
+generation settings. Restart backend services after changing these values.
+
+Workflow manifests use the existing PostgreSQL registry table when a database is
+configured. Existing file manifests remain readable and are adopted on their next
+write; this introduces no additional schema migration. Local file mode uses an
+operating-system lock to prevent concurrent writers from losing manifest entries.
+Artifacts retain separate usage references when the same bytes serve different
+workflows. PostgreSQL control-plane connections are pooled; advisory locks use
+dedicated connections in addition to the configured pool capacity.
+
+Preserve existing storage directories during upgrades. All services accessing
+workflow or ontology files must share the same durable storage and configured
+paths. PostgreSQL-backed manifests do not make local artifact files available on
+another VM. Legacy ontology metadata and the governed catalog still require their
+existing migration/adoption flow; this update does not silently rewrite IDs.
+
+Ontology publication retains matching projection edges and deletes only edges
+absent from the new revision, within one transaction. Identity restoration is
+batched at 1,000 resources. Blank-node canonicalization runs only for graphs that
+contain blank nodes. No additional schema migration is required for these changes;
+keep the existing publication and resource identity constraints provisioned.
+Restart backend services after deploying the updated publisher. Verify a first
+publication and a changed-source republication before customer release.
+
+`GRAPH_PUBLICATION_TIMEOUT_SECONDS` is a per-stage budget. With its default 180
+seconds, graph dispatch allows 390 seconds for graph preparation and writing;
+the enclosing ontology publication allows 600 seconds including retained-source
+preparation and transport overhead. Engineering and agent workflow deadlines
+still take precedence. Configure any reverse proxy timeout to cover the operation
+you invoke. A network timeout means an unverified outcome, requiring receipt
+verification before another publication attempt.
+
+Agent merge preview and draft creation also include the merge validation budget:
+with default settings their tool wait is 210 seconds; merge-and-publish allows
+810 seconds. The original agent execution deadline remains authoritative.
+Neo4j preflight now verifies constraint labels, properties, entity type and
+uniqueness, not just names. An existing incompatible constraint requires database
+administrator reconciliation; bootstrap deliberately does not drop constraints.
+Publication IDs cannot use the internal `__lock__` value. Receipt verification
+does not overwrite a newer in-progress attempt. Display labels prefer English,
+then untagged values, then other languages, with a stable lexical tie-break.
+
+For a PostgreSQL `ConnectionTimeout`, run this on the application VM:
+
+```powershell
+& 'E:\App\PMem\infra\postgres\test-postgres-connectivity.ps1' -EnvFile 'E:\App\PMem\.env.local' -NetworkCheck
+```
+
+The TCP stage reports DNS failure, refusal, timeout or reachability for the selected
+database endpoint, then runs the normal login check if TCP succeeds. TCP success
+alone does not verify PostgreSQL authentication or TLS. Correct listener/firewall
+or routing issues on the database and application VMs; for reachable TCP with a
+login timeout, inspect PostgreSQL logs and the matching SSL settings. The bounded
+connection timeout remains `DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS` (1–60 seconds).

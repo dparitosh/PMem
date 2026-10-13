@@ -155,6 +155,27 @@ class OntologyReasoningService:
         constraints: List[Dict[str, Any]] = []
         warnings: List[str] = []
         seen: set[tuple[str, str, str, str]] = set()
+        from collections import deque
+        import time
+        deadline = time.monotonic() + 10
+        work = 0
+        closure_cache = {}
+        def ancestors(key):
+            nonlocal work
+            if key in closure_cache: return closure_cache[key]
+            visited = set()
+            frontier = deque(sorted(parent_by_child.get(key, set())))
+            while frontier:
+                if work >= 100000 or time.monotonic() >= deadline:
+                    if 'Traversal budget reached; results are incomplete.' not in warnings: warnings.append('Traversal budget reached; results are incomplete.')
+                    break
+                work += 1
+                parent = frontier.popleft()
+                if parent == key or parent in visited: continue
+                visited.add(parent)
+                frontier.extend(sorted(parent_by_child.get(parent, set()) - visited))
+            closure_cache[key] = visited
+            return visited
 
         def add(rule: str, subject: str, predicate: str, obj: str, evidence: str, confidence: float = 1.0) -> None:
             if not subject or not obj or len(inferred) >= max_results:
@@ -170,30 +191,28 @@ class OntologyReasoningService:
                 "predicate": predicate,
                 "object": obj,
                 "object_label": label_by_key.get(obj) or cls._ref_label(obj),
-                "confidence": round(confidence, 3),
+                "confidence": None,
+                'support': 'structural rule',
                 "evidence": evidence,
             })
 
         if rules.get("transitive_subclass", True):
-            for child, direct_parents in parent_by_child.items():
-                visited = set(direct_parents)
-                frontier = list(direct_parents)
-                while frontier:
-                    current = frontier.pop(0)
-                    for ancestor in parent_by_child.get(current, set()):
-                        if ancestor in visited or ancestor == child:
-                            continue
-                        visited.add(ancestor)
-                        frontier.append(ancestor)
-                        add("transitive_subclass", child, "rdfs:subClassOf+", ancestor, f"Indirect superclass via {cls._ref_label(current)}")
+            for child in sorted(parent_by_child):
+                if len(inferred) >= max_results: break
+                for ancestor in sorted(ancestors(child) - parent_by_child[child]):
+                    if len(inferred) >= max_results: break
+                    add('transitive_subclass', child, 'rdfs:subClassOf', ancestor, 'Reachable through the declared superclass hierarchy')
 
         if rules.get("domain_range_typing", True):
-            for prop in object_props + datatype_props:
+            for prop in sorted(object_props + datatype_props, key=lambda item: str(item)):
+                if len(constraints) >= max_results: break
                 prop_key = cls._ref_key(prop.get("iri") or prop.get("uri") or prop.get("term_id") or prop)
                 prop_label = cls._entry_label(prop) or cls._ref_label(prop_key)
-                for domain in prop.get("domain") or []:
+                for domain in sorted(prop.get("domain") or [], key=str):
+                    if len(constraints) >= max_results: break
                     constraints.append({"property": prop_key, "property_label": prop_label, "kind": "domain", "class": cls._ref_key(domain)})
-                for rng in prop.get("range") or []:
+                for rng in sorted(prop.get("range") or [], key=str):
+                    if len(constraints) >= max_results: break
                     constraints.append({"property": prop_key, "property_label": prop_label, "kind": "range", "class": cls._ref_key(rng)})
 
         rdf_edges: Dict[str, List[Dict[str, str]]] = {"equivalence": [], "disjointness": []}
@@ -207,19 +226,20 @@ class OntologyReasoningService:
                 last_error: Exception | None = None
                 for rdf_format in ("turtle", "xml", "json-ld", "nt"):
                     try:
+                        rdf_graph = Graph()
                         rdf_graph.parse(str(context["file_path"]), format=rdf_format)
                         last_error = None
                         break
                     except Exception as exc:
                         last_error = exc
-                if last_error is not None and len(rdf_graph) == 0:
+                if last_error is not None:
                     raise last_error
 
                 def edge_rows(predicate) -> List[Dict[str, str]]:
                     rows: List[Dict[str, str]] = []
                     for s, _, o in rdf_graph.triples((None, predicate, None)):
                         if isinstance(s, URIRef) and isinstance(o, URIRef):
-                            rows.append({"source": str(s), "target": str(o)})
+                            rows.append({"source": str(s), "target": str(o), 'predicate': str(predicate)})
                     return rows
 
                 rdf_edges["equivalence"].extend(edge_rows(OWL.equivalentClass))
@@ -231,13 +251,15 @@ class OntologyReasoningService:
                 warnings.append(f"Equivalent/disjoint RDF scan skipped: {type(exc).__name__}: {exc}")
 
         if rules.get("equivalence", True):
-            for key in ("equivalent_class_edges", "equivalent_property_edges", "same_as_edges", "skos_exact_match_edges"):
-                for edge in reasoning.get(key) or []:
+            for key, predicate in {'equivalent_class_edges':'owl:equivalentClass', 'equivalent_property_edges':'owl:equivalentProperty', 'same_as_edges':'owl:sameAs', 'skos_exact_match_edges':'skos:exactMatch'}.items():
+                for edge in sorted(reasoning.get(key) or [], key=lambda item: str(item)):
+                    if len(inferred) >= max_results: break
                     source = cls._ref_key(edge.get("source") or edge.get("from"))
                     target = cls._ref_key(edge.get("target") or edge.get("to"))
-                    add("equivalence_symmetric_closure", target, "owl:equivalent/sameAs", source, f"Symmetric closure of {key}", 0.95)
-            for edge in rdf_edges["equivalence"]:
-                add("equivalence_symmetric_closure", edge["target"], "owl:equivalent/sameAs", edge["source"], "Symmetric closure of declared RDF/OWL relation", 0.95)
+                    add("equivalence_symmetric_closure", target, predicate, source, f"Symmetric closure of {key}")
+            for edge in sorted(rdf_edges["equivalence"], key=lambda item: (item['predicate'],item['source'],item['target'])):
+                if len(inferred) >= max_results: break
+                add("equivalence_symmetric_closure", edge["target"], edge['predicate'], edge["source"], "Symmetric closure of the declared relation")
 
         if rules.get("disjointness", True):
             disjoint_pairs = {
@@ -245,27 +267,26 @@ class OntologyReasoningService:
                 for edge in reasoning.get("disjoint_edges") or reasoning.get("disjoint_class_edges") or []
             }
             disjoint_pairs.update(tuple(sorted((edge["source"], edge["target"]))) for edge in rdf_edges["disjointness"])
-            for individual in individuals:
+            for individual in sorted(individuals, key=lambda item: str(item)):
+                if len(inferred) >= max_results: break
                 subject = cls._ref_key(individual.get("iri") or individual.get("uri") or individual.get("term_id") or individual)
                 declared_types = {cls._ref_key(item) for item in individual.get("types") or individual.get("class_refs") or []}
-                for left, right in disjoint_pairs:
-                    if left and right and left in declared_types and right in declared_types:
+                expanded_types = set(declared_types)
+                for declared in sorted(declared_types): expanded_types.update(ancestors(declared))
+                for left, right in sorted(disjoint_pairs):
+                    if len(inferred) >= max_results: break
+                    if left and right and left in expanded_types and right in expanded_types:
                         add("disjointness_violation", subject, "owl:disjointnessViolation", f"{left} | {right}", "Individual is typed by two disjoint classes", 1.0)
 
         if rules.get("individual_type_closure", True):
-            for individual in individuals:
+            for individual in sorted(individuals, key=lambda item: str(item)):
+                if len(inferred) >= max_results: break
                 subject = cls._ref_key(individual.get("iri") or individual.get("uri") or individual.get("term_id") or individual)
-                for type_ref in individual.get("types") or individual.get("class_refs") or []:
+                for type_ref in sorted(individual.get("types") or individual.get("class_refs") or [], key=str):
                     type_key = cls._ref_key(type_ref)
-                    visited_types: set[str] = set()
-                    frontier = list(parent_by_child.get(type_key, set()))
-                    while frontier:
-                        parent = frontier.pop(0)
-                        if not parent or parent in visited_types:
-                            continue
-                        visited_types.add(parent)
+                    for parent in sorted(ancestors(type_key)):
+                        if len(inferred) >= max_results: break
                         add("individual_type_closure", subject, "rdf:type", parent, f"Individual type follows superclass of {cls._ref_label(type_key)}", 0.9)
-                        frontier.extend(parent_by_child.get(parent, set()) - visited_types)
 
         if not inferred:
             warnings.append("No inference candidates were generated for the selected rules and ontology slice.")
@@ -291,7 +312,7 @@ class OntologyReasoningService:
                 "individuals": len(individuals),
                 "inferred_candidates": len(inferred),
                 "domain_range_constraints": len(constraints),
-                "truncated": len(inferred) >= max_results,
+                "truncated": len(inferred) >= max_results or len(constraints) >= max_results or work >= 100000 or time.monotonic() >= deadline,
             },
             "inferences": inferred,
             "constraints": constraints,

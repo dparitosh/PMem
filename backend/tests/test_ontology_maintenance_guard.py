@@ -13,7 +13,7 @@ class MaintenanceTests(unittest.TestCase):
     def guard(self, acquired=True):
         self.calls = []
         cursor = SimpleNamespace(execute=lambda query, params:self.calls.append(query), fetchone=lambda:(acquired,))
-        registry = SimpleNamespace(_connect=lambda:nullcontext(SimpleNamespace(cursor=lambda:nullcontext(cursor))))
+        registry = SimpleNamespace(_session_connect=lambda:nullcontext(SimpleNamespace(cursor=lambda:nullcontext(cursor))))
         return patch.dict('sys.modules', {'backend.mesh_store':SimpleNamespace(PostgresRegistry=lambda name:registry)})
 
     def test_writer_shared_lock_released_after_failure(self):

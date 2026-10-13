@@ -34,7 +34,7 @@ export default function OntologyInferenceWorkbench(props) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
         <div>
           <div style={{ fontSize: '14px', fontWeight: 800, color: C.textPrimary }}>Ontology inference preview</div>
-          <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>Choose reasoning patterns, preview inferred statements, then decide what belongs in Semantic Bridge or graph materialization.</div>
+          <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>Choose structural rules and inspect their conclusions and supporting declarations. This workbench does not apply or publish them.</div>
         </div>
         <button
           type="button"
@@ -60,6 +60,7 @@ export default function OntologyInferenceWorkbench(props) {
           ))}
           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${C.border}` }}>
             <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>SWRL-style rule editor</div>
+            <p>Validation checks the supported rule syntax only. This expression is not executed by Run preview.</p>
             <textarea
               value={swrlExpression}
               onChange={(e) => setSwrlExpression(e.target.value)}
@@ -77,7 +78,7 @@ export default function OntologyInferenceWorkbench(props) {
             </button>
             {swrlValidation && (
               <div style={{ marginTop: '8px', border: `1px solid ${swrlValidation.valid ? C.green : C.red}`, background: swrlValidation.valid ? 'var(--ui-surface)'  : 'var(--ui-surface)' , color: swrlValidation.valid ? C.green : C.red, borderRadius: '6px', padding: '8px', fontSize: '11px', lineHeight: 1.4 }}>
-                <div style={{ fontWeight: 800 }}>{swrlValidation.valid ? 'Rule supported' : 'Rule needs correction'}</div>
+                <div style={{ fontWeight: 800 }}>{swrlValidation.valid ? 'Supported syntax — not executed' : 'Rule needs correction'}</div>
                 <div style={{ color: C.textPrimary, marginTop: '4px' }}>{swrlValidation.preview}</div>
                 {(swrlValidation.issues || []).slice(0, 4).map((issue, idx) => (
                   <div key={`${issue.code}-${idx}`} style={{ marginTop: '4px' }}>{issue.code}: {issue.message}</div>
@@ -115,7 +116,7 @@ export default function OntologyInferenceWorkbench(props) {
           ))}
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden', background: C.surface }}>
             <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', gap: 0, background: C.primary, color: '#fff', fontSize: '11px', fontWeight: 800 }}>
-              {['Rule', 'Subject', 'Predicate', 'Object', 'Confidence'].map((header) => <div key={header} style={{ padding: '9px 10px' }}>{header}</div>)}
+              {['Rule', 'Subject', 'Predicate', 'Object', 'Support'].map((header) => <div key={header} style={{ padding: '9px 10px' }}>{header}</div>)}
             </div>
             {(inferenceResult?.inferences || [])
               .filter((row) => {
@@ -130,14 +131,17 @@ export default function OntologyInferenceWorkbench(props) {
                   <div style={{ padding: '9px 10px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.subject}>{row.subject_label || row.subject}</div>
                   <div style={{ padding: '9px 10px', color: C.textSec, fontWeight: 700 }}>{row.predicate}</div>
                   <div style={{ padding: '9px 10px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.object}>{row.object_label || row.object}</div>
-                  <div style={{ padding: '9px 10px', fontWeight: 800 }}>{Math.round((Number(row.confidence) || 0) * 100)}%</div>
+                  <div style={{ padding: '9px 10px', fontWeight: 800 }}>{row.support || 'Rule candidate'}</div>
                   {row.evidence && <div style={{ gridColumn: '1 / -1', padding: '0 10px 9px 10px', color: C.textSec, fontSize: '11px' }}>{row.evidence}</div>}
                 </div>
               ))}
             {!inferenceResult && (
               <div style={{ padding: '28px', textAlign: 'center', color: C.textSec, fontSize: '13px' }}>Run preview to inspect inferred ontology statements.</div>
             )}
+            {inferenceResult && !inferenceResult.inferences?.length && <p>No statement candidates were returned. Review domain/range declarations below if that rule is selected.</p>}
           </div>
+          {inferenceResult?.constraints?.length > 0 && <section aria-label="Domain and range declarations"><h4>Domain and range declarations</h4><p>These are property declarations, not inferred instance types.</p><div style={{overflowX:'auto'}}><table><thead><tr><th>Property</th><th>Declaration</th><th>Class or datatype</th></tr></thead><tbody>{inferenceResult.constraints.map((row,index) => <tr key={index}><td title={row.property}>{row.property_label || row.property}</td><td>{row.kind}</td><td>{row.class}</td></tr>)}</tbody></table></div></section>}
+          {inferenceResult?.summary?.truncated && <p role="status">The preview is incomplete at the selected limit. Increase the limit or narrow the ontology.</p>}
         </div>
       </div>
     </div>

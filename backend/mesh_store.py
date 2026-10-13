@@ -24,8 +24,8 @@ class PostgresRegistry:
 
     @contextmanager
     def _connect(self):
-        import psycopg
-        with psycopg.connect(
+        from backend.depo_platform.postgres_pool import connection as pooled_connection
+        with pooled_connection(
             self.database_url,
             autocommit=True,
             connect_timeout=connect_timeout_seconds(),
@@ -34,6 +34,15 @@ class PostgresRegistry:
         ) as connection:
             with connection.cursor() as cursor:
                 select_schema(cursor)
+            yield connection
+
+    @contextmanager
+    def _session_connect(self):
+        """Dedicated sessions for advisory locks; never return locks to a pool."""
+        import psycopg
+        with psycopg.connect(self.database_url, autocommit=True, connect_timeout=connect_timeout_seconds(),
+                application_name='depo-control-plane-lock', options=statement_options()) as connection:
+            with connection.cursor() as cursor: select_schema(cursor)
             yield connection
 
     def all(self) -> dict[str, Any]:
@@ -252,7 +261,7 @@ class PostgresRegistry:
     def advisory_lock(self, key: str):
         """Hold a PostgreSQL session lock for one cross-process operation."""
         lock_name = f"{self.namespace}:{key}"
-        with self._connect() as connection, connection.cursor() as cursor:
+        with self._session_connect() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT pg_try_advisory_lock(hashtextextended(%s, 0))", (lock_name,))
             acquired = bool(cursor.fetchone()[0])
             try:

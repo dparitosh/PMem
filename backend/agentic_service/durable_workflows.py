@@ -8,7 +8,7 @@ from .recovery import execution_payload, fingerprint, prepare_recovery
 
 
 def execution_mode():
-    value = os.getenv('AGENTIC_EXECUTION_MODE', 'process').strip().lower()
+    value = os.getenv('AGENTIC_EXECUTION_MODE', 'worker').strip().lower()
     if value not in {'process', 'worker'}:
         raise ValueError('AGENTIC_EXECUTION_MODE must be process or worker')
     return value

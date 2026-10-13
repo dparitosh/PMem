@@ -1,7 +1,7 @@
 """Versioned proposal policy; permissions remain enforced by the dispatcher."""
 from .agent_usage import PURPOSES
 
-POLICY_VERSION = 'proposal-v2'
+POLICY_VERSION = 'proposal-v3'
 
 
 def role_prompt(identifier):
@@ -22,6 +22,11 @@ def proposal_instructions(agent, mode):
               ' Use only supplied identifiers and inputs. Never invent missing required values.'
               ' If inputs are missing, omit them; server validation must reject an incomplete proposal before execution.'
               ' Respect the selected source and ontology scope. A matching name is not semantic equivalence.'
+              ' Use immutable ontology IDs and exact entity IRIs returned by tools; never substitute a prefix for an ontology ID.'
+              ' Mapping direction is first/source ontology to second/target ontology. Candidates must have compatible declared kinds.'
+              ' Same-label matches are review-only suggestions. Report ambiguity, missing definitions, conflicts and unverified publication explicitly.'
+              ' A retained source, a preview, an approved merge and a verified graph publication are distinct outcomes.'
+              ' Do not describe RDF union as inferred equivalence, identity consolidation or proof of logical consistency.'
               ' Publication, merge application, enrichment writes and job execution require the server approval contract.')
     output = (' Emit exactly one native tool call to a supplied function, with its JSON arguments, as a proposal for human review. Do not emit prose or additional calls; the dispatcher does not execute this proposal automatically.'
               if mode == 'native' else ' Return only a JSON object containing tool_id and inputs for one allowed tool; no task results or prose.')

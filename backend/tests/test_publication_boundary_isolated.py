@@ -52,12 +52,12 @@ class PublicationBoundaryTests(unittest.TestCase):
         self_test = self
         async def thread(fn, *args, **kwargs): return fn(*args, **kwargs)
         scope = definitions("backend/ingestion_service/engineering_workflow.py", {"_run", "_request", "_require_publishable"},
-            {"Any": object, "hashlib": hashlib, "json": json, "run_in_threadpool": thread,
+            {"Any": object, "Path":Path, "hashlib": hashlib, "json": json, "run_in_threadpool": thread,
              "dependency_stage": lambda *args: nullcontext(),
              "service_bearer_headers": lambda profile, **kwargs: {"Authorization": profile},
              "httpx": SimpleNamespace(AsyncClient=lambda **kwargs: Client()),
              "PathName": SimpleNamespace(safe_stem=lambda name: "demo")})
-        workflow = SimpleNamespace(ontology_url="http://ontology", timeout=30, publication_timeout=180,
+        workflow = SimpleNamespace(ontology_url="http://ontology", timeout=30, publication_timeout=600, _isolated_conversion=False,
             converter=SimpleNamespace(convert=lambda **kwargs: {"ontology": {"name": "demo", "prefix": "d", "turtle": ""}}),
             _governance_entities=lambda value: [], _request=scope["_request"], _require_publishable=scope["_require_publishable"])
         result = asyncio.run(scope["_run"](workflow, filename="demo.xsd", content=b"schema", publish=True))

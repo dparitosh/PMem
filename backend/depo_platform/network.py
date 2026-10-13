@@ -41,6 +41,18 @@ def bounded_timeout_seconds(name: str, *, default: float, minimum: float = 1.0, 
     return max(minimum, min(maximum, value))
 
 
+def graph_dispatch_timeout_seconds() -> float:
+    """Allow graph RDF preparation, its write transaction, and transport overhead."""
+    stage = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+    return stage * 2 + 30
+
+
+def ontology_publication_timeout_seconds() -> float:
+    """Include retained-source preparation before graph dispatch, plus overhead."""
+    stage = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+    return stage + graph_dispatch_timeout_seconds() + 30
+
+
 def service_bearer_headers(token_env: str, *, service_name: str, endpoint: str = '') -> dict[str, str]:
     """Return the required credential for a private service-to-service call."""
     token = os.getenv(token_env, "").strip()

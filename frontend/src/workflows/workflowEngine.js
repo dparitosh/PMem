@@ -212,10 +212,10 @@ export const workflowCatalog = [
   },
   {
     id: 'graph.chunk',
-    label: 'Chunk and index graph',
-    title: 'Chunk and index graph',
+    label: 'Export graph chunks',
+    title: 'Export graph chunks',
     category: 'Graph',
-    description: 'Prepare ontology or graph chunks for search, retrieval, and downstream AI workflows.',
+    description: 'Export ontology term chunks and a manifest for downstream indexing. This workflow does not create a retrieval index.',
     inputs: 'Ontology or graph',
     outputs: ['Chunk set', 'Index manifest', 'Coverage report'],
     status: 'available',

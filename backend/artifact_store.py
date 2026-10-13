@@ -88,7 +88,7 @@ class ArtifactStore:
             # Serialize writers and repair that pair instead of returning a missing file.
             if target.exists() and metadata_path.exists():
                 metadata, _ = self.resolve(artifact_id)
-                return metadata
+                return self._usage_reference(directory, metadata, filename, kind, media_type, provenance)
             temporary = directory / f".content.{uuid.uuid4().hex}.tmp"
             metadata_tmp = directory / f".metadata.{uuid.uuid4().hex}.tmp"
             try:
@@ -102,10 +102,26 @@ class ArtifactStore:
                 metadata_tmp.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
                 os.replace(temporary, target)
                 os.replace(metadata_tmp, metadata_path)
-                return metadata
+                return self._usage_reference(directory, metadata, filename, kind, media_type, provenance)
             finally:
                 temporary.unlink(missing_ok=True)
                 metadata_tmp.unlink(missing_ok=True)
+
+    def _usage_reference(self, directory, metadata, filename, kind, media_type, provenance):
+        """Keep usage lineage separate from immutable, deduplicated content metadata."""
+        usage = {'artifact_id':metadata['artifact_id'], 'filename':filename, 'kind':kind,
+                 'media_type':media_type, 'provenance':provenance or {}}
+        identity = hashlib.sha256(json.dumps(usage,sort_keys=True,separators=(',', ':'),default=str).encode('utf-8')).hexdigest()
+        usage['usage_id'] = 'artifact-usage:' + identity
+        target = directory / f'usage-{identity}.json'
+        ensure_execution_allowed()
+        if not target.exists():
+            temporary = directory / f'.usage.{uuid.uuid4().hex}.tmp'
+            try:
+                temporary.write_text(json.dumps(usage,sort_keys=True,default=str),encoding='utf-8')
+                os.replace(temporary,target)
+            finally: temporary.unlink(missing_ok=True)
+        return {**metadata, 'usage_id':usage['usage_id'], 'usage':usage}
 
     def ingest(self, source: Path, *, kind: str = "artifact", media_type: str = "application/octet-stream", provenance: dict[str, Any] | None = None) -> dict[str, Any]:
         if not source.is_file():

@@ -6,7 +6,7 @@ Loads the root environment file and uses the same psycopg driver and URL as
 the DEPO services. Safe to run before the first schema migration.
 #>
 [CmdletBinding()]
-param([string]$EnvFile = '.env.local')
+param([string]$EnvFile = '.env.local', [switch]$NetworkCheck)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $root 'infra\windows\runtime-config.ps1')
@@ -21,6 +21,10 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 }
 Push-Location $root
 try {
+  if ($NetworkCheck) {
+    & $python -m backend.depo_platform.database_setup --network-check
+    if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL TCP check failed. Correct the endpoint or network before retrying login.' }
+  }
   & $python -m backend.depo_platform.database_setup --connection-only
   if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL connectivity failed. Follow the structured error immediately above.' }
 } finally { Pop-Location }

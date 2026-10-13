@@ -7,6 +7,8 @@ operation is introduced.
 """
 
 import json
+import csv
+import io
 import logging
 import re
 import uuid
@@ -1025,11 +1027,11 @@ class SemanticWorkflowService:
             ],
         }
         WorkflowArtifactService.write_json(task_id, "reports", "data_dictionary.json", dictionary, "data_dictionary")
-        csv_lines = ["term,frequency,status,source"] + [
-            f"{json.dumps(t['term'])},{t['frequency']},needs_review,{json.dumps(t.get('source') or meta.get('original_filename', ''))}"
-            for t in terms
-        ]
-        WorkflowArtifactService.write_text(task_id, "reports", "data_dictionary.csv", "\n".join(csv_lines), "data_dictionary_csv")
+        csv_output = io.StringIO(newline='')
+        writer = csv.writer(csv_output)
+        writer.writerow(['term', 'frequency', 'status', 'source'])
+        writer.writerows([t['term'], t['frequency'], 'needs_review', t.get('source') or meta.get('original_filename', '')] for t in terms)
+        WorkflowArtifactService.write_text(task_id, "reports", "data_dictionary.csv", csv_output.getvalue(), "data_dictionary_csv")
         return {"task_id": task_id, "status": "completed", "result": dictionary, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod

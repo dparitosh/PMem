@@ -55,10 +55,12 @@ class EngineeringWorkflow:
 
     def __init__(self, converter: EngineeringSchemaConverter | None = None) -> None:
         self.converter = converter or EngineeringSchemaConverter()
+        self._isolated_conversion = converter is None
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         from backend.depo_platform.network import bounded_timeout_seconds
-        self.publication_timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+        from backend.depo_platform.network import ontology_publication_timeout_seconds
+        self.publication_timeout = ontology_publication_timeout_seconds()
         self.timeout = bounded_timeout_seconds('SERVICE_REQUEST_TIMEOUT_SECONDS', default=30, maximum=300)
 
     @ontology_writer
@@ -85,7 +87,12 @@ class EngineeringWorkflow:
                 from .rdf_conversion import convert_rdf
                 conversion = await run_in_threadpool(convert_rdf, filename=filename, content=content)
             else:
-                conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content,
+                if self._isolated_conversion:
+                    from .conversion_process import convert_engineering
+                    convert = convert_engineering
+                else:
+                    convert = self.converter.convert
+                conversion = await run_in_threadpool(convert, filename=filename, content=content,
                     **({'schema_files': schema_files} if schema_files else {}))
         if not register:
             return {"status": "converted", "conversion": conversion}
