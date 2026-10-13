@@ -10,6 +10,14 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
   const [missing, setMissing] = useState(false);
   const actionRequest = useRef(null);
   const [activeAction, setActiveAction] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  useEffect(() => {
+    setElapsedSeconds(0);
+    if (!busy || activeAction !== 'publish') return;
+    const started = Date.now();
+    const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [busy, activeAction]);
   const notifiedReceipt = useRef('');
   const onPublishedRef = useRef(onPublished);
   onPublishedRef.current = onPublished;
@@ -41,6 +49,11 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
       .catch(failure => { if (!controller.signal.aborted) { setMissing(!!failure.catalogMissing); setError(failure.catalogMissing ? 'Retained source needs catalog preparation before review.' : 'Could not verify ontology publication. Refresh before retrying.'); } });
     return () => controller.abort();
   }, [ontologyId, revision]);
+  useEffect(() => {
+    if (busy || publication?.status !== 'publishing') return;
+    const timer = setTimeout(() => setRevision(value => value + 1), 5000);
+    return () => clearTimeout(timer);
+  }, [busy, publication]);
   const act = async action => {
     if (busy) return; setBusy(true); setActiveAction(action); setError('');
     const controller = new AbortController(); actionRequest.current = controller;
@@ -60,17 +73,20 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
   };
   if (!ontologyId) return null;
   return <section className="depo-panel" aria-label="Ontology publication">
-    <div className="depo-panel__header"><h3>Neo4j publication</h3><span className="depo-badge">{busy && activeAction === 'publish' ? 'Publishing...' : publication?.status === 'published' ? 'Published' : metadata?.lifecycle_status || 'Not verified'}</span></div>
+    <div className="depo-panel__header"><h3>Neo4j publication</h3><span className="depo-badge">{(busy && activeAction === 'publish') || publication?.status === 'publishing' ? 'Publishing...' : publication?.status === 'published' ? 'Published' : publication?.status === 'unverified' ? 'Verification needed' : metadata?.lifecycle_status || 'Not verified'}</span></div>
     <div className="depo-panel__body"><p>Registration retains the source. Review and approval allow a separate publication to Neo4j. The approver is the person authorised to accept this ontology; the agent cannot approve for you.</p>
       {fromWorkflow && <p><a href={`#/ontology?target=${encodeURIComponent(ontologyId)}`} target="_blank" rel="noopener noreferrer">View in Ontology Junction</a> (opens in a new tab). Review the ontology there, then return here to approve and publish.</p>}
       <label className="depo-field">Approver<input className="depo-input" value={actor} onChange={event => setActor(event.target.value)} placeholder="Your approval identity" /></label>
       {busy && <p role="status" aria-live="polite">{activeAction === 'publish' ? 'Publishing to Neo4j. Waiting for a verified graph receipt; keep this panel open. Resource counts appear after completion.' : 'Updating ontology lifecycle...'}</p>}
+      {busy && activeAction === 'publish' && <p>Elapsed: {elapsedSeconds}s.{elapsedSeconds >= 60 && ' Large ontologies require RDF preparation and a graph transaction. If this continues, inspect ontology.err.log and graph.err.log for the current publication phase.'}</p>}
+      {publication?.status === 'unverified' && <p role="alert">Publication outcome is uncertain. Restore service connectivity and choose Verify publication. Publish remains disabled until a current receipt or an idle publisher is verified.</p>}
+      {!busy && publication?.status === 'publishing' && <p role="status">A server publication is still active. Status refreshes automatically; wait before submitting another request.</p>}
       {error && <p role="alert">{error}</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
         {missing && <button disabled={busy} onClick={() => act('prepare')}>Prepare retained source for review</button>}
         {metadata?.lifecycle_status === 'draft' && <button disabled={busy || !actor.trim()} onClick={() => act('in_review')}>Submit for review</button>}
         {metadata?.lifecycle_status === 'in_review' && <button disabled={busy || !actor.trim()} onClick={() => act('approved')}>Approve ontology</button>}
-        {metadata?.lifecycle_status === 'approved' && publication?.status !== 'published' && <button disabled={busy || !actor.trim()} onClick={() => act('publish')}>Publish to Neo4j</button>}
+        {metadata?.lifecycle_status === 'approved' && publication?.status !== 'published' && <button disabled={busy || !actor.trim() || !['not_published', 'not_verified'].includes(publication?.status)} onClick={() => act('publish')}>Publish to Neo4j</button>}
         <button disabled={busy} onClick={() => setRevision(value => value + 1)}>Verify publication</button>
       </div>
       {publication && <p role="status">Graph status: {busy && activeAction === 'publish' ? 'publishing (request in progress)' : publication.status}. {publication.receipt ? `${publication.receipt.resources} resources; ${publication.receipt.relationships} relationships.` : 'No verified graph receipt is available.'}</p>}

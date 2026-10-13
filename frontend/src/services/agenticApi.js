@@ -57,7 +57,7 @@ export const agenticAPI = {
   orchestrateOntology: (payload = {}, options = {}) => agenticClient.post(
     agenticUrl(API.agentic.orchestrateOntology),
     payload,
-    options,
+    { timeout: Math.max(config.chatStreamTimeout || 1200000, 1200000), ...options },
   ),
   observabilitySummary: (options = {}) => agenticClient.get(agenticUrl(API.agentic.observabilitySummary), options),
   observabilityRuns: (limit = 20, options = {}) => agenticClient.get(

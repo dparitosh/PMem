@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 from backend.depo_platform.ontology_maintenance import ontology_writer
+from backend.depo_platform.rdf_preparation import prepare_rdf
+from backend.depo_platform.graph_publication_lock import graph_publication
 
 import os
+import logging
+import time
+import uuid
 import json
 from datetime import datetime, timezone
 import re
@@ -48,6 +53,7 @@ class Neo4jPublisher:
             return {"status": "unavailable", "database": self.database, "detail": f"{type(exc).__name__}: {exc}"}
 
     @ontology_writer
+    @graph_publication
     def publish_turtle(self, *, content: bytes, ontology_id: str, prefix: str, publication_id: str | None = None) -> dict[str, Any]:
         """Upsert an ontology's RDF resources and hierarchy into Neo4j.
 
@@ -57,9 +63,11 @@ class Neo4jPublisher:
         """
         if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
-        rdf_graph = Graph()
-        rdf_graph.parse(data=content, format="turtle")
-        rdf_graph = to_canonical_graph(rdf_graph)
+        logger = logging.getLogger(__name__)
+        started = time.monotonic()
+        logger.warning('Ontology publication phase=parse ontology_id=%s bytes=%s', ontology_id, len(content))
+        rdf_graph = prepare_rdf(content, 'turtle', canonical=True)
+        logger.warning('Ontology publication phase=prepare ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
         labels = {str(subject): str(label) for subject, label in rdf_graph.subject_objects(RDFS.label)}
         class_iris = {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.Class)}
         property_iris = {
@@ -108,13 +116,15 @@ class Neo4jPublisher:
             relationships[relation_type].append({"source": str(subject), "target": str(obj), "predicate": str(predicate)})
 
         now = datetime.now(timezone.utc).isoformat()
+        projection_revision = uuid.uuid4().hex
         publication_id = str(publication_id or "").strip() or None
         resource_query = """
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
         SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind,
             node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
-            node.source = row.source, node.description = row.description
+            node.source = row.source, node.description = row.description,
+            node.publication_revision = $projection_revision
         FOREACH (_ IN CASE WHEN row.requirement THEN [1] ELSE [] END | SET node:Requirement)
         FOREACH (_ IN CASE WHEN row.requirement THEN [] ELSE [1] END | REMOVE node:Requirement)
         """
@@ -136,9 +146,11 @@ class Neo4jPublisher:
                    ontology_id=ontology_id, updated_at=now).consume()
             tx.run("MATCH (a:OntologyResource {ontology_id: $ontology_id})-[edge]->(b:OntologyResource {ontology_id: $ontology_id}) WHERE edge.ontology_id = $ontology_id AND type(edge) IN $types DELETE edge",
                    ontology_id=ontology_id, types=list(relationships)).consume()
-            tx.run("MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id}) WHERE node.iri IN $iris SET node:OntologyResource REMOVE node:RetainedOntologyIdentity",
+            tx.run("UNWIND $iris AS iri MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id, iri: iri}) SET node:OntologyResource REMOVE node:RetainedOntologyIdentity",
                    ontology_id=ontology_id, iris=list(resource_iris)).consume()
-            tx.run(resource_query, rows=resources, ontology_id=ontology_id, prefix=prefix, updated_at=now).consume()
+            for offset in range(0, len(resources), 1000):
+                tx.run(resource_query, rows=resources[offset:offset + 1000], ontology_id=ontology_id,
+                       prefix=prefix, updated_at=now, projection_revision=projection_revision).consume()
             for relation_type, rows in relationships.items():
                 if not rows:
                     continue
@@ -148,11 +160,12 @@ class Neo4jPublisher:
                 MATCH (target:OntologyResource {{ontology_id: $ontology_id, iri: row.target}})
                 {relation_queries[relation_type]}
                 """
-                tx.run(query, rows=rows, ontology_id=ontology_id).consume()
+                for offset in range(0, len(rows), 1000):
+                    tx.run(query, rows=rows[offset:offset + 1000], ontology_id=ontology_id).consume()
             # Keep externally referenced identities, but remove their projection
             # label so stale records cannot inflate RDF metrics or search.
-            tx.run("MATCH (node:OntologyResource {ontology_id: $ontology_id}) WHERE NOT node.iri IN $iris REMOVE node:OntologyResource SET node:RetainedOntologyIdentity",
-                   ontology_id=ontology_id, iris=list(resource_iris)).consume()
+            tx.run("MATCH (node:OntologyResource {ontology_id: $ontology_id}) WHERE node.publication_revision IS NULL OR node.publication_revision <> $projection_revision REMOVE node:OntologyResource SET node:RetainedOntologyIdentity",
+                   ontology_id=ontology_id, projection_revision=projection_revision).consume()
             tx.run("MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id}) WHERE NOT (node)--() DELETE node",
                    ontology_id=ontology_id).consume()
             tx.run("MATCH (node:OntologyResource {ontology_id: $ontology_id}) REMOVE node:RetainedOntologyIdentity",
@@ -174,9 +187,12 @@ class Neo4jPublisher:
                     published_at=now,
                 ).consume()
 
+        logger.warning('Ontology publication phase=neo4j_write ontology_id=%s resources=%s relationships=%s elapsed_seconds=%.3f',
+                       ontology_id, len(resources), sum(len(rows) for rows in relationships.values()), time.monotonic() - started)
         with self._driver() as driver:
             with driver.session(database=self.database) as session:
                 session.execute_write(publish_transaction)
+        logger.warning('Ontology publication phase=completed ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
         return {
             "status": "success", "ontology_id": ontology_id, "resources": len(resources),
             "relationships": sum(len(rows) for rows in relationships.values()),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { apiClient } from '../services/apiClient';
 import OntologyPublicationPanel from './OntologyPublicationPanel';
@@ -68,4 +68,46 @@ test('workflow links to the selected ontology and records the correct review ori
   fireEvent.click(submit);
   expect(post).toHaveBeenCalledWith(expect.stringContaining('/transition'), expect.objectContaining({reason:'Reviewed from import workflow'}), expect.any(Object));
   await waitFor(() => expect(submit).toBeEnabled());
+});
+
+
+test('long publication displays elapsed time and diagnostic guidance', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({data:url.endsWith('/publication') ? {status:'not_published'} : {lifecycle_status:'approved'}}));
+  vi.spyOn(apiClient, 'post').mockImplementation(() => new Promise(() => {}));
+  const view = render(<OntologyPublicationPanel ontologyId="elapsed-demo" />);
+  const button = await screen.findByText('Publish to Neo4j');
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(screen.getByPlaceholderText('Your approval identity'), {target:{value:'reviewer'}});
+    fireEvent.click(button);
+    act(() => vi.advanceTimersByTime(61000));
+    expect(screen.getByText(/Elapsed: 61s/)).toBeInTheDocument();
+    expect(screen.getByText(/inspect ontology.err.log and graph.err.log/)).toBeInTheDocument();
+  } finally { view.unmount(); vi.useRealTimers(); }
+});
+
+
+test('uncertain publication disables writes until verification proves the publisher is idle', async () => {
+  let status = 'unverified';
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({data:url.endsWith('/publication') ? {status} : {lifecycle_status:'approved'}}));
+  const post = vi.spyOn(apiClient, 'post');
+  render(<OntologyPublicationPanel ontologyId="recovery-demo" />);
+  const button = await screen.findByText('Publish to Neo4j');
+  fireEvent.change(screen.getByPlaceholderText('Your approval identity'), {target:{value:'reviewer'}});
+  expect(button).toBeDisabled();
+  expect(screen.getByText(/Publication outcome is uncertain/)).toBeInTheDocument();
+  status = 'not_published';
+  fireEvent.click(screen.getByText('Verify publication'));
+  await waitFor(() => expect(screen.getByText('Publish to Neo4j')).toBeEnabled());
+  expect(post).not.toHaveBeenCalled();
+});
+
+
+test('reopened panel header shows server publishing state', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({data:url.endsWith('/publication') ? {status:'publishing'} : {lifecycle_status:'approved'}}));
+  const view = render(<OntologyPublicationPanel ontologyId="active-demo" />);
+  await screen.findByText('Publishing...');
+  expect(screen.getByText(/A server publication is still active/)).toBeInTheDocument();
+  expect(screen.getByText('Publish to Neo4j')).toBeDisabled();
+  view.unmount();
 });

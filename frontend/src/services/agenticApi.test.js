@@ -41,3 +41,13 @@ test('workflow execution includes per-step inputs and approval', async () => {
     { workflow_id: 'review', inputs: {}, ...execution }, {});
   post.mockRestore();
 });
+
+
+test('ontology review waits for slow LLM while preserving caller cancellation', async () => {
+  const post = jest.spyOn(agenticClient, 'post').mockResolvedValue({data:{}});
+  try {
+    await agenticAPI.orchestrateOntology({workflow_id:'qif_ap242_review'}, {signal:'signal'});
+    expect(post.mock.calls[0][2].timeout).toBeGreaterThanOrEqual(1200000);
+    expect(post.mock.calls[0][2].signal).toBe('signal');
+  } finally {post.mockRestore();}
+});

@@ -70,7 +70,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Migration or schema verification failed.' }
 ```
 
 This applies pending migrations and checks 10 tables plus 1 view, all 53 column
-names/types, 22 critical constraints, 8 operational indexes, and recorded
+names/types, 22 critical constraints, 9 operational indexes, and recorded
 migration versions. It requires the DBA-provisioned schema; it does not create
 the PostgreSQL server, login, database or schema, and does not erase data. Start and ReleasePreflight
 also run this migration/verification step. A check failure stops startup; do not
@@ -100,3 +100,7 @@ requires the agreed backup recovery procedure; there is no automatic down migrat
 ## Current environment configuration reference
 
 For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../../INSTALLATION.md) defines the complete deployment sequence.
+
+Migration 011 adds the source identity lookup index used by ontology registration
+retries. The schema verifier checks its table, column order, expression and valid/
+ready state. Existing migration files remain immutable.

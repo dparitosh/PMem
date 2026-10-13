@@ -59,6 +59,16 @@ def _publish_transaction(tx, command):
     counts = tx.run('''UNWIND $rows AS row
         MATCH (n {import_row_key:row.import_row_key, import_id:row.import_id})
         MATCH (target) WHERE elementId(target)=row.ontology_class_element_id
+        AND NOT target:RetainedOntologyIdentity
+        AND ((row.target_ontology_type='Class' AND target:OntologyClass)
+          OR (row.target_ontology_type='ObjectProperty' AND target:ObjectProperty)
+          OR (row.target_ontology_type='DatatypeProperty' AND target:DatatypeProperty)
+          OR (row.target_ontology_type='AnnotationProperty' AND target:AnnotationProperty)
+          OR (target:OntologyResource AND EXISTS {
+            MATCH (target)-[rdfType:SEMANTIC_RELATION]->(type:OntologyResource)
+            WHERE rdfType.predicate='http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+              AND type.iri='http://www.w3.org/2002/07/owl#' + row.target_ontology_type
+          }))
         AND (coalesce(row.target_ontology_iri,'')='' OR coalesce(target.iri,target.uri,target.resource_iri,'')=row.target_ontology_iri)
         WITH row, collect(DISTINCT n) AS sources, collect(DISTINCT target) AS targets
         RETURN row.candidate_id AS candidate_id, size(sources) AS sources, size(targets) AS targets''', rows=command['rows']).data()
@@ -67,6 +77,16 @@ def _publish_transaction(tx, command):
     written = tx.run('''UNWIND $rows AS row
         MATCH (n {import_row_key:row.import_row_key, import_id:row.import_id})
         MATCH (target) WHERE elementId(target)=row.ontology_class_element_id
+        AND NOT target:RetainedOntologyIdentity
+        AND ((row.target_ontology_type='Class' AND target:OntologyClass)
+          OR (row.target_ontology_type='ObjectProperty' AND target:ObjectProperty)
+          OR (row.target_ontology_type='DatatypeProperty' AND target:DatatypeProperty)
+          OR (row.target_ontology_type='AnnotationProperty' AND target:AnnotationProperty)
+          OR (target:OntologyResource AND EXISTS {
+            MATCH (target)-[rdfType:SEMANTIC_RELATION]->(type:OntologyResource)
+            WHERE rdfType.predicate='http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+              AND type.iri='http://www.w3.org/2002/07/owl#' + row.target_ontology_type
+          }))
         AND (coalesce(row.target_ontology_iri,'')='' OR coalesce(target.iri,target.uri,target.resource_iri,'')=row.target_ontology_iri)
         MERGE (n)-[bridge:SEMANTICALLY_MAPPED_TO]->(target)
         SET bridge.mapping=row.mapping, bridge.ontology_term=row.ontology_term,

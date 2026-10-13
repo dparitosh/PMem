@@ -59,10 +59,18 @@ async def publish_ontology(
 @router.get("/ontologies/{ontology_id}/publications/{publication_id}", dependencies=[Depends(graph_read_identity)], summary="Read a durable graph publication receipt")
 def publication_receipt(ontology_id: str, publication_id: str) -> dict:
     try:
-        receipt = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
-        if receipt is None:
-            raise HTTPException(status_code=404, detail="Publication receipt was not found")
-        return receipt
+        from backend.depo_platform.graph_publication_lock import publication_lock
+        from starlette.responses import JSONResponse
+        # An idle receipt read and a writer use the same cross-process lock.
+        # A 404 is retry evidence only when no publisher owns that lock.
+        with publication_lock(ontology_id) as idle:
+            if not idle:
+                return JSONResponse(status_code=409, content={'detail': 'Publication is still active',
+                    'status': 'publishing', 'ontology_id': ontology_id, 'publication_id': publication_id})
+            receipt = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
+            if receipt is None:
+                return JSONResponse(status_code=404, content={'detail': 'Publication receipt was not found', 'publication_idle': True})
+            return receipt
     except HTTPException:
         raise
     except Exception as exc:

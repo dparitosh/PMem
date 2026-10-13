@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { IxButton } from '@siemens/ix-react';
 import { agenticClient } from '../services/agenticApi';
-import { buildSemanticServiceUrl } from '../config';
+import { config, buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 
 export default function AgentControlPanel() {
@@ -165,7 +165,7 @@ export default function AgentControlPanel() {
         const supervisor = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
         if (!supervisor) throw new Error('Connect agent supervision access before probing Ollama capabilities.');
         const response = await agenticClient.post(buildSemanticServiceUrl('agentic', '/api/v1/llm/probe'),
-          {approved_by:'agent-supervisor',approval_token:supervisor}, {signal:controller.signal,timeout:370000,headers:{Authorization:`Bearer ${supervisor}`}});
+          {approved_by:'agent-supervisor',approval_token:supervisor}, {signal:controller.signal,timeout:Math.max(config.chatStreamTimeout || 1200000, 1200000),headers:{Authorization:`Bearer ${supervisor}`}});
         if (!controller.signal.aborted) setLlmCapabilities(response.data);
       } catch (failure) { if (!controller.signal.aborted) setLlmError(typeof failure.response?.data?.detail === 'string' ? failure.response.data.detail : failure.message); }
       finally { if (!controller.signal.aborted) setLlmBusy(false); }

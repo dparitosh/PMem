@@ -6,6 +6,8 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
   'infra/windows/native-install-command.ps1',
+  'infra/windows/update-depo-windows.ps1', 'infra/windows/update-depo-runtime-timeouts.ps1',
+  'infra/postgres/migrations/011_registry_source_lookup_index.sql',
   'backend/depo_platform/release_code_check.py',
   'INSTALLATION.md', 'configure-depo.ps1', 'install-depo.ps1', 'diagnose-depo.ps1',
   'manage-depo.ps1', 'certify-depo-release.ps1', 'backend/requirements-lock.txt',

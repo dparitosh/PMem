@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from backend.depo_platform.ontology_maintenance import ontology_writer
 
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 import json
 import os
 import re
@@ -68,7 +68,25 @@ def _safe_token(value: str, *, field: str) -> str:
 
 
 class OntologyCatalog:
-    _transition_lock = threading.RLock()
+    _lock_guard = threading.Lock()
+    _operation_locks = {}
+
+    @classmethod
+    @contextmanager
+    def _operation_lock(cls, key):
+        with cls._lock_guard:
+            lock, users = cls._operation_locks.get(key, (threading.RLock(), 0))
+            cls._operation_locks[key] = (lock, users + 1)
+        try:
+            with lock:
+                yield
+        finally:
+            with cls._lock_guard:
+                _, users = cls._operation_locks[key]
+                if users == 1:
+                    del cls._operation_locks[key]
+                else:
+                    cls._operation_locks[key] = (lock, users - 1)
     def __init__(self, root: Path | None = None, registry: Any | None = None) -> None:
         configured = os.getenv("ONTOLOGY_SERVICE_STORAGE")
         self.root = root or (Path(configured) if configured else Path(__file__).resolve().parents[2] / "data" / "ontology_service")
@@ -173,7 +191,7 @@ class OntologyCatalog:
         # Governed operation identities opt into artifact retry deduplication.
         if not re.fullmatch(r"(?:(?:engineering|source-profile)-workflow|governed-merge):[0-9a-f]{64}", source):
             return self._register(**kwargs)
-        with self._transition_lock:
+        with self._operation_lock(f'register:{source}'):
             lock = self.registry.advisory_lock(f"register:{source}") if self._postgres_enabled else nullcontext(True)
             with lock as acquired:
                 if not acquired:
@@ -350,7 +368,7 @@ class OntologyCatalog:
     def with_publication_lock(self, ontology_id: str, operation):
         """Keep approval transitions serialized with a complete publication."""
         _safe_token(ontology_id, field='ontology_id')
-        with self._transition_lock:
+        with self._operation_lock(f'lifecycle:{ontology_id}'):
             lock = self.registry.advisory_lock(f'lifecycle:{ontology_id}') if self._postgres_enabled else nullcontext(True)
             with lock as acquired:
                 if not acquired:
@@ -361,7 +379,7 @@ class OntologyCatalog:
     def transition(self, *, ontology_id: str, target: str, actor: str, reason: str = "") -> dict[str, Any]:
         """Move an ontology through the minimal review lifecycle with evidence."""
         _safe_token(ontology_id, field="ontology_id")
-        with self._transition_lock:
+        with self._operation_lock(f'lifecycle:{ontology_id}'):
             if self._postgres_enabled:
                 with self.registry.advisory_lock(f"lifecycle:{ontology_id}") as acquired:
                     if not acquired:
@@ -409,7 +427,7 @@ class OntologyCatalog:
         results: list[dict[str, Any]] = []
         for ontology_id in ontology_ids:
             safe_id = _safe_token(ontology_id, field="ontology_id")
-            with self._transition_lock:
+            with self._operation_lock(f'lifecycle:{safe_id}'):
                 lock = self.registry.advisory_lock(f"analytics-backfill:{safe_id}") if self._postgres_enabled else _null_lock()
                 with lock as acquired:
                     if not acquired:

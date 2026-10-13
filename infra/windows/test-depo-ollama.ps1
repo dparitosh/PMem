@@ -12,7 +12,7 @@ without discovery. Capability checks are separate and never execute tools.
 [CmdletBinding()]
 param(
   [string]$EnvFile = '.env.local',
-  [ValidateRange(1,120)][int]$TimeoutSeconds = 30,
+  [ValidateRange(1,900)][int]$TimeoutSeconds = 300,
   [switch]$ProbeGeneration,
   [switch]$ProbeChat,
   [switch]$ProbeEmbeddings,
@@ -30,6 +30,13 @@ if (-not (Test-Path -LiteralPath $readerPath -PathType Leaf)) {
 }
 . $readerPath
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+if (-not $PSBoundParameters.ContainsKey('TimeoutSeconds') -and $values['LLM_REQUEST_TIMEOUT_SECONDS']) {
+  $configuredTimeout = 0
+  if (-not [int]::TryParse([string]$values['LLM_REQUEST_TIMEOUT_SECONDS'], [ref]$configuredTimeout) -or $configuredTimeout -lt 1 -or $configuredTimeout -gt 900) {
+    throw 'LLM_REQUEST_TIMEOUT_SECONDS must be an integer between 1 and 900.'
+  }
+  $TimeoutSeconds = $configuredTimeout
+}
 
 function Resolve-OllamaRoot([string]$Value) {
   $uri = $null

@@ -1524,8 +1524,8 @@ AGENT_MEMORY_QUERY_TIMEOUT=5
 AGENT_MEMORY_RETENTION_DAYS=30
 AGENT_SESSION_IDLE_SECONDS=1800
 AGENT_SESSION_MAX_SECONDS=86400
-AGENTIC_RUN_TIMEOUT_SECONDS=300
-LLM_REQUEST_TIMEOUT_SECONDS=30
+AGENTIC_RUN_TIMEOUT_SECONDS=900
+LLM_REQUEST_TIMEOUT_SECONDS=300
 AGENT_PROMPT_VERSION=1
 AGENT_FAILURE_RATE_ALERT_THRESHOLD=0.2
 AGENT_STUCK_RUN_SECONDS=900
@@ -3107,7 +3107,7 @@ Ollama must already be installed and its model available on the application VM. 
 USE_LLM=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 LLM_MODEL_NAME=llama3:latest
-LLM_REQUEST_TIMEOUT_SECONDS=30
+LLM_REQUEST_TIMEOUT_SECONDS=300
 ONTOLOGY_AGENT_LLM_ENABLED=true
 COMPANION_LLM_ENABLED=true
 ```
@@ -3404,7 +3404,7 @@ OLLAMA_API_KEY=<issued-subscription-key>
 OLLAMA_API_KEY_HEADER=Ocp-Apim-Subscription-Key
 LLM_MODEL_NAME=llama3.1:8b
 EMBED_MODEL_NAME=nomic-embed-text:latest
-LLM_REQUEST_TIMEOUT_SECONDS=60
+LLM_REQUEST_TIMEOUT_SECONDS=300
 COMPANION_LLM_ENABLED=true
 ONTOLOGY_AGENT_LLM_ENABLED=true
 ```
@@ -4216,3 +4216,104 @@ are outside this lock; final graph read-back reports remaining records as failur
 
 Run all starts the queued upload rows. It does not select new companion files or
 approve ontology publication.
+
+
+### Diagnose a long ontology publication
+
+While the publication is active, avoid repeating Publish. The panel displays
+elapsed seconds. On the application VM, inspect these logs:
+
+```powershell
+Set-Location E:\App\PMem
+Get-Content .\logs\windows-services\ontology.err.log -Tail 80
+Get-Content .\logs\windows-services\graph.err.log -Tail 100
+```
+
+Publication timing messages identify `retained_rdf_prepare`, `retained_rdf_ready`,
+`parse`, `canonicalize`, `prepare`, `neo4j_write`, and `completed`. Compare elapsed
+seconds for the same ontology ID. Canonicalization preserves blank-node retry
+identity and can be expensive on complex RDF. `GRAPH_PUBLICATION_TIMEOUT_SECONDS`
+bounds each RDF preparation subprocess, the downstream HTTP request, and the
+Neo4j transaction. An RDF preparation worker is terminated if its deadline expires. Resource and relationship batches
+are sent inside one transaction, so a successful receipt confirms the full write.
+If a request fails or its outcome is uncertain, verify the receipt before retrying.
+
+Receipt checks retain Publishing while a bounded attempt is active. Expired or
+uncertain dispatched attempts require receipt reconciliation before another write.
+Preparation failures before graph dispatch can be retried after correcting the
+artifact or deadline. Lifecycle locks are scoped to each ontology, so one slow
+publication does not hold a process-wide lock for unrelated ontologies.
+
+
+### Recover from a failed or uncertain publication
+
+1. In the ontology row, open its publication panel and choose Verify publication.
+2. Publishing means the server attempt is active; status refreshes automatically.
+   Wait rather than sending another publication.
+3. Unverified disables Publish. Restore PostgreSQL/Neo4j connectivity or API
+   credentials, then verify again. Do not clear the receipt record manually.
+4. A graph receipt read that confirms no active graph publisher and no receipt
+   releases a failed attempt for retry. Active RDF preparation remains protected.
+5. Not published allows an approved ontology to be retried with its original
+   publication identity. Published shows the current verified receipt and counts.
+6. A preparation failure before graph dispatch can be corrected and retried.
+   A stale instance-link preview must be regenerated and approved again.
+
+Deploy matching ontology and graph services together: graph receipt responses now
+identify active publishers and explicitly confirm idle missing receipts. Agent
+merge publication tools use a longer operation-specific HTTP wait; the original
+workflow execution deadline still applies. This release adds PostgreSQL migration 011 and two Neo4j performance indexes; apply them during redeployment.
+
+
+### Redeploy an existing Windows installation with slow Ollama
+
+Place the complete matching release into E:\App\PMem, preserving root .env.local,
+frontend/.env.local and durable data. With the existing backend and frontend
+dependencies installed, copy and paste this command in PowerShell:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\update-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -LlmTimeoutSeconds 300
+```
+
+The updater raises Ollama's request timeout to at least 300 seconds, the agent
+tool timeout to at least Ollama plus 30 seconds, and the agent run budget to at
+least 900 seconds. Higher valid existing budgets are preserved. Only those three
+settings are updated; API keys and connection settings are preserved. The backend
+accepts LLM_REQUEST_TIMEOUT_SECONDS from 1 through 900. Ollama diagnostics use the
+same environment value unless -TimeoutSeconds is explicitly supplied.
+
+The updater stops the frontend and backend services, delegates PostgreSQL migration
+011 and Neo4j index provisioning/validation to the existing installer, builds the
+frontend, and restarts it. It does not stop an external PostgreSQL VM. Dependencies
+are reused by default; add -InstallDependencies if the new release changes them.
+A failed stage stops the update and reports the error; correct it and rerun the
+same command. Credential mismatches require restoring the current keys or deliberate
+rotation; redeployment does not automatically rotate keys.
+
+For a database-only upgrade, without rebuilding or starting services:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile 'E:\App\PMem\.env.local'
+.\infra\windows\test-depo-neo4j.ps1 -EnvFile 'E:\App\PMem\.env.local' -Bootstrap
+.\infra\windows\test-depo-neo4j.ps1 -EnvFile 'E:\App\PMem\.env.local' -Production
+```
+
+PostgreSQL verification expects 11 migrations and 9 operational indexes. Neo4j
+verification requires both new indexes ONLINE with their expected definitions.
+Provisioning needs schema privileges; normal runtime checks are read-only.
+For Ollama generation testing after redeployment, use:
+
+```powershell
+.\infra\windows\test-depo-ollama.ps1 -EnvFile 'E:\App\PMem\.env.local' -ProbeChat
+```
+
+An external gateway's own request timeout must also allow the configured Ollama
+budget; this application cannot change the gateway policy.
+
+Slow-Ollama frontend waits have also been aligned: ontology-agent review and model
+probe requests allow up to 20 minutes by default; the QIF agent review no longer
+uses its former hardcoded 120-second limit. Chat streaming defaults to 20 minutes.
+These are browser wait limits, not permission to exceed backend workflow deadlines.
+Rebuild the frontend through the updater to apply them.

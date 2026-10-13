@@ -46,8 +46,12 @@ class PostgresRegistry:
         if not 1 <= limit <= 100:
             raise ValueError('Invalid registry lookup limit')
         with self._connect() as connection, connection.cursor() as cursor:
-            cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND value->>%s=%s ORDER BY key LIMIT %s',
-                           (self.namespace, field, value, limit))
+            if field == 'source':
+                cursor.execute("SELECT value FROM depo_registry WHERE namespace=%s AND value->>'source'=%s ORDER BY key LIMIT %s",
+                               (self.namespace, value, limit))
+            else:
+                cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND value->>%s=%s ORDER BY key LIMIT %s',
+                               (self.namespace, field, value, limit))
             return [row[0] for row in cursor.fetchall()]
 
     def product_versions(self, product_id):

@@ -12,9 +12,8 @@ def settings():
         raise ValueError('The configured Ollama model name must not be blank')
     from backend.core.ollama_auth import ollama_base_url
     base = ollama_base_url()
-    timeout = float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30'))
-    if not 1 <= timeout <= 120:
-        raise ValueError('LLM_REQUEST_TIMEOUT_SECONDS must be between 1 and 120')
+    from backend.core.ollama_auth import ollama_timeout
+    timeout = ollama_timeout()
     from backend.core.ollama_auth import ollama_headers
     headers = ollama_headers(base)
     return provider, model, base, timeout, headers

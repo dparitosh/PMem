@@ -7,6 +7,22 @@ from pathlib import Path
 
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "neo4j-publication-index.cypher"
 REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id"}
+REQUIRED_INDEXES = {
+    'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
+    'idx_depo_ontologyresource_scope': ('OntologyResource', ['ontology_id']),
+}
+
+
+def verify_indexes(records):
+    indexed = {row['name']: row for row in records}
+    invalid = []
+    for name, (label, properties) in REQUIRED_INDEXES.items():
+        row = indexed.get(name)
+        if not row or row.get('state') != 'ONLINE' or row.get('labelsOrTypes') != [label] or row.get('properties') != properties:
+            invalid.append(name)
+    if invalid:
+        raise RuntimeError('Missing or unavailable Neo4j performance indexes: ' + ', '.join(sorted(invalid)))
+    return sorted(indexed)
 
 
 def failure_details(exc: Exception) -> dict:
@@ -20,6 +36,8 @@ def failure_details(exc: Exception) -> dict:
             if set(missing) <= REQUIRED_CONSTRAINTS:
                 result['missing_constraints'] = missing
                 result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap with schema creation privileges, then rerun -Production.'
+        elif reason.startswith('Missing or unavailable Neo4j performance indexes: '):
+            result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap to apply the matching release indexes, then rerun -Production.'
         elif reason in {'NEO4J_AUTH_MODE must be token or none',
                         'Neo4j credentials are required when NEO4J_AUTH_MODE=token', 'NEO4J_URI is required'}:
             result['reason'] = reason
@@ -67,11 +85,15 @@ def provision(*, check_only: bool = False) -> dict:
             "SHOW CONSTRAINTS YIELD name WHERE name IN $names RETURN name ORDER BY name",
             names=sorted(REQUIRED_CONSTRAINTS), database_=database, routing_="r",
         )
+        index_records, _, _ = driver.execute_query(
+            'SHOW INDEXES YIELD name, state, labelsOrTypes, properties WHERE name IN $names RETURN name, state, labelsOrTypes, properties',
+            names=sorted(REQUIRED_INDEXES), database_=database, routing_='r')
+    verified_indexes = verify_indexes([dict(row) for row in index_records])
     found = {record["name"] for record in records}
     missing = REQUIRED_CONSTRAINTS - found
     if missing:
         raise RuntimeError("Missing Neo4j publication constraints: " + ", ".join(sorted(missing)))
-    return {"status": "ok", "database": database, "constraints": sorted(found)}
+    return {"status": "ok", "database": database, "constraints": sorted(found), "indexes": verified_indexes}
 
 
 if __name__ == "__main__":

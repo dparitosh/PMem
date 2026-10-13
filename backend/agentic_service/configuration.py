@@ -21,7 +21,7 @@ def configuration_status(*, check_workers=True):
         ('OLLAMA_FAILURE_THRESHOLD', '3', 1, 20),
         ('OLLAMA_CIRCUIT_COOLDOWN_SECONDS', '30', 1, 300),
         ('DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS', '30', 1, 300),
-        ('LLM_REQUEST_TIMEOUT_SECONDS', '30', 1, 120),
+        ('LLM_REQUEST_TIMEOUT_SECONDS', '300', 1, 900),
         ('AGENT_MEMORY_RETENTION_DAYS', '30', 1, 3650),
     ):
         try:

@@ -42,6 +42,7 @@ EXPECTED_CONSTRAINTS = {
 EXPECTED_INDEXES = {
     'idx_depo_chat_messages', 'idx_depo_rate_limits', 'idx_metadata_pending',
     'idx_depo_pipeline_runnable', 'idx_depo_registry_recent',
+    'idx_depo_registry_source_lookup',
     'idx_depo_product_published', 'idx_depo_job_started', 'idx_depo_catalog_updated',
 }
 EXPECTED_CONSTRAINTS.update({'depo_api_credentials_actor_nonempty', 'depo_api_credentials_digest_lengths', 'depo_api_credential_events_action_valid'})
@@ -131,6 +132,22 @@ def verify_migration_privileges(connection) -> None:
             )
 
 
+def verify_source_lookup_index(cursor, schema):
+    cursor.execute("""SELECT i.indisvalid, i.indisready, table_rel.relname,
+        pg_get_indexdef(i.indexrelid, 1, true), pg_get_indexdef(i.indexrelid, 2, true),
+        pg_get_indexdef(i.indexrelid, 3, true)
+        FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid
+        JOIN pg_namespace ns ON ns.oid=idx.relnamespace
+        JOIN pg_class table_rel ON table_rel.oid=i.indrelid
+        WHERE ns.nspname=%s AND idx.relname=%s""", (schema, 'idx_depo_registry_source_lookup'))
+    row = cursor.fetchone()
+    if not row or not row[0] or not row[1] or row[2] != 'depo_registry':
+        raise RuntimeError('Registry source lookup index is missing or invalid; run schema migration/verification')
+    expression = re.sub(r"[\s()]", '', row[4] or '')
+    if row[3] != 'namespace' or row[5] != 'key' or expression not in {"value->>'source'::text", "value->>'source'"}:
+        raise RuntimeError('Registry source lookup index has an incompatible definition')
+
+
 def verify_schema(connection):
     schema = configured_schema()
     with connection.cursor() as cursor:
@@ -154,6 +171,7 @@ def verify_schema(connection):
         missing_indexes = sorted(EXPECTED_INDEXES - indexes)
         if missing_indexes:
             raise RuntimeError('Missing PostgreSQL indexes: ' + ', '.join(missing_indexes))
+        verify_source_lookup_index(cursor, schema)
         verify_structure(cursor, schema, EXPECTED_COLUMNS)
         cursor.execute(f'SELECT version, name, checksum FROM "{schema}".depo_schema_migrations')
         applied = {version: (name, checksum) for version, name, checksum in cursor.fetchall()}

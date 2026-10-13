@@ -102,7 +102,7 @@ const baseConfig = {
   debug: setting('DEBUG') === 'true',
   logLevel: setting('LOG_LEVEL') || 'info',
   requestTimeout: boundedTimeout(setting('REQUEST_TIMEOUT'), 300000, 'REQUEST_TIMEOUT'),
-  chatStreamTimeout: boundedTimeout(setting('CHAT_STREAM_TIMEOUT'), 900000, 'CHAT_STREAM_TIMEOUT'),
+  chatStreamTimeout: boundedTimeout(setting('CHAT_STREAM_TIMEOUT'), 1200000, 'CHAT_STREAM_TIMEOUT'),
 };
 
 const gatewayUrl = configuredGatewayUrl ? configuredGatewayUrl.replace(/\/$/, '') : '';

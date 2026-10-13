@@ -60,7 +60,7 @@ export default function QifAp242Mapping() {
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     setBusy(true); setError(''); setAgentReport(null);
     try {
-      const response = await agenticAPI.orchestrateOntology({ workflow_id: 'qif_ap242_review', qif_ontology_id: qif, ap242_ontology_id: ap242 }, { signal: controller.signal, timeout: 120000 });
+      const response = await agenticAPI.orchestrateOntology({ workflow_id: 'qif_ap242_review', qif_ontology_id: qif, ap242_ontology_id: ap242 }, { signal: controller.signal });
       if (controller.signal.aborted) return;
       if (response.data?.qif_ontology_id !== qif || response.data?.ap242_ontology_id !== ap242) throw new Error('Agent response belongs to another ontology selection.');
       setAgentReport(response.data);

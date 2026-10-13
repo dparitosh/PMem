@@ -56,8 +56,7 @@ async def lookup(record, request):
             async with httpx.AsyncClient(timeout=15,trust_env=False) as client:
                 response = await routes._bounded_tool_request(client,'GET',publication_endpoint,headers=downstream_headers(request,publication_endpoint,graph_read=True))
             publication = response.json()
-            if not isinstance(publication, dict) or publication.get('status') != 'published' or publication.get('ontology_id') != ontology_id:
-                raise ValueError('Merged artifact exists but Neo4j publication is not verified; retry the reviewed merge')
+            verify_ontology_publication(ontology_id, publication)
             return {**receipt, 'publication_status': 'published', 'publication': publication}
         return receipt
     raise HTTPException(409,'This tool has no verifiable receipt adapter; use explicit downstream evidence')
@@ -80,3 +79,21 @@ def compensation_plan(record):
             if 0 <= index < len(steps) and steps[index].get('tool',{}).get('mutates'):
                 unsupported.append({'sequence':trace['sequence'],'tool_id':trace['tool_id'],'reason':'No approved reversible service operation is defined'})
     return {'actions':actions,'unsupported':unsupported,'requires_approval':True,'automatic_rollback':False}
+
+
+def verify_ontology_publication(ontology_id, publication):
+    receipt = publication.get('receipt') if isinstance(publication, dict) else None
+    if (not isinstance(receipt, dict)
+            or publication.get('status') != 'published'
+            or publication.get('ontology_id') != ontology_id
+            or not isinstance(publication.get('publication_id'), str)
+            or not publication['publication_id']
+            or receipt.get('ontology_id') != ontology_id
+            or receipt.get('publication_id') != publication['publication_id']
+            or receipt.get('status') != 'published'
+            or receipt.get('current') is not True
+            or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships'))):
+        raise ValueError('Merged artifact exists but its current graph receipt is unverified. Reconcile publication before retrying writes.')
+    if publication.get('artifact_sha256') and publication['artifact_sha256'] != publication['publication_id']:
+        raise ValueError('Publication receipt belongs to a different retained artifact')
+    return publication

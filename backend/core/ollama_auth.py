@@ -44,9 +44,9 @@ def ollama_headers(base_url, api_key=None, *, header_name=None):
 
 
 def ollama_timeout():
-    value = float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30'))
-    if not 1 <= value <= 120:
-        raise ValueError('LLM_REQUEST_TIMEOUT_SECONDS must be between 1 and 120')
+    value = float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '300'))
+    if not 1 <= value <= 900:
+        raise ValueError('LLM_REQUEST_TIMEOUT_SECONDS must be between 1 and 900')
     return value
 
 

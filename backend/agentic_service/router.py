@@ -798,7 +798,8 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
         endpoint = _base(tool["service"]) + path
         headers = downstream_headers(request, endpoint, tool=tool)
         inputs = downstream_inputs(tool, inputs, approved_by)
-        async with httpx.AsyncClient(timeout=bounded_timeout_seconds('AGENTIC_TOOL_TIMEOUT_SECONDS', default=30), trust_env=False) as client:
+        from .tool_timeouts import tool_timeout_seconds
+        async with httpx.AsyncClient(timeout=tool_timeout_seconds(tool, inputs), trust_env=False) as client:
             if tool.get("input_kind") == "multipart":
                 form, files = _multipart(inputs, 'artifact' if tool['id'] == 'ontology.register' else 'file')
                 response = await _bounded_tool_request(client, tool["method"], endpoint, headers=headers, data=form, files=files)
