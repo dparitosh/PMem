@@ -12,6 +12,9 @@ import hashlib
 import json
 import logging
 import os
+import threading
+import time
+from backend.depo_platform import agent_memory_config
 from datetime import datetime, timezone
 from typing import Any, ClassVar, Dict, Iterable, List, Optional
 
@@ -20,10 +23,6 @@ logger = logging.getLogger(__name__)
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _truthy(value: Any) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
 
 
 def _safe_json(value: Any, limit: int = 12000) -> str:
@@ -35,28 +34,51 @@ def _safe_json(value: Any, limit: int = 12000) -> str:
 
 
 def _stable_id(*parts: Any) -> str:
-    payload = "|".join(str(part or "") for part in parts)
-    return hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:32]
+    payload = json.dumps([str(part or '') for part in parts], ensure_ascii=True, separators=(',', ':'))
+    return 'v2-' + hashlib.sha256(payload.encode('utf-8')).hexdigest()[:32]
+
+
+def _legacy_id(*parts: Any) -> str:
+    return hashlib.sha256('|'.join(str(part or '') for part in parts).encode('utf-8', errors='ignore')).hexdigest()[:32]
 
 
 class AgentMemoryService:
     """Best-effort graph memory for chat, reasoning traces, and bridge facts."""
 
     _schema_attempted: ClassVar[bool] = False
+    _schema_target = None
+    _schema_time = 0.0
+    _schema_cache = {}
+    _schema_lock = threading.RLock()
+    _health = {}
+    SCHEMA_CONSTRAINTS = {
+        'agent_memory_session_key': ('AgentMemorySession', 'memory_key'),
+        'agent_memory_message_id': ('AgentMemoryMessage', 'message_id'),
+        'agent_memory_trace_id': ('AgentMemoryTrace', 'trace_id'),
+        'agent_memory_fact_id': ('AgentMemoryFact', 'fact_id'),
+    }
+
+    @classmethod
+    def _verify_schema(cls, database=None):
+        query = ('SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties '
+                 'WHERE name IN $names RETURN name, type, entityType, labelsOrTypes, properties')
+        params = {'names': list(cls.SCHEMA_CONSTRAINTS)}
+        rows = cls._query(query, params, database=database) if database else cls._query(query, params)
+        definitions = {row.get('name'): row for row in (rows or [])}
+        return all(definitions.get(name, {}).get('type') in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'}
+                   and definitions[name].get('entityType') == 'NODE'
+                   and definitions[name].get('labelsOrTypes') == [label]
+                   and definitions[name].get('properties') == [prop]
+                   for name, (label, prop) in cls.SCHEMA_CONSTRAINTS.items())
 
     @classmethod
     def enabled(cls) -> bool:
-        return _truthy(os.getenv("AGENT_MEMORY_ENABLED", "false"))
+        return agent_memory_config.enabled()
 
     @classmethod
     def scope(cls) -> str:
         """Return the mandatory isolation boundary used by every memory query."""
-        configured = str(os.getenv("AGENT_MEMORY_SCOPE", "") or "").strip()
-        if configured:
-            return configured[:256]
-        tenant = str(os.getenv("DEPO_TENANT_ID", "default") or "default").strip()
-        project = str(os.getenv("DEPO_PROJECT_ID", "project") or "project").strip()
-        return f"{tenant}:{project}"[:256]
+        return agent_memory_config.scope()
 
     @classmethod
     def _memory_key(cls, session_id: str) -> str:
@@ -72,57 +94,78 @@ class AgentMemoryService:
             return False
 
     @classmethod
-    def status(cls) -> Dict[str, Any]:
+    def status(cls, probe=False) -> Dict[str, Any]:
+        try:
+            active = cls.enabled()
+            scope = cls.scope() if active else ''
+            agent_memory_config.query_timeout()
+        except ValueError as exc:
+            return {'enabled': False, 'status': 'configuration_invalid', 'invalid_setting': str(exc)}
+        database = os.getenv('AGENT_MEMORY_NEO4J_DATABASE') or os.getenv('NEO4J_DATABASE', 'neo4j')
+        if active and probe:
+            cls._query('RETURN 1 AS ok')
+            if database != os.getenv('NEO4J_DATABASE', 'neo4j'):
+                cls._query('RETURN 1 AS ok', database=os.getenv('NEO4J_DATABASE', 'neo4j'))
         return {
-            "enabled": cls.enabled(),
+            "enabled": active,
+            'status': 'disabled' if not active else ('unavailable' if cls._health.get(database, {}).get('schema_status') == 'unavailable'
+                      else cls._health.get(database, {}).get('status', 'not_verified')),
+            'schema_status': cls._health.get(database, {}).get('schema_status', 'not_verified'),
+            'write_status': 'disabled' if not active else cls._health.get(database, {}).get('write_status', 'not_verified'),
             "mode": "local_neo4j_adapter",
             "sdk_available": cls.sdk_available(),
-            "scope": cls.scope(),
-            "database": os.getenv("AGENT_MEMORY_NEO4J_DATABASE") or os.getenv("NEO4J_DATABASE", "neo4j"),
+            "scope": scope,
+            "database": database,
+            'facts_database': os.getenv('NEO4J_DATABASE', 'neo4j'),
+            'facts_status': cls._health.get(os.getenv('NEO4J_DATABASE', 'neo4j'), {}).get('status', 'not_verified'),
             "memory_layers": ["short_term", "long_term", "reasoning"],
             "best_effort": True,
         }
 
     @classmethod
-    def _query(cls, cypher: str, params: Optional[Dict[str, Any]] = None) -> Optional[List[Dict[str, Any]]]:
+    def _query(cls, cypher: str, params: Optional[Dict[str, Any]] = None, *, database=None) -> Optional[List[Dict[str, Any]]]:
         if not cls.enabled():
             return []
         try:
-            try:
-                timeout = max(1, min(int(os.getenv("AGENT_MEMORY_QUERY_TIMEOUT", "5")), 30))
-            except Exception:
-                timeout = 5
-            memory_database = str(os.getenv("AGENT_MEMORY_NEO4J_DATABASE") or "").strip()
-            if memory_database:
-                try:
-                    from backend.core.db_config import get_driver
-                except ModuleNotFoundError:
-                    from core.db_config import get_driver
-                from neo4j import Query
-
-                driver = get_driver()
-                with driver.session(database=memory_database) as session:
-                    return session.run(Query(cypher, timeout=float(timeout)), params or {}).data()
-
-            try:
-                from backend.core.graph import query_with_timeout
-            except ModuleNotFoundError:
-                from core.graph import query_with_timeout
-            return query_with_timeout(cypher, params or {}, timeout=timeout) or []
+            timeout = agent_memory_config.query_timeout()
+            cls.scope()
+            memory_database = str(database or os.getenv("AGENT_MEMORY_NEO4J_DATABASE") or os.getenv('NEO4J_DATABASE', 'neo4j')).strip()
+            if not memory_database:
+                raise ValueError('AGENT_MEMORY_NEO4J_DATABASE/NEO4J_DATABASE')
+            from backend.core.db_config import get_driver
+            from neo4j import Query
+            driver = get_driver()
+            with driver.session(database=memory_database) as session:
+                rows = session.run(Query(cypher, timeout=float(timeout)), params or {}).data()
+            target = memory_database or os.getenv('NEO4J_DATABASE', 'neo4j')
+            health = {**cls._health.get(target, {}), 'status': 'available', 'checked_at': _now_iso()}
+            if any(word in cypher.upper().split() for word in ('MERGE', 'DELETE')):
+                health['write_status'] = 'available'
+            cls._health[target] = health
+            return rows
         except Exception as exc:
-            logger.warning("Agent memory write skipped: %s", exc)
+            target = database or os.getenv('AGENT_MEMORY_NEO4J_DATABASE') or os.getenv('NEO4J_DATABASE', 'neo4j')
+            cls._health[target] = {'status': 'unavailable', 'write_status': 'unverified', 'error_type': type(exc).__name__}
+            logger.warning("Agent memory operation unavailable error_type=%s", type(exc).__name__)
             return None
 
     @classmethod
-    def ensure_schema(cls) -> Dict[str, Any]:
+    def ensure_schema(cls, database=None) -> Dict[str, Any]:
+        with cls._schema_lock:
+            return cls._ensure_schema(database)
+
+    @classmethod
+    def _ensure_schema(cls, database=None) -> Dict[str, Any]:
         """Create lightweight constraints/indexes for memory nodes."""
         if not cls.enabled():
             return {"enabled": False, "ensured": False}
-        if cls._schema_attempted:
-            return {"enabled": True, "ensured": True, "cached": True}
+        target = (os.getenv('NEO4J_URI') or os.getenv('NEO4J_URL'),
+                  database or os.getenv('AGENT_MEMORY_NEO4J_DATABASE') or os.getenv('NEO4J_DATABASE', 'neo4j'))
+        if cls._schema_attempted and time.monotonic() - cls._schema_cache.get(target, float('-inf')) < 60:
+            if cls._verify_schema(database):
+                return {"enabled": True, "ensured": True, "cached": True}
 
         statements = [
-            "DROP CONSTRAINT agent_memory_session_id IF EXISTS",
             "CREATE CONSTRAINT agent_memory_session_key IF NOT EXISTS FOR (s:AgentMemorySession) REQUIRE s.memory_key IS UNIQUE",
             "CREATE CONSTRAINT agent_memory_message_id IF NOT EXISTS FOR (m:AgentMemoryMessage) REQUIRE m.message_id IS UNIQUE",
             "CREATE CONSTRAINT agent_memory_trace_id IF NOT EXISTS FOR (t:AgentMemoryTrace) REQUIRE t.trace_id IS UNIQUE",
@@ -131,9 +174,19 @@ class AgentMemoryService:
             "CREATE INDEX agent_memory_fact_kind IF NOT EXISTS FOR (f:AgentMemoryFact) ON (f.kind)",
         ]
         for statement in statements:
-            if cls._query(statement) is None:
+            result = cls._query(statement, database=database) if database else cls._query(statement)
+            if result is None:
+                cls._schema_attempted = False
+                cls._health[target[1]] = {**cls._health.get(target[1], {}), 'schema_status': 'unavailable'}
                 return {"enabled": True, "ensured": False, "error": "Neo4j memory schema initialization failed"}
+        if not cls._verify_schema(database):
+            cls._schema_attempted = False
+            cls._health[target[1]] = {**cls._health.get(target[1], {}), 'schema_status': 'unavailable'}
+            return {'enabled': True, 'ensured': False, 'error': 'Memory constraints are missing, incompatible or unavailable'}
         cls._schema_attempted = True
+        cls._schema_target, cls._schema_time = target, time.monotonic()
+        cls._schema_cache[target] = cls._schema_time
+        cls._health[target[1]] = {**cls._health.get(target[1], {}), 'schema_status': 'available'}
         return {"enabled": True, "ensured": True, "statement_count": len(statements)}
 
     @classmethod
@@ -150,17 +203,22 @@ class AgentMemoryService:
         """Persist one chat turn and optional graph context as short-term memory."""
         if not cls.enabled():
             return
-        cls.ensure_schema()
-        turn_id = _stable_id(session_id, user_message, assistant_response, _now_iso())
+        if not cls.ensure_schema().get('ensured'):
+            return
+        turn_id = _stable_id(cls.scope(), session_id, user_message, assistant_response, _now_iso())
         user_id = f"{turn_id}:user"
         assistant_id = f"{turn_id}:assistant"
         touched_nodes = cls._extract_touched_nodes(graph_context)
         cls._query(
             """
+            OPTIONAL MATCH (legacy:AgentMemorySession {memory_key:$legacy_key, scope:$scope})
+            WHERE coalesce(legacy.session_ref, legacy.session_id)=$session_id
+              AND NOT EXISTS { MATCH (:AgentMemorySession {memory_key:$memory_key}) }
+            FOREACH (old IN CASE WHEN legacy IS NULL THEN [] ELSE [legacy] END | SET old.memory_key=$memory_key)
             MERGE (s:AgentMemorySession {memory_key: $memory_key})
             ON CREATE SET s.created_at = $now
             SET s.updated_at = $now,
-                s.session_id = $session_id,
+                s.session_id = $memory_key, s.session_ref = $session_id,
                 s.scope = $scope
             MERGE (u:AgentMemoryMessage {message_id: $user_id})
             SET u.role = 'user',
@@ -188,6 +246,7 @@ class AgentMemoryService:
             {
                 "session_id": session_id,
                 "memory_key": cls._memory_key(session_id),
+                'legacy_key': _legacy_id(cls.scope(), session_id),
                 "user_id": user_id,
                 "assistant_id": assistant_id,
                 "user_message": str(user_message or "")[:4000],
@@ -214,13 +273,18 @@ class AgentMemoryService:
         """Persist a reasoning/tool trace with compact provenance."""
         if not cls.enabled():
             return
-        cls.ensure_schema()
-        trace_id = _stable_id(session_id, task, tool_name, _safe_json(input_payload), _now_iso())
+        if not cls.ensure_schema().get('ensured'):
+            return
+        trace_id = _stable_id(cls.scope(), session_id, task, tool_name, _safe_json(input_payload), _now_iso())
         cls._query(
             """
+            OPTIONAL MATCH (legacy:AgentMemorySession {memory_key:$legacy_key, scope:$scope})
+            WHERE coalesce(legacy.session_ref, legacy.session_id)=$session_id
+              AND NOT EXISTS { MATCH (:AgentMemorySession {memory_key:$memory_key}) }
+            FOREACH (old IN CASE WHEN legacy IS NULL THEN [] ELSE [legacy] END | SET old.memory_key=$memory_key)
             MERGE (s:AgentMemorySession {memory_key: $memory_key})
             ON CREATE SET s.created_at = $now
-            SET s.updated_at = $now, s.session_id = $session_id, s.scope = $scope
+            SET s.updated_at = $now, s.session_id = $memory_key, s.session_ref = $session_id, s.scope = $scope
             MERGE (t:AgentMemoryTrace {trace_id: $trace_id})
             SET t.task = $task,
                 t.tool_name = $tool_name,
@@ -234,6 +298,7 @@ class AgentMemoryService:
             {
                 "session_id": session_id,
                 "memory_key": cls._memory_key(session_id),
+                'legacy_key': _legacy_id(cls.scope(), session_id),
                 "scope": cls.scope(),
                 "trace_id": trace_id,
                 "task": str(task or "")[:500],
@@ -263,11 +328,14 @@ class AgentMemoryService:
         rows = [row for row in rows if row.get("source") and row.get("target")]
         if not rows or not cls.enabled():
             return
-        cls.ensure_schema()
+        database = os.getenv('NEO4J_DATABASE', 'neo4j')
+        if not cls.ensure_schema(database=database).get('ensured'):
+            return
         cls._query(
             """
             UNWIND $rows AS row
             MERGE (f:AgentMemoryFact {fact_id: row.fact_id})
+            ON CREATE SET f.created_at = $now
             SET f.kind = 'semantic_bridge_mapping',
                 f.scope = row.scope,
                 f.source = row.source,
@@ -280,10 +348,9 @@ class AgentMemoryService:
                 f.mapping_type = row.mapping_type,
                 f.task_id = row.task_id,
                 f.updated_at = $now
-            ON CREATE SET f.created_at = $now
             RETURN count(f) AS stored
             """,
-            {"rows": rows[:5000], "now": _now_iso()},
+            {"rows": rows[:5000], "now": _now_iso()}, database=database,
         )
 
     @classmethod
@@ -293,14 +360,17 @@ class AgentMemoryService:
             return {"enabled": False, "messages": [], "facts": []}
         rows = cls._query(
             """
-            MATCH (:AgentMemorySession {memory_key: $memory_key, scope: $scope})-[:HAS_MESSAGE]->(m:AgentMemoryMessage)
-            WHERE datetime(m.created_at) >= datetime() - duration({seconds: $max_age})
+            MATCH (s:AgentMemorySession {scope: $scope})-[:HAS_MESSAGE]->(m:AgentMemoryMessage)
+            WHERE s.memory_key IN [$memory_key, $legacy_key] AND coalesce(s.session_ref, s.session_id) = $session_id
+            AND datetime(m.created_at) >= datetime() - duration({seconds: $max_age})
             RETURN m.role AS role, m.text AS text, m.created_at AS created_at
             ORDER BY m.created_at DESC
             LIMIT toInteger($limit)
             """,
             {
                 "memory_key": cls._memory_key(session_id),
+                'legacy_key': _legacy_id(cls.scope(), session_id),
+                'session_id': session_id,
                 "scope": cls.scope(),
                 "limit": max(1, min(int(limit or 6), 20)),
                 'max_age': max(1, int(os.getenv('AGENT_SESSION_MAX_SECONDS', '86400'))),
@@ -317,6 +387,9 @@ class AgentMemoryService:
             """
             MATCH (f:AgentMemoryFact {kind: 'semantic_bridge_mapping'})
             WHERE f.scope = $scope AND ($ontology_id = '' OR f.ontology_id = $ontology_id)
+            WITH f ORDER BY f.updated_at DESC
+            WITH f.source AS source, f.target AS target, f.ontology_id AS ontology_id,
+                 f.source_type AS source_type, f.target_type AS target_type, collect(f)[0] AS f
             RETURN f.source AS source,
                    f.source_type AS source_type,
                    f.target AS target,
@@ -332,7 +405,7 @@ class AgentMemoryService:
                 "ontology_id": str(ontology_id or "").strip(),
                 "scope": cls.scope(),
                 "limit": max(1, min(int(limit or 1000), 5000)),
-            },
+            }, database=os.getenv('NEO4J_DATABASE', 'neo4j'),
         )
         return rows or []
 
@@ -343,12 +416,14 @@ class AgentMemoryService:
             return False
         result = cls._query(
             """
-            MATCH (s:AgentMemorySession {memory_key: $memory_key, scope: $scope})
+            MATCH (s:AgentMemorySession {scope: $scope})
+            WHERE s.memory_key IN [$memory_key, $legacy_key] AND coalesce(s.session_ref, s.session_id) = $session_id
             OPTIONAL MATCH (s)-[:HAS_MESSAGE|HAS_REASONING_TRACE]->(item)
             DETACH DELETE item, s
             RETURN count(*) AS deleted
             """,
-            {"memory_key": cls._memory_key(session_id), "scope": cls.scope()},
+            {"memory_key": cls._memory_key(session_id), "scope": cls.scope(),
+             'legacy_key': _legacy_id(cls.scope(), session_id), 'session_id': session_id},
         )
         return result is not None
 
@@ -380,9 +455,9 @@ class AgentMemoryService:
         return {
             "fact_id": _stable_id("semantic_bridge", cls.scope(), ontology_id, import_task_id, source, target, mapping.get("target_ontology_type")),
             "scope": cls.scope(),
-            "source": source[:500],
+            "source": source,
             "source_type": str(mapping.get("source_type") or "")[:80],
-            "target": target[:500],
+            "target": target,
             "target_type": str(mapping.get("target_ontology_type") or "")[:80],
             "ontology_id": str(ontology_id or "")[:256],
             "import_task_id": str(import_task_id or "")[:256],

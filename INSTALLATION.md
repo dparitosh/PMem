@@ -1558,6 +1558,30 @@ AGENT_FAILURE_RATE_ALERT_THRESHOLD=0.2
 AGENT_STUCK_RUN_SECONDS=900
 ```
 
+Memory flags accept `true` or `false`; the query timeout must be an integer from
+1 to 30 seconds. Explicit scopes must be complete and no longer than 256
+characters. If omitted, a scope can be derived from valid tenant/project IDs.
+Scopes are rejected rather than truncated. New memory IDs use versioned JSON
+encoding; existing chat history remains readable through scope- and session-bound
+legacy keys. New writes upgrade a matching legacy session without dropping its
+uniqueness constraint. Historical records are retained.
+
+Conversation/reasoning memory uses `AGENT_MEMORY_NEO4J_DATABASE` when configured,
+otherwise `NEO4J_DATABASE`. Approved mapping facts remain in `NEO4J_DATABASE` so
+they commit with graph links and publication receipts. Fact reuse resolves
+ontology prefixes to registered ontology IDs and reads that same graph database.
+The agent maintenance task initializes both databases when memory is enabled;
+the configured Neo4j account needs access and schema privileges in each.
+
+Authenticated `GET /api/v1/memory/status` on the agentic service probes read
+connectivity and reports `status`, `write_status`, `schema_status`, `database`,
+`facts_database` and `facts_status`. Enabling memory alone does not verify storage.
+Write status becomes available after a successful memory mutation. Schema checks
+verify constraint definitions, refresh per database, and never automatically drop
+constraints. Memory failures remain best effort and are reported separately from
+chat generation. Retention applies to conversation sessions and their traces;
+approved mapping facts remain retained with their publication evidence.
+
 The companion creates a session on the first request without `session_id`.
 Reuse the returned ID with the same authenticated identity. The defaults expire
 it after 30 minutes without a request or 24 hours from creation; activity does
@@ -1634,6 +1658,16 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
    `configure-depo.ps1 -UpdateMissing` preserves existing Neo4j aliases instead of
    appending canonical placeholders over them. Increasing service timeouts does
    not correct a missing configuration setting.
+
+   Upload limits are integer byte counts in the server file. For a 500-MiB
+   ingestion limit, use exactly `DEPO_MAX_INGEST_BYTES=524288000`; for a 64-MiB
+   SysML snapshot limit, use `SYSML_V2_MAX_SNAPSHOT_BYTES=67108864`. Do not append
+   `MB`, `MiB`, `cls` or a PowerShell command. Invalid limits are rejected with
+   the selected file path and line number before dependency installation,
+   credential import or service launch. If ingestion exited with
+   `DEPO_MAX_INGEST_BYTES must be an integer`, correct that line before retrying
+   the same installation/start command; a larger readiness timeout cannot
+   repair an import exception.
 
    For an on-premises server on a trusted private network that does not provide
    TLS, configure the exception explicitly. Authentication can remain enabled:

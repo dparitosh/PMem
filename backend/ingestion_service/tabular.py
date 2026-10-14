@@ -9,12 +9,13 @@ from typing import Any
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 def _positive_setting(name: str, default: int) -> int:
-    try:
-        value = int(os.getenv(name, str(default)))
-    except ValueError as exc:
-        raise RuntimeError(f"{name} must be an integer") from exc
-    if value <= 0:
-        raise RuntimeError(f"{name} must be positive")
+    raw = os.getenv(name, str(default)).strip()
+    digits = raw.lstrip('+0') or '0'
+    if not re.fullmatch(r'\+?[0-9]+', raw) or len(digits) > 19:
+        raise RuntimeError(f"{name} must be an integer byte count without units or console commands")
+    value = int(digits)
+    if not 0 < value <= 9223372036854775807:
+        raise RuntimeError(f"{name} must be positive and fit in a signed 64-bit integer")
     return value
 
 

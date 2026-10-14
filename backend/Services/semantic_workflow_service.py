@@ -96,6 +96,15 @@ class SemanticWorkflowService:
         ref = str(ontology_ref or "").strip()
         if not ref:
             return ""
+        # Include ontologies created through the governed PostgreSQL catalog,
+        # not just older upload-manager records.
+        try:
+            from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+            metadata = OntologyTaxonomyService._resolve_metadata(ref)
+            if metadata.get('ontology_id'):
+                return str(metadata['ontology_id'])
+        except (ImportError, ValueError):
+            pass
         direct = OntologyUploadManager.get_ontology(ref)
         if direct.get("status") == "success":
             return ref
@@ -598,6 +607,7 @@ class SemanticWorkflowService:
         ontology_prefix: str,
         import_task_id: str,
         import_task: Optional[Dict[str, Any]] = None,
+        ontology_id: str = '',
     ) -> List[Dict[str, Any]]:
         class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
         term_lookup = cls._load_ontology_term_lookup(ontology_prefix)
@@ -620,7 +630,8 @@ class SemanticWorkflowService:
         memory_facts_by_source: Dict[str, List[Dict[str, Any]]] = {}
         if AgentMemoryService is not None:
             try:
-                for fact in AgentMemoryService.semantic_bridge_facts(ontology_prefix, limit=1500):
+                memory_ontology_id = ontology_id or cls._resolve_ontology_id(ontology_prefix)
+                for fact in AgentMemoryService.semantic_bridge_facts(memory_ontology_id, limit=1500):
                     source_key = cls._normalized_key(fact.get("source"))
                     if source_key:
                         memory_facts_by_source.setdefault(source_key, []).append(fact)
@@ -1204,7 +1215,7 @@ class SemanticWorkflowService:
         task_id = cls._new_task("instance.link", meta.get("original_filename", ""))
         rows = import_task.get("parsed_rows") or []
         ontology_scope = meta.get("prefix") or meta.get("ontology_prefix") or ontology_id
-        candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id, import_task=import_task)
+        candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id, import_task=import_task, ontology_id=ontology_id)
         user_candidates = cls._approved_mappings_to_candidates(
             payload.get("approved_mappings") or payload.get("approvedMappings") or [],
             rows,

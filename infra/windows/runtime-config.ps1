@@ -1,4 +1,17 @@
 # Shared configuration reader. Never prints values or changes machine environment.
+function Assert-DepoIngestionConfiguration([hashtable]$Values, [string]$EnvPath = '', [hashtable]$LineNumbers = @{}) {
+  foreach ($name in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES')) {
+    if (-not $Values.ContainsKey($name)) { continue } # Python supplies the documented defaults.
+    $raw = ([string]$Values[$name]).Trim()
+    $limit = [long]0
+    if ($raw -notmatch '^\+?[0-9]+$' -or -not [long]::TryParse($raw, [ref]$limit) -or $limit -le 0) {
+      $location = if ($EnvPath) { " in '$EnvPath'" } else { '' }
+      if ($LineNumbers.ContainsKey($name)) { $location += " at line $($LineNumbers[$name])" }
+      throw "$name must be a positive integer byte count (digits only, at most 9223372036854775807)$location. Remove units or appended console commands. The value is intentionally hidden."
+    }
+  }
+}
+
 function Read-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $path = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $Root $EnvFile }
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing environment file: $path" }
@@ -35,6 +48,7 @@ function Read-DepoEnvironment([string]$Root, [string]$EnvFile) {
     $seen[$key] = $value
     $firstLines[$key] = $lineNumber
   }
+  Assert-DepoIngestionConfiguration -Values $seen -EnvPath $path -LineNumbers $firstLines
   return $seen
 }
 
@@ -125,6 +139,9 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   # or routing must not leave a partially imported deployment.
   $neo4j = Resolve-DepoNeo4jConfiguration $values
   $routing = Resolve-DepoRouting $values
+  foreach ($limitName in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES')) {
+    if (-not $values.ContainsKey($limitName)) { [Environment]::SetEnvironmentVariable($limitName, $null, 'Process') }
+  }
   # These aliases are one setting. Clear a previously imported alias when the
   # selected file explicitly configures the other, so Python cannot prefer it.
   if ($values.ContainsKey('DEPO_DATABASE_URL') -or $values.ContainsKey('DATABASE_URL')) {

@@ -1,4 +1,10 @@
 from backend.Services.agent_memory_service import AgentMemoryService
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def memory_scope(monkeypatch):
+    monkeypatch.setenv('AGENT_MEMORY_SCOPE', 'fixture:project')
 
 
 def test_agent_memory_disabled_is_noop(monkeypatch):
@@ -20,7 +26,7 @@ def test_agent_memory_disabled_is_noop(monkeypatch):
 def test_record_chat_turn_writes_messages_and_touched_nodes(monkeypatch):
     calls = []
     monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
-    monkeypatch.setattr(AgentMemoryService, "ensure_schema", lambda: {"enabled": True, "ensured": True})
+    monkeypatch.setattr(AgentMemoryService, "ensure_schema", lambda **_: {"enabled": True, "ensured": True})
     monkeypatch.setattr(AgentMemoryService, "_query", lambda cypher, params=None: calls.append((cypher, params or {})) or [])
 
     AgentMemoryService.record_chat_turn(
@@ -43,8 +49,8 @@ def test_record_chat_turn_writes_messages_and_touched_nodes(monkeypatch):
 def test_record_semantic_bridge_mappings_stores_approved_only(monkeypatch):
     calls = []
     monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
-    monkeypatch.setattr(AgentMemoryService, "ensure_schema", lambda: {"enabled": True, "ensured": True})
-    monkeypatch.setattr(AgentMemoryService, "_query", lambda cypher, params=None: calls.append((cypher, params or {})) or [])
+    monkeypatch.setattr(AgentMemoryService, "ensure_schema", lambda **_: {"enabled": True, "ensured": True})
+    monkeypatch.setattr(AgentMemoryService, "_query", lambda cypher, params=None, **_: calls.append((cypher, params or {})) or [])
 
     AgentMemoryService.record_semantic_bridge_mappings(
         ontology_id="ap242",
@@ -104,7 +110,7 @@ def test_semantic_bridge_facts_queries_mapping_memory(monkeypatch):
     captured = {}
     monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
 
-    def fake_query(cypher, params=None):
+    def fake_query(cypher, params=None, **kwargs):
         captured["cypher"] = cypher
         captured["params"] = params
         return [{"source": "REQ-001", "target": "Requirement"}]
@@ -141,14 +147,18 @@ def test_ensure_schema_is_attempted_once(monkeypatch):
     calls = []
     monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
     monkeypatch.setattr(AgentMemoryService, "_schema_attempted", False)
-    monkeypatch.setattr(AgentMemoryService, "_query", lambda cypher, params=None: calls.append(cypher) or [])
+    def query(cypher, params=None):
+        calls.append(cypher)
+        return [{'name':name, 'type':'UNIQUENESS', 'entityType':'NODE', 'labelsOrTypes':[label], 'properties':[prop]}
+                for name, (label, prop) in AgentMemoryService.SCHEMA_CONSTRAINTS.items()] if cypher.startswith('SHOW CONSTRAINTS') else []
+    monkeypatch.setattr(AgentMemoryService, "_query", query)
 
     first = AgentMemoryService.ensure_schema()
     second = AgentMemoryService.ensure_schema()
 
     assert first["ensured"] is True
     assert second["cached"] is True
-    assert len(calls) == 7
+    assert len(calls) == 8
 
 
 def test_ensure_schema_does_not_cache_failed_initialization(monkeypatch):

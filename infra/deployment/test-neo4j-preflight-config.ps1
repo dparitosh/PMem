@@ -44,6 +44,15 @@ try {
     $rejected = $true
   }
   if (-not $rejected) { throw 'Preflight accepted conflicting Neo4j connection settings.' }
+  Set-Content -LiteralPath $path -Value ($lines + 'DEPO_MAX_INGEST_BYTES=524288000cls')
+  $rejected = $false
+  try {
+    & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $path -Profile Production -SkipEndpointChecks
+  } catch {
+    if ($_.Exception.Message -notlike '*DEPO_MAX_INGEST_BYTES must be a positive integer byte count*') { throw }
+    $rejected = $true
+  }
+  if (-not $rejected) { throw 'Malformed ingestion limit passed deployment preflight.' }
   Write-Output 'PASS: real production preflight accepts aliases and rejects missing/conflicting selected-file settings without network access.'
 } finally {
   [Environment]::SetEnvironmentVariable('NEO4J_URI', $previousUri, 'Process')

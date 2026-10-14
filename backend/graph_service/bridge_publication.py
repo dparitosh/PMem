@@ -113,11 +113,13 @@ def _publish_transaction(tx, command):
         SET e.kind='Modification', e.preview_id=$preview, e.created_at=$completed''',
         id=publication_id, digest=command['request_digest'], receipt=json.dumps(result),
         preview=command['preview_id'], completed=result['completed_at']).consume()
-    if os.getenv('AGENT_MEMORY_ENABLED', '').lower() == 'true':
+    from backend.depo_platform.agent_memory_config import enabled as memory_enabled
+    if memory_enabled():
         from backend.Services.agent_memory_service import AgentMemoryService
         facts = [AgentMemoryService._mapping_fact_row(command['ontology_id'], row['import_id'], row, publication_id) for row in command['rows']]
         tx.run('''UNWIND $rows AS row
             MERGE (f:AgentMemoryFact {fact_id:row.fact_id})
+            ON CREATE SET f.created_at=$completed
             SET f.kind='semantic_bridge_mapping', f.scope=row.scope, f.source=row.source,
                 f.source_type=row.source_type, f.target=row.target,
                 f.target_type=row.target_type, f.ontology_id=row.ontology_id,

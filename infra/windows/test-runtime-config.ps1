@@ -32,6 +32,32 @@ try {
   Set-Content -LiteralPath $envPath -Value 'DEPO_AUDIT_FIXTURE="unclosed'
   Assert-Rejected { Read-DepoEnvironment $fixture '.env.local' } 'Invalid quoted value'
   Assert-Rejected { Import-DepoEnvironment $fixture 'missing.env' } 'Missing environment'
+  foreach ($name in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES')) {
+    foreach ($invalid in @('524288000cls','500MB','0','-1','','1.5','9223372036854775808')) {
+      Assert-Rejected { Assert-DepoIngestionConfiguration @{ $name=$invalid } } 'positive integer byte count'
+    }
+    foreach ($valid in @('524288000','1',' +67108864 ','9223372036854775807')) {
+      Assert-DepoIngestionConfiguration @{ $name=$valid }
+    }
+  }
+  $previousLimits = @{}
+  foreach ($name in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES','DEPO_ENV_INJECTED')) {
+    $previousLimits[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+  }
+  try {
+    $env:DEPO_MAX_INGEST_BYTES = '67108864'
+    Set-Content -LiteralPath $envPath -Value @('# fixture', 'DEPO_MAX_INGEST_BYTES=524288000cls')
+    Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'at line 2'
+    if ($env:DEPO_MAX_INGEST_BYTES -ne '67108864') { throw 'Malformed ingestion limit partially changed the environment.' }
+    $limitError = ''
+    try { Read-DepoEnvironment $fixture '.env.local' | Out-Null } catch { $limitError = $_.Exception.Message }
+    if ($limitError.Contains('524288000cls') -or -not $limitError.Contains($envPath)) { throw 'Ingestion limit error leaked its value or omitted the selected path.' }
+    Set-Content -LiteralPath $envPath -Value '# use documented defaults'
+    Import-DepoEnvironment $fixture '.env.local'
+    if ($env:DEPO_MAX_INGEST_BYTES) { throw 'Omitted ingestion limit inherited a stale process value.' }
+  } finally {
+    foreach ($name in $previousLimits.Keys) { [Environment]::SetEnvironmentVariable($name, $previousLimits[$name], 'Process') }
+  }
   foreach ($baseUrl in @('http://127.0.0.1:8015', 'http://10.10.12.21:8015', 'https://api.example', 'http://api.example/prefix')) {
     Assert-DepoOslcConfiguration @{ OSLC_BASE_URL=$baseUrl } -Required
   }

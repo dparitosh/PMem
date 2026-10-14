@@ -59,6 +59,12 @@ async def _agent_io(callback, /, *args, **kwargs):
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
+
+@router.get('/memory/status', summary='Verify optional conversation memory and report approved-fact storage', dependencies=[Depends(graph_read_identity)])
+async def memory_status(request: Request):
+    graph_read_identity(request)
+    return await _agent_io(AgentMemoryService.status, probe=True)
+
 class Catalog:
     def __init__(self) -> None:
         configured = os.getenv("AGENTIC_CATALOG_PATH", "")

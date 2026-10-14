@@ -47,8 +47,17 @@ def configuration_status(*, check_workers=True):
             valid = False
         if not valid and key not in errors:
             errors.append(key)
-    if os.getenv('AGENT_MEMORY_ENABLED', 'false').lower() == 'true':
-        require('AGENT_MEMORY_SCOPE')
+    from backend.depo_platform import agent_memory_config
+    for validator in (agent_memory_config.enabled, agent_memory_config.query_timeout):
+        try:
+            validator()
+        except ValueError as exc:
+            errors.append(str(exc))
+    if os.getenv('AGENT_MEMORY_ENABLED', 'false').strip().lower() == 'true':
+        try:
+            agent_memory_config.scope()
+        except ValueError as exc:
+            errors.append(str(exc))
     if not (os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')):
         errors.append('DEPO_DATABASE_URL')
     for key in ('NEO4J_URI', 'NEO4J_DATABASE'):
