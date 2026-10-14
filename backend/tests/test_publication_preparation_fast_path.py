@@ -11,6 +11,15 @@ class BNode: pass
 
 
 class PreparationTests(unittest.TestCase):
+    def test_retained_turtle_avoids_conversion_but_other_syntax_is_converted(self):
+        from backend.depo_platform import rdf_preparation
+        content = b'large retained Turtle'
+        with patch.object(rdf_preparation, 'prepare_rdf', return_value=b'converted') as convert:
+            self.assertIs(rdf_preparation.prepare_publication_turtle(content, 'turtle'), content)
+            convert.assert_not_called()
+            self.assertEqual(rdf_preparation.prepare_publication_turtle(content, 'xml'), b'converted')
+            convert.assert_called_once_with(content, 'xml')
+
     def test_only_blank_node_graphs_are_canonicalized(self):
         tree = ast.parse(Path('backend/depo_platform/rdf_preparation.py').read_text())
         main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')

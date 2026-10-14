@@ -56,7 +56,7 @@ class AuditRegressions(unittest.TestCase):
                'service_url':lambda *args:'http://graph','service_bearer_headers':lambda *args,**kwargs:{},
                'httpx':SimpleNamespace(AsyncClient=lambda **kwargs:Client(),HTTPError=RuntimeError)}
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<status>','exec'),scope)
-        result=asyncio.run(scope['ontology_publication_status']('demo'))
+        result=asyncio.run(scope['ontology_publication_status']('demo', include_job=False))
         self.assertEqual(result['status'],'unverified')
         self.assertEqual(values['demo'],newer)
         self.assertEqual(comparisons,[old])

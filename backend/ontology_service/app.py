@@ -11,8 +11,9 @@ from .router import router
 from .modeling_router import router as modeling_router
 from .modeling_router import _modeling_identity
 from fastapi import Depends
+from .publication_worker import publication_lifespan
 
-app = create_service_app(title="DEPO Ontology Service", version="1.0.0")
+app = create_service_app(title="DEPO Ontology Service", version="1.0.0", lifespan_hook=publication_lifespan)
 app.include_router(create_odata_catalog_router(
     service_name="DEPOOntology",
     capabilities=[
@@ -27,6 +28,9 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Legacy analytics backfill", "/api/v1/ontologies/migrations/legacy/analytics", "POST", "Add draft analytics and lifecycle metadata from retained ontology artifacts"),
         ServiceCapability("Register ontology artifact", "/api/v1/ontologies/register", "POST", "Syntax-validate and register a draft RDF/OWL artifact"),
         ServiceCapability("Ontology lifecycle", "/api/v1/ontologies/{ontology_id}/transition", "POST", "Move a draft ontology through review, approval, deprecation, or retirement"),
+        ServiceCapability("Queue ontology publication", "/api/v1/ontologies/{ontology_id}/publish", "POST", "Set background=true to queue publication; poll the publication endpoint for its verified outcome"),
+        ServiceCapability("Publication status", "/api/v1/ontologies/{ontology_id}/publication", "GET", "Read queued/running job status or a verified Neo4j receipt"),
+        ServiceCapability("Cancel queued publication", "/api/v1/ontologies/{ontology_id}/publication-jobs/{job_id}/cancel", "POST", "Cancel before dispatch; active graph writes cannot be undone"),
         ServiceCapability("Business-object context", "/api/v1/ontologies/business-context", "GET", "Inspect Semantica ContextGraph business-object context"),
         ServiceCapability("Semantic metadata registry", "/api/v1/metadata-registry/assets", "GET", "Discover governed semantic assets and releases"),
         ServiceCapability("Register semantic asset", "/api/v1/metadata-registry/assets", "POST", "Create a draft governed semantic asset"),

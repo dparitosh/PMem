@@ -76,6 +76,7 @@ async def contextual_subgraph(
 def _neighbors(node_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
     return publisher._session_rows(
         "MATCH (root)-[r]-(neighbor) WHERE elementId(root) = $node_id "
+        "AND NOT root:StagedOntologyResource AND NOT neighbor:StagedOntologyResource "
         "RETURN elementId(neighbor) AS id, coalesce(neighbor.name, neighbor.label, neighbor.uri, neighbor.iri) AS name, "
         "labels(neighbor) AS labels, type(r) AS relation_type, "
         "coalesce(neighbor.source_ontology, neighbor.ontology_id, neighbor.prefix, 'graph') AS source_tag "
@@ -97,6 +98,7 @@ def list_requirements(source: str = Query(default="all"), limit: int = Query(def
         "MATCH (n) WHERE (n:Requirement OR any(label IN labels(n) WHERE toLower(label) CONTAINS 'requirement') "
         "OR EXISTS { MATCH (n)-[type_edge]->(t) WHERE type_edge.predicate = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' "
         "AND t.iri = 'https://depo.example.org/ceim/0.1/Requirement' }) "
+        "AND NOT n:StagedOntologyResource "
         f"AND ($source = 'all' OR toLower({source_expression}) = $source "
         f"OR ($source = 'mbse' AND toLower({source_expression}) IN ['sysml-v1', 'sysml-v2'])) "
         "WITH n ORDER BY coalesce(n.name, n.title, n.label, n.uri), elementId(n) SKIP $offset LIMIT $limit "

@@ -16,11 +16,14 @@ def ontology_report(ontology_id: str) -> dict:
     scoped = "(toString(coalesce(n.ontology_id, '')) = $ontology_id OR ($ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
     query = f"""
     CALL {{ MATCH (n) WHERE {scoped} AND NOT n:GraphChunk AND NOT n:DatasheetChunk
+      AND NOT (n:StagedOntologyResource OR n:OntologyPublication)
       RETURN count(n) AS resources, {columns},
       sum(CASE WHEN {' OR '.join(predicates)} THEN 0 ELSE 1 END) AS unmapped }}
     CALL {{ MATCH (n)-[r]->(target) WHERE {scoped}
       AND NOT n:GraphChunk AND NOT n:DatasheetChunk
       AND NOT target:GraphChunk AND NOT target:DatasheetChunk
+      AND NOT (n:StagedOntologyResource OR n:OntologyPublication)
+      AND NOT (target:StagedOntologyResource OR target:OntologyPublication)
       RETURN count(r) AS outgoing_links }}
     RETURN resources, unmapped, outgoing_links, {', '.join(f'c{i}' for i in range(len(types)))}
     """

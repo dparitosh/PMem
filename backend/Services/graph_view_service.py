@@ -212,6 +212,7 @@ class GraphViewService:
             """
             MATCH (n)
             WHERE coalesce(n.ontology_prefix, n.prefix, n.source_ontology, '') IN [$prefix, $ontology_id]
+              AND NOT (n:StagedOntologyResource OR n:OntologyPublication)
             RETURN
               count(n) AS nodes,
               sum(CASE WHEN n:OntologyClass THEN 1 ELSE 0 END) AS classes,
@@ -228,6 +229,7 @@ class GraphViewService:
             MATCH (a)-[r]->(b)
             WHERE coalesce(a.ontology_prefix, a.prefix, a.source_ontology, '') IN [$prefix, $ontology_id]
               AND coalesce(b.ontology_prefix, b.prefix, b.source_ontology, '') IN [$prefix, $ontology_id]
+              AND NOT (a:StagedOntologyResource OR a:OntologyPublication) AND NOT (b:StagedOntologyResource OR b:OntologyPublication)
             RETURN count(r) AS relationships
             """,
             {
@@ -301,7 +303,8 @@ class GraphViewService:
             resolved_rows = cls._run(
                 """
                 MATCH (o)
-                WHERE o.ontology_id = $token OR o.ontology_prefix = $token OR o.prefix = $token
+                WHERE (o.ontology_id = $token OR o.ontology_prefix = $token OR o.prefix = $token)
+                  AND NOT (o:StagedOntologyResource OR o:OntologyPublication)
                 RETURN coalesce(o.ontology_prefix, o.prefix, $token) AS prefix,
                        coalesce(o.ontology_id, o.ontology_prefix, o.prefix, $token) AS ontology_id
                 LIMIT 1
@@ -370,12 +373,16 @@ class GraphViewService:
     def rows_to_graph(rows: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         nodes: Dict[str, Dict[str, Any]] = {}
         relationships: Dict[str, Dict[str, Any]] = {}
+        hidden_ids = set()
 
         for row in rows:
             for key in ("n", "m"):
                 node = row.get(key)
                 if node and node.get("elementId"):
                     node_id = node["elementId"]
+                    if {'StagedOntologyResource', 'OntologyPublication'}.intersection(node.get('labels') or []):
+                        hidden_ids.add(node_id)
+                        continue
                     incoming = _node_payload(node)
                     existing = nodes.get(node_id)
                     if existing:
@@ -390,6 +397,11 @@ class GraphViewService:
             rel = row.get("r")
             if rel and rel.get("elementId"):
                 relationships[rel["elementId"]] = _relationship_payload(rel)
+
+        for node_id in hidden_ids:
+            nodes.pop(node_id, None)
+        relationships = {identity: rel for identity, rel in relationships.items()
+                         if rel.get('start') not in hidden_ids and rel.get('end') not in hidden_ids}
 
         def sort_key(item: Dict[str, Any]) -> tuple:
             props = item.get("properties") or {}
@@ -426,6 +438,8 @@ class GraphViewService:
     def _is_metadata_like_node(node: Dict[str, Any]) -> bool:
         props = node.get("properties") or {}
         labels = {str(label or "").lower() for label in (node.get("labels") or [])}
+        if labels.intersection({'stagedontologyresource', 'ontologypublication'}):
+            return True
         element_type = str(props.get("element_type") or "").strip().lower()
         semantic_role = str(props.get("semantic_role") or "").strip().lower()
         is_cad_business_object = bool(props.get("is_cad_business_object"))
@@ -1309,7 +1323,7 @@ RETURN count(res) AS count
             """
             CALL () {
               MATCH (n)-[r]->(m)
-              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication OR m:DatasheetChunk OR m:GraphChunk OR m:StagedOntologyResource OR m:OntologyPublication)
                 AND ($include_schema OR NOT any(label IN labels(n) WHERE label IN $schema_node_labels))
                 AND ($include_schema OR NOT any(label IN labels(m) WHERE label IN $schema_node_labels))
                 AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
@@ -1336,7 +1350,7 @@ RETURN count(res) AS count
               LIMIT $direct_limit
               UNION
               MATCH (n)--(bridge)--(m)
-              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication OR m:DatasheetChunk OR m:GraphChunk OR m:StagedOntologyResource OR m:OntologyPublication)
                 AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
                 AND ($include_schema OR NOT any(label IN labels(n) WHERE label IN $schema_node_labels))
                 AND ($include_schema OR NOT any(label IN labels(m) WHERE label IN $schema_node_labels))
@@ -1366,7 +1380,7 @@ RETURN count(res) AS count
               LIMIT $bridge_limit
               UNION
               MATCH (n)
-              WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
                 AND any(label IN labels(n) WHERE label IN ['Requirement', 'RequirementRevision', 'Specification'])
                 AND NOT (n)--()
               RETURN n, null AS r, null AS m
@@ -1544,7 +1558,7 @@ RETURN count(res) AS count
             CALL () {
               MATCH (n)-[r]->(m)
               WITH n, r, m, properties(n) AS np, properties(m) AS mp
-              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication OR m:DatasheetChunk OR m:GraphChunk OR m:StagedOntologyResource OR m:OntologyPublication)
                 AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
                 AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
                 AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
@@ -1561,7 +1575,7 @@ RETURN count(res) AS count
               UNION
               MATCH (n)
               WITH n, properties(n) AS np
-              WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
                 AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
                 AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
                 AND coalesce(np['ontology_prefix'], np['prefix'], np['source_format'], '') = $prefix
@@ -1687,7 +1701,7 @@ RETURN count(res) AS count
         CALL (seed) {
           OPTIONAL MATCH (seed)-[direct_rel]-(direct_adjacent)
           WHERE direct_adjacent IS NULL OR (
-            NOT (direct_adjacent:DatasheetChunk OR direct_adjacent:GraphChunk)
+            NOT (direct_adjacent:DatasheetChunk OR direct_adjacent:GraphChunk OR direct_adjacent:StagedOntologyResource OR direct_adjacent:OntologyPublication)
             AND NOT any(label IN labels(direct_adjacent) WHERE label IN $relationship_node_labels)
             AND ($import_id = '' OR direct_adjacent.import_id = $import_id)
             AND (
@@ -1709,7 +1723,7 @@ RETURN count(res) AS count
           RETURN direct_rel AS r, direct_adjacent AS adjacent, NULL AS r_payload
           UNION
           MATCH (seed)--(bridge)--(bridge_adjacent)
-          WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR bridge_adjacent:DatasheetChunk OR bridge_adjacent:GraphChunk)
+          WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR bridge:StagedOntologyResource OR bridge:OntologyPublication OR bridge_adjacent:DatasheetChunk OR bridge_adjacent:GraphChunk OR bridge_adjacent:StagedOntologyResource OR bridge_adjacent:OntologyPublication)
             AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
             AND NOT any(label IN labels(bridge_adjacent) WHERE label IN $relationship_node_labels)
             AND ($import_id = '' OR bridge_adjacent.import_id = $import_id)
@@ -1750,7 +1764,7 @@ RETURN count(res) AS count
                $import_id AS import_id,
                $wildcard_prefix_search AS wildcard_prefix_search
         MATCH (seed)
-        WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
+        WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
             AND (
               any(label IN labels(seed) WHERE label IN $instance_node_labels)
               OR coalesce(properties(seed)['is_cad_business_object'], false) = true
@@ -1918,7 +1932,7 @@ RETURN count(res) AS count
             properties: properties(seed),
             can_traverse: EXISTS {
               MATCH (seed)-[]-(candidate)
-              WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+              WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
                 AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
                 AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                 AND (
@@ -1945,7 +1959,7 @@ RETURN count(res) AS count
                 OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                 OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                 MATCH (adjacent)-[]-(candidate)
-                WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
                   AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
                   AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                   AND (
@@ -2050,7 +2064,7 @@ RETURN count(res) AS count
     ) -> Dict[str, Any]:
         query = """
         MATCH (seed)
-        WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
+        WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
           AND any(label IN labels(seed) WHERE label IN $schema_node_labels)
           AND (
             $ontology_prefix = '' OR
@@ -2090,7 +2104,7 @@ RETURN count(res) AS count
           properties: properties(seed),
           can_traverse: EXISTS {
             MATCH (seed)-[]-(candidate)
-            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
               AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
               AND any(label IN labels(candidate) WHERE label IN $schema_node_labels)
           }
@@ -2130,10 +2144,10 @@ RETURN count(res) AS count
         query = """
         MATCH (seed)
         WHERE elementId(seed) = $node_id
-          AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+          AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
         OPTIONAL MATCH (seed)-[rel]-(adjacent)
         WHERE adjacent IS NULL OR (
-          NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+          NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
           AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
           AND any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
         )
@@ -2143,7 +2157,7 @@ RETURN count(res) AS count
           properties: properties(seed),
           can_traverse: EXISTS {
             MATCH (seed)-[]-(candidate)
-            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
               AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
               AND any(label IN labels(candidate) WHERE label IN $schema_node_labels)
           }
@@ -2161,7 +2175,7 @@ RETURN count(res) AS count
           properties: properties(adjacent),
           can_traverse: EXISTS {
             MATCH (adjacent)-[]-(candidate)
-            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
               AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
               AND any(label IN labels(candidate) WHERE label IN $schema_node_labels)
           }
@@ -2196,7 +2210,7 @@ RETURN count(res) AS count
             properties: properties($node_var),
             can_traverse: EXISTS {
               MATCH ($node_var)-[]-(candidate)
-              WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+              WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
                 AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
                 AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                 AND (
@@ -2217,7 +2231,7 @@ RETURN count(res) AS count
                 OR coalesce(properties($node_var)['is_cad_business_object'], false) = true
                 OR coalesce($node_var.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                 MATCH ($node_var)-[]-(candidate)
-                WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
                   AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
                   AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                   AND (
@@ -2235,10 +2249,10 @@ RETURN count(res) AS count
             CALL {
               MATCH (seed)
               WHERE elementId(seed) = $node_id
-                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
               OPTIONAL MATCH (seed)-[r]-(adjacent)
               WHERE adjacent IS NULL OR (
-                NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+                NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
                   OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
@@ -2249,10 +2263,10 @@ RETURN count(res) AS count
               UNION
               MATCH (seed)
               WHERE elementId(seed) = $node_id
-                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
               MATCH (seed)-[r1]-(mid)-[r2]-(adjacent)
-              WHERE NOT (mid:DatasheetChunk OR mid:GraphChunk)
-                AND NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+              WHERE NOT (mid:DatasheetChunk OR mid:GraphChunk OR mid:StagedOntologyResource OR mid:OntologyPublication)
+                AND NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
                 AND (
                   any(label IN labels(mid) WHERE label IN $instance_node_labels)
                   OR coalesce(properties(mid)['is_cad_business_object'], false) = true
@@ -2281,10 +2295,10 @@ RETURN count(res) AS count
             CALL {
               MATCH (seed)
               WHERE elementId(seed) = $node_id
-                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
               OPTIONAL MATCH (seed)-[direct_rel]-(adjacent)
               WHERE adjacent IS NULL OR (
-                NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+                NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
                 AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
@@ -2301,9 +2315,9 @@ RETURN count(res) AS count
               UNION
               MATCH (seed)
               WHERE elementId(seed) = $node_id
-                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
               MATCH (seed)--(bridge)--(adjacent)
-              WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR adjacent:DatasheetChunk OR adjacent:GraphChunk)
+              WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR bridge:StagedOntologyResource OR bridge:OntologyPublication OR adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
                 AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
                 AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
                 AND (
@@ -2323,9 +2337,9 @@ RETURN count(res) AS count
               UNION
               MATCH (seed)
               WHERE elementId(seed) = $node_id
-                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
               MATCH path = (seed)-[*2..4]-(adjacent)
-              WHERE NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+              WHERE NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
                 AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
                 AND NOT any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
                 AND (
@@ -2343,7 +2357,7 @@ RETURN count(res) AS count
                   properties(adjacent)['uid'],
                   ''
                 ) =~ '(?i)^id\\d+$'
-                AND all(node IN nodes(path) WHERE NOT (node:DatasheetChunk OR node:GraphChunk))
+                AND all(node IN nodes(path) WHERE NOT (node:DatasheetChunk OR node:GraphChunk OR node:StagedOntologyResource OR node:OntologyPublication))
                 AND any(node IN nodes(path)[1..-1] WHERE
                   any(label IN labels(node) WHERE label IN $relationship_node_labels)
                   OR coalesce(
@@ -2382,7 +2396,7 @@ RETURN count(res) AS count
                 properties: properties(source_node),
                 can_traverse: EXISTS {
                   MATCH (source_node)-[]-(candidate)
-                  WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                  WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
                     AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
                     AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                     AND (
@@ -2402,7 +2416,7 @@ RETURN count(res) AS count
                     OR coalesce(properties(target_node)['is_cad_business_object'], false) = true
                     OR coalesce(target_node.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                     MATCH (target_node)-[]-(candidate)
-                    WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                    WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
                       AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
                       AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                       AND (

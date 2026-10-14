@@ -60,9 +60,13 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
     const selected = ontologyId;
     try {
       const approval = { approved_by: actor.trim(), approval_token: getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN') };
-      const options = { signal: controller.signal, timeout: action === 'publish' ? 3660000 : 30000 };
+      const options = { signal: controller.signal, timeout: 30000 };
       if (action === 'prepare') await apiClient.post(root('/migrations/legacy'), { ontology_ids: [selected] }, options);
-      else if (action === 'publish') await apiClient.post(root(`/${encodeURIComponent(selected)}/publish`), approval, options);
+      else if (action === 'publish') {
+        const response = await apiClient.post(root(`/${encodeURIComponent(selected)}/publish?background=true`), approval, { ...options, timeout: 30000 });
+        if (!controller.signal.aborted && response.data?.job_id) setPublication({ status: 'publishing', phase: 'queued', job_id: response.data.job_id });
+      }
+      else if (action === 'cancel') await apiClient.post(root(`/${encodeURIComponent(selected)}/publication-jobs/${encodeURIComponent(publication.job_id)}/cancel`), approval, options);
       else await apiClient.post(root(`/${encodeURIComponent(selected)}/transition`), { ...approval, target: action, reason: fromWorkflow ? 'Reviewed from import workflow' : 'Reviewed from Ontology Junction' }, options);
       if (!controller.signal.aborted) { setRevision(value => value + 1); window.dispatchEvent(new CustomEvent('depo:ontologies-changed')); }
     } catch (failure) { if (!controller.signal.aborted) {
@@ -77,16 +81,19 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
     <div className="depo-panel__body"><p>Registration retains the source. Review and approval allow a separate publication to Neo4j. The approver is the person authorised to accept this ontology; the agent cannot approve for you.</p>
       {fromWorkflow && <p><a href={`#/ontology?target=${encodeURIComponent(ontologyId)}`} target="_blank" rel="noopener noreferrer">View in Ontology Junction</a> (opens in a new tab). Review the ontology there, then return here to approve and publish.</p>}
       <label className="depo-field">Approver<input className="depo-input" value={actor} onChange={event => setActor(event.target.value)} placeholder="Your approval identity" /></label>
-      {busy && <p role="status" aria-live="polite">{activeAction === 'publish' ? 'Publishing to Neo4j. Waiting for a verified graph receipt; keep this panel open. Resource counts appear after completion.' : 'Updating ontology lifecycle...'}</p>}
+      {busy && <p role="status" aria-live="polite">{activeAction === 'publish' ? 'Submitting background publication. Once queued, processing continues after you leave this page.' : 'Updating ontology lifecycle...'}</p>}
       {busy && activeAction === 'publish' && <p>Elapsed: {elapsedSeconds}s.{elapsedSeconds >= 60 && ' Large ontologies require RDF preparation and a graph transaction. If this continues, inspect ontology.err.log and graph.err.log for the current publication phase.'}</p>}
       {publication?.status === 'unverified' && <p role="alert">Publication outcome is uncertain. Restore service connectivity and choose Verify publication. Publish remains disabled until a current receipt or an idle publisher is verified.</p>}
-      {!busy && publication?.status === 'publishing' && <p role="status">A server publication is still active. Status refreshes automatically; wait before submitting another request.</p>}
+      {!busy && publication?.status === 'publishing' && <p role="status">Publication {publication.phase === 'queued' ? 'queued' : 'running'} in the background. You can leave this page; status refreshes automatically when you return. {publication.job_id && `Job: ${publication.job_id}`}</p>}
       {error && <p role="alert">{error}</p>}
+      {Number.isSafeInteger(publication?.progress?.resource_offset) && Number.isSafeInteger(publication?.progress?.resources_expected) && <p role="status">Staged resources: {publication.progress.resource_offset} / {publication.progress.resources_expected}. Staged data becomes visible only after validation and activation.</p>}
+      {publication?.resumable && <p>Incomplete batches are retained. Publish again to resume the same approved artifact from its checkpoint.</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
         {missing && <button disabled={busy} onClick={() => act('prepare')}>Prepare retained source for review</button>}
         {metadata?.lifecycle_status === 'draft' && <button disabled={busy || !actor.trim()} onClick={() => act('in_review')}>Submit for review</button>}
         {metadata?.lifecycle_status === 'in_review' && <button disabled={busy || !actor.trim()} onClick={() => act('approved')}>Approve ontology</button>}
         {metadata?.lifecycle_status === 'approved' && publication?.status !== 'published' && <button disabled={busy || !actor.trim() || !['not_published', 'not_verified'].includes(publication?.status)} onClick={() => act('publish')}>Publish to Neo4j</button>}
+        {publication?.phase === 'queued' && publication?.job_id && <button disabled={busy || !actor.trim()} onClick={() => act('cancel')}>Cancel queued publication</button>}
         <button disabled={busy} onClick={() => setRevision(value => value + 1)}>Verify publication</button>
       </div>
       {publication && <p role="status">Graph status: {busy && activeAction === 'publish' ? 'publishing (request in progress)' : publication.status}. {publication.receipt ? `${publication.receipt.resources} resources; ${publication.receipt.relationships} relationships.` : 'No verified graph receipt is available.'}</p>}

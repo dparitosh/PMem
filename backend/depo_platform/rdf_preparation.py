@@ -7,6 +7,17 @@ from pathlib import Path
 from backend.depo_platform.network import bounded_timeout_seconds
 
 
+def prepare_publication_turtle(content, rdf_format):
+    """Avoid reserializing retained Turtle; the graph publisher validates it.
+
+    Other RDF syntaxes still require conversion. Do not apply this shortcut
+    to canonical graph preparation, which assigns stable blank-node identities.
+    """
+    if rdf_format == 'turtle':
+        return content
+    return prepare_rdf(content, rdf_format)
+
+
 def prepare_rdf(content, rdf_format, *, canonical=False):
     started = time.monotonic()
     timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)

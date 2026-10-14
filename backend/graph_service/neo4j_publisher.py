@@ -91,11 +91,14 @@ class Neo4jPublisher:
                     "value": str(value), "datatype": str(value.datatype) if value.datatype else None,
                     "language": value.language,
                 })
+        for predicates in literal_properties.values():
+            for values in predicates.values():
+                values.sort(key=lambda value: (value['value'], value['datatype'] or '', value['language'] or ''))
         resources = [
             {"iri": iri, "label": labels.get(iri, iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]),
              "requirement": (URIRef(iri), RDF.type, URIRef('https://depo.example.org/ceim/0.1/Requirement')) in rdf_graph,
-             "source": next((str(value) for value in rdf_graph.objects(URIRef(iri), URIRef('https://depo.example.org/ceim/0.1/sourceStandard'))), None),
-             "description": next((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), None),
+             "source": min((str(value) for value in rdf_graph.objects(URIRef(iri), URIRef('https://depo.example.org/ceim/0.1/sourceStandard'))), default=None),
+             "description": min((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), default=None),
              "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource",
              "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
             for iri in sorted(resource_iris)
@@ -124,6 +127,8 @@ class Neo4jPublisher:
                 continue
             relation_type = special_predicates.get(str(predicate), "SEMANTIC_RELATION")
             relationships[relation_type].append({"source": str(subject), "target": str(obj), "predicate": str(predicate)})
+        for rows in relationships.values():
+            rows.sort(key=lambda row: (row['source'], row['predicate'], row['target']))
 
         now = datetime.now(timezone.utc).isoformat()
         projection_revision = uuid.uuid4().hex
@@ -205,6 +210,13 @@ class Neo4jPublisher:
                        ontology_id, len(resources), sum(len(rows) for rows in relationships.values()), time.monotonic() - started)
         with self._driver() as driver:
             with driver.session(database=self.database) as session:
+                staged = getattr(self, '_publish_staged_initial', None)
+                if staged:
+                    result = staged(session, ontology_id=ontology_id, publication_id=publication_id,
+                        prefix=prefix, resources=resources, relationships=relationships,
+                        relation_queries=relation_queries, resource_query=resource_query)
+                    if result is not None:
+                        return result
                 session.execute_write(publish_transaction)
         logger.warning('Ontology publication phase=completed ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
         return {
@@ -214,12 +226,28 @@ class Neo4jPublisher:
             "publication_id": publication_id,
         }
 
+    def _publish_staged_initial(self, session, **kwargs):
+        schema = session.run("SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties "
+            "WHERE name='uq_ontologystagedresource_identity' RETURN type, entityType, labelsOrTypes, properties").single()
+        if not schema:
+            logging.getLogger(__name__).warning('Staged publication unavailable; provision the release schema. Using atomic publication.')
+            return None
+        if (schema['type'] not in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'}
+                or schema['entityType'] != 'NODE' or schema['labelsOrTypes'] != ['StagedOntologyResource']
+                or schema['properties'] != ['ontology_id', 'publication_id', 'iri']):
+            raise RuntimeError('Staged publication constraint is incompatible')
+        from .staged_publication import publish_initial
+        return publish_initial(session, **kwargs,
+            timeout=bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600),
+            unit_of_work=unit_of_work)
+
     def publication_receipt(self, *, ontology_id: str, publication_id: str) -> dict[str, Any] | None:
         rows = self._session_rows(
             """
             MATCH (receipt:OntologyPublication {ontology_id: $ontology_id, publication_id: $publication_id})
             RETURN receipt { .ontology_id, .publication_id, .prefix, .resources, .relationships,
-                             .hierarchy_edges, .status, .published_at, .current } AS receipt
+                             .hierarchy_edges, .status, .published_at, .current,
+                             .resource_offset, .resources_expected, .relationships_expected } AS receipt
             """,
             ontology_id=ontology_id, publication_id=publication_id,
         )

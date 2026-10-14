@@ -49,7 +49,7 @@ test('shows publication in progress until the request settles', async () => {
   const button = await screen.findByText('Publish to Neo4j');
   fireEvent.change(screen.getByPlaceholderText('Your approval identity'), {target:{value:'reviewer'}});
   fireEvent.click(button);
-  await screen.findByText(/Publishing to Neo4j. Waiting for a verified graph receipt/);
+  await screen.findByText(/Submitting background publication/);
   expect(button).toBeDisabled();
   finish({data:{}});
   await waitFor(() => expect(button).toBeEnabled());
@@ -107,7 +107,37 @@ test('reopened panel header shows server publishing state', async () => {
   vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({data:url.endsWith('/publication') ? {status:'publishing'} : {lifecycle_status:'approved'}}));
   const view = render(<OntologyPublicationPanel ontologyId="active-demo" />);
   await screen.findByText('Publishing...');
-  expect(screen.getByText(/A server publication is still active/)).toBeInTheDocument();
+  expect(screen.getByText(/in the background. You can leave this page/)).toBeInTheDocument();
   expect(screen.getByText('Publish to Neo4j')).toBeDisabled();
+  view.unmount();
+});
+
+test('background job remains visible and disables duplicate publication after submission', async () => {
+  let queued = false;
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({ data: url.endsWith('/publication')
+    ? queued ? { status: 'publishing', phase: 'queued', job_id: 'retained-job' } : { status: 'not_published' }
+    : { lifecycle_status: 'approved' } }));
+  const post = vi.spyOn(apiClient, 'post').mockImplementation(async () => {
+    queued = true; return { status: 202, data: { job_id: 'retained-job', status: 'queued' } };
+  });
+  const view = render(<OntologyPublicationPanel ontologyId="background-demo" />);
+  await screen.findByText('Publish to Neo4j');
+  fireEvent.change(screen.getByPlaceholderText('Your approval identity'), { target: { value: 'reviewer' } });
+  fireEvent.click(screen.getByText('Publish to Neo4j'));
+  await screen.findByText(/Job: retained-job/);
+  expect(post).toHaveBeenCalledWith(expect.stringContaining('/publish?background=true'), expect.any(Object), expect.objectContaining({ timeout: 30000 }));
+  expect(screen.getByText('Publish to Neo4j')).toBeDisabled();
+  expect(screen.getByText('Cancel queued publication')).toBeInTheDocument();
+  view.unmount();
+});
+
+test('committed staging progress is visible without claiming publication succeeded', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({ data: url.endsWith('/publication')
+    ? { status: 'publishing', progress: { resource_offset: 1000, resources_expected: 2402 } }
+    : { lifecycle_status: 'approved' } }));
+  const view = render(<OntologyPublicationPanel ontologyId="staged-demo" />);
+  await screen.findByText(/Staged resources: 1000 \/ 2402/);
+  expect(screen.getByText('Publish to Neo4j')).toBeDisabled();
+  expect(screen.queryByText('Published')).toBeNull();
   view.unmount();
 });

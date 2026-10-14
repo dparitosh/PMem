@@ -6,11 +6,12 @@ from pathlib import Path
 
 
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "neo4j-publication-index.cypher"
-REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id"}
+REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id", "uq_ontologystagedresource_identity"}
 CONSTRAINT_DEFINITIONS = {
     'uq_ontologyresource_identity': ('OntologyResource', ['ontology_id', 'iri']),
     'uq_ontologypublication_identity': ('OntologyPublication', ['ontology_id', 'publication_id']),
     'depo_bridge_publication_id': ('DepoBridgePublication', ['publication_id']),
+    'uq_ontologystagedresource_identity': ('StagedOntologyResource', ['ontology_id', 'publication_id', 'iri']),
 }
 REQUIRED_INDEXES = {
     'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
@@ -26,7 +27,10 @@ def verify_constraints(records):
     invalid = []
     for name, (label, properties) in CONSTRAINT_DEFINITIONS.items():
         row = rows[name]
-        if (row.get('type') != 'UNIQUENESS' or row.get('entityType') != 'NODE'
+        # Cypher 25 renamed node UNIQUENESS in SHOW CONSTRAINTS output.
+        # Both names describe the same enforcement; relationship uniqueness
+        # and other constraint kinds must still fail validation.
+        if (row.get('type') not in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'} or row.get('entityType') != 'NODE'
                 or row.get('labelsOrTypes') != [label] or row.get('properties') != properties):
             invalid.append(name)
     if invalid:

@@ -52,7 +52,7 @@ class IndexRecoveryTests(unittest.TestCase):
                 return SimpleNamespace(status_code=200,raise_for_status=lambda:None,json=lambda:{'status':'published','current':True,'ontology_id':'demo','publication_id':digest,'resources':1,'relationships':0})
         scope.update(run_in_threadpool=thread,httpx=SimpleNamespace(AsyncClient=lambda **kw:Client(),HTTPError=RuntimeError))
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<status>','exec'),scope)
-        result=asyncio.run(scope['ontology_publication_status']('demo'))
+        result=asyncio.run(scope['ontology_publication_status']('demo', include_job=False))
         self.assertTrue(urls[0].endswith('/'+digest))
         self.assertEqual(result['status'],'published')
         self.assertEqual([getattr(d,'id','') for d in next(n for n in ast.parse(Path('backend/ontology_service/router.py').read_text(encoding='utf-8')).body if isinstance(n,ast.AsyncFunctionDef) and n.name=='ontology_publication_status').decorator_list][-1],'ontology_writer')

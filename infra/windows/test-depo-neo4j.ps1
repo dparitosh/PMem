@@ -17,5 +17,8 @@ if ($Bootstrap) {
 } else {
   & $python -c "from neo4j import GraphDatabase; import os; auth=None if os.getenv('NEO4J_AUTH_MODE','token').lower()=='none' else (os.environ['NEO4J_USER'], os.environ['NEO4J_PASS']); driver=GraphDatabase.driver(os.environ['NEO4J_URI'], auth=auth, connection_timeout=10, max_transaction_retry_time=0); driver.verify_connectivity(); driver.execute_query('RETURN 1 AS connected', database_=os.environ['NEO4J_DATABASE'], routing_='r'); driver.close(); print('Neo4j connectivity/database read check passed.')"
 }
-if ($LASTEXITCODE -ne 0) { throw 'Neo4j connection check failed.' }
+if ($LASTEXITCODE -ne 0) {
+  if ($Bootstrap -or $Production) { throw 'Neo4j schema provisioning/validation failed. Review the diagnostic JSON above.' }
+  throw 'Neo4j connectivity/database read check failed.'
+}
 } finally { Pop-Location }

@@ -37,7 +37,14 @@ graph_publications = PostgresRegistry('ontology_graph_publications_v1')
 
 @router.get('/{ontology_id}/publication', summary='Verify a retained ontology graph publication')
 @ontology_writer
-async def ontology_publication_status(ontology_id: str) -> dict:
+async def ontology_publication_status(ontology_id: str, include_job: bool = True) -> dict:
+    if include_job:
+        from .publication_jobs import publication_jobs
+        job = await run_in_threadpool(publication_jobs.get, ontology_id)
+        state = await run_in_threadpool(graph_publications.get, ontology_id) if job and job['status'] == 'running' else None
+        if job and (job['status'] == 'queued' or (job['status'] == 'running' and not state)):
+            return {'ontology_id': ontology_id, 'status': 'publishing',
+                    'job_id': job['job_id'], 'phase': job['status']}
     record = await run_in_threadpool(graph_publications.get, ontology_id)
     original_record = record
     if record:
@@ -61,13 +68,14 @@ async def ontology_publication_status(ontology_id: str) -> dict:
             body = response.json()
             if (isinstance(body, dict) and body.get('status') == 'publishing'
                     and body.get('ontology_id') == ontology_id and body.get('publication_id') == record['publication_id']):
-                return {**record, 'status': 'publishing', 'recovery_action': 'wait_and_verify'}
+                return {**record, 'status': 'publishing', 'recovery_action': 'wait_and_verify', 'progress': body.get('progress')}
             raise ValueError('Publication activity could not be verified')
         if response.status_code == 404:
             body = response.json()
             if isinstance(body, dict) and body.get('detail') == 'Publication receipt was not found':
                 from backend.depo_platform.publication_state import missing_receipt_status
-                return {**record, 'status': missing_receipt_status(record, graph_idle=body.get('publication_idle') is True), 'receipt': None}
+                return {**record, 'status': missing_receipt_status(record, graph_idle=body.get('publication_idle') is True), 'receipt': None,
+                        'resumable': body.get('resumable') is True}
             raise ValueError('Receipt route is unavailable')
         response.raise_for_status()
         receipt = response.json()
@@ -88,23 +96,44 @@ async def ontology_publication_status(ontology_id: str) -> dict:
 
 
 @router.post('/{ontology_id}/publish', summary='Publish an approved retained ontology to Neo4j')
-async def publish_registered_ontology(ontology_id: str, payload: ApprovalBody, request: Request) -> dict:
+async def publish_registered_ontology(ontology_id: str, payload: ApprovalBody, request: Request, background: bool = False) -> dict:
     import asyncio
     try:
+        if background:
+            from .publication_jobs import publication_jobs
+            actor = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+            metadata, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
+            if metadata.get('lifecycle_status') != 'approved' or metadata.get('status') == 'superseded':
+                raise HTTPException(409, 'Approve the ontology before graph publication')
+            from fastapi.responses import JSONResponse
+            job = await run_in_threadpool(publication_jobs.submit, ontology_id, hashlib.sha256(content).hexdigest(), actor)
+            return JSONResponse(status_code=202, content=job)
         return await run_in_threadpool(catalog.with_publication_lock, ontology_id,
             lambda: asyncio.run(_publish_registered_ontology(ontology_id, payload, request)))
     except ValueError as exc:
         raise HTTPException(409, 'Ontology lifecycle is being updated; refresh before publication') from exc
 
 
-async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any], request: Request) -> dict:
-    actor = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+@router.post('/{ontology_id}/publication-jobs/{job_id}/cancel', summary='Cancel a queued publication before dispatch')
+async def cancel_publication_job(ontology_id: str, job_id: str, payload: ApprovalBody, request: Request) -> dict:
+    approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+    from .publication_jobs import publication_jobs
+    try:
+        return await run_in_threadpool(publication_jobs.cancel, ontology_id, job_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any], request: Request, *, approved_actor=None, expected_sha256=None) -> dict:
+    actor = approved_actor or approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
     metadata = await run_in_threadpool(catalog.get, ontology_id)
     if not metadata: raise HTTPException(404, 'Prepare this retained ontology in the catalog before review and publication')
     if metadata.get('lifecycle_status') != 'approved' or metadata.get('status') == 'superseded': raise HTTPException(409, 'Approve the ontology before graph publication')
-    from backend.depo_platform.rdf_preparation import prepare_rdf
+    from backend.depo_platform.rdf_preparation import prepare_publication_turtle
     _, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
     publication_id = hashlib.sha256(content).hexdigest()
+    if expected_sha256 is not None and publication_id != expected_sha256:
+        raise HTTPException(409, 'Retained artifact changed after publication was queued; review again')
     previous = await run_in_threadpool(graph_publications.get, ontology_id)
     record = {'ontology_id': ontology_id, 'publication_id': publication_id, 'artifact_sha256': publication_id, 'approved_by': actor, 'status': 'publishing', 'phase': 'rdf_preparation'}
     if previous and previous.get('publication_id') == publication_id:
@@ -113,7 +142,7 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
     if not graph_root.endswith('/api/v1'): graph_root += '/api/v1'
     graph_dispatched = False
     try:
-        existing = await ontology_publication_status(ontology_id)
+        existing = await ontology_publication_status(ontology_id, include_job=False)
         if existing['status'] == 'published': return existing
         if existing['status'] == 'publishing': raise HTTPException(409, 'A publication attempt is still active. Verify its receipt before retrying.')
         if existing['status'] == 'unverified':
@@ -130,7 +159,7 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
         record['active_until'] = (datetime.now(timezone.utc) + timedelta(seconds=limit + graph_dispatch_timeout_seconds() + 30)).isoformat()
         await run_in_threadpool(graph_publications.put, ontology_id, record)
         logging.getLogger(__name__).warning('Ontology publication phase=retained_rdf_prepare ontology_id=%s bytes=%s', ontology_id, len(content))
-        turtle = await run_in_threadpool(prepare_rdf, content, metadata['validation']['rdf_format'])
+        turtle = await run_in_threadpool(prepare_publication_turtle, content, metadata['validation']['rdf_format'])
         logging.getLogger(__name__).warning('Ontology publication phase=retained_rdf_ready ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - preparation_started)
         from backend.depo_platform.network import bounded_timeout_seconds
         publication_timeout = graph_dispatch_timeout_seconds()
@@ -151,6 +180,11 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
         await run_in_threadpool(graph_publications.put, ontology_id, record)
         return record
     except (httpx.HTTPError, ValueError, TimeoutError, RuntimeError, OSError) as exc:
+        upstream_status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        logging.getLogger(__name__).error(
+            'Ontology publication failed ontology_id=%s phase=%s graph_dispatched=%s error_type=%s upstream_status=%s',
+            ontology_id, record.get('phase'), graph_dispatched, type(exc).__name__, upstream_status,
+        )
         await run_in_threadpool(graph_publications.put, ontology_id, {**record, 'status': 'unverified' if graph_dispatched else 'preparation_failed', 'active_until': None})
         detail = 'Publication outcome is unverified. Verify its graph receipt before retrying.' if graph_dispatched else 'RDF preparation or service configuration failed before graph dispatch. Correct the configuration or artifact, verify status, then retry.'
         raise HTTPException(503, detail) from exc

@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
-import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setBrowserSessionExpiry, serviceAuthHeaders, requireServiceReadAccess } from './serviceAuth';
+import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setBrowserSessionExpiry, serviceAuthHeaders, requireServiceReadAccess, handleSessionRejection } from './serviceAuth';
 import { registerServiceContract, clearServiceContracts } from './serviceContractRegistry';
 
 vi.mock('../config', () => ({ config: { semanticServiceUrls: {
@@ -11,6 +11,15 @@ const reads = [
   ['catalog', 'http://vm:8016', '/api/v1/catalog/products'],
   ['dataProducts', 'http://vm:8017', '/api/v1/data-products'],
 ];
+
+test('administrator rotation expires delegation while a missing write scope preserves reads', () => {
+  setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_rotated');
+  setBrowserSessionExpiry('depo_session_rotated', new Date(Date.now() + 600000).toISOString());
+  handleSessionRejection(403, 'Bearer depo_session_rotated', 'An approver is required');
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_rotated');
+  handleSessionRejection(403, 'Bearer depo_session_rotated', 'Administrator key changed; sign in again');
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('');
+});
 beforeEach(() => { clearServiceAuthToken(); clearServiceContracts(); });
 afterEach(() => { clearServiceAuthToken(); vi.useRealTimers(); });
 

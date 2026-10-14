@@ -6,6 +6,9 @@ CREATE CONSTRAINT uq_ontologypublication_identity IF NOT EXISTS
 FOR (n:OntologyPublication) REQUIRE (n.ontology_id, n.publication_id) IS UNIQUE;
 CREATE CONSTRAINT depo_bridge_publication_id IF NOT EXISTS
 FOR (p:DepoBridgePublication) REQUIRE p.publication_id IS UNIQUE;
+// Unpublished batches remain outside all OntologyResource read projections.
+CREATE CONSTRAINT uq_ontologystagedresource_identity IF NOT EXISTS
+FOR (n:StagedOntologyResource) REQUIRE (n.ontology_id, n.publication_id, n.iri) IS UNIQUE;
 // Retained nodes temporarily lose OntologyResource and its constraint index.
 CREATE INDEX idx_depo_retained_ontology_identity IF NOT EXISTS
 FOR (n:RetainedOntologyIdentity) ON (n.ontology_id, n.iri);

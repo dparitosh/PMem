@@ -89,7 +89,7 @@ function restoreBrowserSession() {
 export function handleSessionRejection(status, authorization, detail = '') {
   const value = String(authorization || '');
   const invalidSession = status === 401 || (status === 403 &&
-    /browser session scope is unavailable or credentials changed|invalid or revoked|^revoked [A-Z_]+|expired session/i.test(String(detail)));
+    /browser session scope is unavailable or credentials changed|administrator key changed|invalid or revoked|^revoked [A-Z_]+|expired session/i.test(String(detail)));
   if (invalidSession && value.startsWith('Bearer depo_session_')) expireBrowserSession(value.slice(7));
   else if (invalidSession && value.startsWith('depo_session_')) expireBrowserSession(value);
 }

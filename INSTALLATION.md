@@ -629,6 +629,33 @@ services. Semantic Bridge publication requires the `depo_bridge_publication_id`
 uniqueness constraint; publication fails closed until Neo4j schema provisioning
 has applied it.
 
+Ontology publication from the review panel now submits a durable background job.
+After upgrading and provisioning `uq_ontologystagedresource_identity`, a first
+publication commits resources and relationships in batches of 1,000. Batches use
+the `StagedOntologyResource` label and remain outside the public RDF projection.
+One final transaction checks resource/relationship counts and exposes the
+projection with its publication receipt. The panel shows queued/running status
+and committed resource progress; it can be closed while the server works.
+
+Interrupted batches are retained. Verify publication first, then explicitly
+submit the same approved artifact again to resume its checkpoints. A changed
+manifest cannot reuse those checkpoints. Cancel is available only before a
+queued job starts; it does not undo completed writes. Do not delete staging data
+manually while publication is active. Replacing a published projection, or one
+with retained external identities, continues to use the atomic replacement path
+to preserve Semantic Bridge element IDs. Missing staging schema produces a
+server warning and uses the atomic path; rerun the matching release installer
+to enable resumable first publication.
+
+`GRAPH_PUBLICATION_TIMEOUT_SECONDS` bounds the complete staged write attempt,
+including all committed batches and activation. Each transaction receives only
+the remaining time. An expired attempt retains its checkpoints for a reviewed
+retry; increasing the browser timeout does not extend that backend deadline.
+Graph views, dictionaries, requirements and OSLC queries exclude staged nodes.
+Generic graph/OSLC reads also exclude internal `OntologyPublication` receipts
+before pagination and aggregation. Deploy these readers together with the
+publisher so unfinished batches cannot appear in customer results.
+
 ### 1.2 Install optional Apache Spark and PySpark
 
 > **Current Windows deployment boundary:** Until a Linux Spark VM is available,

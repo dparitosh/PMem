@@ -443,7 +443,7 @@ class OSLCService:
         labels = sorted({
             str(row.get("label") or "")
             for row in GraphViewService._run(
-                "MATCH (n) WHERE NOT (n:DatasheetChunk OR n:GraphChunk) "
+                "MATCH (n) WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication) "
                 "UNWIND labels(n) AS label RETURN DISTINCT label ORDER BY label"
             )
             if row.get("label")
@@ -451,7 +451,7 @@ class OSLCService:
         properties = sorted({
             str(row.get("propertyKey") or "")
             for row in GraphViewService._run(
-                "MATCH (n) WHERE NOT (n:DatasheetChunk OR n:GraphChunk) "
+                "MATCH (n) WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication) "
                 "UNWIND keys(n) AS propertyKey RETURN DISTINCT propertyKey ORDER BY propertyKey"
             )
             if row.get("propertyKey")
@@ -989,6 +989,7 @@ class OSLCService:
                 """
                 MATCH (n)
                 WHERE any(lbl IN labels(n) WHERE lbl IN $class_names)
+                  AND NOT (n:StagedOntologyResource OR n:OntologyPublication)
                   AND coalesce(n.ontology_prefix, n.prefix) = $prefix
                 RETURN DISTINCT labels(n) AS labels, keys(n) AS prop_keys
                 LIMIT toInteger($instance_limit)
@@ -1014,6 +1015,7 @@ class OSLCService:
                 """
                 MATCH (a)-[r]->(b)
                 WHERE any(la IN labels(a) WHERE la IN $class_names)
+                  AND NOT (a:StagedOntologyResource OR a:OntologyPublication) AND NOT (b:StagedOntologyResource OR b:OntologyPublication)
                   AND any(lb IN labels(b) WHERE lb IN $class_names)
                   AND coalesce(a.ontology_prefix, a.prefix) = $prefix
                   AND coalesce(b.ontology_prefix, b.prefix) = $prefix
@@ -1113,7 +1115,7 @@ class OSLCService:
                 """
                 MATCH (n)
                 WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix
-                  AND NOT (n:DatasheetChunk OR n:GraphChunk)
+                  AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
                 WITH labels(n) AS lbls, keys(n) AS ks
                 UNWIND lbls AS lbl
                 WITH lbl, collect(DISTINCT ks) AS prop_sets
@@ -1239,9 +1241,9 @@ class OSLCService:
             MATCH (n)
             WHERE (($resource_uri IS NULL AND elementId(n) = $element_id)
                 OR ($resource_uri IS NOT NULL AND (n.uri = $resource_uri OR n.rdf_uri = $resource_uri)))
-              AND NOT (n:DatasheetChunk OR n:GraphChunk)
+              AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
             OPTIONAL MATCH (n)-[r]->(m)
-            WHERE NOT (m:DatasheetChunk OR m:GraphChunk)
+            WHERE NOT (m:DatasheetChunk OR m:GraphChunk OR m:StagedOntologyResource OR m:OntologyPublication)
             RETURN
               elementId(n) AS element_id,
               labels(n) AS labels,
@@ -1277,7 +1279,7 @@ class OSLCService:
         resource_type: str = DEFAULT_RESOURCE_TYPE,
         ontology_scope: Optional[Dict[str, str]] = None,
     ):
-        where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk)"]
+        where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)"]
         domain_predicate = cls._resource_type_predicate(resource_type)
         if domain_predicate:
             where_clauses.append(domain_predicate)
@@ -1335,7 +1337,7 @@ class OSLCService:
         resource_type: str = DEFAULT_RESOURCE_TYPE,
         ontology_scope: Optional[Dict[str, str]] = None,
     ):
-        where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk)"]
+        where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)"]
         domain_predicate = cls._resource_type_predicate(resource_type)
         if domain_predicate:
             where_clauses.append(domain_predicate)

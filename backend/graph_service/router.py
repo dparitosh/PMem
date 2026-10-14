@@ -65,11 +65,14 @@ def publication_receipt(ontology_id: str, publication_id: str) -> dict:
         # A 404 is retry evidence only when no publisher owns that lock.
         with publication_lock(ontology_id) as idle:
             if not idle:
+                progress = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
                 return JSONResponse(status_code=409, content={'detail': 'Publication is still active',
-                    'status': 'publishing', 'ontology_id': ontology_id, 'publication_id': publication_id})
+                    'status': 'publishing', 'ontology_id': ontology_id, 'publication_id': publication_id,
+                    'progress': {key: progress.get(key) for key in ('resource_offset', 'resources_expected', 'relationships_expected')} if progress and progress.get('status') == 'staging' else None})
             receipt = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
-            if receipt is None:
-                return JSONResponse(status_code=404, content={'detail': 'Publication receipt was not found', 'publication_idle': True})
+            if receipt is None or receipt.get('status') == 'staging':
+                return JSONResponse(status_code=404, content={'detail': 'Publication receipt was not found', 'publication_idle': True,
+                    'resumable': bool(receipt and receipt.get('status') == 'staging')})
             return receipt
     except HTTPException:
         raise
