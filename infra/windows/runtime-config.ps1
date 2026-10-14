@@ -89,8 +89,42 @@ function Write-DepoBrowserRouting([string]$Root, [string]$EnvFile = '.env.local'
   if ((Get-Item -LiteralPath (Join-Path $dist 'depo-runtime-config.js')).Length -eq 0) { throw 'Runtime routing file is empty.' }
 }
 
+function Get-DepoNeo4jAliases {
+  return @{
+    NEO4J_URI = @('NEO4J_URL')
+    NEO4J_USER = @('NEO4J_USERNAME')
+    NEO4J_PASS = @('NEO4J_PASSWORD')
+  }
+}
+
+function Resolve-DepoNeo4jConfiguration([hashtable]$Values) {
+  $resolved = @{}
+  $aliases = Get-DepoNeo4jAliases
+  foreach ($canonical in $aliases.Keys) {
+    $selected = $null
+    $selectedName = ''
+    foreach ($name in (@($canonical) + $aliases[$canonical])) {
+      $candidate = [string]$Values[$name]
+      if ([string]::IsNullOrWhiteSpace($candidate) -or $candidate -match '<.*>' -or
+          ($canonical -eq 'NEO4J_URI' -and $candidate -match 'your-neo4j-instance')) { continue }
+      if ($canonical -ne 'NEO4J_PASS') { $candidate = $candidate.Trim() }
+      if ($null -ne $selected -and -not [string]::Equals($selected, $candidate, [StringComparison]::Ordinal)) {
+        throw "Conflicting Neo4j aliases: $selectedName and $name. Keep one setting or identical values. Values are intentionally hidden."
+      }
+      $selected = $candidate
+      $selectedName = $name
+    }
+    if ($null -ne $selected) { $resolved[$canonical] = $selected }
+  }
+  return $resolved
+}
+
 function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $values = Read-DepoEnvironment -Root $Root -EnvFile $EnvFile
+  # Resolve everything before changing the process environment. Invalid aliases
+  # or routing must not leave a partially imported deployment.
+  $neo4j = Resolve-DepoNeo4jConfiguration $values
+  $routing = Resolve-DepoRouting $values
   # These aliases are one setting. Clear a previously imported alias when the
   # selected file explicitly configures the other, so Python cannot prefer it.
   if ($values.ContainsKey('DEPO_DATABASE_URL') -or $values.ContainsKey('DATABASE_URL')) {
@@ -98,22 +132,37 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
       if (-not $values.ContainsKey($databaseKey)) { [Environment]::SetEnvironmentVariable($databaseKey, $null, 'Process') }
     }
   }
-  $routing = Resolve-DepoRouting $values
+  $aliases = Get-DepoNeo4jAliases
+  foreach ($canonical in $aliases.Keys) {
+    $names = @($canonical) + $aliases[$canonical]
+    if (@($names | Where-Object { $values.ContainsKey($_) }).Count) {
+      foreach ($name in $names) {
+        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+        $values.Remove($name)
+      }
+    }
+  }
+  foreach ($key in $neo4j.Keys) { $values[$key] = $neo4j[$key] }
   foreach ($key in $routing.Keys) { $values[$key] = $routing[$key] }
   foreach ($key in $values.Keys) { [Environment]::SetEnvironmentVariable($key, $values[$key], 'Process') }
   [Environment]::SetEnvironmentVariable('DEPO_ENV_INJECTED', 'true', 'Process')
 }
 
 function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) {
+  $resolved = Resolve-DepoNeo4jConfiguration $Values
+  foreach ($key in $resolved.Keys) { $Values[$key] = $resolved[$key] }
   $authMode = if ($Values['NEO4J_AUTH_MODE']) { $Values['NEO4J_AUTH_MODE'].ToLowerInvariant() } else { 'token' }
   $tlsMode = if ($Values['NEO4J_TLS_MODE']) { $Values['NEO4J_TLS_MODE'].ToLowerInvariant() } else { 'required' }
   if ($authMode -notin @('token','none')) { throw 'NEO4J_AUTH_MODE must be token or none.' }
   if ($tlsMode -notin @('required','disabled')) { throw 'NEO4J_TLS_MODE must be required or disabled.' }
   foreach ($key in @('NEO4J_URI','NEO4J_DATABASE')) {
-    if (-not $Values[$key] -or $Values[$key] -match '<.*>') { throw "Missing Neo4j setting: $key" }
+    if ([string]::IsNullOrWhiteSpace([string]$Values[$key]) -or $Values[$key] -match '<.*>' -or
+        ($key -eq 'NEO4J_URI' -and $Values[$key] -match 'your-neo4j-instance')) {
+      throw "Missing Neo4j setting: $key. Complete the selected deployment environment file; NEO4J_URL is also accepted for the URI. Frontend configuration does not contain database settings."
+    }
   }
   if ($authMode -eq 'token') {
-    foreach ($key in @('NEO4J_USER','NEO4J_PASS')) { if (-not $Values[$key] -or $Values[$key] -match '<.*>') { throw "Missing Neo4j setting: $key" } }
+    foreach ($key in @('NEO4J_USER','NEO4J_PASS')) { if ([string]::IsNullOrWhiteSpace([string]$Values[$key]) -or $Values[$key] -match '<.*>') { throw "Missing Neo4j setting: $key" } }
   }
   $uri = $null
   if (-not [Uri]::TryCreate($Values.NEO4J_URI, [UriKind]::Absolute, [ref]$uri) -or

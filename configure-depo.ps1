@@ -18,11 +18,14 @@ $browserTemplate = Join-Path $root 'frontend\.env.example'
 if ($UpdateMissing) {
   if ($Force -or $CheckExisting) { throw '-UpdateMissing preserves existing values and cannot be combined with -Force or -CheckExisting.' }
   . (Join-Path $root 'infra/windows/runtime-config.ps1')
+  $neo4jAliases = Get-DepoNeo4jAliases
   $plans = @()
   foreach ($entry in @(@{ Path=$server; Template=(Join-Path $root 'config/deployment.env.example'); Name='Server' }, @{ Path=$browser; Template=$browserTemplate; Name='Frontend' })) {
     $present = Test-Path -LiteralPath $entry.Path -PathType Leaf
     if (-not $present -and $entry.Name -eq 'Server') { throw "Existing server configuration is required: $($entry.Path). Use configure-depo.ps1 for a first installation." }
     $existing = if ($present) { Read-DepoEnvironment -Root $root -EnvFile $entry.Path } else { @{} }
+    if ($entry.Name -eq 'Server') { Resolve-DepoNeo4jConfiguration $existing | Out-Null }
+    if ($entry.Name -eq 'Server') { Resolve-DepoNeo4jConfiguration $existing | Out-Null }
     $defaults = Read-DepoEnvironment -Root $root -EnvFile $entry.Template
     foreach ($name in @($existing.Keys | Where-Object { $_.StartsWith('VITE_') })) {
       $alias = 'REACT_APP_' + $name.Substring(5)
@@ -34,6 +37,7 @@ if ($UpdateMissing) {
       $name = $Matches[1]
       $otherAlias = if ($name.StartsWith('REACT_APP_')) { 'VITE_' + $name.Substring(10) } elseif ($name.StartsWith('VITE_')) { 'REACT_APP_' + $name.Substring(5) } else { '' }
       if ($existing.ContainsKey($name) -or ($otherAlias -and $existing.ContainsKey($otherAlias))) { continue }
+      if ($neo4jAliases.ContainsKey($name) -and @($neo4jAliases[$name] | Where-Object { $existing[$_] }).Count) { continue }
       if ($name -eq 'OLLAMA_BASE_URL' -and $existing['OLLAMA_API_URL']) { continue }
       $additions += $line
     }
@@ -60,13 +64,19 @@ if ($UpdateMissing) {
 if ($CheckExisting) {
   if ($Force) { throw '-CheckExisting is read-only and cannot be combined with -Force.' }
   . (Join-Path $root 'infra/windows/runtime-config.ps1')
+  $neo4jAliases = Get-DepoNeo4jAliases
+  $neo4jAliases = Get-DepoNeo4jAliases
   foreach ($entry in @(@{ Path=$server; Template=(Join-Path $root 'config/deployment.env.example'); Name='Server' }, @{ Path=$browser; Template=$browserTemplate; Name='Frontend' })) {
     $existing = Read-DepoEnvironment -Root $root -EnvFile $entry.Path
+    if ($entry.Name -eq 'Server') { Resolve-DepoNeo4jConfiguration $existing | Out-Null }
+    if ($entry.Name -eq 'Server') { Resolve-DepoNeo4jConfiguration $existing | Out-Null }
     $defaults = Read-DepoEnvironment -Root $root -EnvFile $entry.Template
     $missing = @($defaults.Keys | Where-Object {
       $name = $_
       $otherAlias = if ($name.StartsWith('REACT_APP_')) { 'VITE_' + $name.Substring(10) } elseif ($name.StartsWith('VITE_')) { 'REACT_APP_' + $name.Substring(5) } else { '' }
       -not $existing.ContainsKey($name) -and (-not $otherAlias -or -not $existing.ContainsKey($otherAlias)) -and
+        -not ($neo4jAliases.ContainsKey($name) -and @($neo4jAliases[$name] | Where-Object { $existing[$_] }).Count) -and
+        -not ($neo4jAliases.ContainsKey($name) -and @($neo4jAliases[$name] | Where-Object { $existing[$_] }).Count) -and
         -not ($name -eq 'OLLAMA_BASE_URL' -and $existing['OLLAMA_API_URL'])
     } | Sort-Object)
     if ($missing.Count) { Write-Warning ('{0} settings absent from the existing file: {1}. Review template defaults and add settings needed for your features; existing values were preserved.' -f $entry.Name, ($missing -join ', ')) }

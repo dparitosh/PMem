@@ -13,7 +13,7 @@ try {
   Copy-Item -LiteralPath (Join-Path $root 'frontend/.env.example') -Destination (Join-Path $fixture 'frontend/.env.example')
   $server = Join-Path $fixture '.env.local'
   $browser = Join-Path $fixture 'frontend/.env.local'
-  Set-Content -LiteralPath $server -Value "AUTH_MODE=token`nOLLAMA_API_URL=http://fixture/ollama"
+  Set-Content -LiteralPath $server -Value "AUTH_MODE=token`nOLLAMA_API_URL=http://fixture/ollama`nNEO4J_URL=bolt+s://graph.example.com`nNEO4J_USERNAME=app`nNEO4J_PASSWORD=fixture"
   Set-Content -LiteralPath $browser -Value 'VITE_AGENTIC_SERVICE_URL=http://fixture:8012'
   $serverHash = (Get-FileHash -LiteralPath $server).Hash
   $browserHash = (Get-FileHash -LiteralPath $browser).Hash
@@ -25,6 +25,9 @@ try {
   $updatedBrowser = Read-DepoEnvironment -Root $fixture -EnvFile $browser
   if ($updatedServer['AUTH_MODE'] -ne 'token' -or $updatedServer['OLLAMA_API_URL'] -ne 'http://fixture/ollama') { throw 'Missing-setting update replaced existing server values.' }
   if ($updatedServer.ContainsKey('OLLAMA_BASE_URL')) { throw 'Missing-setting update introduced a conflicting Ollama alias.' }
+  foreach ($canonical in @('NEO4J_URI','NEO4J_USER','NEO4J_PASS')) {
+    if ($updatedServer.ContainsKey($canonical)) { throw "Missing-setting update shadowed an existing Neo4j alias: $canonical" }
+  }
   if ($updatedBrowser['VITE_AGENTIC_SERVICE_URL'] -ne 'http://fixture:8012') { throw 'Missing-setting update replaced the existing browser service URL.' }
   if (-not $updatedServer.ContainsKey('DEPO_DATABASE_URL') -or -not $updatedBrowser.ContainsKey('VITE_API_GATEWAY_URL')) { throw 'Missing template fields were not appended.' }
   $serverHash = (Get-FileHash -LiteralPath $server).Hash

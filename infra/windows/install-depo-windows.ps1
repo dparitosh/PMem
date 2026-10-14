@@ -61,6 +61,7 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Missing deployment configuration: $envPath. Create and complete root .env.local before running this installer."
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+Write-Host "Deployment environment file: $envPath"
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
 Invoke-DepoStage 'Deployment configuration preflight (before dependency installation)' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks

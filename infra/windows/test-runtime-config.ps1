@@ -74,6 +74,37 @@ try {
   Assert-Rejected { Assert-DepoNeo4jConfiguration $neo -Production } 'non-TLS'
   $neo.NEO4J_URI = 'neo4j+s://user:password@graph.example.com'
   Assert-Rejected { Assert-DepoNeo4jConfiguration $neo } 'Invalid Neo4j URI'
+  $legacy = @{ NEO4J_URL='bolt+s://graph.example.com:7687'; NEO4J_USERNAME='app'; NEO4J_PASSWORD='fixture'; NEO4J_DATABASE='neo4j' }
+  Assert-DepoNeo4jConfiguration $legacy -Production
+  if ($legacy.NEO4J_URI -ne $legacy.NEO4J_URL -or $legacy.NEO4J_USER -ne 'app' -or $legacy.NEO4J_PASS -ne 'fixture') { throw 'Neo4j aliases were not normalized for deployment validation.' }
+  $legacy.NEO4J_URI = '<customer-neo4j-uri>'
+  Assert-DepoNeo4jConfiguration $legacy -Production
+  if ($legacy.NEO4J_URI -ne $legacy.NEO4J_URL) { throw 'Template placeholder shadowed the configured Neo4j alias.' }
+  $legacy.NEO4J_URI = ''
+  Assert-DepoNeo4jConfiguration $legacy -Production
+  Assert-Rejected { Assert-DepoNeo4jConfiguration @{ NEO4J_DATABASE='neo4j' } } 'Missing Neo4j setting: NEO4J_URI'
+  $conflict = @{ NEO4J_URI='bolt+s://one.example'; NEO4J_URL='bolt+s://two.example' }
+  Assert-Rejected { Resolve-DepoNeo4jConfiguration $conflict } 'Conflicting Neo4j aliases'
+  $oldNeo4j = @{}
+  foreach ($name in @('NEO4J_URI','NEO4J_URL','NEO4J_USER','NEO4J_USERNAME','NEO4J_PASS','NEO4J_PASSWORD','DEPO_ENV_INJECTED','DATABASE_URL','DEPO_DATABASE_URL')) {
+    $oldNeo4j[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+  }
+  try {
+    $env:NEO4J_URI = 'bolt://stale.invalid'; $env:NEO4J_PASS = 'stale-password'
+    Set-Content -LiteralPath $envPath -Value @('NEO4J_URL=bolt+s://graph.example.com:7687','NEO4J_USERNAME=app','NEO4J_PASSWORD=fixture')
+    Import-DepoEnvironment $fixture '.env.local'
+    if ($env:NEO4J_URI -ne 'bolt+s://graph.example.com:7687' -or $env:NEO4J_USER -ne 'app' -or $env:NEO4J_PASS -ne 'fixture') { throw 'Selected aliases did not replace inherited canonical values.' }
+    if ($env:NEO4J_URL -or $env:NEO4J_USERNAME -or $env:NEO4J_PASSWORD) { throw 'Conflicting alternate aliases remained in the process environment.' }
+    Set-Content -LiteralPath $envPath -Value @('NEO4J_URI=bolt+s://one.example','NEO4J_URL=bolt+s://two.example')
+    Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'Conflicting Neo4j aliases'
+    if ($env:NEO4J_URI -ne 'bolt+s://graph.example.com:7687') { throw 'Invalid Neo4j configuration partially changed the environment.' }
+    $env:DATABASE_URL = 'preserved-database'
+    Set-Content -LiteralPath $envPath -Value @('DEPO_DATABASE_URL=new-database','DEPO_ROUTING_MODE=invalid')
+    Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'DEPO_ROUTING_MODE'
+    if ($env:DATABASE_URL -ne 'preserved-database') { throw 'Invalid routing cleared an inherited database setting.' }
+  } finally {
+    foreach ($name in $oldNeo4j.Keys) { [Environment]::SetEnvironmentVariable($name, $oldNeo4j[$name], 'Process') }
+  }
   Set-Content -LiteralPath $envPath -Value 'DEPO_AUDIT_FIXTURE=read-only'
   $parsed = Read-DepoEnvironment $fixture $envPath
   if ($parsed.DEPO_AUDIT_FIXTURE -ne 'read-only' -or $env:DEPO_AUDIT_FIXTURE) { throw 'Reader changed process environment.' }

@@ -1605,9 +1605,11 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
    Windows service `Name`. For a managed or remote database, retain
    `DEPO_POSTGRES_MODE=external` and leave `DEPO_POSTGRES_SERVICE_NAME` empty.
 2. Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS` and `NEO4J_DATABASE`. Aura
-   exports named `NEO4J_USERNAME` and `NEO4J_PASSWORD` are also accepted by
-   the Spark connector, but use the canonical `NEO4J_USER` and `NEO4J_PASS`
-   names for the application. Keep the secure production defaults whenever
+   exports named `NEO4J_URL`, `NEO4J_USERNAME` and `NEO4J_PASSWORD` are also
+   accepted by Windows installation, diagnostics and service startup. They are
+   normalized to `NEO4J_URI`, `NEO4J_USER` and `NEO4J_PASS` before launching
+   Python. Use one name per setting; conflicting concrete aliases are rejected
+   without printing values. Keep the secure production defaults whenever
    the server supports TLS:
 
    ```dotenv
@@ -1616,6 +1618,22 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
    NEO4J_ENCRYPTED=true
    NEO4J_TLS_VERIFY=true
    ```
+
+   Installation reads the repository-root `.env.local` by default and prints its
+   selected full path. The frontend `.env.local` contains browser configuration
+   and cannot supply database credentials. To select an existing deployment file:
+
+   ```powershell
+   Set-Location 'E:\App\PMem'
+   .\install-depo.ps1 -EnvFile 'E:\App\PMem\.env.local'
+   ```
+
+   If preflight reports `Missing Neo4j setting: NEO4J_URI`, complete that selected
+   file with the existing database URI (`NEO4J_URI` or `NEO4J_URL`) and database
+   name. A valid alias takes precedence over an empty/template canonical value.
+   `configure-depo.ps1 -UpdateMissing` preserves existing Neo4j aliases instead of
+   appending canonical placeholders over them. Increasing service timeouts does
+   not correct a missing configuration setting.
 
    For an on-premises server on a trusted private network that does not provide
    TLS, configure the exception explicitly. Authentication can remain enabled:

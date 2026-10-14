@@ -20,6 +20,7 @@ if (-not (($ids -contains "ceim") -and ($ids -contains "data-pipeline"))) { thro
 $path = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path $path)) { throw "Missing environment file: $path" }
 . (Join-Path $root 'infra/windows/runtime-config.ps1')
+Write-Host "Validating deployment environment file: $path"
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
 $resolvedRouting = Resolve-DepoRouting $values
 foreach ($key in $resolvedRouting.Keys) { $values[$key] = $resolvedRouting[$key] }
