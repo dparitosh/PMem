@@ -15,6 +15,8 @@ def isolated_artifact_store(monkeypatch, tmp_path):
     monkeypatch.setattr("backend.data_pipeline_service.router.approval_identity", lambda *args, **kwargs: "test-operator")
     monkeypatch.setattr("backend.data_pipeline_service.router.service_write_identity", lambda *args, **kwargs: "test-author")
     monkeypatch.setattr("backend.data_pipeline_service.speed_router.approval_identity", lambda *args, **kwargs: "test-operator")
+    monkeypatch.setattr("backend.data_pipeline_service.router.service_bearer_headers", lambda *args, **kwargs: {"Authorization": "Bearer test-service"})
+    monkeypatch.setattr("backend.data_pipeline_service.speed_router.service_bearer_headers", lambda *args, **kwargs: {"Authorization": "Bearer test-service"})
 
 
 def test_data_pipeline_service_exposes_ui_ready_transform_contract(monkeypatch):
@@ -521,7 +523,7 @@ def test_speed_path_publication_uses_ceim_boundary(monkeypatch):
         async def __aexit__(self, *args): pass
         async def post(self, url, **kwargs): return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "published", "ontology_id": "speed"})
     monkeypatch.setattr("backend.data_pipeline_service.speed_router.httpx.AsyncClient", FakeClient)
-    response = TestClient(app).post("/api/v1/pipeline/speed/reconciliations/reconcile-1/publish", json={"ontology_id": "speed", "semantic_release": {"asset_id": "ceim", "version": "0.1.0"}})
+    response = TestClient(app).post("/api/v1/pipeline/speed/reconciliations/reconcile-1/publish", json={"ontology_id": "speed", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"}})
     assert response.status_code == 200
     assert response.json()["status"] == "published"
 
@@ -612,7 +614,7 @@ def test_completed_run_records_partition_and_gated_checkpoint_evidence(monkeypat
     assert published["checkpoint"] == {"offset": 11}
     assert published["output_manifest"]["checkpoint_state"] == "advanced"
     assert published["output_manifest"]["publication_digest"].startswith("sha256:")
-    assert run_records.publication_succeeded(published, {"status": "published"}) == published
+    assert run_records.publication_succeeded(published, {"status": "published", "ontology_id": "ceim-qif"}) == published
 
 
 def test_worker_mode_queues_without_executing_spark_in_http_request(monkeypatch):

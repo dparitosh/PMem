@@ -1,8 +1,6 @@
 """OpenAPI contract for Spark-backed DEPO data jobs."""
 from __future__ import annotations
 
-from backend.depo_platform.request_bodies import ApprovalBody
-
 from backend.depo_platform.request_bodies import DocumentWorkflowBody, JobInputBody
 
 from backend.depo_platform.request_bodies import ApprovalBody, JobDefinitionBody, JobPublicationBody, ScheduleBody
@@ -142,20 +140,33 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
         standard = str(payload.get("standard") or "").strip().lower()
         if standard not in definition.get("allowed_standards", []):
             run_records.failed(run, "The request standard is not allowed by this data-job definition")
-            raise ValueError("The request standard is not allowed by this data-job definition")
+            error = ValueError("The request standard is not allowed by this data-job definition")
+            error.depo_run_id = run["run_id"]
+            raise error
     try:
         result = handler_registry.get(definition["job_type"]).execute(
             runner, payload, correlation_id=correlation_id,
         )
     except Exception as exc:
-        run_records.failed(run, str(exc))
+        exc.depo_run_id = run["run_id"]
+        try:
+            run_records.failed(run, str(exc))
+        except Exception as persistence_error:
+            persistence_error.depo_run_id = run["run_id"]
+            raise
         raise
     try:
         persisted = run_records.complete(run, result)
     except Exception as exc:
-        run_records.failed(run, 'Handler finished but result persistence failed; inspect external effects before replay: ' + str(exc))
+        exc.depo_run_id = run["run_id"]
+        try:
+            run_records.failed(run, 'Handler finished but result persistence failed; inspect external effects before replay: ' + str(exc))
+        except Exception as persistence_error:
+            persistence_error.depo_run_id = run["run_id"]
+            raise
         raise
-    return {**result, "configured_job": {field: definition[field] for field in ("job_id", "name", "version", "job_type", "quality_profile", "owner")}, "run_manifest": persisted}
+    from .analytics_evidence import run_result
+    return {**run_result(result, persisted), "configured_job": {field: definition[field] for field in ("job_id", "name", "version", "job_type", "quality_profile", "owner")}}
 
 
 from .execution import execute_claimed_job
@@ -314,13 +325,18 @@ def disable_job_schedule(job_id: str, version: str, payload: ApprovalBody, reque
         raise _registry_error(exc) from exc
 
 
+def _run_identity_headers(exc):
+    run_id = getattr(exc, 'depo_run_id', None)
+    return {'X-DEPO-Run-ID': run_id, 'X-DEPO-Run-Kind': 'pipeline'} if run_id else None
+
+
 @router.post("/jobs/definitions/{job_id}/{version}/run", summary="Run an approved, enabled configured data job")
 def run_configured_job(job_id: str, version: str, payload: JobInputBody, request: Request) -> dict[str, Any]:
     actor, payload = _authorize_execution(request, payload)
     try:
         definition = job_definitions.get(job_id, version)
     except RuntimeError as exc:
-        raise _registry_error(exc) from exc
+        raise HTTPException(503, 'Data-job execution unavailable; check its retained run.', headers=_run_identity_headers(exc)) from exc
     if not definition:
         raise HTTPException(status_code=404, detail="Data job definition was not found")
     if definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
@@ -333,11 +349,13 @@ def run_configured_job(job_id: str, version: str, payload: JobInputBody, request
             return {"status": "queued", "run": queued, "run_manifest": queued}
         return execute_configured_job(definition, payload, correlation_id)
     except SparkUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=str(exc), headers=_run_identity_headers(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc), headers=_run_identity_headers(exc)) from exc
     except RuntimeError as exc:
-        raise _registry_error(exc) from exc
+        raise HTTPException(503, 'Data-job execution unavailable; check its retained run.', headers=_run_identity_headers(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, 'Data-job execution failed; inspect the retained run before retrying', headers=_run_identity_headers(exc)) from exc
 
 
 @router.get("/jobs/runs", dependencies=[Depends(graph_read_identity)], summary="List durable data-job run manifests")
@@ -485,3 +503,33 @@ def replay_job_run(run_id: str, request: Request, authorization: ApprovalBody | 
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
+
+
+@router.post('/jobs/runs/{run_id}/reconcile-analytics', summary='Rebuild evidence for a committed XML analytics load without reloading data')
+def reconcile_analytics_evidence(run_id: str, request: Request, payload: ApprovalBody) -> dict[str, Any]:
+    actor = approval_identity(request, payload, token_env='DATA_JOB_EXECUTION_TOKEN')
+    from .analytics_evidence import build_analytics_evidence
+    with run_records.store.advisory_lock('analytics-evidence:' + run_id) as acquired:
+        if not acquired:
+            raise HTTPException(409, 'Analytics evidence reconciliation is already active')
+        record = run_records.get(run_id)
+        if not record:
+            raise HTTPException(404, 'Data job run was not found')
+        output = record.get('output_manifest') or {}
+        if record.get('job_type') != 'xml-analytics-materialize' or record.get('status') != 'completed':
+            raise HTTPException(409, 'Only a committed analytics run can rebuild evidence')
+        if output.get('evidence_status') == 'available':
+            return {'status': 'completed', 'evidence_status': 'available', 'run_manifest': record}
+        receipt = output.get('ods_receipt')
+        if output.get('evidence_status') != 'pending' or not receipt:
+            raise HTTPException(409, 'No retained analytics receipt is available for reconciliation')
+        try:
+            inputs = run_records.replay_payload(record)
+            result = build_analytics_evidence(inputs, receipt)
+            # This run is terminal: no worker can own it during evidence recovery.
+            updated = {**record, 'worker_id': None, 'lease': None, 'evidence_reconciled_by': actor}
+            persisted = run_records.complete(updated, result)
+            from .analytics_evidence import run_result
+            return run_result(result, persisted)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise HTTPException(503, 'Analytics evidence remains pending; retry reconciliation after storage recovers', headers={'X-DEPO-Run-ID': run_id, 'X-DEPO-Run-Kind': 'pipeline'}) from exc

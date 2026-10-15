@@ -1,5 +1,8 @@
 # Current Architecture — Governed Semantic Data Flow
 
+For current format coverage, ODS storage and product packaging boundaries, use
+[Ingestion and data-product lifecycle](DATA_PRODUCT_INGESTION.md).
+
 This diagram represents the current PMem microservice flow. In customer
 deployments, the API gateway is the entry point; local development may route
 the Siemens IX frontend directly to the individual OpenAPI services.
@@ -99,11 +102,14 @@ speed-path reconciliation under `/api/v1/pipeline/*`. The Data Flow UI is the
 operational dashboard. Zeppelin is an optional analysis surface and must not
 bypass the canonical publication boundary.
 
-PostgreSQL is the control plane, not the graph store: it persists data-job
+The PostgreSQL application schema is the control plane: it persists data-job
 definitions, durable run manifests, checkpoints, speed-path events and
 reconciliations, data-product approvals, catalog versions, and retention
 evidence. Immutable source/derived bytes remain in the artifact store; Neo4j
-contains only the approved semantic graph projection.
+contains the governed semantic graph projection. Separately, the approved
+`xml-analytics-materialize` job stores validated XML and structural records in
+versioned PostgreSQL analytics schemas. Explicit fact/dimension views share
+those schemas; they are not a separate automatic warehouse.
 
 The data catalog and data-product services are implemented as independent,
 explicit APIs. They are **not automatically invoked** by the current pipeline

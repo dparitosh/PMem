@@ -48,7 +48,7 @@ def publish(command):
             raise ValueError('Invalid approved mapping target or source.')
     with session() as graph:
         constraint = graph.run(
-            _bounded_query('SHOW CONSTRAINTS YIELD name, type, labelsOrTypes, properties WHERE name = $name AND type = \'UNIQUENESS\' AND labelsOrTypes = [\'DepoBridgePublication\'] AND properties = [\'publication_id\'] RETURN count(*) AS found'),
+            _bounded_query('SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties WHERE name = $name AND type IN [\'UNIQUENESS\', \'NODE_PROPERTY_UNIQUENESS\'] AND entityType = \'NODE\' AND labelsOrTypes = [\'DepoBridgePublication\'] AND properties = [\'publication_id\'] RETURN count(*) AS found'),
             name='depo_bridge_publication_id',
         ).single()
         if not constraint or constraint['found'] != 1:

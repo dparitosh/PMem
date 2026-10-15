@@ -99,7 +99,8 @@ def xsd_relational_report(request: Request, ontology_id: str = Query(..., min_le
                     raise ValueError('Retained XSD structural model has an invalid contract')
                 model['source_file'] = metadata.get('source_filename') or model.get('source_file')
                 return {'ontology_id': metadata['ontology_id'], 'prefix': metadata.get('prefix') or '',
-                        **model, 'analytics_schema_plan': build_analytics_schema_plan(model)}
+                        **model, 'analytics_schema_plan': build_analytics_schema_plan(model),
+                        'schema_artifact_id': references.get('source')}
             source_id = references.get('source')
             if not source_id:
                 file_path = Path(metadata.get('file_path') or '')
@@ -120,6 +121,7 @@ def xsd_relational_report(request: Request, ontology_id: str = Query(..., min_le
             "ontology_id": ontology_id,
             "prefix": metadata.get("prefix") or "",
             **model,
+            "schema_artifact_id": (metadata.get("engineering_artifacts") or {}).get("source"),
         }
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"XSD relational report could not be generated: {exc}") from exc

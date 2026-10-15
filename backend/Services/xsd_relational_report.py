@@ -214,7 +214,10 @@ def build_xsd_relational_report(xsd_path):
             owner=table(identifier,'scalar root');owner['columns'].append({'name':'value','sql_name':'value','required':True,'nullable':node.get('nillable') in {'true', '1'},'nillable':node.get('nillable') in {'true', '1'},'default':node.get('default'),'fixed':node.get('fixed'),'repeating':False,**datatype(node)})
         if (inline is not None or qtype in definitions['complexType']) and node.get('nillable') in {'true', '1'}:
             diagnostics.append('Nillable complex entities require explicit nil-state materialization')
-        source_qname=expanded(node.get('name'),node)
+        # A declaration name is an NCName in its schema target namespace,
+        # independent of the default namespace used for XSD vocabulary.
+        namespace=contexts[id(node)][2]
+        source_qname=('{'+namespace+'}' if namespace else '')+node.get('name')
         roots.append({'name':node.get('name'),'entity_id':identifier,'source_qname':source_qname.removeprefix('{}')})
         if node.get('substitutionGroup') or node.get('abstract')=='true': diagnostics.append('Abstract/substitution roots require explicit dispatch mapping')
     for entity in tables.values():

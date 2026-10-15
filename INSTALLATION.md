@@ -4666,3 +4666,64 @@ to their publication, source and target. Current semantic relationships can be u
 later approval without removing this historical evidence or adding duplicate instance links.
 Earlier publications created before this change retain their existing receipts; detailed
 historical mapping evidence is recorded for new publications only.
+
+PostgreSQL metadata writes validate the complete resulting revision, including fields retained
+from earlier revisions. Updates that remove an approved asset's steward or approval evidence,
+or create an invalid effective date window, return HTTP 409 without creating an audit event
+or an outbox event. Correct the fields or use the lifecycle transition endpoint first.
+Neo4j Bridge publication accepts both UNIQUENESS and NODE_PROPERTY_UNIQUENESS constraint
+type names and still verifies node entity type, label and publication identity property.
+
+### Operational data store and data mart views
+
+The approved `xml-analytics-materialize` job retains the original XML and builds an
+append-only, versioned structural operational data store (ODS). Entity and link inserts
+use bounded batches within the same transaction; identity allocation carries explicit
+row ordinals so batch response order cannot change parent/child links. Repeating an
+identical document reconciles its retained receipt instead of loading duplicate rows.
+
+In Data Products, open **Load validated XML into PostgreSQL analytics** and use the
+**Data mart view designer**. Load fields using the registered XSD ontology ID that
+matches the retained XSD artifact, select an entity, and define either an aggregate
+fact view or a dimension. The generated definitions appear in the editable business
+view JSON. Property selectors use the model's exact `sql_name`; unambiguous old local
+names remain accepted. An attribute and element sharing a name require exact identities.
+
+Dimension definitions use `kind=dimension`, `grain=business-key`, explicit `keys` and
+`attributes`, and `history_policy=immutable`. They create distinct views over the ODS.
+Null keys and conflicting attributes under one key reject the entire new load and its
+receipt. These are natural-key dimension views, not a shared surrogate-key warehouse.
+Aggregate fact views use `kind=fact`, `grain=entity-instance`, explicit `group_by` fields
+and count/sum/avg/min/max measures. They aggregate all documents in the selected ODS
+entity table. Cross-entity joins, conformed dimensions and slowly changing dimension
+policies require a separately reviewed model and are not inferred from XSD structure.
+
+The default `constraint_policy=strict` retains all review blockers. To load supported
+facets and fixed values, explicitly select `constraint_policy=validated-source` (the UI
+checkbox). The complete XML still undergoes formal XSD validation; equivalent PostgreSQL
+facet constraints are not generated. Precision decimals are stored as NUMERIC to avoid
+rounding or rejecting XSD-valid integral values. Choices, repeated groups, temporal and
+source-identity policies remain blocked. XML using `xsi:type` is rejected before row
+extraction because a polymorphic relational mapping is not implemented. The original
+source can be retained, but the job will not claim successful instance materialization.
+
+Changing business-view definitions or the materialization policy for an existing ODS
+may require a new schema prefix. Existing projections are not altered automatically.
+The pipeline OpenAPI input schema describes the supported measure, view and policy fields.
+The view designer binds definitions to the retained root XSD artifact. A report from
+another registration cannot supply fields for the selected source. Legacy registrations
+without a retained source artifact must be imported again before using the designer.
+View receipts expose `output_columns`, mapping each SQL output alias to its source
+property and role, including fact group keys and dimension keys.
+
+A committed ODS load can have `evidence_status=pending` if artifact storage fails.
+The run remains completed and product publication stays blocked. Use **Rebuild analytics
+evidence** in the XML loader, or the authenticated
+`POST /api/v1/pipeline/jobs/runs/{run_id}/reconcile-analytics` operation. This rebuilds
+evidence from the retained committed receipt without loading XML again. A database
+outage that prevents retaining the run itself still requires operational reconciliation.
+
+The XML loader retains the submission identity in browser session storage. After a
+network failure, find the retained run in Data Flow history and refresh it before
+submitting again. If history confirms no matching run exists, explicitly acknowledge
+that check to prepare another task. No XML write is automatically retried.

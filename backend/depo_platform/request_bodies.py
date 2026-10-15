@@ -426,7 +426,28 @@ class ReportBody(RequestBody, total=False):
     ontology_id: str
     ontology_prefix: str
 
+class AnalyticsMeasure(RequestBody, total=False):
+    name: Required[Text]
+    aggregate: Required[Literal['count', 'sum', 'avg', 'min', 'max']]
+    property: str | None
+
+
+class AnalyticsBusinessView(RequestBody, total=False):
+    name: Required[Text]
+    entity_id: Required[Text]
+    kind: Literal['aggregate', 'fact', 'dimension']
+    grain: Required[Literal['entity-instance', 'business-key']]
+    group_by: list[Text]
+    measures: list[AnalyticsMeasure]
+    keys: list[Text]
+    attributes: list[Text]
+    history_policy: Literal['immutable']
+
+
 class JobInputBody(ApprovalBody, total=False):
+    schema_prefix: str
+    constraint_policy: Literal['strict', 'validated-source']
+    business_views: Annotated[list[AnalyticsBusinessView], Field(max_length=20)]
     records: list[dict[str, Any]]
     artifact_id: str
     artifact_ids: list[str]
@@ -436,6 +457,7 @@ class JobInputBody(ApprovalBody, total=False):
     representation: str
     ceim_version: str
     schema_artifact_id: str
+    business_schema_artifact_id: str
     xml_artifact_id: str
     schema_dependencies: dict[str, str]
     documents: list[dict[str, Any]]

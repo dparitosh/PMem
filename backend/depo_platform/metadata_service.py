@@ -22,6 +22,11 @@ def get(asset_id):
 
 
 def save(value, actor, expected_revision, comment=''):
+    from .metadata_validation import validate_asset_state
+    try:
+        validate_asset_state(value)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     from .metadata_repository import MetadataConflict
     try:
         result=repository().save(value['asset_id'],value,expected_revision=expected_revision,actor=actor,comment=comment)

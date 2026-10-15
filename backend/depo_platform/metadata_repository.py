@@ -44,6 +44,8 @@ class MetadataRepository:
             return events[:limit]
 
     def save(self, asset_id: str, value: dict, *, expected_revision: int, actor: str, comment: str = '', legacy_history=None) -> dict:
+        from .metadata_validation import validate_asset_state
+        validate_asset_state(value)
         if not asset_id or not actor.strip() or value.get('asset_id') != asset_id:
             raise ValueError('Matching asset_id and audit actor are required')
         if expected_revision < 0:

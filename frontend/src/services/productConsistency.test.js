@@ -44,3 +44,7 @@ describe('shared product collection and evidence boundary', () => {
     expect(() => productDraftFromRun({run_id:'run-1',status:'completed',output_manifest:{}})).toThrow(/retained output artifacts/);
   });
 });
+
+it('blocks product packaging while committed analytics evidence is pending', () => {
+  expect(() => productDraftFromRun({run_id:'committed',status:'completed',output_manifest:{evidence_status:'pending',partition_artifacts:{accepted:'stale'}}})).toThrow('Rebuild');
+});

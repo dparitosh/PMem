@@ -1,4 +1,5 @@
 import ast
+import __future__
 import asyncio
 import json
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def load(relative, names, scope):
     nodes = [n for n in ast.parse((ROOT/relative).read_text(encoding='utf-8-sig')).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
     for node in nodes: node.decorator_list = []
-    exec(compile(ast.Module(body=nodes, type_ignores=[]), relative, 'exec'), scope)
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), relative, 'exec', flags=__future__.annotations.compiler_flag), scope)
     return scope
 
 class WorkflowTests(TestCase):
@@ -98,7 +99,7 @@ class WorkflowTests(TestCase):
     def test_ingestion_routes_and_bridge_use_supported_contracts(self):
         tree=ast.parse((ROOT/'backend/ingestion_service/tracked_import.py').read_text())
         routes={d.args[0].value for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) for d in n.decorator_list if isinstance(d,ast.Call)}
-        self.assertEqual(routes,{'/upload','/status/{task_id}','/preview/{task_id}','/pre-commit/{task_id}','/commit/{task_id}','/cancel/{task_id}'})
+        self.assertEqual(routes,{'/upload','/status/{task_id}','/preview/{task_id}','/pre-commit/{task_id}','/commit/{task_id}','/cancel/{task_id}', '/owl/{task_id}/export'})
         app=(ROOT/'backend/ingestion_service/app.py').read_text();self.assertIn('app.include_router(tracked_import_router',app)
         ui=(ROOT/'frontend/src/Components/DataImportPipeline.js').read_text()
         self.assertIn('<SemanticBridgeJobs ',ui);self.assertIn('apply_links: false',ui);self.assertNotIn('workflowApplyLinks',ui)

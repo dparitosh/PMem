@@ -523,6 +523,10 @@ export const dataPipelineAPI = {
     { ...payload, ...approval },
     approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
   ),
+  reconcileAnalytics: (runId, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/reconcile-analytics`), approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
   publishRun: (runId, payload = {}, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/publish`),
     { ...payload, ...approval },

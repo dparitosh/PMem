@@ -177,7 +177,30 @@ def replay_payload(record: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "replay_of": record["run_id"]}
 
 
+def _retain_analytics_evidence_pending(record, result):
+    from backend.depo_platform.execution_guard import ensure_execution_allowed
+    ensure_execution_allowed()
+    receipt = result.get('ods_receipt')
+    if record.get('job_type') != 'xml-analytics-materialize' or not isinstance(receipt, dict) or receipt.get('status') != 'completed':
+        raise ValueError('A committed analytics receipt is required for evidence recovery')
+    output = {'contract': 'postgres-xml-load-v1', 'counts': dict(receipt.get('counts') or {}),
+              'result_artifact_id': None, 'partition_artifacts': {}, 'evidence_status': 'pending',
+              'load_status': 'completed', 'ods_receipt': receipt, 'recovery_action': 'rebuild_evidence'}
+    return _persist_execution(record, {**record, 'status': 'completed', 'completed_at': _now(), 'output_manifest': output})
+
+
 def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    if record.get('job_type') == 'xml-analytics-materialize' and result.get('evidence_status') == 'pending':
+        return _retain_analytics_evidence_pending(record, result)
+    try:
+        return _complete_with_evidence(record, result)
+    except Exception:
+        if record.get('job_type') != 'xml-analytics-materialize' or not result.get('ods_receipt'):
+            raise
+        return _retain_analytics_evidence_pending(record, result)
+
+
+def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     result_artifact = ArtifactStore().ingest_bytes(
         json.dumps(result, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"),
         filename=f"{record['job_id']}-{record['job_version']}-{record['run_id']}-result.json",
@@ -204,6 +227,8 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         "counts": dict(result.get("counts") or result.get("quality") or {}),
         "partition_artifacts": dict(result.get("partition_artifacts") or {}),
     }
+    if record.get('job_type') == 'xml-analytics-materialize' and result.get('ods_receipt'):
+        output.update(ods_receipt=result['ods_receipt'], evidence_status='available', load_status='completed')
     source_standard = result.get("standard") or record.get("source_standard")
     if source_standard:
         output["source_standard"] = str(source_standard)

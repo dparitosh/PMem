@@ -28,6 +28,7 @@ export function productDraftFromRun(run) {
   if (run?.status !== 'completed' || !run.run_id) throw new Error('Only a completed retained run can supply product evidence.');
   const output = run.output_manifest;
   if (!output || typeof output !== 'object') throw new Error('The run has no retained output manifest.');
+  if (output.evidence_status === 'pending') throw new Error('Rebuild the committed analytics run evidence before publishing a product.');
   const existing = output.data_product_draft;
   if (['schema-design-evidence', 'pipeline-evidence'].includes(existing?.product_kind) && existing.artifacts?.length) return existing;
   const ids = Object.values(output.partition_artifacts || {}).filter(value => typeof value === 'string' && value.trim());

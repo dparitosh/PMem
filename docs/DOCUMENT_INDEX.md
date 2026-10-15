@@ -6,6 +6,7 @@ Start with [current audit status](audits/README.md), [installation](../INSTALLAT
 
 | File | Title | Purpose |
 | --- | --- | --- |
+| [docs/DATA_PRODUCT_INGESTION.md](DATA_PRODUCT_INGESTION.md) | Ingestion and data-product lifecycle | Current ingestion coverage, ODS/graph boundaries and product lifecycle |
 | [docs/audits/admin-session-handling-review-2026-10-09.md](audits/admin-session-handling-review-2026-10-09.md) | Admin key/session handling review | Remaining findings and verified authorization boundaries |
 | [docs/audits/admin-maintenance-session-2026-10-09.md](audits/admin-maintenance-session-2026-10-09.md) | Admin maintenance session correction | Root cause, correction and upgrade procedure |
 | [INSTALLATION.md](../INSTALLATION.md) | DEPO installation and release guide | Customer installation authority |

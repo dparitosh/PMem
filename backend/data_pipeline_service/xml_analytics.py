@@ -20,6 +20,7 @@ from backend.Services.xsd_relational_report import build_xsd_relational_report, 
 from backend.Services.xsd_analytics_plan import build_analytics_schema_plan
 from backend.depo_platform.execution_guard import ensure_execution_allowed
 from .schema_limits import read_schema_bytes
+from .analytics_fields import resolve_property, numeric_type
 
 MAX_BYTES = 25 * 1024 * 1024
 MAX_ENTITIES = 100000
@@ -31,6 +32,9 @@ def prepare_xml_load(payload, artifacts=None):
         from lxml import etree
     except ImportError as exc:
         raise RuntimeError('XML materialization requires the lxml schema-validation runtime') from exc
+    binding = payload.get('business_schema_artifact_id')
+    if binding and binding != payload.get('schema_artifact_id'):
+        raise ValueError('Business view definitions belong to another schema artifact; reload schema fields')
     store = artifacts or ArtifactStore()
     metadata, source = store.resolve(str(payload.get('schema_artifact_id') or ''))
     filename = str(metadata.get('filename') or '')
@@ -68,6 +72,22 @@ def prepare_xml_load(payload, artifacts=None):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
         model = build_xsd_relational_report(root_path)
+        policy = payload.get('constraint_policy', 'strict')
+        if policy not in {'strict', 'validated-source'}:
+            raise ValueError('constraint_policy must be strict or validated-source')
+        if policy == 'validated-source':
+            # The complete XML is still formally validated below. These source
+            # constraints are not claimed as PostgreSQL constraint definitions.
+            permitted = {'Datatype facets require validated instance loading and constraint review',
+                         'Fixed values require source validation and SQL constraint review'}
+            model['ddl_blockers'] = [reason for reason in model['ddl_blockers'] if reason not in permitted]
+            for table in model['tables']:
+                for column in table['columns']:
+                    # XSD totalDigits counts all digits; NUMERIC(p,s) restricts
+                    # integral digits to p-s and can reject valid XML values.
+                    if str(column.get('sql_type', '')).startswith('NUMERIC('):
+                        column['sql_type'] = 'NUMERIC'
+            model['constraint_enforcement'] = 'validated-source; PostgreSQL facet constraints not generated'
         if model['ddl_blockers']:
             raise ValueError('XML materialization blocked: ' + '; '.join(model['ddl_blockers']))
         parser = etree.XMLParser(resolve_entities=False, no_network=True)
@@ -92,12 +112,13 @@ def prepare_xml_load(payload, artifacts=None):
     policy_digest = hashlib.sha256(json.dumps(business, sort_keys=True).encode()).hexdigest()
     return {'model': model, 'plan': plan, 'schema': schema, 'schema_digest': digest,
             'business_views': views, 'business_policy_digest': policy_digest,
+            'constraint_policy': policy,
             'xml_digest': hashlib.sha256(xml_content).hexdigest(), 'original_bytes': xml_content,
             'xml_document': canonical, 'rows': rows, 'links': links}
 
 
 def business_view_plan(model, schema, definitions):
-    """Explicit single-entity grains; never infer cross-entity joins or units."""
+    """Explicit ODS-derived dimensions and aggregate facts with exact identities."""
     if not isinstance(definitions, list) or len(definitions) > 20:
         raise ValueError('business_views must be a list of at most 20 definitions')
     tables = {table['entity_id']: table for table in model['tables']}
@@ -106,42 +127,79 @@ def business_view_plan(model, schema, definitions):
         if not isinstance(definition, dict) or not isinstance(definition.get('name'), str) or not definition['name'].strip():
             raise ValueError('Each business view requires a name')
         entity = tables.get(definition.get('entity_id'))
-        if entity is None or definition.get('grain') != 'entity-instance':
-            raise ValueError('Business views require a known entity_id and grain entity-instance')
-        columns = {column['name']: column for column in entity['columns']}
+        if entity is None:
+            raise ValueError('Business views require a known entity_id')
+        view = sql_name('business:' + definition['name'])
+        if view in names:
+            raise ValueError('Duplicate business view name')
+        names.add(view)
+        source = f'"{schema}"."{entity["sql_name"]}"'
+        if definition.get('kind') == 'dimension':
+            if definition.get('grain') != 'business-key' or definition.get('history_policy') != 'immutable':
+                raise ValueError('Dimensions require grain business-key and history_policy immutable')
+            keys, attributes = definition.get('keys'), definition.get('attributes', [])
+            if not isinstance(keys, list) or not 1 <= len(keys) <= 20 or not isinstance(attributes, list) or len(attributes) > 50:
+                raise ValueError('Dimensions require 1-20 keys and at most 50 attributes')
+            selected = [resolve_property(entity, ref) for ref in [*keys, *attributes]]
+            fields = [column['sql_name'] for column in selected]
+            if len(set(fields)) != len(fields):
+                raise ValueError('Dimension keys and attributes must be distinct properties')
+            key_fields = fields[:len(keys)]
+            key_sql = ','.join(f'"{name}"' for name in key_fields)
+            attribute_sql = ','.join(f'"{name}"' for name in fields[len(keys):])
+            missing = ' OR '.join(f'"{name}" IS NULL' for name in key_fields)
+            conflicts = (f'EXISTS (SELECT 1 FROM {source} GROUP BY {key_sql} '
+                         f'HAVING COUNT(DISTINCT jsonb_build_array({attribute_sql})) > 1)') if attributes else 'FALSE'
+            statements.append({'name': definition['name'], 'view': view, 'kind': 'dimension',
+                'grain': 'business-key', 'history_policy': 'immutable', 'keys': key_fields,
+                'attributes': fields[len(keys):], 'entity_id': entity['entity_id'],
+                'output_columns': [{'name': field, 'source_property': field, 'role': 'dimension-key' if index < len(keys) else 'dimension-attribute'} for index, field in enumerate(fields)],
+                'validation_sql': f'SELECT EXISTS (SELECT 1 FROM {source} WHERE {missing}) OR {conflicts} AS invalid',
+                'sql': f'CREATE VIEW "{schema}"."{view}" AS SELECT DISTINCT ' + ','.join(f'"{name}"' for name in fields) + f' FROM {source}'})
+            continue
+        if definition.get('kind', 'aggregate') not in {'aggregate', 'fact'} or definition.get('grain') != 'entity-instance':
+            raise ValueError('Aggregate facts require grain entity-instance')
         groups, measures = definition.get('group_by', []), definition.get('measures', [])
-        if not isinstance(groups, list) or any(not isinstance(name, str) or name not in columns for name in groups) or len(set(groups)) != len(groups):
-            raise ValueError('group_by must contain unique known entity properties')
+        if not isinstance(groups, list) or len(groups) > 50:
+            raise ValueError('group_by must contain at most 50 known properties')
+        group_columns = [resolve_property(entity, ref) for ref in groups]
+        if len({column['sql_name'] for column in group_columns}) != len(group_columns):
+            raise ValueError('group_by must contain distinct entity properties')
         if not isinstance(measures, list) or not measures or len(measures) > 30:
-            raise ValueError('A business view requires 1–30 measures')
-        expressions = [f'"{columns[name]["sql_name"]}" AS "{sql_name(name)}"' for name in groups]
-        aliases = set(groups)
+            raise ValueError('A business view requires 1-30 measures')
+        expressions = [f'"{column["sql_name"]}" AS "{sql_name(ref)}"' for ref, column in zip(groups, group_columns)]
+        output_columns = [{'name': sql_name(ref), 'source_property': column['sql_name'], 'role': 'group-key'} for ref, column in zip(groups, group_columns)]
+        aliases = {sql_name(ref) for ref in groups}
         for measure in measures:
-            if not isinstance(measure, dict): raise ValueError('Invalid business measure')
+            if not isinstance(measure, dict):
+                raise ValueError('Invalid business measure')
             name, aggregate, property_name = measure.get('name'), measure.get('aggregate'), measure.get('property')
-            if not isinstance(name, str) or not name.strip() or name in aliases or aggregate not in {'count', 'sum', 'avg', 'min', 'max'}:
+            if not isinstance(name, str) or not name.strip() or sql_name(name) in aliases or aggregate not in {'count', 'sum', 'avg', 'min', 'max'}:
                 raise ValueError('Measure names must be unique and aggregate must be count/sum/avg/min/max')
-            aliases.add(name)
-            column = columns.get(property_name) if isinstance(property_name, str) else None
-            if column is None and not (aggregate == 'count' and property_name is None):
-                raise ValueError('Measure property is not in the selected entity')
-            if aggregate in {'sum', 'avg'} and not (column and column['sql_type'] in {'NUMERIC', 'INTEGER', 'BIGINT', 'SMALLINT', 'REAL', 'DOUBLE PRECISION'}):
+            aliases.add(sql_name(name))
+            column = None if aggregate == 'count' and property_name is None else resolve_property(entity, property_name)
+            if aggregate in {'sum', 'avg'} and not numeric_type(column['sql_type']):
                 raise ValueError('sum/avg require a numeric property')
-            if aggregate in {'min', 'max'} and column['sql_type'] not in {'NUMERIC', 'INTEGER', 'BIGINT', 'SMALLINT', 'REAL', 'DOUBLE PRECISION', 'TEXT', 'DATE', 'TIME', 'TIMESTAMPTZ'}:
+            if aggregate in {'min', 'max'} and not (numeric_type(column['sql_type']) or column['sql_type'] in {'TEXT', 'DATE', 'TIME', 'TIMESTAMPTZ'}):
                 raise ValueError('min/max require an ordered numeric, text or temporal property')
             operand = '*' if column is None else f'"{column["sql_name"]}"'
             expressions.append(f'{aggregate.upper()}({operand}) AS "{sql_name(name)}"')
-        view = sql_name('business:' + definition['name'])
-        if view in names: raise ValueError('Duplicate business view name')
-        names.add(view)
-        group_clause = ' GROUP BY ' + ','.join(f'"{columns[name]["sql_name"]}"' for name in groups) if groups else ''
-        statements.append({'name': definition['name'], 'view': view,
-            'sql': f'CREATE VIEW "{schema}"."{view}" AS SELECT ' + ','.join(expressions) + f' FROM "{schema}"."{entity["sql_name"]}"' + group_clause})
+            output_columns.append({'name': sql_name(name), 'source_property': column['sql_name'] if column else None, 'role': 'measure', 'aggregate': aggregate})
+        group_clause = ' GROUP BY ' + ','.join(f'"{column["sql_name"]}"' for column in group_columns) if groups else ''
+        statements.append({'name': definition['name'], 'view': view, 'kind': definition.get('kind', 'aggregate'),
+            'entity_id': entity['entity_id'], 'grain': 'entity-instance',
+            'group_by': [column['sql_name'] for column in group_columns], 'output_columns': output_columns,
+            'sql': f'CREATE VIEW "{schema}"."{view}" AS SELECT ' + ','.join(expressions) + f' FROM {source}' + group_clause})
     return statements
 
 
 def flatten_xml(model, document):
     """Preserve namespace identity, repeated scalar values and child order."""
+    # Dynamic XML typing needs a polymorphic relational mapping. Reject it
+    # before extracting any row rather than silently losing derived fields.
+    for node in document.iter():
+        if node.get('{http://www.w3.org/2001/XMLSchema-instance}type') is not None:
+            raise ValueError('XML xsi:type requires an explicit polymorphic projection; no data was loaded')
     tables = {table['entity_id']: table for table in model['tables']}
     roots = [root for root in model['roots'] if root['source_qname'] == document.tag]
     if len(roots) != 1:
@@ -164,8 +222,10 @@ def flatten_xml(model, document):
                     raise ValueError('Scalar projection received multiple matching children')
                 value = None if not children or children[0].get('{http://www.w3.org/2001/XMLSchema-instance}nil') in {'true', '1'} else (children[0].text or '')
             # XSD defaults apply to present empty elements, never absent or nil ones.
-            if value == '' and column.get('source_kind') != 'attribute' and column.get('default') is not None:
-                value = column['default']
+            if value == '' and column.get('source_kind') != 'attribute':
+                fallback = column.get('default') if column.get('default') is not None else column.get('fixed')
+                if fallback is not None:
+                    value = fallback
             datatype = column.get('resolved_type', '').rsplit('}', 1)[-1]
             if value is not None and datatype == 'normalizedString':
                 value = value.replace('\t', ' ').replace('\r', ' ').replace('\n', ' ')
@@ -220,31 +280,60 @@ def materialize_xml(payload, *, correlation_id):
         elif known[0].get('business_policy_digest') != prepared['business_policy_digest']:
             raise ValueError('Business definitions differ from the retained projection; use a different schema_prefix')
         receipt = {'status': 'completed', 'job_type': 'xml-analytics-materialize', 'schema': prepared['schema'],
+                   'storage_layer': 'operational-data-store', 'constraint_policy': prepared.get('constraint_policy', 'strict'),
                    'execution_actor': payload.get('execution_actor'), 'loaded_at': datetime.now(timezone.utc).isoformat(),
                    'schema_digest': prepared['schema_digest'], 'xml_digest': prepared['xml_digest'],
                    'correlation_id': correlation_id, 'counts': {'entities': len(prepared['rows']), 'relationships': len(prepared['links']), 'source_documents': 1},
-                   'business_views': [{key: value for key, value in view.items() if key != 'sql'} for view in prepared['business_views']],
+                   'business_views': [{key: value for key, value in view.items() if key not in {'sql', 'validation_sql'}} for view in prepared['business_views']],
                    'analytics_readiness': 'explicit-business-views-available' if prepared['business_views'] else 'structural-data-loaded; business-metrics-not-defined'}
         cursor.execute(sql.SQL('INSERT INTO {}.source_documents VALUES (%s,%s,XMLPARSE(DOCUMENT %s),%s)').format(sql.Identifier(prepared['schema'])),
                        (prepared['xml_digest'], prepared['original_bytes'], prepared['xml_document'], Jsonb(receipt)))
-        identities = []
-        for row_index, (entity_id, values) in enumerate(prepared['rows']):
-            if row_index % 100 == 0: ensure_execution_allowed()
+        identities = [None] * len(prepared['rows'])
+        grouped = {}
+        for index, (entity_id, values) in enumerate(prepared['rows']):
+            grouped.setdefault(entity_id, []).append((index, values))
+        for entity_id, entity_rows in grouped.items():
             table = tables[entity_id]
-            if values:
-                query = sql.SQL('INSERT INTO {}.{} ({}) VALUES ({}) RETURNING instance_id').format(
+            # Bound parameters as well as row count for wide industrial tables.
+            batch_size = max(1, min(500, 30000 // (len(table['columns']) + 2)))
+            for start in range(0, len(entity_rows), batch_size):
+                ensure_execution_allowed()
+                batch = entity_rows[start:start + batch_size]
+                cursor.execute("SELECT i, nextval(pg_get_serial_sequence(%s, 'instance_id')) FROM generate_series(0,%s) AS i ORDER BY i",
+                               (f'"{prepared["schema"]}"."{table["sql_name"]}"', len(batch) - 1))
+                allocated = dict(cursor.fetchall())
+                if set(allocated) != set(range(len(batch))):
+                    raise RuntimeError('Analytics identity allocation did not cover the load batch')
+                values = []
+                for ordinal, (index, row) in enumerate(batch):
+                    identities[index] = allocated[ordinal]
+                    values.extend([allocated[ordinal], *row, prepared['xml_digest']])
+                columns = ['instance_id', *(column['sql_name'] for column in table['columns']), 'source_document_sha256']
+                placeholders = sql.SQL('(') + sql.SQL(',').join(sql.Placeholder() for _ in columns) + sql.SQL(')')
+                cursor.execute(sql.SQL('INSERT INTO {}.{} ({}) OVERRIDING SYSTEM VALUE VALUES {}').format(
                     sql.Identifier(prepared['schema']), sql.Identifier(table['sql_name']),
-                    sql.SQL(',').join([*(sql.Identifier(column['sql_name']) for column in table['columns']), sql.Identifier('source_document_sha256')]),
-                    sql.SQL(',').join(sql.Placeholder() for _ in [*values, prepared['xml_digest']]))
-                cursor.execute(query, [*values, prepared['xml_digest']])
-            else:
-                cursor.execute(sql.SQL('INSERT INTO {}.{} (source_document_sha256) VALUES (%s) RETURNING instance_id').format(sql.Identifier(prepared['schema']), sql.Identifier(table['sql_name'])), (prepared['xml_digest'],))
-            identities.append(cursor.fetchone()[0])
-        for link_index, (entity_id, ordinal, parent, child, position) in enumerate(prepared['links']):
-            if link_index % 100 == 0: ensure_execution_allowed()
+                    sql.SQL(',').join(sql.Identifier(name) for name in columns),
+                    sql.SQL(',').join(placeholders for _ in batch)), values)
+        link_batches = {}
+        for entity_id, ordinal, parent, child, position in prepared['links']:
             relationship = tables[entity_id]['relationships'][ordinal]
             name = sql_name(entity_id + '/' + relationship['name'] + '/' + str(ordinal) + '/link')
-            cursor.execute(sql.SQL('INSERT INTO {}.{} (owner_id,child_id,position) VALUES (%s,%s,%s)').format(sql.Identifier(prepared['schema']), sql.Identifier(name)), (identities[parent], identities[child], position))
+            link_batches.setdefault(name, []).append((identities[parent], identities[child], position))
+        for name, rows in link_batches.items():
+            for start in range(0, len(rows), 500):
+                ensure_execution_allowed()
+                batch = rows[start:start + 500]
+                cursor.execute(sql.SQL('INSERT INTO {}.{} (owner_id,child_id,position) VALUES {}').format(
+                    sql.Identifier(prepared['schema']), sql.Identifier(name),
+                    sql.SQL(',').join(sql.SQL('(%s,%s,%s)') for _ in batch)),
+                    [value for row in batch for value in row])
+        for view in prepared['business_views']:
+            if view.get('validation_sql'):
+                ensure_execution_allowed()
+                cursor.execute(view['validation_sql'])
+                result = cursor.fetchone()
+                if not result or result[0]:
+                    raise ValueError('Dimension keys are missing or map to conflicting attributes; use a reviewed history policy or a new projection')
         ensure_execution_allowed()
         cursor.execute('INSERT INTO depo_registry(namespace,key,value) VALUES (%s,%s,%s)', (registry.namespace, key, Jsonb(receipt)))
     return receipt

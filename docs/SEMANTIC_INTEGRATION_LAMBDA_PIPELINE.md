@@ -1,5 +1,17 @@
 # Semantic Integration and Lambda-Style Data Pipeline
 
+## Reading this design
+
+This document mixes target architecture and historical delivery milestones.
+For the current implemented paths, storage boundaries and product lifecycle,
+start with [Ingestion and data-product lifecycle](DATA_PRODUCT_INGESTION.md).
+The executable handler registry already includes CEIM normalization, semantic
+validation, document-evidence validation/enrichment/normalization and XML ODS
+materialization. Older statements below calling those jobs planned or describing
+the whole API as preview-only are historical; they do not override the current
+handler registry. Proposed generic acquisition and distributed Spark execution
+still require source-specific implementation and acceptance evidence.
+
 ## Purpose
 
 This design explains how DEPO turns heterogeneous engineering information into
@@ -216,8 +228,9 @@ Both source classes use the same governed lifecycle and may not create a
 parallel document-only graph:
 
 ```text
-structured source:   artifact → parser → source CEIM batch → SHACL → catalog → approved publication
-unstructured source: artifact → evidence/chunks → document proposal → source CEIM batch → SHACL → catalog → approved publication
+structured source:   artifact → parser → source CEIM batch → SHACL → approved graph publication
+unstructured source: artifact → evidence/chunks → document proposal → source CEIM batch → SHACL → approved graph publication
+product lifecycle:   retained evidence → product preview → approved package → catalog registration
 ```
 
 The unstructured bridge is the versioned `unstructured-evidence` mapping pack.

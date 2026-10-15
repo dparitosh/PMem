@@ -24,4 +24,5 @@ def execute_claimed_job(definition: dict[str, Any], payload: dict[str, Any], run
         result = handler_registry.get(definition["job_type"]).execute(runner, payload, correlation_id=run.get("correlation_id", ""))
         ensure_execution_allowed()
         persisted = run_records.complete(run, result)
-    return {**result, "run_manifest": persisted}
+    from .analytics_evidence import run_result
+    return run_result(result, persisted)

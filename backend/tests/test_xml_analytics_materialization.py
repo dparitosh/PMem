@@ -13,7 +13,7 @@ SCHEMA = HEADER + '<xs:element name="Root"><xs:complexType><xs:sequence><xs:elem
 
 
 class XMLAnalyticsMaterialization(unittest.TestCase):
-    def prepare(self, content, schema=SCHEMA):
+    def prepare(self, content, schema=SCHEMA, options=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root/'source.xsd').write_text(schema)
@@ -21,7 +21,7 @@ class XMLAnalyticsMaterialization(unittest.TestCase):
             class Store:
                 def resolve(self, reference):
                     return ({'filename': 'source.xsd' if reference == 'schema' else 'source.xml', 'kind': 'engineering-schema-source'}, root / ('source.xsd' if reference == 'schema' else 'source.xml'))
-            return prepare_xml_load({'schema_artifact_id': 'schema', 'xml_artifact_id': 'xml'}, Store())
+            return prepare_xml_load({'schema_artifact_id': 'schema', 'xml_artifact_id': 'xml', **(options or {})}, Store())
 
     def test_unqualified_schema_loads_valid_instance(self):
         schema='<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Root" type="xs:string"/></xs:schema>'
@@ -111,7 +111,10 @@ class XMLAnalyticsMaterialization(unittest.TestCase):
                 self.query=query.as_string() if hasattr(query,'as_string') else query
                 observed.append((self.query,args))
             def fetchone(self):
-                return (len(observed),) if 'RETURNING instance_id' in self.query else None
+                return None
+            def fetchall(self):
+                size = observed[-1][1][1] + 1
+                return [(ordinal, len(observed) * 1000 + ordinal) for ordinal in range(size)]
         database=Database()
         class Registry:
             namespace='xml_analytics_loads'
