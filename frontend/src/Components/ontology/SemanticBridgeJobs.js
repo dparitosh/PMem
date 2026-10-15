@@ -120,7 +120,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     setAutomationStage(value.status === 'completed' ? published?.status === 'held' ? 'Completed: all mappings held' : 'Completed' : `Workflow ${value.status}; refresh to inspect progress`);
   };
   useEffect(() => {
-    if (!automationRun?.run_id || !['queued','running','paused'].includes(automationRun.status) || !api.automationStatus) return;
+    if (!automationRun?.run_id || !['unknown','queued','running','paused'].includes(automationRun.status) || !api.automationStatus) return;
     let timer; let stopped = false;
     const stamp = generation.current;
     const poll = async () => {
@@ -191,7 +191,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       })}>Inspect retained mapping workflow</button></div>}
     {message && <p role="alert">{message}</p>}
     {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
-    {automationStage !== 'idle' && <p role="status">{busy ? automationStage : message ? 'Automation stopped; inspect the saved preview and publication before retrying.' : automationStage}</p>}
+    {automationStage !== 'idle' && <p role="status">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
     {policyReport && <div role="status"><strong>Steward decision:</strong> {policyReport.accepted_ids?.length || 0} policy-approved; {policyReport.held_count} held. <small>Workflow: {automationRun?.run_id}</small>
       <details><summary>Why mappings were held</summary>{policyReport.decisions.filter(item => item.decision === 'hold').map(item => <p key={item.candidate_id}>{preview?.candidates.find(row => row.candidate_id === item.candidate_id)?.source_term || item.candidate_id}: {item.reasons.join(', ')}</p>)}</details>
     </div>}

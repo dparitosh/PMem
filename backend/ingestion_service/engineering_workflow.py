@@ -61,14 +61,16 @@ class EngineeringWorkflow:
         from backend.depo_platform.network import bounded_timeout_seconds
         from backend.depo_platform.network import ontology_publication_timeout_seconds
         self.publication_timeout = ontology_publication_timeout_seconds()
-        self.timeout = bounded_timeout_seconds('SERVICE_REQUEST_TIMEOUT_SECONDS', default=30, maximum=300)
+        from backend.depo_platform.network import service_request_timeout_seconds
+        self.timeout = service_request_timeout_seconds()
 
     @ontology_writer
     async def run(
         self, **kwargs,
     ) -> dict[str, Any]:
         from backend.depo_platform.network import bounded_timeout_seconds
-        deadline = bounded_timeout_seconds('ENGINEERING_WORKFLOW_TIMEOUT_SECONDS', default=300, maximum=3600)
+        from backend.depo_platform.network import engineering_workflow_timeout_seconds
+        deadline = engineering_workflow_timeout_seconds()
         async with asyncio.timeout(deadline):
             return await self._run(**kwargs)
 

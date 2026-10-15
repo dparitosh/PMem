@@ -10,7 +10,7 @@ try {
   }
   Set-Content -LiteralPath (Join-Path $workspace 'backend/.dt_venv/Scripts/python.exe') -Value 'stub runtime: never executed'
   $stub = @'
-param([string]$EnvFile, [string]$Profile, [switch]$SkipFrontend, [switch]$SkipDependencyInstall)
+param([string]$EnvFile, [string]$Profile, [int]$ServiceStartupTimeoutSeconds, [switch]$SkipFrontend, [switch]$SkipDependencyInstall)
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Add-Content -LiteralPath (Join-Path $root 'order.txt') -Value ([IO.Path]::GetFileNameWithoutExtension($PSCommandPath))
 if ($PSCommandPath -like '*install-depo-windows.ps1' -and (Test-Path -LiteralPath (Join-Path $root 'fail-install'))) { throw 'simulated migration failure' }

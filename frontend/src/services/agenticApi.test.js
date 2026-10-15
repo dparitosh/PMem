@@ -29,7 +29,7 @@ test('agent execution uses supported route, explicit tool and approval', async (
     { approved_by: 'reviewer', approval_token: 'approval' }, { signal: 'signal' });
   expect(post).toHaveBeenCalledWith(expect.stringContaining('/api/v1/runs'),
     { agent_id: 'ontology-governor', tool_id: 'ontology.merge.apply', inputs: { preview_id: 'p' },
-      approved_by: 'reviewer', approval_token: 'approval' }, { signal: 'signal' });
+      approved_by: 'reviewer', approval_token: 'approval' }, { timeout: 3660000, signal: 'signal' });
   post.mockRestore();
 });
 
@@ -38,7 +38,7 @@ test('workflow execution includes per-step inputs and approval', async () => {
   const execution = { step_inputs: [{ id: 'first' }], approved_by: 'reviewer', approval_token: 'approval' };
   await agenticAPI.runWorkflow('review', {}, execution);
   expect(post).toHaveBeenCalledWith(expect.stringContaining('/api/v1/workflow-runs'),
-    { workflow_id: 'review', inputs: {}, ...execution }, {});
+    { workflow_id: 'review', inputs: {}, ...execution }, { timeout: 3660000 });
   post.mockRestore();
 });
 

@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.network import agent_run_timeout_seconds
 
 
 def _now() -> str:
@@ -29,7 +30,7 @@ class AgentTelemetry:
             "session_id": str(session_id or ""),
             "status": "running",
             "started_at": _now(),
-            'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300')))).isoformat(),
+            'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=agent_run_timeout_seconds())).isoformat(),
             "model": os.getenv("LLM_MODEL_NAME") or os.getenv("OLLAMA_MODEL") or os.getenv("LLM_MODEL") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "deterministic",
             "prompt_version": os.getenv("AGENT_PROMPT_VERSION", "1"),
             "tool_spans": [],

@@ -111,3 +111,20 @@ test('session expiration retains the running task bookmark and prevents another 
   expect(Object.keys(sessionStorage).some(key => sessionStorage.getItem(key)==='running-run')).toBe(true);
   expect(start).toHaveBeenCalledTimes(1);
 });
+
+test('expiry during submission blocks another task after credentials reconnect', async () => {
+  let resolve;
+  const start = vi.spyOn(agenticAPI, 'runWorkflow').mockImplementation(() => new Promise(done => { resolve = done; }));
+  render(<WorkflowTaskPanel workflowId="merge" inputs={{}} label="Merge" />);
+  fireEvent.click(screen.getByRole('button', {name:'Merge'}));
+  fireEvent(window, new Event('depo:session-expired'));
+  act(() => {
+    setCredentialProfile('GRAPH_READ_TOKEN', 'reconnected');
+    window.dispatchEvent(new Event('depo:credentials-changed'));
+  });
+  expect(screen.getByRole('button', {name:'Merge'})).toBeDisabled();
+  expect(screen.getByLabelText('Recover workflow ID')).toBeVisible();
+  await act(async () => { resolve({data:{run_id:'accepted-before-expiry'}}); });
+  expect(screen.getByRole('button', {name:'Merge'})).toBeDisabled();
+  expect(start).toHaveBeenCalledTimes(1);
+});

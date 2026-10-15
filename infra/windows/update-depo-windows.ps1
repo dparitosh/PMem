@@ -8,6 +8,7 @@ API keys are validated and preserved; rotation remains a separate explicit actio
 param(
   [string]$EnvFile = '.env.local',
   [ValidateRange(1,900)][int]$LlmTimeoutSeconds = 300,
+  [ValidateRange(1,3600)][int]$ServiceStartupTimeoutSeconds = 600,
   [ValidateSet('Bootstrap','Production')][string]$Profile = 'Production',
   [switch]$SkipFrontend,
   [switch]$InstallDependencies
@@ -22,7 +23,7 @@ if (-not $SkipFrontend) { & (Join-Path $PSScriptRoot 'stop-depo-frontend.ps1') }
 & (Join-Path $PSScriptRoot 'stop-depo-services.ps1') -EnvFile $envPath
 # Delegate migration, graph provisioning and release validation to the same
 # installer used for a new deployment; do not duplicate those lifecycle stages.
-& (Join-Path $PSScriptRoot 'install-depo-windows.ps1') -EnvFile $envPath -Profile $Profile -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies)
+& (Join-Path $PSScriptRoot 'install-depo-windows.ps1') -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies)
 if (-not $SkipFrontend) {
   if (-not $InstallDependencies) { & (Join-Path $PSScriptRoot 'build-depo-frontend.ps1') -EnvFile $envPath }
   & (Join-Path $PSScriptRoot 'start-depo-frontend.ps1') -EnvFile $envPath

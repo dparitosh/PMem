@@ -2,6 +2,7 @@
 import asyncio
 import hashlib
 import os
+from backend.depo_platform.network import agent_run_timeout_seconds
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from .recovery import execution_payload, fingerprint, prepare_recovery
@@ -100,7 +101,7 @@ async def enqueue(payload, request, recovery=None):
               'workflow_digest':fingerprint(definition),'approved_actor':actor,'credential_fingerprints':credentials,
               'transport_fingerprint':transport_snapshot(),
               'started_at': recovery['started_at'] if recovery else now.isoformat(), 'updated_at':now.isoformat(),
-              'deadline_at':recovery['deadline_at'] if recovery else (now+timedelta(seconds=bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS',default=300))).isoformat(),
+              'deadline_at':recovery['deadline_at'] if recovery else (now+timedelta(seconds=agent_run_timeout_seconds())).isoformat(),
               'traces': recovery['traces'] if recovery else []}
     record.pop('_expected_record',None)
     if recovery:

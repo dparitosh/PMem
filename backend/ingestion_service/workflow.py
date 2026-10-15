@@ -3,6 +3,7 @@ from __future__ import annotations
 from backend.depo_platform.ontology_maintenance import ontology_writer
 
 import os
+import asyncio
 import hashlib
 import json
 from backend.depo_platform.service_urls import service_url
@@ -17,7 +18,8 @@ class SemanticIngestionWorkflow:
 
     def __init__(self) -> None:
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
-        self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "30"))
+        from backend.depo_platform.network import service_request_timeout_seconds
+        self.timeout = service_request_timeout_seconds()
 
     @ontology_writer
     async def run(
@@ -34,7 +36,8 @@ class SemanticIngestionWorkflow:
             "name": name, "base_uri": base_uri,
             "data": {"entities": normalized["entities"], "relationships": normalized["relationships"]},
         }
-        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+        from backend.depo_platform.network import engineering_workflow_timeout_seconds
+        async with asyncio.timeout(engineering_workflow_timeout_seconds()), httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
             policy_response = await client.post(
                 f"{self.ontology_url}/ontologies/policies/evaluate",
                 json={"decision": {"outcome": "approved", "confidence": 1.0, "decision_maker": "ingestion-service", "reasoning": f"Publish {name}"}, "exception_policy_ids": policy_exception_ids or []},

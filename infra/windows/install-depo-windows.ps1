@@ -15,6 +15,7 @@ param(
   [string]$EnvFile = '.env.local',
   [ValidateSet('Bootstrap', 'Production')][string]$Profile = 'Production',
   [string]$Python = 'py',
+  [ValidateRange(1,3600)][int]$ServiceStartupTimeoutSeconds = 600,
   [switch]$EnableSpark,
   [switch]$EnableNeo4jSparkConnector,
   [switch]$EnablePostgresSparkConnector,
@@ -154,7 +155,7 @@ if ($effectiveSpark) {
   }
 }
 Invoke-DepoStage 'Service startup and endpoint validation' {
-  $startParameters = @{ Action = 'Start'; EnvFile = $envPath; Profile = $Profile }
+  $startParameters = @{ Action = 'Start'; EnvFile = $envPath; Profile = $Profile; ServiceStartupTimeoutSeconds = $ServiceStartupTimeoutSeconds }
   if ($effectiveSpark) { $startParameters.EnableSpark = $true }
   if ($effectiveConnector) { $startParameters.EnableNeo4jSparkConnector = $true }
   if ($effectivePostgresConnector) { $startParameters.EnablePostgresSparkConnector = $true }

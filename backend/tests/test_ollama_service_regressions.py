@@ -29,6 +29,24 @@ class OllamaServiceRegressions(unittest.TestCase):
         tree = ast.parse(Path('backend/Services/ollama_service.py').read_text(encoding='utf-8'))
         nodes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
         session = Mock()
+        # Model the async transport while retaining the same payload/closure
+        # assertions against the controlled response.
+        class AsyncResponse:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): session.post.return_value.close()
+            def raise_for_status(self): session.post.return_value.raise_for_status()
+            async def aiter_bytes(self):
+                for chunk in session.post.return_value.iter_content(): yield chunk
+        class AsyncClient:
+            def __init__(self, timeout, trust_env): self.timeout = timeout
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): pass
+            def stream(self, method, url, **kwargs):
+                session.post(url, timeout=self.timeout, stream=True, **kwargs)
+                return AsyncResponse()
+        transport = patch.dict('sys.modules', {'httpx': types.SimpleNamespace(AsyncClient=AsyncClient)})
+        transport.start()
+        self.addCleanup(transport.stop)
         requests = types.SimpleNamespace(Session=lambda: session, exceptions=types.SimpleNamespace(Timeout=TimeoutError))
         import logging
         from typing import Optional, Dict, Any

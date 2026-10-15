@@ -197,7 +197,8 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       # configured shared dependency before a service is announced usable.
       # Dependency checks are sequential; five seconds can expire before
       # PostgreSQL and Neo4j finish. Keep each request within the outer budget.
-      $probeSeconds = [Math]::Max(1, [Math]::Min(20, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)))
+      $readinessBudget = Get-DepoReadinessProbeTimeoutSeconds @{'DEPO_READINESS_TIMEOUT_SECONDS'=$env:DEPO_READINESS_TIMEOUT_SECONDS}
+      $probeSeconds = [Math]::Max(1, [Math]::Min($readinessBudget, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)))
       $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -Headers @{ Origin = $corsProbeOrigin } -TimeoutSec $probeSeconds -MaximumRedirection 0
       $lastProbeFailure = "Readiness responded HTTP $($response.StatusCode)."
       $listenerVerified = $false

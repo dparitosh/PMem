@@ -843,7 +843,8 @@ async def run(payload: ToolRunBody, request: Request) -> dict:
         return await execute(payload, request)
     observation, started = await _agent_io(telemetry.start, operation='tool', request_id=getattr(request.state, 'request_id', ''))
     try:
-        async with asyncio.timeout(bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=300)):
+        from backend.depo_platform.network import agent_run_timeout_seconds
+        async with asyncio.timeout(agent_run_timeout_seconds()):
             result = await _dispatch(payload, request)
         await _agent_io(_tool_span, observation, tool_id=result['tool_id'], attempt=1, status='completed', duration_ms=(time.perf_counter()-started)*1000)
         await _agent_io(_finish_observation, observation, started, status='completed')
@@ -926,13 +927,16 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
             raise ValueError('inputs must be an object')
         commands = [{**step, 'inputs': {**(requested[index] if requested is not None else payload.get('inputs', {})), **step.get('input_bindings', {})}} for index, step in enumerate(workflow['steps'])]
         await _preflight_tools(commands, request, deferred=True)
+        from .execution_grants import execution_identity, verify_grant
+        execution_request, execution_approval, service_grant = await _agent_io(execution_identity, request, payload, planned['steps'])
         retries_by_step = []
         for step in workflow['steps']:
             retries = int(step.get('retries', 0))
             if not 0 <= retries <= 5:
                 raise ValueError('Workflow retries must be between zero and five')
             retries_by_step.append(retries)
-        timeout = bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=300)
+        from backend.depo_platform.network import agent_run_timeout_seconds
+        timeout = agent_run_timeout_seconds()
         run_id = recovery['run_id'] if recovery else f'run-{uuid4()}'
         request_id = getattr(request.state, 'request_id', '')
         observation, observed_at = await _agent_io(telemetry.start, operation='workflow', request_id=request_id, workflow_id=workflow['id'], workflow_run_id=run_id)
@@ -968,7 +972,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                 if step['tool_id'] == 'data.product.publish' and not inputs.get('idempotency_key'):
                     inputs['idempotency_key'] = f'workflow:{run_id}:{index+1}'
                 command = {**step, 'approval_required': approved_workflow or step.get('approval_required', False),
-                           'inputs': inputs, 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
+                           'inputs': inputs, 'approved_by': payload.get('approved_by'), 'approval_token': execution_approval}
                 tool = planned['steps'][index]['tool']
                 while True:
                     await workflow_checkpoint(workflow_controls, run_id)
@@ -979,7 +983,9 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                         record.update(pending_step={'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'mutates': dispatched_mutation,
                                                    'inputs': execution_payload({'inputs':inputs})['inputs']}, updated_at=_now())
                         await _persist_workflow(record)
-                        result = await _dispatch(command, request)
+                        if service_grant is not None:
+                            await _agent_io(verify_grant, service_grant)
+                        result = await _dispatch(command, execution_request)
                         if step['tool_id'] == 'pipeline.run' and isinstance(result.get('result'), dict) and result['result'].get('status') == 'queued':
                             child_id = (result['result'].get('run_manifest') or {}).get('run_id')
                             if not isinstance(child_id, str) or not child_id: raise HTTPException(502, 'Queued data job has no run identity')

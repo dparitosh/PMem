@@ -18,6 +18,14 @@ The assets API accepts `offset` and `limit` and returns `has_more`. Use **Next a
 
 The execution chain is `install-depo.ps1` (root) → `infra\windows\install-depo-windows.ps1` → `infra\windows\install-depo.ps1`. The last step is skipped with `-SkipDependencyInstall`; the complete installer still rebuilds the frontend using installed dependencies unless `-SkipFrontend` is supplied.
 
+Use `-ServiceStartupTimeoutSeconds 1200` on the root installer, Windows installer,
+updater, or deployment lifecycle `-Action Start` to allow a slower cold start.
+The default is 600 seconds per service; accepted values are 1–3600 seconds.
+This does not repair a crashed service. Startup and deployment validation use
+the same readiness-request budget derived from `DEPO_READINESS_TIMEOUT_SECONDS`:
+20 seconds with the default dependency probe, capped by the remaining startup
+allowance during launch. Other contract endpoint checks retain their short limits.
+
 Before a first installation, prepare the reviewed root `.env.local`, the PostgreSQL database/schema and reachable Neo4j runtime. The installer does not generate secrets or create the PostgreSQL database. From the repository root, run:
 
 ```powershell
@@ -4221,9 +4229,31 @@ workflow reports approval required. Review and approve the retained ontology in
 Ontology Junction before publishing it. Policy/quality checks are not approval.
 
 The engineering graph call uses GRAPH_PUBLICATION_TIMEOUT_SECONDS (default 180).
-ENGINEERING_WORKFLOW_TIMEOUT_SECONDS bounds the entire workflow (default 300,
+ENGINEERING_WORKFLOW_TIMEOUT_SECONDS bounds the entire workflow (derived from downstream stage budgets when omitted,
 maximum 3600). The browser allows 3660 seconds for that endpoint. If a response
 is lost, inspect the retained registration and graph receipt before retrying.
+
+Timeout defaults are composed from downstream stages. With unset settings,
+agent runs allow 900 seconds and engineering workflows allow 1170 seconds.
+SERVICE_REQUEST_TIMEOUT_SECONDS defaults to 90 seconds across ingestion clients.
+The deployment template sets an explicit 1200-second engineering deadline.
+An explicitly configured shorter run/workflow deadline remains authoritative;
+increasing an inner request timeout does not extend it. Agent execution requests
+in the browser allow 3660 seconds unless a caller supplies a shorter timeout.
+Invalid, non-finite and out-of-range timeout settings fail agentic preflight.
+Readiness probes use their own short database budgets, separate from import and
+publication limits. Restart services and rebuild the frontend after deploying.
+Gateway/proxy deadlines must also cover synchronous operations, or use the
+retained background workflow/publication APIs and poll their status.
+
+For token-authenticated workflows, the caller authorizes the selected plan at
+submission. Both worker and in-process execution then use scoped server
+credentials; browser session expiry or logout does not cancel that authorized
+work. Configure all required server credential profiles before submission.
+Server credential revocation/rotation, explicit cancellation and the original
+execution deadline remain effective. Reconnect to inspect the retained run;
+an interrupted submission must be reconciled before starting another task.
+Entra execution retains its gateway-token requirements.
 
 Deploy the matching backend files, rebuild the frontend and restart services.
 These changes require no new database migration.

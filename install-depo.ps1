@@ -4,6 +4,7 @@ param(
   [string]$EnvFile = '.env.local',
   [ValidateSet('Bootstrap','Production')][string]$Profile = 'Production',
   [string]$Python = 'py',
+  [ValidateRange(1,3600)][int]$ServiceStartupTimeoutSeconds = 600,
   [switch]$EnableSpark,
   [switch]$EnableNeo4jSparkConnector,
   [switch]$EnablePostgresSparkConnector,

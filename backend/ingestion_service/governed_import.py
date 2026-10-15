@@ -7,6 +7,7 @@ never publishes graph data and never creates or approves a job definition.
 from __future__ import annotations
 
 import os
+import asyncio
 from backend.depo_platform.service_urls import service_url
 from pathlib import Path
 from typing import Any
@@ -38,7 +39,8 @@ def profile_for_filename(filename: str) -> str:
 class GovernedImportService:
     def __init__(self) -> None:
         self.pipeline_url = service_url("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1")
-        self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "90"))
+        from backend.depo_platform.network import service_request_timeout_seconds
+        self.timeout = service_request_timeout_seconds()
 
     def normalize(self, *, filename: str, content: bytes, profile: str = "auto", source_system: str = "") -> dict[str, Any]:
         if not content:
@@ -91,7 +93,7 @@ class GovernedImportService:
             headers["Authorization"] = f"Bearer {execution_token}"
         payload["approved_by"] = os.getenv("DATA_PIPELINE_SERVICE_ACTOR", "governed-ingestion-service")
         payload["approval_token"] = os.getenv("DATA_JOB_EXECUTION_TOKEN", execution_token)
-        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+        async with asyncio.timeout(self.timeout), httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
             response = await client.post(f"{self.pipeline_url}/pipeline/jobs/definitions/{job_id}/{job_version}/run", json=payload)
         if response.status_code == 404:
             raise ValueError(f"Configured job {job_id}:{job_version} was not found; create and approve it before importing")

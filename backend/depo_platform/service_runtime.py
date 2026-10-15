@@ -61,12 +61,16 @@ def configured_dependency_status(dependencies: Collection[str] = ("postgres", "n
     status: dict[str, dict[str, str]] = {}
     production = any(os.getenv(key, '').strip().lower() in {'prod', 'production'}
                      for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV'))
+    from .network import bounded_timeout_seconds
+    probe_timeout = bounded_timeout_seconds('DEPO_READINESS_TIMEOUT_SECONDS', default=3, maximum=30)
     database_url = os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL")
     if "postgres" in dependencies and database_url:
         try:
             import psycopg
             from .postgres_schema import connect_timeout_seconds, statement_options
-            with psycopg.connect(database_url, connect_timeout=connect_timeout_seconds(), options=statement_options()) as connection:
+            probe_seconds = max(1, int(probe_timeout))
+            with psycopg.connect(database_url, connect_timeout=min(connect_timeout_seconds(), probe_seconds),
+                                 options=f'-c statement_timeout={probe_seconds * 1000} -c lock_timeout={probe_seconds * 1000}') as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT 1")
             status["postgres"] = {"status": "ready"}

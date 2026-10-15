@@ -2,6 +2,8 @@
 import os
 import inspect
 import threading
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import wraps
 
@@ -40,8 +42,29 @@ def ontology_writer(fn):
     if inspect.iscoroutinefunction(fn):
         @wraps(fn)
         async def guarded_async(*args, **kwargs):
-            with ontology_operation():
+            # Enter and exit on the same dedicated thread: the local fallback
+            # uses an RLock, and a database session must retain its owner.
+            loop = asyncio.get_running_loop()
+            executor = ThreadPoolExecutor(max_workers=1)
+            operation = ontology_operation()
+            acquisition = executor.submit(operation.__enter__)
+            entry = asyncio.wrap_future(acquisition)
+            def release():
+                # Queued on the same executor after acquisition, even if the
+                # awaiting task is cancelled more than once during connection.
+                try:
+                    acquisition.result()
+                except BaseException:
+                    return
+                operation.__exit__(None, None, None)
+            try:
+                await asyncio.shield(entry)
                 return await fn(*args, **kwargs)
+            finally:
+                try:
+                    await asyncio.shield(loop.run_in_executor(executor, release))
+                finally:
+                    executor.shutdown(wait=False)
         return guarded_async
     @wraps(fn)
     def guarded(*args, **kwargs):

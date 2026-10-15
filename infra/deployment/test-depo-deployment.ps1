@@ -89,6 +89,7 @@ if ($values.AUTH_MODE -eq "token") {
 }
 
 if (-not $SkipEndpointChecks) {
+  $readinessTimeout = Get-DepoReadinessProbeTimeoutSeconds $values
   $hostName = if ($values.DEPO_SERVICE_HOST) { $values.DEPO_SERVICE_HOST } else { "127.0.0.1" }
   if ($hostName -in @('0.0.0.0','::')) { $hostName = '127.0.0.1' }
   if ($hostName.Contains(':') -and -not $hostName.StartsWith('[')) { $hostName = '[' + $hostName + ']' }
@@ -96,7 +97,8 @@ if (-not $SkipEndpointChecks) {
     $corsChecked = $false
     foreach ($endpoint in $manifest.contract_endpoints) {
       $uri = "http://${hostName}:$($service.port)$endpoint"
-      try { $response = Invoke-WebRequest -Uri $uri -Headers @{ Origin = $allowedOrigins[0] } -UseBasicParsing -TimeoutSec 10 } catch { throw "$($service.id) did not respond at ${uri}: $($_.Exception.Message)" }
+      $endpointTimeout = if ($endpoint -eq '/readyz') { $readinessTimeout } else { 10 }
+      try { $response = Invoke-WebRequest -Uri $uri -Headers @{ Origin = $allowedOrigins[0] } -UseBasicParsing -TimeoutSec $endpointTimeout } catch { throw "$($service.id) did not respond at ${uri}: $($_.Exception.Message)" }
       if ($response.StatusCode -ne 200) { throw "$($service.id) returned HTTP $($response.StatusCode) for $endpoint" }
       if (-not $corsChecked) {
         $corsOrigin = [string]$response.Headers['Access-Control-Allow-Origin']

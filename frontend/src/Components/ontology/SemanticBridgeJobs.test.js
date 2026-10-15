@@ -16,6 +16,18 @@ beforeEach(() => {
   api = { preview: vi.fn().mockResolvedValue({ data: preview }), status: vi.fn(), publish: vi.fn().mockResolvedValue({ data: { job_id: 'publish-1', status: 'published', receipt: { applied_links: 1, approved_by: 'reviewer' } } }) };
 });
 afterEach(cleanup);
+
+test('saved workflow automatically resumes status checks after remount', async () => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'retained-run',status:'queued'}});
+  api.automationStatus = vi.fn().mockResolvedValue({data:{run_id:'retained-run',status:'running',traces:[]}});
+  const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText(/Workflow: retained-run/);
+  view.unmount();
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  await waitFor(() => expect(api.automationStatus).toHaveBeenCalledWith('retained-run'), {timeout:4500});
+  expect(api.automate).toHaveBeenCalledTimes(1);
+});
 const mount = () => {
   const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
   view.container.querySelector('details').open = true;

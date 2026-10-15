@@ -31,7 +31,8 @@ if (typeof window !== 'undefined') {
   const activity = () => {
     if (document.visibilityState === 'hidden') return;
     lastActivity = Date.now();
-    if (browserSession && browserSession.deadline - Date.now() < 60000 && Date.now() - lastRenewalAttempt >= 10000) {
+    checkBrowserSessionExpiry();
+    if (browserSession && browserSession.deadline - Date.now() <= 60000 && Date.now() - lastRenewalAttempt >= 10000) {
       renewBrowserSession().catch(() => {});
     }
   };
@@ -40,6 +41,11 @@ if (typeof window !== 'undefined') {
   for (const event of ['pointerdown', 'keydown', 'input', 'wheel', 'scroll']) {
     window.addEventListener(event, activity, { passive: true, capture: true });
   }
+  // Browser timers are throttled while a tab sleeps. Check on return rather
+  // than waiting for a click to discover an expired delegation.
+  window.addEventListener('focus', activity);
+  window.addEventListener('online', activity);
+  document.addEventListener('visibilitychange', activity);
 }
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
 function connectionScope() {
@@ -89,7 +95,7 @@ function restoreBrowserSession() {
 export function handleSessionRejection(status, authorization, detail = '') {
   const value = String(authorization || '');
   const invalidSession = status === 401 || (status === 403 &&
-    /browser session scope is unavailable or credentials changed|administrator key changed|invalid or revoked|^revoked [A-Z_]+|expired session/i.test(String(detail)));
+    /browser session scope is unavailable or credentials changed|administrator key changed|invalid or revoked|^revoked [A-Z_]+|expired session|session expired/i.test(String(detail)));
   if (invalidSession && value.startsWith('Bearer depo_session_')) expireBrowserSession(value.slice(7));
   else if (invalidSession && value.startsWith('depo_session_')) expireBrowserSession(value);
 }
@@ -132,6 +138,7 @@ export function installBrowserSession(body, subscription = '') {
   gatewaySubscriptionKey = String(subscription || '').trim();
   browserAccessExpired = false;
   lastActivity = Date.now();
+  lastRenewalAttempt = 0;
   persistBrowserSession();
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('depo:session-replaced'));
 }

@@ -46,13 +46,13 @@ export const agenticAPI = {
     agenticUrl(API.agentic.runAgent),
     { agent_id: agentId, tool_id: toolId, inputs,
       approved_by: approval.approved_by, approval_token: approval.approval_token },
-    options,
+    { timeout: 3660000, ...options },
   ),
   runWorkflow: (workflowId, inputs = {}, execution = {}, options = {}) => agenticClient.post(
     agenticUrl(API.agentic.runWorkflow),
     { workflow_id: workflowId, inputs, step_inputs: execution.step_inputs,
       approved_by: execution.approved_by, approval_token: execution.approval_token },
-    options,
+    { timeout: 3660000, ...options },
   ),
   orchestrateOntology: (payload = {}, options = {}) => agenticClient.post(
     agenticUrl(API.agentic.orchestrateOntology),

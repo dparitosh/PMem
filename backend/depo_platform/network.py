@@ -4,6 +4,34 @@ from __future__ import annotations
 import os
 import math
 
+TIMEOUT_RANGES = {
+    'AGENTIC_TOOL_TIMEOUT_SECONDS': (1, 3600),
+    'AGENTIC_RUN_TIMEOUT_SECONDS': (1, 3600),
+    'COMPANION_RETRIEVAL_TIMEOUT_SECONDS': (1, 120),
+    'OSLC_CLIENT_TIMEOUT_SECONDS': (1, 3600),
+    'SERVICE_REQUEST_TIMEOUT_SECONDS': (1, 300),
+    'ENGINEERING_WORKFLOW_TIMEOUT_SECONDS': (1, 3600),
+    'ENGINEERING_CONVERSION_TIMEOUT_SECONDS': (1, 900),
+    'GRAPH_PUBLICATION_TIMEOUT_SECONDS': (1, 3600),
+    'MERGE_VALIDATION_TIMEOUT_SECONDS': (1, 900),
+    'DEPO_READINESS_TIMEOUT_SECONDS': (1, 30),
+}
+
+
+def validate_timeout_settings():
+    """Report invalid supplied values instead of advertising clamped values as ready."""
+    errors = []
+    for name, (minimum, maximum) in TIMEOUT_RANGES.items():
+        if name not in os.environ:
+            continue
+        try:
+            value = float(os.environ[name])
+            if not math.isfinite(value) or not minimum <= value <= maximum:
+                raise ValueError()
+        except (TypeError, ValueError):
+            errors.append(name)
+    return errors
+
 
 def gateway_subscription_headers(endpoint: str) -> dict[str, str]:
     """Attach APIM credentials only to the explicitly configured gateway root."""
@@ -51,6 +79,25 @@ def ontology_publication_timeout_seconds() -> float:
     """Include retained-source preparation before graph dispatch, plus overhead."""
     stage = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
     return stage + graph_dispatch_timeout_seconds() + 30
+
+
+def service_request_timeout_seconds() -> float:
+    return bounded_timeout_seconds('SERVICE_REQUEST_TIMEOUT_SECONDS', default=90, maximum=300)
+
+
+def engineering_workflow_timeout_seconds() -> float:
+    # Conversion, policy/quality/registration/lifecycle calls, publication,
+    # and transport overhead share one outer deadline.
+    default = min(3600, bounded_timeout_seconds('ENGINEERING_CONVERSION_TIMEOUT_SECONDS', default=180, maximum=900)
+                  + 4 * service_request_timeout_seconds() + ontology_publication_timeout_seconds() + 30)
+    return bounded_timeout_seconds('ENGINEERING_WORKFLOW_TIMEOUT_SECONDS', default=default, maximum=3600)
+
+
+def agent_run_timeout_seconds() -> float:
+    normal = bounded_timeout_seconds('AGENTIC_TOOL_TIMEOUT_SECONDS', default=30)
+    merge = bounded_timeout_seconds('MERGE_VALIDATION_TIMEOUT_SECONDS', default=180, maximum=900)
+    default = min(3600, max(900, normal + 60, merge + ontology_publication_timeout_seconds() + 90))
+    return bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=default)
 
 
 def service_bearer_headers(token_env: str, *, service_name: str, endpoint: str = '') -> dict[str, str]:

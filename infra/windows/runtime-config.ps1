@@ -1,4 +1,17 @@
 # Shared configuration reader. Never prints values or changes machine environment.
+function Get-DepoReadinessProbeTimeoutSeconds([hashtable]$Values) {
+  $seconds = 3.0
+  $raw = [string]$Values['DEPO_READINESS_TIMEOUT_SECONDS']
+  if (-not [string]::IsNullOrWhiteSpace($raw)) {
+    if (-not [double]::TryParse($raw, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$seconds) -or
+        [double]::IsNaN($seconds) -or [double]::IsInfinity($seconds) -or $seconds -lt 1 -or $seconds -gt 30) {
+      throw 'DEPO_READINESS_TIMEOUT_SECONDS must be between 1 and 30 seconds.'
+    }
+  }
+  # PostgreSQL connect/query and Neo4j connectivity/acquisition/query, plus margin.
+  return [int][Math]::Ceiling(5 * $seconds + 5)
+}
+
 function Assert-DepoIngestionConfiguration([hashtable]$Values, [string]$EnvPath = '', [hashtable]$LineNumbers = @{}) {
   foreach ($name in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES')) {
     if (-not $Values.ContainsKey($name)) { continue } # Python supplies the documented defaults.

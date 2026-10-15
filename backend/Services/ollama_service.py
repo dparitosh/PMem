@@ -41,23 +41,24 @@ class OllamaService:
         return self._request_query(full_prompt, temperature, 'chat')
 
     def _request_query(self, full_prompt: str, temperature: float, operation: str) -> Optional[str]:
+        from backend.core.sync_async import call_async
+        return call_async(lambda: self._async_request_query(full_prompt, temperature, operation))
+
+    async def _async_request_query(self, full_prompt: str, temperature: float, operation: str) -> Optional[str]:
         body = {'model': self.model, 'stream': False, 'options': {'temperature': temperature}}
         if operation == 'generate':
             body['prompt'] = full_prompt
         else:
             body['messages'] = [{'role': 'user', 'content': full_prompt}]
-        from backend.core.ollama_limits import request_slot_sync
-        with request_slot_sync(self._native_base_url() + '/api/' + operation):
-            response = self._session.post(
-                self._native_base_url() + '/api/' + operation,
-                json=body, headers=self._headers(), timeout=ollama_timeout(), stream=True)
-            try:
+        import httpx
+        from backend.core.ollama_limits import request_slot
+        endpoint = self._native_base_url() + '/api/' + operation
+        async with request_slot(endpoint), httpx.AsyncClient(timeout=ollama_timeout(), trust_env=False) as client:
+            async with client.stream('POST', endpoint, json=body, headers=self._headers()) as response:
                 response.raise_for_status()
-                from backend.agentic_service.response_limits import read_bounded_response_sync
+                from backend.agentic_service.response_limits import read_bounded_response
                 import json
-                result = json.loads(read_bounded_response_sync(response))
-            finally:
-                response.close()
+                result = json.loads(await read_bounded_response(response))
             if not isinstance(result, dict) or result.get('error') or result.get('done') is not True:
                 raise ValueError('Ollama returned an invalid or incomplete answer')
             content = result.get('response') if operation == 'generate' else (result.get('message') or {}).get('content')

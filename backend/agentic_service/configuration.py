@@ -15,7 +15,6 @@ def configuration_status(*, check_workers=True):
     for key, default, minimum, maximum in (
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
-        ('AGENTIC_RUN_TIMEOUT_SECONDS', '300', 1, 3600),
         ('AGENTIC_WORKER_CONCURRENCY', '4', 1, 16),
         ('OLLAMA_MAX_CONCURRENCY', '4', 1, 32),
         ('OLLAMA_FAILURE_THRESHOLD', '3', 1, 20),
@@ -140,10 +139,9 @@ def configuration_status(*, check_workers=True):
         require('DT_AGENT_GATEWAY_TOKEN')
     if os.getenv('OSLC_REMOTE_ENABLED', 'false').lower() == 'true':
         url('OSLC_REMOTE_BASE_URL', https=mode == 'entra')
-    for key, default in (('AGENTIC_TOOL_TIMEOUT_SECONDS', '30'),
-                         ('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15'),
-                         ('OSLC_CLIENT_TIMEOUT_SECONDS', '20'),
-                         ('AGENTIC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)),
+    from backend.depo_platform.network import validate_timeout_settings
+    errors.extend(validate_timeout_settings())
+    for key, default in (('AGENTIC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)),
                          ('AGENTIC_MAX_UPLOAD_BYTES', str(25 * 1024 * 1024))):
         try:
             value = float(os.getenv(key, default))

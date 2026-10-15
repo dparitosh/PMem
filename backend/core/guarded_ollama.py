@@ -1,7 +1,8 @@
 """Keep LangChain composition while applying the shared Ollama admission policy."""
 from langchain_core.runnables import Runnable
 from langchain_core.embeddings import Embeddings
-from .ollama_limits import request_slot, request_slot_sync
+from .ollama_limits import request_slot
+from .sync_async import call_async, iterate_async
 from .ollama_auth import ollama_headers
 
 
@@ -10,7 +11,7 @@ class GuardedOllama(Runnable):
 
     def invoke(self, input, config=None, **kwargs):
         ollama_headers(self.endpoint)
-        with request_slot_sync(self.endpoint): return self.model.invoke(input, config=config, **kwargs)
+        return call_async(lambda: self.ainvoke(input, config=config, **kwargs))
 
     async def ainvoke(self, input, config=None, **kwargs):
         ollama_headers(self.endpoint)
@@ -18,7 +19,7 @@ class GuardedOllama(Runnable):
 
     def stream(self, input, config=None, **kwargs):
         ollama_headers(self.endpoint)
-        with request_slot_sync(self.endpoint): yield from self.model.stream(input, config=config, **kwargs)
+        yield from iterate_async(lambda: self.astream(input, config=config, **kwargs))
 
     async def astream(self, input, config=None, **kwargs):
         ollama_headers(self.endpoint)
@@ -37,11 +38,11 @@ class GuardedEmbeddings(Embeddings):
 
     def embed_documents(self, texts, **kwargs):
         ollama_headers(self.endpoint)
-        with request_slot_sync(self.endpoint): return self.model.embed_documents(texts, **kwargs)
+        return call_async(lambda: self.aembed_documents(texts, **kwargs))
 
     def embed_query(self, text, **kwargs):
         ollama_headers(self.endpoint)
-        with request_slot_sync(self.endpoint): return self.model.embed_query(text, **kwargs)
+        return call_async(lambda: self.aembed_query(text, **kwargs))
 
     async def aembed_documents(self, texts, **kwargs):
         ollama_headers(self.endpoint)

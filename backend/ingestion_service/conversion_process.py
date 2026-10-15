@@ -7,7 +7,8 @@ from backend.depo_platform.network import bounded_timeout_seconds
 
 
 def convert_engineering(**inputs):
-    total = bounded_timeout_seconds('ENGINEERING_WORKFLOW_TIMEOUT_SECONDS', default=300, maximum=3600)
+    from backend.depo_platform.network import engineering_workflow_timeout_seconds
+    total = engineering_workflow_timeout_seconds()
     timeout = min(bounded_timeout_seconds('ENGINEERING_CONVERSION_TIMEOUT_SECONDS', default=180, maximum=900), max(1, total - 30))
     payload = pickle.dumps(inputs, protocol=pickle.HIGHEST_PROTOCOL)
     try:

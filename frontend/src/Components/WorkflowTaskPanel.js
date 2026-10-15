@@ -22,7 +22,18 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
         setSubmissionUnknown(true); setError('Task submission was not confirmed. Check workflow history before retrying.');
       }
     } catch { setRunId(''); }
-    const clear = () => { request.current?.abort(); setRun(null); setBusy(false); setRecoveryId(''); setRevision(value => value + 1); };
+    const clear = () => {
+      request.current?.abort(); setRun(null); setBusy(false); setRecoveryId('');
+      // Aborting the HTTP response does not cancel a server-accepted write.
+      // Restore the durable marker before enabling any new submission.
+      try {
+        if (sessionStorage.getItem(key) === 'submission-unconfirmed') {
+          setSubmissionUnknown(true);
+          setError('Task submission was not confirmed. Reconnect and inspect workflow history before retrying.');
+        }
+      } catch { setSubmissionUnknown(true); }
+      setRevision(value => value + 1);
+    };
     const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
     events.forEach(event => window.addEventListener(event, clear));
     return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, clear)); };
