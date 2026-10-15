@@ -10,6 +10,7 @@ param(
   [switch]$EnablePostgresSparkConnector,
   [switch]$EnablePipelineScheduler,
   [switch]$SkipFrontend,
+  [switch]$EnableOcr,
   [switch]$SkipBaselineProvisioning,
   [switch]$SkipDependencyInstall,
   [Alias('SynchronizeCredentials')][switch]$ReplaceExistingCredentials,

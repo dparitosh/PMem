@@ -20,7 +20,17 @@ function Read-TimeoutBudget([string]$Name, [int]$Default, [int]$Maximum) {
 }
 $llm = [Math]::Max($LlmTimeoutSeconds, (Read-TimeoutBudget 'LLM_REQUEST_TIMEOUT_SECONDS' 300 900))
 $tool = [Math]::Max($llm + 30, (Read-TimeoutBudget 'AGENTIC_TOOL_TIMEOUT_SECONDS' 30 3600))
-$run = [Math]::Max([Math]::Max(900, $tool + 60), (Read-TimeoutBudget 'AGENTIC_RUN_TIMEOUT_SECONDS' 300 3600))
+$preparation = Read-TimeoutBudget 'GRAPH_PUBLICATION_TIMEOUT_SECONDS' 180 3600
+$write = Read-TimeoutBudget 'GRAPH_PUBLICATION_WRITE_TIMEOUT_SECONDS' $preparation 3600
+$activation = Read-TimeoutBudget 'GRAPH_PUBLICATION_ACTIVATION_TIMEOUT_SECONDS' $preparation 3600
+$merge = Read-TimeoutBudget 'MERGE_VALIDATION_TIMEOUT_SECONDS' 180 900
+$publicationRun = 2 * $preparation + $write + $activation + $merge + 150
+$service = Read-TimeoutBudget 'SERVICE_REQUEST_TIMEOUT_SECONDS' 90 3600
+$conversion = Read-TimeoutBudget 'ENGINEERING_CONVERSION_TIMEOUT_SECONDS' 180 900
+$engineeringDefault = [Math]::Min(3600, $conversion + 4 * $service + 2 * $preparation + $write + $activation + 90)
+$engineering = Read-TimeoutBudget 'ENGINEERING_WORKFLOW_TIMEOUT_SECONDS' $engineeringDefault 3600
+$publicationRun = [Math]::Max($publicationRun, $engineering + 90)
+$run = [Math]::Max([Math]::Max([Math]::Max(900, $tool + 60), $publicationRun), (Read-TimeoutBudget 'AGENTIC_RUN_TIMEOUT_SECONDS' 300 3600))
 if ($run -gt 3600) { throw 'The configured tool budget leaves no margin inside the maximum 3600-second agent run. Correct the budgets before upgrading.' }
 $updates = [ordered]@{
   LLM_REQUEST_TIMEOUT_SECONDS = $llm

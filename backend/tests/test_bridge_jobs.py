@@ -70,7 +70,7 @@ class BridgeJobTests(unittest.TestCase):
             self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
 
     def test_snapshot_ignores_lookup_order_but_detects_target_changes(self):
-        from backend.agentic_service.bridge_jobs import BridgeSource
+        from backend.ingestion_service.bridge_source import LocalBridgeSource as BridgeSource
         from backend.Services.semantic_workflow_service import SemanticWorkflowService as service
         from backend.Services.unified_data_import import UnifiedDataImportService as imports
         lookup = {'part': [{'element_id': 'one'}, {'element_id': 'two'}]}
@@ -232,10 +232,9 @@ class GraphBridgeRouteTests(unittest.TestCase):
         from unittest.mock import MagicMock
         from backend.agentic_service.bridge_jobs import GraphBridgeClient
         for base in ('http://graph:8013', 'http://graph:8013/api/v1'):
-            with self.subTest(base=base), patch.dict(os.environ, {'GRAPH_SERVICE_URL': base, 'GRAPH_PUBLICATION_TOKEN': 'private-test'}), patch('httpx.Client') as client:
+            with self.subTest(base=base), patch.dict(os.environ, {'GRAPH_SERVICE_URL': base, 'GRAPH_PUBLICATION_TOKEN': 'private-test'}), patch('backend.depo_platform.peer_http.peer_response') as request:
                 response = MagicMock(); response.status_code = 200
                 response.json.return_value = {'publication_id': 'job'}
-                request = client.return_value.__enter__.return_value.request
                 request.return_value = response
                 GraphBridgeClient().receipt('job')
                 self.assertEqual(request.call_args.args[:2], ('GET', 'http://graph:8013/api/v1/graph/bridge/publications/job'))
@@ -243,10 +242,10 @@ class GraphBridgeRouteTests(unittest.TestCase):
     def test_graph_client_does_not_hide_a_missing_publication_route(self):
         from unittest.mock import MagicMock
         from backend.agentic_service.bridge_jobs import GraphBridgeClient
-        with patch.dict(os.environ, {'GRAPH_SERVICE_URL': 'http://graph:8013', 'GRAPH_PUBLICATION_TOKEN': 'private-test'}), patch('httpx.Client') as client:
+        with patch.dict(os.environ, {'GRAPH_SERVICE_URL': 'http://graph:8013', 'GRAPH_PUBLICATION_TOKEN': 'private-test'}), patch('backend.depo_platform.peer_http.peer_response') as request:
             response = MagicMock(); response.status_code = 404
             response.raise_for_status.side_effect = RuntimeError('route missing')
-            client.return_value.__enter__.return_value.request.return_value = response
+            request.return_value = response
             with self.assertRaises(Exception):
                 GraphBridgeClient().publish({'publication_id': 'job'})
             response.raise_for_status.assert_called_once()

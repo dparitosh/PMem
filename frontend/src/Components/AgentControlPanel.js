@@ -197,6 +197,7 @@ export default function AgentControlPanel() {
     {runKind === 'workflow' && run && <div className="depo-workflow-evidence">
       <p>Original deadline: {run.deadline_at || 'Not available'}. Last execution activity: {run.last_activity_at || run.updated_at || 'Not available'}.</p>
       {run.pending_step && <p>Current tool: {run.pending_step.tool_id}. Attempt: {run.pending_step.attempt}. {run.pending_step.mutates ? 'May write downstream data.' : 'Read operation.'}</p>}
+      {Number.isFinite(run.pending_step?.progress?.current) && <p role="status">Tool progress: {run.pending_step.progress.current}{Number.isFinite(run.pending_step.progress.total) ? ` of ${run.pending_step.progress.total}` : ''}</p>}
       {run.execution_mode && <p>{run.execution_mode === 'worker' ? 'Durable worker execution can recover read-only interruptions after restart. Uncertain writes require receipt reconciliation.' : 'Execution continues independently of a browser disconnect. Recovery after a service restart requires supervisor review.'} Completed writes are retained.</p>}
       {run.traces?.length > 0 && <details><summary>Step results and receipt evidence</summary><pre>{JSON.stringify(run.traces, null, 2)}</pre></details>}
     </div>}

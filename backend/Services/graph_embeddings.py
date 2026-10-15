@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, Query
 import tiktoken
 
 # ---------------------------------------------------------------------------
@@ -130,21 +130,22 @@ def _clean_value(v: Any) -> str:
     if v is None:
         return ""
     if isinstance(v, list):
-        return ", ".join(str(i) for i in v)
-    return str(v).strip()
+        return ", ".join(str(i)[:250] for i in v[:8])[:1000]
+    return str(v).strip()[:1000]
 
 
 def _props_sentence(props: Dict, exclude: set = None) -> str:
     """Turn a property dict into a readable sentence list."""
     exclude = exclude or set()
+    allowed = {"name", "title", "label", "description", "definition", "comment", "iri", "uri", "kind", "type", "code", "unit", "units", "value", "datatype", "domain", "range", "predicate", "ontology_id", "prefix"}
     parts = []
-    for k, v in props.items():
-        if k in exclude or k == EMBEDDING_PROPERTY:
+    for k, v in sorted(props.items()):
+        if k in exclude or k == EMBEDDING_PROPERTY or k not in allowed:
             continue
         clean_key = k.replace("_", " ")
         clean_val = _clean_value(v)
         if clean_val:
-            parts.append(f"{clean_key}: {clean_val}")
+            parts.append(f"{clean_key}: {clean_val[:1000]}")
     return "; ".join(parts)
 
 
@@ -240,35 +241,39 @@ def build_node_chunk_text(
 # Fetch nodes + 1-hop neighbourhood from Neo4j
 # ---------------------------------------------------------------------------
 
+VISIBLE_SOURCE = "NOT n:GraphChunk AND NOT n:DatasheetChunk AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity AND NOT n:OntologyPublication"
 FETCH_QUERY = """
-MATCH (n)
-WHERE NOT n:GraphChunk AND NOT n:DatasheetChunk
-OPTIONAL MATCH (n)-[r]-(m)
-WHERE NOT m:GraphChunk AND NOT m:DatasheetChunk
-WITH n,
-     collect(DISTINCT CASE WHEN r IS NULL THEN null ELSE {
-         rel_type:  type(r),
-         dir:       CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END,
-         neighbor_label: CASE WHEN labels(m) IS NOT NULL AND size(labels(m)) > 0
-                              THEN labels(m)[0] ELSE 'Node' END,
-         neighbor_name:  coalesce(m.name, m.title, m.code, m.key,
-                                  m.abbreviation, ''),
-         rel_props: properties(r)
-     } END) AS rels
-RETURN elementId(n) AS eid,
-       labels(n)     AS labels,
-       properties(n)  AS props,
-       rels
+MATCH (n) WHERE """ + VISIBLE_SOURCE + """ AND elementId(n) > $after
+WITH n ORDER BY elementId(n) LIMIT $page_size
+CALL {
+ WITH n
+ OPTIONAL MATCH (n)-[r]-(m)
+ WHERE NOT m:GraphChunk AND NOT m:DatasheetChunk AND NOT m:StagedOntologyResource
+   AND NOT m:RetainedOntologyIdentity AND NOT m:OntologyPublication
+ WITH n,r,m ORDER BY elementId(r) LIMIT $neighbor_limit
+ RETURN collect(CASE WHEN r IS NULL THEN null ELSE {
+   rel_type:type(r), dir:CASE WHEN startNode(r)=n THEN 'outgoing' ELSE 'incoming' END,
+   neighbor_label:head(labels(m)), neighbor_name:coalesce(m.name,m.title,m.label,m.code,''),
+   rel_props:properties(r)} END) AS rels
+}
+OPTIONAL MATCH (c:GraphChunk {node_id:elementId(n)})
+RETURN elementId(n) AS eid, labels(n) AS labels, properties(n) AS props, rels,
+       c.content_hash AS content_hash
+ORDER BY eid
 """
 
 
-def fetch_graph_nodes(driver) -> List[Dict]:
-    """Return list of dicts with keys: eid, labels, props, rels."""
-    with driver.session(database=NEO4J_DATABASE) as session:
-        result = session.run(FETCH_QUERY)
-        records = [dict(r) for r in result]
-    logger.info("Fetched %d nodes from the graph", len(records))
-    return records
+def fetch_graph_nodes(driver):
+    """Yield bounded keyset pages; never materialize the complete graph."""
+    after = ''
+    while True:
+        with driver.session(database=NEO4J_DATABASE) as session:
+            rows = [dict(row) for row in session.run(Query(FETCH_QUERY, timeout=30),
+                    after=after, page_size=100, neighbor_limit=MAX_RELS_PER_CHUNK)]
+        if not rows:
+            return
+        yield from rows
+        after = rows[-1]['eid']
 
 
 # ---------------------------------------------------------------------------
@@ -319,10 +324,12 @@ def _standalone_auth():
 UPSERT_CHUNK = f"""
 UNWIND $rows AS row
 MATCH (src) WHERE elementId(src) = row.node_id
+AND NOT src:StagedOntologyResource AND NOT src:RetainedOntologyIdentity AND NOT src:OntologyPublication
 MERGE (c:{CHUNK_LABEL} {{node_id: row.node_id}})
 SET c.{TEXT_PROPERTY}       = row.content,
     c.{EMBEDDING_PROPERTY}  = row.embedding,
     c.labels_source         = row.labels_source,
+    c.content_hash          = row.content_hash,
     c.updated_at            = datetime()
 MERGE (c)-[:EMBEDDED_FROM]->(src)
 RETURN count(c) AS written
@@ -499,14 +506,14 @@ def run_graph_embeddings(
 ):
     """
     End-to-end pipeline:
-      1. Fetch all non-chunk nodes with 1-hop context.
+      1. Page through visible source nodes with bounded 1-hop context.
       2. Serialise each into a context-aware text chunk.
       3. Embed in batches.
       4. Upsert GraphChunk nodes linked back to their source node.
       5. Ensure vector + keyword indexes exist.
 
-    If *force_rebuild* is False (default), only nodes without an existing
-    GraphChunk are processed.
+    If *force_rebuild* is False (default), sources with an existing GraphChunk
+    with the same content/model hash are skipped. Changed sources are refreshed.
 
     Provider failures raise rather than reporting completion. Earlier successful
     batches remain persisted; rerunning without force resumes missing chunks.
@@ -531,73 +538,34 @@ def run_graph_embeddings(
 
     try:
         ensure_indexes(driver, strict=True)
-        # 1. Fetch
-        records = fetch_graph_nodes(driver)
-        if not records:
-            logger.info("No nodes found in graph")
-            return
-
-        # Skip nodes that already have a GraphChunk (unless force_rebuild)
-        if not force_rebuild:
-            existing = set()
-            with driver.session(database=NEO4J_DATABASE) as session:
-                result = session.run(
-                    f"MATCH (c:{CHUNK_LABEL}) RETURN c.node_id AS nid"
-                )
-                existing = {r["nid"] for r in result}
-            before = len(records)
-            records = [r for r in records if r["eid"] not in existing]
-            logger.info(
-                "Skipping %d nodes with existing chunks, %d to process",
-                before - len(records),
-                len(records),
-            )
-            if not records:
-                logger.info("All nodes already have embeddings")
-                return
-
-        # 2. Build text chunks
-        documents: List[Dict] = []
-        for rec in records:
-            text = build_node_chunk_text(
-                labels=rec["labels"],
-                props=rec["props"],
-                relationships=rec["rels"],
-                node_element_id=rec["eid"],
-            )
+        import hashlib
+        batch = []
+        written = 0
+        def flush():
+            nonlocal written
+            vectors = _embed_batch([document['content'] for document in batch])
+            _validate_vectors(vectors, len(batch))
+            for document, vector in zip(batch, vectors):
+                document['embedding'] = vector
+            upsert_chunks(driver, list(batch))
+            written += len(batch)
+            batch.clear()
+        for record in fetch_graph_nodes(driver):
+            text = build_node_chunk_text(labels=record['labels'], props=record['props'],
+                    relationships=record['rels'], node_element_id=record['eid'])
             if not text.strip():
                 continue
-            documents.append({
-                "node_id": rec["eid"],
-                "labels_source": rec["labels"],
-                "content": text,
-            })
-
-        logger.info("Built %d text chunks (avg %.0f tokens)",
-                     len(documents),
-                     sum(_token_count(d["content"]) for d in documents) / max(len(documents), 1))
-
-        # 3 + 4. Embed in batches and upsert
-        total_batches = (len(documents) + batch_size - 1) // batch_size
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i : i + batch_size]
-            texts = [d["content"] for d in batch]
-            batch_num = i // batch_size + 1
-
-            logger.info("Embedding batch %d/%d (%d chunks)", batch_num, total_batches, len(batch))
-            vectors = _embed_batch(texts)
-            _validate_vectors(vectors, len(batch))
-
-            for doc, vec in zip(batch, vectors):
-                doc["embedding"] = vec
-
-            upsert_chunks(driver, batch)
-            logger.info("Batch %d upserted", batch_num)
-
-            if i + batch_size < len(documents):
-                time.sleep(0.5)
-
-        logger.info("Graph embedding pipeline complete – %d chunks created", len(documents))
+            model = ':'.join(os.getenv(key, '') for key in ('USE_EMBEDDER', 'EMBED_MODEL_NAME', 'AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT'))
+            digest = hashlib.sha256(('graphrag-v2:' + model + ':' + text).encode()).hexdigest()
+            if not force_rebuild and record.get('content_hash') == digest:
+                continue
+            batch.append({'node_id':record['eid'], 'labels_source':record['labels'],
+                          'content':text, 'content_hash':digest})
+            if len(batch) >= batch_size:
+                flush()
+        if batch:
+            flush()
+        logger.info('Graph embedding pipeline complete: %d chunks written', written)
 
     finally:
         # Close driver only for standalone (non-centralized) mode to avoid

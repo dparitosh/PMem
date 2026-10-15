@@ -6,9 +6,13 @@ import asyncio
 import json
 import os
 import sys
+import math
+import time
+import logging
+from uuid import uuid4
 
 
-async def invoke(server, method, params=None):
+async def invoke(server, method, params=None, *, timeout_seconds=None):
     if server.get('transport') != 'stdio':
         raise ValueError('Only configured stdio MCP servers are supported')
     command = server['command']
@@ -17,7 +21,12 @@ async def invoke(server, method, params=None):
     env = {key: os.environ[key] for key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', *server.get('environment', []))
            if key in os.environ}
     limit = int(os.getenv('AGENTIC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)))
-    timeout = float(os.getenv('AGENTIC_TOOL_TIMEOUT_SECONDS', '30'))
+    from backend.depo_platform.network import bounded_timeout_seconds
+    from backend.depo_platform.operations import current_operation
+    operation = current_operation()
+    timeout = timeout_seconds if timeout_seconds is not None else bounded_timeout_seconds('AGENTIC_TOOL_TIMEOUT_SECONDS', default=30)
+    if operation:
+        timeout = operation.timeout(timeout)
     process = None
     async with asyncio.timeout(timeout):
         try:
@@ -38,7 +47,11 @@ async def invoke(server, method, params=None):
                 nonlocal sequence, consumed
                 sequence += 1
                 identifier = sequence
+                progress_token = uuid4().hex if name == 'tools/call' else None
+                if progress_token:
+                    arguments = {**arguments, '_meta': {'progressToken': progress_token}}
                 await send({'id': identifier, 'method': name, 'params': arguments})
+                last_progress, reported_at = -1, float('-inf')
                 while True:
                     line = await process.stdout.readline()
                     consumed += len(line)
@@ -47,6 +60,25 @@ async def invoke(server, method, params=None):
                     message = json.loads(line)
                     if not isinstance(message, dict) or message.get('jsonrpc') != '2.0':
                         raise ValueError('Invalid MCP response')
+                    if message.get('method') == 'notifications/progress':
+                        value = message.get('params', {})
+                        if not isinstance(value, dict) or not progress_token or value.get('progressToken') != progress_token:
+                            continue
+                        progress, total = value.get('progress'), value.get('total')
+                        valid_number = lambda number: isinstance(number, (int, float)) and not isinstance(number, bool) and math.isfinite(number)
+                        if (not valid_number(progress) or progress < 0 or progress <= last_progress
+                                or (total is not None and (not valid_number(total) or total < progress))):
+                            raise ValueError('Invalid MCP progress metadata')
+                        last_progress = progress
+                        if operation and operation.on_progress and time.monotonic() - reported_at >= 1:
+                            # Persist numeric progress only; untrusted free text may
+                            # contain prompts, credentials or upstream response data.
+                            try:
+                                await operation.on_progress({'current': progress, 'total': total, 'source': 'mcp'})
+                            except Exception:
+                                logging.getLogger(__name__).warning('MCP progress persistence unavailable')
+                            reported_at = time.monotonic()
+                        continue
                     if 'method' in message and 'id' in message:
                         # No sampling, elicitation, roots or tool authorization delegated.
                         await send({'id': message['id'], 'error': {'code': -32601, 'message': 'Client capability not supported'}})

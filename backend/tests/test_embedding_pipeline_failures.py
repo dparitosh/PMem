@@ -71,6 +71,28 @@ class EmbeddingPipelineFailureTests(unittest.TestCase):
             self.scope.update(NEO4J_USER='user', NEO4J_PASS='fixture')
             self.assertEqual(self.scope['_standalone_auth'](), ('user', 'fixture'))
 
+    def test_unchanged_content_skips_provider_but_changes_reembed(self):
+        self.scope['run_graph_embeddings']()
+        digest = self.write.call_args.args[1][0]['content_hash']
+        self.scope['fetch_graph_nodes'].return_value[0]['content_hash'] = digest
+        self.write.reset_mock()
+        self.scope['run_graph_embeddings']()
+        self.write.assert_not_called()
+        self.scope['fetch_graph_nodes'].return_value[0]['props'] = {'description':'Changed'}
+        self.scope['run_graph_embeddings']()
+        self.write.assert_called_once()
+
+    def test_property_allowlist_excludes_credentials(self):
+        text = self.scope['_props_sentence']({'description':'Allowed', 'api_key':'secret', 'password':'secret'})
+        self.assertEqual(text, 'description: Allowed')
+
+    def test_pipeline_retains_only_one_embedding_batch(self):
+        self.scope['fetch_graph_nodes'].return_value = (
+            dict(eid=str(i),labels=[],props={},rels=[]) for i in range(45))
+        self.scope['_embed_batch'].side_effect = lambda texts: [[.1,.2] for _ in texts]
+        self.scope['run_graph_embeddings'](batch_size=20)
+        self.assertEqual([len(call.args[1]) for call in self.write.call_args_list],[20,20,5])
+
 
 if __name__ == '__main__':
     unittest.main()

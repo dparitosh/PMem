@@ -3,6 +3,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue, Full
 from threading import Event, Thread
+from contextvars import copy_context
 
 
 def call_async(factory):
@@ -12,7 +13,8 @@ def call_async(factory):
         return asyncio.run(factory())
     # A synchronous LangChain caller may itself live on an event-loop thread.
     with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
+        context = copy_context()
+        return executor.submit(context.run, lambda: asyncio.run(factory())).result()
 
 
 def iterate_async(factory):
@@ -55,7 +57,8 @@ def iterate_async(factory):
             if not stopped.is_set():
                 raise
 
-    worker = Thread(target=run_producer, daemon=True)
+    context = copy_context()
+    worker = Thread(target=lambda: context.run(run_producer), daemon=True)
     worker.start()
     try:
         while True:

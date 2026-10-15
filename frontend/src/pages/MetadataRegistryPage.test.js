@@ -140,6 +140,18 @@ test('uses the valid draft to in-review lifecycle transition and prevents duplic
 });
 
 
+test('approval requires evidence and does not submit a client audit actor',async()=>{
+ API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[{asset_id:'approve-1',name:'Part',lifecycle_status:'in_review',owner:'display-owner'}]}});
+ API_METHODS.metadataRegistry.transition.mockResolvedValue({data:{asset_id:'approve-1',name:'Part',lifecycle_status:'approved'}});
+ render(<MetadataRegistryPage />);
+ fireEvent.click(await screen.findByRole('button',{name:'Approve'}));
+ expect(API_METHODS.metadataRegistry.transition).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByRole('textbox',{name:'Evidence or reason'}),{target:{value:'Reviewed industrial definition'}});
+ fireEvent.click(screen.getByRole('button',{name:'Confirm lifecycle change'}));
+ await waitFor(()=>expect(API_METHODS.metadataRegistry.transition).toHaveBeenCalledWith('approve-1',
+   {status:'approved',approval_evidence:'Reviewed industrial definition'},expect.any(Object)));
+});
+
 test('tabs stay available during a dictionary read and cleared selection rejects its late response',async()=>{
  API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
  let resolve;

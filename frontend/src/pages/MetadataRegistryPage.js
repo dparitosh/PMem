@@ -89,6 +89,8 @@ export default function MetadataRegistryPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [transitioningAssetIds, setTransitioningAssetIds] = useState(new Set());
   const [registryMessage, setRegistryMessage] = useState(null);
+  const [governanceAction, setGovernanceAction] = useState(null);
+  const [governanceEvidence, setGovernanceEvidence] = useState('');
   const [newAsset, setNewAsset] = useState({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
   const registryControllerRef = useRef(null);
   const dictionaryControllerRef = useRef(null);
@@ -133,6 +135,7 @@ export default function MetadataRegistryPage() {
       setRegistryOffset(0);
       setRegistryHasMore(false);
       setRegistryMessage(null);
+      setGovernanceAction(null); setGovernanceEvidence('');
       setSelectedOntology('');
       setDictionary([]);
       setDictionaryLoading(false);
@@ -247,8 +250,12 @@ export default function MetadataRegistryPage() {
     }
   };
 
-  const transitionHandler = async (asset, action) => {
+  const transitionHandler = async (asset, action, evidence = {}) => {
     if (!action || transitioningAssetIds.has(asset.asset_id)) return;
+    if ((action.status === 'approved' && !evidence.approval_evidence) ||
+        (['deprecated','retired'].includes(action.status) && !evidence.deprecation_reason)) {
+      setGovernanceAction({asset,action}); setGovernanceEvidence(''); return;
+    }
     const controller = new AbortController();
     registryControllerRef.current?.abort();
     registryControllerRef.current = null;
@@ -256,9 +263,10 @@ export default function MetadataRegistryPage() {
     mutationControllersRef.current.add(controller);
     setTransitioningAssetIds((current) => new Set(current).add(asset.asset_id));
     try {
-      const response = await API_METHODS.metadataRegistry.transition(asset.asset_id, { status: action.status, actor: asset.owner || 'registry-user' }, { signal: controller.signal });
+      const response = await API_METHODS.metadataRegistry.transition(asset.asset_id, { status: action.status, ...evidence }, { signal: controller.signal });
       if (controller.signal.aborted) return;
       setRegistryAssets((current) => current.map((item) => item.asset_id === asset.asset_id ? response.data : item));
+      setGovernanceAction(null);
       setRegistryMessage({ kind: 'success', text: `Lifecycle changed to ${statusLabel(action.status)}.` });
     } catch (err) {
       if (!controller.signal.aborted) {
@@ -278,6 +286,18 @@ export default function MetadataRegistryPage() {
 
   return (
     <div className="depo-page" style={{ display: 'grid', gap: 12 }}>
+      {governanceAction && <section className="depo-panel" aria-label="Metadata governance evidence">
+        <form onSubmit={event => {
+          event.preventDefault();
+          const key = governanceAction.action.status === 'approved' ? 'approval_evidence' : 'deprecation_reason';
+          transitionHandler(governanceAction.asset,governanceAction.action,{[key]:governanceEvidence.trim()});
+        }}>
+          <h2>{governanceAction.action.label}: {governanceAction.asset.name}</h2>
+          <label>Evidence or reason<textarea required maxLength={2000} value={governanceEvidence} onChange={event => setGovernanceEvidence(event.target.value)} /></label>
+          <button type="submit" disabled={!governanceEvidence.trim() || transitioningAssetIds.has(governanceAction.asset.asset_id)}>Confirm lifecycle change</button>
+          <button type="button" disabled={transitioningAssetIds.has(governanceAction.asset.asset_id)} onClick={() => setGovernanceAction(null)}>Cancel</button>
+        </form>
+      </section>}
       <section className="depo-panel">
         <div className="depo-panel__header">
           <div>

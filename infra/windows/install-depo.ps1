@@ -3,6 +3,7 @@ param(
   [string]$Python = "py",
   [switch]$SkipFrontend,
   [switch]$Development,
+  [switch]$EnableOcr,
   [switch]$CheckPrerequisites
 )
 
@@ -30,10 +31,15 @@ if (-not $SkipFrontend) {
   if (-not (Test-Path -LiteralPath (Join-Path $root 'frontend/package-lock.json'))) { throw 'Missing frontend/package-lock.json.' }
 }
 $productionLock = Join-Path $root 'backend\requirements-lock.txt'
+$ocrLock = Join-Path $root 'backend\requirements-ocr-lock.txt'
 if (-not $Development) {
-  if (-not (Test-Path -LiteralPath $productionLock -PathType Leaf)) { throw 'Missing backend/requirements-lock.txt.' }
-  $unhashed = Get-Content -LiteralPath $productionLock | Where-Object { $_ -and -not $_.StartsWith('#') -and $_ -notmatch ' --hash=sha256:[0-9a-f]{64}$' }
-  if ($unhashed) { throw 'Every production dependency must be exact-version and SHA-256 pinned in backend/requirements-lock.txt.' }
+  $selectedLocks = @($productionLock)
+  if ($EnableOcr) { $selectedLocks += $ocrLock }
+  foreach ($lock in $selectedLocks) {
+    if (-not (Test-Path -LiteralPath $lock -PathType Leaf)) { throw "Missing dependency lock: $lock" }
+    $unhashed = Get-Content -LiteralPath $lock | Where-Object { $_ -and -not $_.StartsWith('#') -and $_ -notmatch ' --hash=sha256:[0-9a-f]{64}$' }
+    if ($unhashed) { throw "Every production dependency must be exact-version and SHA-256 pinned in $lock" }
+  }
 }
 if ($CheckPrerequisites) {
   Write-Host 'Installation prerequisites passed. No dependencies were installed.'
@@ -55,6 +61,7 @@ $pipLog = Join-Path $installLogDir ('pip-install-' + [guid]::NewGuid().ToString(
 $pipArguments = @('-m', 'pip', 'install', '--disable-pip-version-check')
 if (-not $Development) { $pipArguments += '--require-hashes' }
 $pipArguments += @('-r', $requirements)
+if ($EnableOcr -and -not $Development) { $pipArguments += @('-r', $ocrLock) }
 Write-Host "Installing backend dependencies. Output log: $pipLog"
 $pipExitCode = Invoke-DepoInstallCommand -Executable $venvPython -NativeArguments $pipArguments -LogPath $pipLog
 if ($pipExitCode -ne 0) { throw "Backend dependency installation failed with exit code $pipExitCode. Inspect $pipLog for the actual pip error; environment files and database were preserved." }

@@ -21,6 +21,7 @@ param(
   [switch]$EnablePostgresSparkConnector,
   [switch]$EnablePipelineScheduler,
   [switch]$SkipFrontend,
+  [switch]$EnableOcr,
   [switch]$SkipBaselineProvisioning,
   [switch]$SkipDependencyInstall,
   [Alias('SynchronizeCredentials')][switch]$ReplaceExistingCredentials,
@@ -40,7 +41,7 @@ if (-not $SkipDependencyInstall) {
   $installerAst = [System.Management.Automation.Language.Parser]::ParseFile($dependencyInstaller, [ref]$installerTokens, [ref]$installerErrors)
   if ($installerErrors.Count -gt 0) { throw 'Dependency installer contains syntax errors. Restore infra/windows/install-depo.ps1 from the matching release.' }
   $installerParameters = @($installerAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-  foreach ($requiredParameter in @('CheckPrerequisites', 'EnvFile', 'Python', 'SkipFrontend')) {
+  foreach ($requiredParameter in @('CheckPrerequisites', 'EnvFile', 'Python', 'SkipFrontend', 'EnableOcr')) {
     if ($requiredParameter -notin $installerParameters) {
       throw "Mismatched release: infra/windows/install-depo.ps1 lacks -$requiredParameter. Restore the matching dependency installer, not the repository-root launcher. Preserve environment files and the database."
     }
@@ -95,10 +96,10 @@ if (($effectiveConnector -or $effectivePostgresConnector) -and -not $effectiveSp
 
 if (-not $SkipDependencyInstall) {
   Invoke-DepoStage 'Prerequisites' {
-    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -CheckPrerequisites
+    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnableOcr:$EnableOcr -CheckPrerequisites
   }
   Invoke-DepoStage 'Application dependencies and frontend build' {
-    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnvFile $envPath
+    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnableOcr:$EnableOcr -EnvFile $envPath
   }
 }
 

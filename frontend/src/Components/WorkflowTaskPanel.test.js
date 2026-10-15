@@ -7,6 +7,13 @@ import { setCredentialProfile } from '../services/serviceAuth';
 beforeEach(() => setCredentialProfile('GRAPH_READ_TOKEN', 'reader'));
 
 afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
+test('retained numeric tool progress is visible while a workflow runs', async () => {
+  vi.spyOn(agenticAPI, 'runWorkflow').mockResolvedValue({data:{run_id:'progress-run'}});
+  vi.spyOn(agenticAPI, 'getRun').mockResolvedValue({data:{run_id:'progress-run',workflow_id:'test',status:'running',pending_step:{progress:{current:2,total:5}}}});
+  render(<WorkflowTaskPanel workflowId="test" inputs={{}} label="Start progress" />);
+  fireEvent.click(screen.getByRole('button', {name:'Start progress'}));
+  await screen.findByText('Tool progress: 2 of 5');
+});
 test('completed automatic merge refreshes ontology context once across status refreshes', async () => {
   setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'approval');
   const changed = vi.fn();

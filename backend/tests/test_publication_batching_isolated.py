@@ -35,6 +35,8 @@ class BatchTests(unittest.TestCase):
             Any=object, json=json, logging=logging,time=time,uuid=uuid,datetime=datetime,timezone=timezone)
         tree=ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         fn=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='publish_turtle')
+        from backend.tests.projection_fixture import install_projection_fixture
+        install_projection_fixture(scope)
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<publisher>','exec'),scope)
         with self.assertLogs(level='WARNING'):
             result=scope['publish_turtle'](publisher,content=b'ttl',ontology_id='demo',prefix='d',publication_id='receipt')

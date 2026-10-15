@@ -36,6 +36,8 @@ def prepare_rdf(content, rdf_format, *, canonical=False):
     check_deadline()
     value = pickle.loads(result.stdout)
     check_deadline()
+    if canonical == 'projection':
+        return value
     if canonical:
         from rdflib import Graph
         graph = Graph()
@@ -56,7 +58,12 @@ def main():
     # canonicalization overhead unless blank nodes actually need stable IDs.
     if canonical:
         has_blank_nodes = any(isinstance(value, BNode) for triple in graph for value in triple)
-        value = list(to_canonical_graph(graph) if has_blank_nodes else graph)
+        canonical_graph = to_canonical_graph(graph) if has_blank_nodes else graph
+        if canonical == 'projection':
+            from backend.depo_platform.projection_preparation import build_projection
+            value = build_projection(canonical_graph)
+        else:
+            value = list(canonical_graph)
     else:
         value = graph.serialize(format='turtle').encode('utf-8')
     sys.stdout.buffer.write(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL))

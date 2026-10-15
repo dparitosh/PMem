@@ -156,7 +156,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       const identity = {approved_by: actor.trim() || 'bridge-automation', approval_token:getCredentialProfile('AGENTIC_APPROVAL_TOKEN')};
       setAutomationStage('Governor → steward → governor workflow running');
       try {
-        sessionStorage.setItem(workflowKey, 'submission-unconfirmed');
+        try { sessionStorage.setItem(workflowKey, 'submission-unconfirmed'); } catch { /* recovery remains in memory */ }
         const response = await api.automate(ontologyId, importTaskId, identity, manualMappings);
         if (current()) adoptAutomation(response.data);
       } catch (error) {
@@ -179,7 +179,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       const response = await api.automationStatus(automationRun.run_id);
       if (current()) adoptAutomation(response.data);
     })}>{action}</button>)}
-    {automationRun?.status === 'completed' && !automationRun.reconciliation_required && <button type="button" disabled={busy} onClick={() => {
+    {['completed', 'failed', 'cancelled', 'timed_out'].includes(automationRun?.status) && !automationRun.reconciliation_required && <button type="button" disabled={busy} onClick={() => {
       try { sessionStorage.removeItem(workflowKey); } catch { /* optional recovery */ }
       setAutomationRun(null); setAutomationStage('idle'); setPreview(null); setJob(null); setPolicyReport(null); setSelected([]);
     }}>Prepare another mapping run</button>}

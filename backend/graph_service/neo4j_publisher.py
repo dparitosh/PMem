@@ -37,7 +37,8 @@ class Neo4jPublisher:
         if self.auth_mode not in {"token", "none"}:
             raise RuntimeError("NEO4J_AUTH_MODE must be token or none")
         auth = None if self.auth_mode == "none" else (self.username, self.password)
-        return GraphDatabase.driver(self.uri, auth=auth, connection_timeout=10, max_transaction_retry_time=0)
+        return GraphDatabase.driver(self.uri, auth=auth, connection_timeout=10,
+                                    connection_acquisition_timeout=10, max_transaction_retry_time=0)
 
     def health(self) -> dict[str, Any]:
         if self.auth_mode != "none" and not self.password:
@@ -68,68 +69,8 @@ class Neo4jPublisher:
         logger = logging.getLogger(__name__)
         started = time.monotonic()
         logger.warning('Ontology publication phase=parse ontology_id=%s bytes=%s', ontology_id, len(content))
-        rdf_graph = prepare_rdf(content, 'turtle', canonical=True)
-        logger.warning('Ontology publication phase=prepare ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
-        # Stable preference: English, then untagged labels, then other languages.
-        # Sorting also resolves multiple labels in the same language predictably.
-        label_rows = sorted(rdf_graph.subject_objects(RDFS.label), key=lambda pair: (
-            str(pair[0]), 0 if (getattr(pair[1], 'language', None) or '').lower().split('-')[0] == 'en'
-            else 1 if not getattr(pair[1], 'language', None) else 2,
-            (getattr(pair[1], 'language', None) or '').lower(), str(pair[1])))
-        labels = {}
-        for subject, label in label_rows:
-            labels.setdefault(str(subject), str(label))
-        class_iris = {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.Class)}
-        property_iris = {
-            str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.ObjectProperty)
-        } | {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.DatatypeProperty)}
-        resource_iris = {str(value) for triple in rdf_graph for value in (triple[0], triple[2]) if not isinstance(value, Literal)}
-        literal_properties: dict[str, dict[str, list[dict[str, Any]]]] = {}
-        for subject, predicate, value in rdf_graph:
-            if isinstance(value, Literal):
-                literal_properties.setdefault(str(subject), {}).setdefault(str(predicate), []).append({
-                    "value": str(value), "datatype": str(value.datatype) if value.datatype else None,
-                    "language": value.language,
-                })
-        for predicates in literal_properties.values():
-            for values in predicates.values():
-                values.sort(key=lambda value: (value['value'], value['datatype'] or '', value['language'] or ''))
-        resources = [
-            {"iri": iri, "label": labels.get(iri, iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]),
-             "requirement": (URIRef(iri), RDF.type, URIRef('https://depo.example.org/ceim/0.1/Requirement')) in rdf_graph,
-             "source": min((str(value) for value in rdf_graph.objects(URIRef(iri), URIRef('https://depo.example.org/ceim/0.1/sourceStandard'))), default=None),
-             "description": min((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), default=None),
-             "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource",
-             "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
-            for iri in sorted(resource_iris)
-        ]
-        ceim_relationships = {
-            "hasPart": "HAS_PART", "hasGeometry": "HAS_GEOMETRY", "hasFeature": "HAS_FEATURE",
-            "hasCharacteristic": "HAS_CHARACTERISTIC", "usesDatum": "USES_DATUM",
-            "usesReferenceFrame": "USES_REFERENCE_FRAME", "realizes": "REALIZES",
-            "satisfies": "SATISFIES", "traceTo": "TRACE_TO", "derivedFrom": "DERIVED_FROM",
-            "verifiedBy": "VERIFIED_BY", "validatedBy": "VALIDATED_BY", "impacts": "IMPACTS",
-            "produces": "PRODUCES", "consumes": "CONSUMES",
-        }
-        relationships: dict[str, list[dict[str, str]]] = {
-            "SUBCLASS_OF": [], "DOMAIN": [], "RANGE": [], "SEMANTIC_RELATION": [],
-        }
-        relationships.update({relationship: [] for relationship in ceim_relationships.values()})
-        # Preserve arbitrary RDF predicates as SEMANTIC_RELATION, but promote
-        # CEIM containment and engineering-structure links for graph traversal.
-        ceim = "https://depo.example.org/ceim/0.1/"
-        special_predicates = {
-            str(RDFS.subClassOf): "SUBCLASS_OF", str(RDFS.domain): "DOMAIN", str(RDFS.range): "RANGE",
-            **{f"{ceim}{predicate}": relationship for predicate, relationship in ceim_relationships.items()},
-        }
-        for subject, predicate, obj in rdf_graph:
-            if isinstance(obj, Literal):
-                continue
-            relation_type = special_predicates.get(str(predicate), "SEMANTIC_RELATION")
-            relationships[relation_type].append({"source": str(subject), "target": str(obj), "predicate": str(predicate)})
-        for rows in relationships.values():
-            rows.sort(key=lambda row: (row['source'], row['predicate'], row['target']))
-
+        resources, relationships, ceim_relationships = prepare_rdf(content, 'turtle', canonical='projection')
+        logger.warning('Ontology publication phase=prepare_complete ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
         now = datetime.now(timezone.utc).isoformat()
         projection_revision = uuid.uuid4().hex
         resource_query = """
@@ -152,8 +93,8 @@ class Neo4jPublisher:
             relationship: f"MERGE (source)-[edge:{relationship} {{ontology_id: $ontology_id}}]->(target) SET edge.predicate = row.predicate"
             for relationship in ceim_relationships.values()
         })
-        @unit_of_work(timeout=bounded_timeout_seconds(
-            "GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180, maximum=3600))
+        from backend.depo_platform.network import graph_write_timeout_seconds, graph_activation_timeout_seconds
+        @unit_of_work(timeout=graph_write_timeout_seconds() + graph_activation_timeout_seconds())
         def publish_transaction(tx):
             # The permanent, uniquely constrained receipt key serializes writers.
             tx.run("MERGE (lock:OntologyPublication {ontology_id: $ontology_id, publication_id: '__lock__'}) SET lock.publication_lock = $updated_at",
@@ -227,19 +168,19 @@ class Neo4jPublisher:
         }
 
     def _publish_staged_initial(self, session, **kwargs):
-        schema = session.run("SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties "
-            "WHERE name='uq_ontologystagedresource_identity' RETURN type, entityType, labelsOrTypes, properties").single()
+        schema = session.run(Query("SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties "
+            "WHERE name='uq_ontologystagedresource_identity' RETURN type, entityType, labelsOrTypes, properties", timeout=10)).single()
         if not schema:
-            logging.getLogger(__name__).warning('Staged publication unavailable; provision the release schema. Using atomic publication.')
-            return None
+            raise RuntimeError('Staged publication schema is missing. Run Neo4j schema provisioning before publishing; atomic fallback is disabled.')
         if (schema['type'] not in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'}
                 or schema['entityType'] != 'NODE' or schema['labelsOrTypes'] != ['StagedOntologyResource']
                 or schema['properties'] != ['ontology_id', 'publication_id', 'iri']):
             raise RuntimeError('Staged publication constraint is incompatible')
         from .staged_publication import publish_initial
+        from backend.depo_platform.network import graph_write_timeout_seconds, graph_activation_timeout_seconds
         return publish_initial(session, **kwargs,
-            timeout=bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600),
-            unit_of_work=unit_of_work)
+            timeout=graph_write_timeout_seconds(), activation_timeout=graph_activation_timeout_seconds(),
+            unit_of_work=unit_of_work, query_factory=Query)
 
     def publication_receipt(self, *, ontology_id: str, publication_id: str) -> dict[str, Any] | None:
         rows = self._session_rows(
@@ -275,11 +216,11 @@ class Neo4jPublisher:
         if not isinstance(scope, str) or not scope.strip() or len(scope) > 256:
             raise ValueError('Select a valid ontology scope.')
         scopes = {scope, scope.lower()}
-        if 'ap242' in scope.lower() or scope.lower() == 'step':
+        if scope.lower() in {'ap242', 'step', 'step_ap242_mbd3d'}:
             scopes.update({'ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D'})
         kinds = [{'kind': kind, 'iri': 'http://www.w3.org/2002/07/owl#' + kind}
                  for kind in ('Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty')]
-        rows = self._session_rows(cypher.MAPPING_TERMS, scopes=sorted(scopes), kinds=kinds,
+        rows = self._session_rows(cypher.MAPPING_TERMS, scope=scope, scopes=sorted(scopes), kinds=kinds,
                                   rdf_type='http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
         if len(rows) > 10000:
             raise ValueError('Ontology mapping lookup exceeds 10000 terms; narrow the ontology scope.')
@@ -349,7 +290,7 @@ class Neo4jPublisher:
         query = """
         CALL {
           MATCH (n:OntologyResource)
-          WHERE $ontology_id = '' OR n.ontology_id = $ontology_id
+          WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix)
           RETURN count(n) AS resources,
             sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
               WHERE r.predicate = $rdf_type AND t.iri IN $class_types } THEN 1 ELSE 0 END) AS classes,
@@ -365,12 +306,13 @@ class Neo4jPublisher:
         CALL {
           MATCH (a:OntologyResource)-[r]->(b:OntologyResource)
           WHERE ($ontology_id = '' OR a.ontology_id = $ontology_id)
+            AND ($ontology_prefix = '' OR (a.prefix = $ontology_prefix AND b.prefix = $ontology_prefix))
             AND a.ontology_id = b.ontology_id
           RETURN count(r) AS relationships
         }
         CALL {
           MATCH (n:OntologyResource)
-          WHERE $ontology_id = '' OR n.ontology_id = $ontology_id
+          WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix)
           WITH n.ontology_id AS ontology, count(n) AS node_count
           ORDER BY node_count DESC, ontology LIMIT 201
           RETURN collect({ontology: ontology, node_count: node_count}) AS ontology_breakdown
@@ -378,7 +320,7 @@ class Neo4jPublisher:
         RETURN resources, relationships, classes, object_properties, data_properties,
                annotation_properties, named_individuals, ontology_breakdown
         """
-        rows = self._session_rows(query, ontology_id=ontology_id, rdf_type=str(RDF.type),
+        rows = self._session_rows(query, ontology_id=ontology_id, ontology_prefix=ontology_prefix, rdf_type=str(RDF.type),
             class_types=[str(OWL.Class), str(RDFS.Class)], object_property=str(OWL.ObjectProperty),
             data_property=str(OWL.DatatypeProperty), annotation_property=str(OWL.AnnotationProperty), individual=str(OWL.NamedIndividual))
         if not rows:
@@ -426,7 +368,7 @@ class Neo4jPublisher:
             raise ValueError('ontology_id must be at most 128 characters')
         if len(ontology_prefix) > 128:
             raise ValueError('ontology_prefix must be at most 128 characters')
-        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id)
+        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
         legacy = self._session_rows(cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
         combined = sorted(nodes + legacy, key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or '')))
         selected = combined[:safe_limit]

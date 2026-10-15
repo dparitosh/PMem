@@ -16,6 +16,15 @@ class ApprovalBody(RequestBody, total=False):
     approved_by: str
     approval_token: str
 
+class BridgeSourceBody(RequestBody, total=False):
+    operation: Required[Literal['snapshot', 'preview', 'manual']]
+    ontology_id: Required[Text]
+    import_task_id: Required[Text]
+    mappings: list[dict[str, Any]]
+
+class MetadataMigrationBody(RequestBody, total=False):
+    asset_ids: Required[list[Text]]
+
 class GenerateOntologyBody(RequestBody, total=False):
     data: dict[str, Any]
     entities: list[dict[str, Any]]

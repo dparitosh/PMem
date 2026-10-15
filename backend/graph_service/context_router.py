@@ -19,9 +19,8 @@ def _display_name(row: dict[str, Any]) -> str:
 
 
 def _ontology_node_clause() -> str:
-    """Select the active graph projection without querying absent labels."""
-    source = publisher.overview(limit=1).get("view", {}).get("source")
-    return "n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty" if source == "existing_ontology" else "n:OntologyResource"
+    """Select both native and legacy terms in a mixed industrial graph."""
+    return "((n:OntologyResource OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity)"
 
 
 def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -42,9 +41,14 @@ def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = N
         "AND ($ontology_id = '' OR n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id) "
         "RETURN elementId(n) AS id, display AS name, labels(n) AS labels, "
         "coalesce(n.source_ontology, n.ontology_id, n.prefix, 'graph') AS source_tag "
-        "ORDER BY CASE WHEN toLower(display) = toLower($search_text) THEN 0 ELSE 1 END, display LIMIT 1",
+        "ORDER BY CASE WHEN toLower(display) = toLower($search_text) THEN 0 ELSE 1 END, display LIMIT 2",
         search_text=query, node_id=identifier, ontology_prefix=ontology_prefix, ontology_id=ontology_id,
     )
+    if len(rows) > 1:
+        exact = [row for row in rows if str(row.get('name') or '').casefold() == query.casefold()]
+        if len(exact) == 1:
+            return exact[0]
+        raise HTTPException(409, 'Graph term is ambiguous; select its node_id and ontology scope')
     return rows[0] if rows else None
 
 
@@ -60,7 +64,7 @@ async def contextual_subgraph(
     from backend.Services.graph_view_service import GraphViewService
 
     try:
-        return await run_in_threadpool(
+        result = await run_in_threadpool(
             GraphViewService.get_contextual_subgraph,
             search=search,
             ontology_prefix=ontology_prefix,
@@ -69,6 +73,7 @@ async def contextual_subgraph(
             search_mode=search_mode,
             expand_neighbors=expand_neighbors,
         )
+        return {**result, 'representation':'neo4j_contextual_graph'}
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail="Contextual graph is unavailable") from exc
 
@@ -77,6 +82,8 @@ def _neighbors(node_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
     return publisher._session_rows(
         "MATCH (root)-[r]-(neighbor) WHERE elementId(root) = $node_id "
         "AND NOT root:StagedOntologyResource AND NOT neighbor:StagedOntologyResource "
+        "AND NOT root:RetainedOntologyIdentity AND NOT neighbor:RetainedOntologyIdentity "
+        "AND NOT neighbor:OntologyPublication AND NOT neighbor:GraphChunk AND NOT neighbor:DatasheetChunk "
         "RETURN elementId(neighbor) AS id, coalesce(neighbor.name, neighbor.label, neighbor.uri, neighbor.iri) AS name, "
         "labels(neighbor) AS labels, type(r) AS relation_type, "
         "coalesce(neighbor.source_ontology, neighbor.ontology_id, neighbor.prefix, 'graph') AS source_tag "

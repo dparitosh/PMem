@@ -50,12 +50,15 @@ class PostgresRegistry:
             cursor.execute("SELECT key, value FROM depo_registry WHERE namespace = %s", (self.namespace,))
             return {key: value for key, value in cursor.fetchall()}
 
-    def find_by_field(self, field: str, value: str, *, limit: int = 2) -> list[dict[str, Any]]:
+    def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         """Bounded identity lookup without counting an entire namespace."""
         if not 1 <= limit <= 100:
             raise ValueError('Invalid registry lookup limit')
         with self._connect() as connection, connection.cursor() as cursor:
-            if field == 'source':
+            if after_key:
+                cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND value->>%s=%s AND key>%s ORDER BY key LIMIT %s',
+                               (self.namespace, field, value, after_key, limit))
+            elif field == 'source':
                 cursor.execute("SELECT value FROM depo_registry WHERE namespace=%s AND value->>'source'=%s ORDER BY key LIMIT %s",
                                (self.namespace, value, limit))
             else:
@@ -278,10 +281,10 @@ class InMemoryRegistry:
         self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
-    def find_by_field(self, field: str, value: str, *, limit: int = 2) -> list[dict[str, Any]]:
+    def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         if not 1 <= limit <= 100:
             raise ValueError('Invalid registry lookup limit')
-        return [record for key, record in sorted(self.values.items()) if record.get(field) == value][:limit]
+        return [record for key, record in sorted(self.values.items()) if key > after_key and record.get(field) == value][:limit]
     def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None):
         if offset < 0 or not 1 <= limit <= 1000:
             raise ValueError('Invalid registry page')

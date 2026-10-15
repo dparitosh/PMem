@@ -1,7 +1,6 @@
 # DEPO supported runtime dependencies.
-# This is intentionally the single dependency manifest for local development
-# and independently deployable services. Optional integrations are
-# configured at runtime; do not add notebook, OCR, LLM, or test stacks here.
+# Shared base for independently deployable services. Optional scanned-document
+# OCR lives in requirements-ocr.txt; development includes that profile.
 fastapi>=0.116,<1
 uvicorn[standard]>=0.35,<1
 pydantic>=2.11,<3
@@ -24,12 +23,10 @@ pyshacl>=0.30,<1
 semantica==0.6.7
 openpyxl>=3.1,<4
 pypdf>=6,<7
-PyMuPDF>=1.26,<2
 Pillow>=11,<13
 python-docx>=1.2,<2
 python-pptx>=1.0,<2
-pytesseract>=0.3.13,<1
-easyocr>=1.7,<2
+# Optional scanned-PDF OCR: requirements-ocr.txt.
 PyYAML>=6,<7
 loguru>=0.7,<1
 python-dotenv>=1.0,<2

@@ -22,8 +22,8 @@ class AuditRegressions(unittest.TestCase):
         class Label(str):
             def __new__(cls,text,language=None):
                 obj = str.__new__(cls,text); obj.language=language; return obj
-        tree=ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text())
-        fn=next(node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name=='publish_turtle')
+        tree=ast.parse(Path('backend/depo_platform/projection_preparation.py').read_text())
+        fn=next(node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name=='build_projection')
         start=next(i for i,node in enumerate(fn.body) if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='label_rows' for t in node.targets))
         code=compile(ast.Module(body=fn.body[start:start+3],type_ignores=[]),'<labels>','exec')
         rows=[('urn:a',Label('Zulu','en')),('urn:a',Label('Alpha','en')),('urn:a',Label('Other')),('urn:a',Label('Autre','fr'))]
@@ -51,7 +51,8 @@ class AuditRegressions(unittest.TestCase):
                 values['demo']=newer
                 return SimpleNamespace(status_code=200,raise_for_status=lambda:None,json=lambda:{'ontology_id':'demo','publication_id':digest,'status':'published','current':True,'resources':1,'relationships':0})
         async def thread(function,*args):return function(*args)
-        scope={'hashlib':hashlib,'graph_publications':SimpleNamespace(get=lambda key:values[key],compare_and_put=compare),
+        scope={'__name__':'backend.ontology_service.router','__package__':'backend.ontology_service',
+               'hashlib':hashlib,'graph_publications':SimpleNamespace(get=lambda key:values[key],compare_and_put=compare),
                'catalog':SimpleNamespace(read_artifact=lambda _:({},content)), 'run_in_threadpool':thread,
                'service_url':lambda *args:'http://graph','service_bearer_headers':lambda *args,**kwargs:{},
                'httpx':SimpleNamespace(AsyncClient=lambda **kwargs:Client(),HTTPError=RuntimeError)}

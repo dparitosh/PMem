@@ -1,15 +1,13 @@
 import asyncio
 import os
-import sys
 import json
 import logging
 import re
 from typing import TypedDict, Annotated, Sequence, AsyncGenerator
 from typing_extensions import Literal
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from chains.vector import get_data_info, deep_vector_search
-from chains.cypher import cypher_qa
-from agent.memory import get_memory
+from backend.chains.vector import get_data_info, deep_vector_search
+from backend.chains.cypher import cypher_qa
+from backend.agent.memory import get_memory
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
@@ -18,15 +16,12 @@ from langchain_core.documents import Document
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from core.llm import tool_llm as llm, TOOL_LLM_AVAILABLE as LLM_AVAILABLE
+from backend.core.llm import tool_llm as llm, TOOL_LLM_AVAILABLE as LLM_AVAILABLE
 
 try:
-    from Services.agent_memory_service import AgentMemoryService
-except Exception:
-    try:
-        from backend.Services.agent_memory_service import AgentMemoryService
-    except Exception:
-        AgentMemoryService = None
+    from backend.Services.agent_memory_service import AgentMemoryService
+except ImportError:
+    AgentMemoryService = None
 
 logger = logging.getLogger(__name__)
 
@@ -358,16 +353,16 @@ async def general_chat(query: str) -> str:
     return result.content
 
 from pydantic import BaseModel, Field
- 
+
 # Define strict input schemas
 class ProjectProductInfoInput(BaseModel):
     """Input schema for project_product_info tool"""
     query: str = Field(description="The query about project/product information")
- 
+
 class VectorSearchInput(BaseModel):
     """Input schema for vector_search tool"""
     query: str = Field(description="The search query for datasheet facts, definitions & explanations")
- 
+
 # Make tools strict by adding args_schema
 @tool#(args_schema=ProjectProductInfoInput, return_direct=True)
 def project_product_info(query: str) -> str:
@@ -479,7 +474,7 @@ def cad_structure_analysis(query: str) -> str:
         )
         result = cypher_qa(guided_query)
         normalized = _normalize_graph_response(result)
-        
+
         # Provide fallback guidance if result is empty
         if not normalized or normalized.strip() == "":
             return f"No CAD structure data found for '{query}'. Try searching for 'Motor Cover Machined' or 'Rotor Shaft' to see available parts."
@@ -501,10 +496,10 @@ def part_contextual_insights(query: str) -> str:
     return _normalize_graph_response(cypher_qa(guided_query))
 
 # ──── Recommendation engine tools ────────────────────────────────────────
-from core.graph import graph as _rec_graph
-from Services.change_impact_recommender import ChangeImpactRecommender
-from Services.similar_parts_recommender import SimilarPartsRecommender
-from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
+from backend.core.graph import graph as _rec_graph
+from backend.Services.change_impact_recommender import ChangeImpactRecommender
+from backend.Services.similar_parts_recommender import SimilarPartsRecommender
+from backend.Services.manufacturing_process_recommender import ManufacturingProcessRecommender
 
 _ci = ChangeImpactRecommender(_rec_graph)
 _sp = SimilarPartsRecommender(_rec_graph)
@@ -540,7 +535,7 @@ def change_impact_analysis(query: str) -> str:
     ]
 
     # Impacted parts
-    lines.append(f"### Directly Impacted Parts ({len(parts)})")  
+    lines.append(f"### Directly Impacted Parts ({len(parts)})")
     if parts:
         for p in parts:
             rel = f" via {p['relation_type']}" if p.get('relation_type') and p['relation_type'] != 'self' else ""
@@ -830,7 +825,7 @@ def should_continue(state: AgentState) -> Literal["tools", "end"]:
     """Determine whether to continue or end the conversation"""
     messages = state["messages"]
     last_message = messages[-1]
-    
+
     # If the LLM makes a tool call, then we route to the "tools" node
     if last_message.tool_calls:
         return "tools"
@@ -868,20 +863,20 @@ async def generate_response(session_id: str, user_input: str, graph_context: dic
     try:
         # Create the thread configuration
         config = {"configurable": {"thread_id": session_id}}
-        
+
         # Create initial state with user message
         initial_state = {
             "messages": _conversation_messages(session_id, user_input),
             "session_id": session_id,
             "graph_context": graph_context or {},
         }
-        
+
         # Run the graph asynchronously (required when call_model is async)
         result = await chat_agent.ainvoke(initial_state, config)
-        
+
         # Get the last AI message
         last_message = result["messages"][-1]
-        
+
         # Store in memory (if using custom memory system)
         try:
             memory = get_memory(session_id)
@@ -889,10 +884,10 @@ async def generate_response(session_id: str, user_input: str, graph_context: dic
             memory.add_ai_message(last_message.content)
         except Exception as memory_exc:
             logger.warning("Chat history persistence failed for %s: %s", session_id, memory_exc)
-        
+
         logger.info(f"Agent response: {last_message.content}")
         return last_message.content
-        
+
     except Exception as e:
         logger.error(f"Chat agent error for session {session_id}: {e}", exc_info=True)
         return "Sorry, I couldn't process your request. Please try again."

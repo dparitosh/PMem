@@ -109,7 +109,7 @@ class StagedPublicationTests(unittest.TestCase):
         session = Session()
         # Start, initialization, first batch, then expiry before the next batch.
         with patch('backend.graph_service.staged_publication.time.monotonic',
-                   side_effect=[0, 1, 2, 181]):
+                   side_effect=lambda: 181 if session.writes.count('write_resources') else 0):
             with self.assertRaisesRegex(TimeoutError, 'deadline'):
                 self.publish(session)
         self.assertFalse(session.active)
@@ -125,6 +125,34 @@ class StagedPublicationTests(unittest.TestCase):
                 resources=[], relationships={}, relation_queries={}, resource_query='CREATE (node:OntologyResource)',
                 timeout=180, unit_of_work=lambda **_: lambda fn: fn)
         self.assertEqual(session.writes, [])
+
+    def test_activation_failure_retains_batches_and_retries_only_activation(self):
+        session = Session()
+        original = session.execute_write
+        def execute(operation):
+            if operation.__name__ == 'activate':
+                raise TimeoutError('Activation transaction timed out')
+            return original(operation)
+        session.execute_write = execute
+        with self.assertRaises(TimeoutError): self.publish(session)
+        self.assertFalse(session.active)
+        self.assertEqual(session.receipt['resource_offset'], 1201)
+        writes = list(session.writes)
+        session.execute_write = original
+        self.publish(session)
+        self.assertEqual(session.writes.count('write_resources'), writes.count('write_resources'))
+        self.assertEqual(session.writes.count('write_edges'), writes.count('write_edges'))
+        self.assertTrue(session.active)
+
+    def test_preliminary_reads_receive_query_deadlines(self):
+        reads = []
+        publish_initial(Session(), ontology_id='demo', publication_id='digest', prefix='d', resources=[],
+            relationships={'SUBCLASS_OF':[], 'HAS_PART':[]}, relation_queries={'SUBCLASS_OF':'','HAS_PART':''},
+            resource_query='MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})',
+            timeout=180, activation_timeout=60, unit_of_work=lambda **kw: lambda fn: fn,
+            query_factory=lambda query, timeout: reads.append(timeout) or query)
+        self.assertEqual(len(reads), 2)
+        self.assertTrue(all(0 < timeout <= 10 for timeout in reads))
 
 
 if __name__ == '__main__': unittest.main()

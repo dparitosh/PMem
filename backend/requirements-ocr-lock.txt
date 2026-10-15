@@ -1,0 +1,4 @@
+# Optional OCR overlay; install alongside requirements-lock.txt with --require-hashes.
+easyocr==1.7.2 --hash=sha256:5be12f9b0e595d443c9c3d10b0542074b50f0ec2d98b141a109cd961fd1c177c
+pymupdf==1.28.2 --hash=sha256:ebd244918798502d7b4504c90410d1711a4d7675a32584ca30f1bab419ecbffe
+pytesseract==0.3.13 --hash=sha256:7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34

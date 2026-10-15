@@ -1,19 +1,12 @@
-import os
-import sys
 import logging
 import re
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from core.llm import llm, LLM_AVAILABLE
-from core.graph import graph, query_with_timeout
+from backend.core.llm import llm, LLM_AVAILABLE
+from backend.core.graph import graph, query_with_timeout
 from langchain.prompts.prompt import PromptTemplate
 from typing import Optional, List, Dict, Any
 
-try:
-    from backend.core.cypher_safety import assert_read_only_cypher
-    from backend.core.db_config import get_config
-except Exception:
-    from core.cypher_safety import assert_read_only_cypher
-    from core.db_config import get_config
+from backend.core.cypher_safety import assert_read_only_cypher
+from backend.core.db_config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -130,28 +123,14 @@ class SafeCypherQA:
 # ============================================
 # Cypher QA Chain Initialization (With Fallback)
 # ============================================
-# Note: GraphCypherQAChain has strict pydantic validation that requires
-# the graph parameter to be an actual GraphStore instance.
-# Neo4jGraph doesn't inherit from GraphStore, causing validation errors.
-# 
-# Solution: Try to initialize chain, but gracefully fall back to
-# direct Cypher queries if it fails. This is actually fine because:
-# 1. Direct queries work perfectly
-# 2. Most users can write basic Cypher
-# 3. LLM-based query generation is optional feature
-# 4. System remains 100% functional
-
 if LLM_AVAILABLE:
     try:
         cypher_qa = SafeCypherQA()
         logger.info("Cypher QA chain initialized successfully")
-    
+
     except Exception as exc:
-        # Expected to fail due to GraphStore validation
-        # This is fine - direct queries work as fallback
         logger.debug(
-            "Cypher QA chain not available (expected): %s\n"
-            "Using direct Cypher queries instead (fully functional)",
+            "Cypher QA initialization unavailable: %s",
             type(exc).__name__
         )
         cypher_qa = None
@@ -165,15 +144,15 @@ else:
 def query_cypher(query: str) -> List[Dict[str, Any]]:
     """
     Execute Cypher query directly without LLM.
-    
+
     Use this as fallback if cypher_qa chain is unavailable.
-    
+
     Args:
         query: Cypher query string
-        
+
     Returns:
         List of result records
-        
+
     Example:
         >>> results = query_cypher("MATCH (n:Product) RETURN n.name LIMIT 10")
         >>> for record in results:
@@ -189,7 +168,7 @@ def query_cypher(query: str) -> List[Dict[str, Any]]:
 def get_cypher_qa():
     """
     Get the Cypher QA chain if available, otherwise None.
-    
+
     Returns:
         SafeCypherQA or None
     """
@@ -199,7 +178,7 @@ def get_cypher_qa():
 def cypher_qa_available() -> bool:
     """
     Check if Cypher QA chain is available.
-    
+
     Returns:
         True if cypher_qa chain initialized successfully
     """

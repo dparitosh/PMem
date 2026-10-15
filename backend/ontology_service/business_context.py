@@ -86,6 +86,8 @@ class BusinessContextService:
         self._load_persisted_state()
         return {
             "engine": "Semantica ContextGraph",
+            "representation": "postgres_business_context",
+            "neo4j_synchronized": False,
             "persistence": "postgres" if not self._persistence_error else "unavailable",
             "persistence_error": self._persistence_error or None,
             **self.graph.stats(),

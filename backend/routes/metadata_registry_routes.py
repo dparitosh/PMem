@@ -14,9 +14,13 @@ except ImportError:
     from core.graph import graph
 
 from backend.depo_platform.authorization import service_write_identity, graph_read_identity
+from backend.depo_platform import metadata_service as metadata_backend
+from backend.depo_platform.request_bodies import MetadataMigrationBody
 
 
 def _metadata_registry_identity(request: Request) -> str:
+    if request.url.path.endswith("/migrations/postgres"):
+        return service_write_identity(request, token_env="ADMIN_API_KEY", default_actor="metadata-migration")
     if request.method in {"GET", "HEAD", "OPTIONS"}:
         return graph_read_identity(request)
     return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="metadata-steward")
@@ -126,6 +130,7 @@ class MetadataAssetRequest(BaseModel):
 
 
 class MetadataAssetUpdateRequest(BaseModel):
+    expected_revision: Optional[int] = Field(default=None, ge=1, description='Optimistic revision check in PostgreSQL metadata mode')
     name: Optional[str] = Field(default=None, min_length=1, max_length=300)
     definition: Optional[str] = Field(default=None, max_length=10000)
     asset_type: Optional[str] = Field(default=None, max_length=100)
@@ -196,7 +201,7 @@ class MetadataAssetUpdateRequest(BaseModel):
 
 class LifecycleTransitionRequest(BaseModel):
     status: str = Field(min_length=1, max_length=50)
-    actor: str = Field(default="", max_length=200)
+    actor: str = Field(default="", max_length=200, deprecated=True, description='Legacy display field; audit identity is resolved from authenticated access')
     comment: str = Field(default="", max_length=5000)
     approval_evidence: str = Field(default="", max_length=2000)
     deprecation_reason: str = Field(default="", max_length=5000)
@@ -208,8 +213,6 @@ class LifecycleTransitionRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_transition_evidence(self):
-        if not self.actor:
-            raise ValueError("lifecycle transitions require actor")
         if self.status == "approved" and not self.approval_evidence:
             raise ValueError("approved transition requires approval_evidence")
         if self.status in {"deprecated", "retired"} and not self.deprecation_reason:
@@ -225,6 +228,38 @@ def _row_asset(row: Dict[str, Any]) -> Dict[str, Any]:
     return dict(row.get("asset") or row)
 
 
+def _migration_identity(request: Request):
+    return service_write_identity(request,token_env='ADMIN_API_KEY',default_actor='metadata-migration')
+
+
+@router.post('/migrations/postgres', summary='Adopt selected Neo4j metadata assets and preserve their legacy audit history',
+             dependencies=[Depends(_migration_identity)])
+def adopt_metadata_postgres(payload: MetadataMigrationBody, actor: str = Depends(_migration_identity)) -> dict:
+    from backend.depo_platform.metadata_repository import MetadataConflict
+    identifiers=payload['asset_ids']
+    if not identifiers or len(identifiers)>100 or len(set(identifiers))!=len(identifiers):
+        raise HTTPException(422,'Select 1-100 unique metadata asset IDs')
+    results=[]
+    repository=metadata_backend.repository()
+    for identity in identifiers:
+        rows=graph.query('MATCH (a:MetadataAsset {asset_id:$id}) RETURN properties(a) AS asset',params={'id':identity})
+        if not rows: raise HTTPException(404,'Selected metadata asset was not found; earlier results remain retained')
+        value=_row_asset(rows[0])
+        previous=repository.get(identity)
+        if previous:
+            if {key:item for key,item in previous.items() if key not in {'revision','publication_status'}} != value:
+                raise HTTPException(409,'Previously adopted metadata differs; reconcile before changing storage mode')
+            results.append({'asset_id':identity,'status':'unchanged'})
+            continue
+        history=graph.query('MATCH (:MetadataAsset {asset_id:$id})-[:HAS_AUDIT_EVENT]->(e:MetadataAuditEvent) RETURN properties(e) AS event ORDER BY e.created_at,e.event_id',params={'id':identity})
+        try:
+            repository.save(identity,value,expected_revision=0,actor=actor,legacy_history=[row['event'] for row in history])
+        except MetadataConflict as exc:
+            raise HTTPException(409,'Metadata adoption raced with another writer; verify before retrying') from exc
+        results.append({'asset_id':identity,'status':'adopted'})
+    return {'assets':results,'count':len(results),'storage_changed':False,'next_action':'Freeze legacy writes, verify all required assets, then set DEPO_METADATA_STORAGE=postgres and restart ontology services'}
+
+
 @router.get("/assets")
 def list_metadata_assets(
     status: Optional[str] = Query(default=None, max_length=50),
@@ -232,6 +267,8 @@ def list_metadata_assets(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
+    if metadata_backend.enabled():
+        return metadata_backend.repository().page(status=status,domain=domain,limit=limit,offset=offset)
     try:
         rows = graph.query(
             """
@@ -253,6 +290,7 @@ def list_metadata_assets(
 
 @router.get("/assets/{asset_id}")
 def get_metadata_asset(asset_id: str):
+    if metadata_backend.enabled(): return metadata_backend.get(asset_id)
     try:
         rows = graph.query(
             "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN properties(a) AS asset LIMIT 1",
@@ -295,11 +333,13 @@ def _ensure_metadata_constraints() -> None:
 
 
 @router.post("/assets", status_code=201)
-def create_metadata_asset(request: MetadataAssetRequest):
+def create_metadata_asset(request: MetadataAssetRequest, actor: str = Depends(_metadata_registry_identity)):
     now = _now()
     payload = request.model_dump()
     asset_id = request.asset_id or str(uuid4())
-    payload.update({"asset_id": asset_id, "persistent_id": request.persistent_id or asset_id, "created_at": now, "updated_at": now, "event_id": str(uuid4()), "actor": request.owner, "comment": ""})
+    payload.update({"asset_id": asset_id, "persistent_id": request.persistent_id or asset_id, "created_at": now, "updated_at": now, "event_id": str(uuid4()), "actor": actor, "comment": ""})
+    if metadata_backend.enabled():
+        return metadata_backend.save(payload,actor,0)
     try:
         _ensure_metadata_constraints()
     except Exception as exc:
@@ -321,13 +361,17 @@ def create_metadata_asset(request: MetadataAssetRequest):
 
 
 @router.patch("/assets/{asset_id}")
-def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
+def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest, actor: str = Depends(_metadata_registry_identity)):
     now = _now()
     updates = request.model_dump(exclude_unset=True, exclude_none=True)
+    expected_revision = updates.pop('expected_revision',None)
     if not updates:
         raise HTTPException(status_code=400, detail="At least one metadata field is required")
     if "lifecycle_status" in updates:
         raise HTTPException(status_code=400, detail="Use the lifecycle transition endpoint to change lifecycle_status")
+    if metadata_backend.enabled(): return metadata_backend.update(asset_id,updates,actor,expected_revision)
+    if expected_revision is not None:
+        raise HTTPException(422,'expected_revision requires PostgreSQL metadata mode')
     try:
         rows = graph.query(
             """
@@ -349,7 +393,7 @@ def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
                 "updates": updates,
                 "updated_at": now,
                 "event_id": str(uuid4()),
-                "actor": str(updates.get("owner") or ""),
+                "actor": actor,
             },
         ) or []
     except Exception as exc:
@@ -360,7 +404,8 @@ def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
 
 
 @router.post("/assets/{asset_id}/transition")
-def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest):
+def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest, actor: str = Depends(_metadata_registry_identity)):
+    if metadata_backend.enabled(): return metadata_backend.transition(asset_id,request,actor)
     allowed_from = {
         "draft": ["in_review"],
         "in_review": ["draft", "approved"],
@@ -373,6 +418,7 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
             """
             MATCH (a:MetadataAsset {asset_id: $asset_id})
             WHERE coalesce(a.lifecycle_status, 'draft') IN $allowed_from
+              AND ($status <> 'approved' OR trim(coalesce(a.steward,'')) <> '')
             WITH a, coalesce(a.lifecycle_status, 'draft') AS previous_status
             SET a.lifecycle_status = $status, a.updated_at = $updated_at,
                 a.approval_evidence = CASE WHEN $approval_evidence <> '' THEN $approval_evidence ELSE a.approval_evidence END,
@@ -387,7 +433,7 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
             MERGE (a)-[:HAS_AUDIT_EVENT]->(e)
             RETURN properties(a) AS asset
             """,
-            params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": request.actor, "comment": request.comment, "approval_evidence": request.approval_evidence, "deprecation_reason": request.deprecation_reason, "event_id": str(uuid4()), "updated_at": _now()},
+            params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": actor, "comment": request.comment, "approval_evidence": request.approval_evidence, "deprecation_reason": request.deprecation_reason, "event_id": str(uuid4()), "updated_at": _now()},
         ) or []
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
@@ -407,6 +453,10 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
 
 @router.get("/assets/{asset_id}/history")
 def metadata_asset_history(asset_id: str, limit: int = Query(default=100, ge=1, le=500)):
+    if metadata_backend.enabled():
+        metadata_backend.get(asset_id)
+        events=metadata_backend.repository().history(asset_id,limit)
+        return {'events':events,'count':len(events)}
     try:
         rows = graph.query(
             """

@@ -61,6 +61,13 @@ class CredentialProfiles(unittest.TestCase):
         self.assertEqual(metadata["resolution"], "explicit")
         self.assertEqual(metadata["approval_fields"], ["approved_by", "approval_token"])
 
+    def test_metadata_migration_and_normal_routes_advertise_distinct_credentials(self):
+        def _metadata_registry_identity(): pass
+        for method,path,expected in [('POST','/metadata-registry/migrations/postgres','ADMIN_API_KEY'),
+                                     ('POST','/metadata-registry/assets','ONTOLOGY_APPROVAL_TOKEN'),
+                                     ('GET','/metadata-registry/assets','GRAPH_READ_TOKEN')]:
+            self.assertEqual(credential_profiles(public_endpoint,[_metadata_registry_identity],method=method,path=path),[expected])
+
 
 if __name__ == "__main__":
     unittest.main()

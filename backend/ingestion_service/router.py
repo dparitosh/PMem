@@ -1,7 +1,7 @@
 """Standalone ingestion service retaining the existing SPA contract."""
 from __future__ import annotations
 
-from backend.depo_platform.request_bodies import SourceProfileBody, SourceRecordBody
+from backend.depo_platform.request_bodies import SourceProfileBody, SourceRecordBody, BridgeSourceBody
 
 from backend.depo_platform.request_bodies import SysmlCommitBody
 
@@ -49,6 +49,27 @@ def _ingestion_identity(request: Request) -> str:
 
 
 router = APIRouter(tags=["ingestion"], dependencies=[Depends(_ingestion_identity)])
+
+
+@router.post('/bridge/source', summary='Private peer access to retained instance mapping sources')
+def bridge_source(payload: BridgeSourceBody) -> dict:
+    from .bridge_source import LocalBridgeSource
+    from backend.depo_platform.bridge_contract import BridgeConflict
+    if any(len(payload[key]) > 200 for key in ('ontology_id','import_task_id')) or len(payload.get('mappings',[])) > 2000:
+        raise HTTPException(422, 'Bridge source identifiers or mapping count exceed limits')
+    source = LocalBridgeSource()
+    try:
+        arguments = (payload['ontology_id'],payload['import_task_id'])
+        if payload['operation'] == 'snapshot':
+            return {'snapshot':source.snapshot(*arguments)}
+        if payload['operation'] == 'preview':
+            snapshot, candidates = source.preview(*arguments)
+            return {'snapshot':snapshot,'candidates':candidates}
+        return {'candidates':source.manual_candidates(*arguments,payload.get('mappings',[]))}
+    except BridgeConflict as exc:
+        raise HTTPException(409,'Source changed while reading mapping evidence') from exc
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(422,'Mapping source or ontology target is unavailable or invalid') from exc
 
 
 @router.get("/reports/xsd-relational", summary="Build a read-only relational projection of a registered XSD")

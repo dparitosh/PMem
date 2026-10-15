@@ -1,11 +1,10 @@
+from __future__ import annotations
 import os
 import logging
 from pathlib import Path
-from langchain_openai import AzureOpenAIEmbeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings, OllamaLLM
 
 
-from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
 from backend.core.ollama_auth import ollama_headers, ollama_timeout, ollama_base_url
 
@@ -108,6 +107,7 @@ def _init_azure_llm() -> AzureChatOpenAI:
     if missing:
         raise ValueError(f"Missing Azure OpenAI settings: {', '.join(missing)}")
 
+    from langchain_openai import AzureChatOpenAI
     return AzureChatOpenAI(
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
         api_key=AZURE_OPENAI_API_KEY,
@@ -136,6 +136,7 @@ def _init_azure_embeddings() -> AzureOpenAIEmbeddings:
     if missing:
         raise ValueError(f"Missing Azure embeddings settings: {', '.join(missing)}")
 
+    from langchain_openai import AzureOpenAIEmbeddings
     return AzureOpenAIEmbeddings(
         model=AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT,
         api_version=AZURE_OPENAI_EMBEDDINGS_VERSION,
@@ -180,6 +181,7 @@ def _init_unstructured_apim_llm() -> AzureChatOpenAI:
     if missing:
         raise ValueError(f"Missing APIM settings for unstructured LLM: {', '.join(missing)}")
 
+    from langchain_openai import AzureChatOpenAI
     return AzureChatOpenAI(
         azure_endpoint=UNSTRUCTURED_APIM_ENDPOINT,
         api_key=UNSTRUCTURED_APIM_SUBSCRIPTION_KEY,
@@ -205,6 +207,7 @@ def _init_unstructured_azure_llm() -> AzureChatOpenAI:
     if missing:
         raise ValueError(f"Missing unstructured Azure OpenAI settings: {', '.join(missing)}")
 
+    from langchain_openai import AzureChatOpenAI
     return AzureChatOpenAI(
         azure_endpoint=UNSTRUCTURED_AZURE_OPENAI_ENDPOINT,
         api_key=UNSTRUCTURED_AZURE_OPENAI_API_KEY,
@@ -364,10 +367,6 @@ if USE_UNSTRUCTURED_LLM:
 
 
 
-# print(llm.invoke("What is ollama?"))
-# print("__")
-# embedding = embeddings.embed_query("What is my name?")
-# print(len(embedding))
 
 
 # Export guarded Ollama clients; Azure adapters keep their provider policies.

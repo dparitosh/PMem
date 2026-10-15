@@ -32,6 +32,8 @@ class PublicationReplacementTests(unittest.TestCase):
                      to_canonical_graph=to_canonical_graph, json=json, datetime=datetime, timezone=timezone, Any=object)
         tree = ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         node = next(method for cls in tree.body if isinstance(cls, ast.ClassDef) for method in cls.body if getattr(method, 'name', '') == 'publish_turtle')
+        from backend.tests.projection_fixture import install_projection_fixture
+        install_projection_fixture(scope)
         exec(compile(ast.Module(body=[node], type_ignores=[]), '<publisher>', 'exec'), scope)
         publisher = SimpleNamespace(auth_mode='none', _driver=lambda: nullcontext(driver), database='test')
         return lambda content: scope['publish_turtle'](publisher, content=content, ontology_id='demo', prefix='d', publication_id='receipt'), calls

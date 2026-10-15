@@ -791,8 +791,9 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
         arguments = downstream_inputs(tool, inputs, approved_by)
         try:
             await _preflight_tools([payload], request)
+            from .tool_timeouts import tool_timeout_seconds
             result = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/call',
-                                  {'name': tool['name'], 'arguments': arguments})
+                                  {'name': tool['name'], 'arguments': arguments}, timeout_seconds=tool_timeout_seconds(tool, inputs))
             return {'agent_id': plan_result['agent'], 'tool_id': tool['id'], 'result': result}
         except (ValueError, OSError, TimeoutError) as exc:
             raise HTTPException(503, 'MCP tool failed; inspect server status before retrying') from exc
@@ -805,7 +806,9 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
         headers = downstream_headers(request, endpoint, tool=tool)
         inputs = downstream_inputs(tool, inputs, approved_by)
         from .tool_timeouts import tool_timeout_seconds
-        async with httpx.AsyncClient(timeout=tool_timeout_seconds(tool, inputs), trust_env=False) as client:
+        from backend.depo_platform.network import http_timeout
+        budget = tool_timeout_seconds(tool, inputs)
+        async with asyncio.timeout(budget), httpx.AsyncClient(timeout=http_timeout(budget), trust_env=False) as client:
             if tool.get("input_kind") == "multipart":
                 form, files = _multipart(inputs, 'artifact' if tool['id'] == 'ontology.register' else 'file')
                 response = await _bounded_tool_request(client, tool["method"], endpoint, headers=headers, data=form, files=files)
@@ -985,7 +988,13 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                         await _persist_workflow(record)
                         if service_grant is not None:
                             await _agent_io(verify_grant, service_grant)
-                        result = await _dispatch(command, execution_request)
+                        from backend.depo_platform.operations import OperationContext, operation_scope
+                        async def progress(value):
+                            record['pending_step']['progress'] = value
+                            record['updated_at'] = _now()
+                            await _persist_workflow(record)
+                        with operation_scope(OperationContext(run_id, record['deadline_at'], progress)):
+                            result = await _dispatch(command, execution_request)
                         if step['tool_id'] == 'pipeline.run' and isinstance(result.get('result'), dict) and result['result'].get('status') == 'queued':
                             child_id = (result['result'].get('run_manifest') or {}).get('run_id')
                             if not isinstance(child_id, str) or not child_id: raise HTTPException(502, 'Queued data job has no run identity')

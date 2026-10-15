@@ -75,7 +75,7 @@ class KnowledgeCompanion:
         selected = [node for _, node in scored[: min(8, self.max_evidence)]]
         selected_ids = {str(node.get("elementId")) for node in selected}
         edge_budget = max(0, self.max_evidence - len(selected))
-        selected_edges = [edge for edge in relationships if str(edge.get("start")) in selected_ids or str(edge.get("end")) in selected_ids][:edge_budget]
+        selected_edges = [edge for edge in relationships if str(edge.get("start")) in selected_ids and str(edge.get("end")) in selected_ids][:edge_budget]
         evidence = [
             {
                 "evidence_type": "graph_resource", "resource_id": str(node.get("elementId") or ""),
@@ -88,7 +88,7 @@ class KnowledgeCompanion:
         ]
         evidence.extend({
             "evidence_type": "graph_relationship", "source_id": str(edge.get("start") or ""),
-            "target_id": str(edge.get("end") or ""), "relationship": str(edge.get("type") or "RELATED_TO"), "source": endpoint,
+            "target_id": str(edge.get("end") or ""), "relationship": str((edge.get('properties') or {}).get('predicate') or edge.get("type") or "RELATED_TO"), "source": endpoint,
         } for edge in selected_edges)
         from .prompt_security import protect
         evidence = protect(evidence)

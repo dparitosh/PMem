@@ -20,7 +20,7 @@ class OSLCGraphRAG:
         if not value:
             raise RuntimeError('OSLC_REMOTE_BASE_URL is not configured')
         parsed = urlsplit(value)
-        if parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.query or parsed.fragment:
+        if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise RuntimeError('OSLC_REMOTE_BASE_URL is invalid')
         return value
 
@@ -56,6 +56,10 @@ class OSLCGraphRAG:
         evidence = []
         for item in raw[:limit]:
             if not isinstance(item, dict):
+                continue
+            identifier = item.get('uri') or item.get('id') or item.get('identifier')
+            title = item.get('title') or item.get('name') or item.get('label')
+            if not isinstance(identifier, str) or not identifier.strip() or not isinstance(title, str) or not title.strip():
                 continue
             evidence.append({
                 'resource_id': item.get('uri') or item.get('id') or item.get('identifier'),

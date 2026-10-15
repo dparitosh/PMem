@@ -73,12 +73,21 @@ def test_only_approved_vocabulary_publishes_through_graph_boundary(tmp_path: Pat
     client.post("/api/v1/ontologies/vocabularies/engineering-terms/1.0.0/transition", json={"approved_by": "reviewer", "target": "in_review", "reason": "Reviewed"})
     client.post("/api/v1/ontologies/vocabularies/engineering-terms/1.0.0/transition", json={"approved_by": "approver", "target": "approved", "reason": "Approved"})
 
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "graph-read-test")
+    publication = {}
     class FakeClient:
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
         async def post(self, url, **kwargs):
-            return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "success", "resources": 3, "relationships": 4})
+            publication.update(kwargs['data'])
+            return httpx.Response(200,request=httpx.Request('POST',url),json={'status':'success'})
+        async def get(self, url, **kwargs):
+            if not publication:
+                return httpx.Response(404,request=httpx.Request('GET',url),json={'detail':'Publication receipt was not found','publication_idle':True})
+            return httpx.Response(200,request=httpx.Request('GET',url),json={
+                'status':'published','current':True,'ontology_id':publication['ontology_id'],
+                'publication_id':publication['publication_id'],'resources':3,'relationships':4})
 
     monkeypatch.setattr("backend.ontology_service.router.httpx.AsyncClient", FakeClient)
     published = client.post("/api/v1/ontologies/vocabularies/engineering-terms/1.0.0/publish", json={"approved_by": "approver"})

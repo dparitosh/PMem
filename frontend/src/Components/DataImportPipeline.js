@@ -664,7 +664,7 @@ export default function DataImportPipeline() {
         uploadData = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/engineering-workflows'), form, {
           headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 3660000, signal: controller.signal,
         });
-        if (shouldPublish && uploadData.data.status !== 'approval_required' && (uploadData.data.status !== 'published' || !uploadData.data.graph_publication)) {
+        if (shouldPublish && !['approval_required', 'publication_queued'].includes(uploadData.data.status) && (uploadData.data.status !== 'published' || !uploadData.data.graph_publication)) {
           if (['policy_blocked', 'quality_blocked'].includes(uploadData.data.status)) {
             const rejection = new Error(uploadData.data.message || 'Governance checks blocked publication.');
             rejection.response = { status: 200, data: uploadData.data };
@@ -690,6 +690,8 @@ export default function DataImportPipeline() {
       if (controller.signal.aborted) return;
       const responseBody = uploadData.data || uploadData;
       const publicationConfirmed = shouldPublish && responseBody.status === 'published';
+      const publicationQueued = responseBody.status === 'publication_queued';
+      if (publicationQueued) setPublicationPanels(previous => ({ ...previous, [fileId]: true }));
       const uploadDataBody = useEngineeringWorkflow ? {
         ...responseBody.ontology_registration,
         task_id: responseBody.ontology_registration.ontology_id,
@@ -719,7 +721,7 @@ export default function DataImportPipeline() {
           registered: true,
           published: publicationConfirmed,
           approvalRequired: responseBody.status === 'approval_required',
-          message: publicationConfirmed ? `Ontology '${file.ontologyName}' published to Neo4j` : responseBody.status === 'approval_required' ? responseBody.message : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
+          message: publicationConfirmed ? `Ontology '${file.ontologyName}' published to Neo4j` : ['approval_required', 'publication_queued'].includes(responseBody.status) ? responseBody.message : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
           stats: {
             entities_found: publicationConfirmed ? responseBody.graph_publication.resources : uploadDataBody.nodes_merged ?? null,
             relationships_found: publicationConfirmed ? responseBody.graph_publication.relationships : null,
@@ -3596,7 +3598,7 @@ export default function DataImportPipeline() {
                     }}>Resolve XSD dependencies</button>
                   )}
                   {file.workflowId === 'ontology.create' && status.registered && status.taskId && (
-                    <details style={{ gridColumn: '1 / -1', marginTop: 8 }} onToggle={event => {
+                    <details open={Boolean(publicationPanels[fileId])} style={{ gridColumn: '1 / -1', marginTop: 8 }} onToggle={event => {
                       const open = event.currentTarget.open;
                       setPublicationPanels(previous => ({ ...previous, [fileId]: open }));
                     }}>

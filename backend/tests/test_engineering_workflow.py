@@ -62,7 +62,7 @@ async def test_engineering_publication_delegates_to_locked_ontology_service(monk
     calls = []
 
     class Response:
-        def __init__(self, payload): self.payload = payload
+        def __init__(self, payload, status_code=200): self.payload = payload; self.status_code = status_code
         def raise_for_status(self): return None
         def json(self): return self.payload
 
@@ -77,8 +77,7 @@ async def test_engineering_publication_delegates_to_locked_ontology_service(monk
             if url.endswith("/policies/evaluate"): return Response({"compliant": True})
             if url.endswith("/quality-gate"): return Response({"publish_recommended": True})
             if url.endswith("/register"): return Response({"ontology_id": "demo"})
-            return Response({"status": "published", "ontology_id": "demo", "publication_id": "digest",
-                "receipt": {"status": "success", "ontology_id": "demo", "publication_id": "digest", "resources": 1, "relationships": 0}})
+            return Response({"status": "queued", "ontology_id": "demo", "job_id": "durable-job"}, 202)
 
     monkeypatch.setenv("GRAPH_READ_TOKEN", "private-read-token")
     monkeypatch.setenv("ONTOLOGY_APPROVAL_TOKEN", "private-ontology-token")
@@ -89,9 +88,11 @@ async def test_engineering_publication_delegates_to_locked_ontology_service(monk
 
     result = await workflow.run(filename="demo.exp", content=b"SCHEMA demo; END_SCHEMA;", publish=True)
 
-    assert result["status"] == "published"
+    assert result["status"] == "publication_queued"
+    assert result["publication_job"]["job_id"] == "durable-job"
     publication_call = next(call for call in calls if call[0].endswith("/ontologies/demo/publish"))
     assert publication_call[1]["json"] == {"approved_by": "engineering-ingestion"}
+    assert publication_call[1]["params"] == {"background": True}
     assert all(not url.startswith("http://graph/") for url, _ in calls)
 
 

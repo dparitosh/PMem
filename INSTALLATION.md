@@ -652,13 +652,21 @@ queued job starts; it does not undo completed writes. Do not delete staging data
 manually while publication is active. Replacing a published projection, or one
 with retained external identities, continues to use the atomic replacement path
 to preserve Semantic Bridge element IDs. Missing staging schema produces a
-server warning and uses the atomic path; rerun the matching release installer
-to enable resumable first publication.
+clear configuration error; rerun the matching release installer to provision
+the staging constraint. Publication no longer silently falls back.
 
-`GRAPH_PUBLICATION_TIMEOUT_SECONDS` bounds the complete staged write attempt,
-including all committed batches and activation. Each transaction receives only
-the remaining time. An expired attempt retains its checkpoints for a reviewed
-retry; increasing the browser timeout does not extend that backend deadline.
+`GRAPH_PUBLICATION_TIMEOUT_SECONDS` bounds isolated RDF/projection preparation.
+`GRAPH_PUBLICATION_WRITE_TIMEOUT_SECONDS` bounds the complete staged batch phase;
+each batch receives only its remaining time. Final activation has a separate
+`GRAPH_PUBLICATION_ACTIVATION_TIMEOUT_SECONDS` budget. Both optional settings
+inherit the preparation budget when omitted and accept 1–3600 seconds.
+Atomic replacements use the combined write and activation allowance, preserving
+existing graph identities and visibility until commit. Preliminary reads and
+connection acquisition are bounded. Confirmed-idle, resumable staged jobs retry
+from retained checkpoints automatically, up to three attempts; uncertain atomic
+writes are verified rather than replayed. Increasing browser timeouts does not
+extend these server deadlines. Complex replacements can still exceed their
+bounded allowance and require review; no timeout setting guarantees completion.
 Graph views, dictionaries, requirements and OSLC queries exclude staged nodes.
 Generic graph/OSLC reads also exclude internal `OntologyPublication` receipts
 before pagination and aggregation. Deploy these readers together with the
@@ -4234,9 +4242,58 @@ maximum 3600). The browser allows 3660 seconds for that endpoint. If a response
 is lost, inspect the retained registration and graph receipt before retrying.
 
 Timeout defaults are composed from downstream stages. With unset settings,
-agent runs allow 900 seconds and engineering workflows allow 1170 seconds.
+agent runs allow 1440 seconds and engineering workflows allow 1350 seconds.
 SERVICE_REQUEST_TIMEOUT_SECONDS defaults to 90 seconds across ingestion clients.
-The deployment template sets an explicit 1200-second engineering deadline.
+The deployment template sets explicit 1800-second agent and 1500-second engineering deadlines.
+
+Publication jobs retain deadlines and retry schedules across restarts. Queue and
+overall defaults are 600 and 2430 seconds. Set
+`ONTOLOGY_PUBLICATION_WORKER_CONCURRENCY` (default 2, range 1-8) to bound concurrent
+publications per service process; advisory locks serialize each ontology. Only
+confirmed idle staging checkpoints resume automatically, with backoff and at most
+three attempts. Expired uncertain writes require receipt reconciliation before a
+new submission. Short explicit workflow budgets produce configuration warnings.
+REST and MCP tools share the remaining workflow deadline. MCP numeric progress is
+retained in the pending workflow step; MCP processes remain isolated per invocation.
+
+Optional scanned-document OCR is separated from the default runtime. Fresh standard
+installs omit EasyOCR, PyMuPDF and pytesseract. Text-based PDF and Office import
+remain in the base profile. To enable scanned-PDF OCR in an existing virtual environment,
+run from the repository root:
+
+```powershell
+& .\backend\.dt_venv\Scripts\python.exe -m pip install --require-hashes -r .\backend\requirements-lock.txt -r .\backend\requirements-ocr-lock.txt
+```
+
+Development installations include `requirements-ocr.txt`. Existing environments are
+not automatically uninstalled or pruned. Shared transitive dependencies remain pinned;
+this change does not claim that PyTorch or the full scientific stack is removed.
+Semantica 0.6.7 declares PyTorch, Transformers, spaCy and other scientific packages
+as mandatory dependencies. They cannot be removed safely while the ontology
+generation, reasoning and context services still import Semantica.
+Agent LLM composition continues to use LangChain/LangGraph with the shared Ollama
+admission policy. REST contract validation, durable PostgreSQL workflows and deterministic
+ontology publication remain separate responsibilities. Optional Azure provider imports
+are deferred until their settings are available.
+
+GraphRAG embedding refresh reads source nodes in pages of 100, bounds each source's
+neighborhood, and writes one embedding batch at a time. Staged resources, retained
+identities and publication records are excluded from indexing and graph-vector
+retrieval. Normal refresh compares content/model hashes, so changed sources are
+re-embedded and unchanged sources are skipped. Existing chunks without hashes are
+upgraded on the next embedding run. Run the existing embedding command explicitly
+after publication or model changes; this does not add an automatic indexing worker:
+
+```powershell
+& .\backend\.dt_venv\Scripts\python.exe -m backend.Services.graph_embeddings
+```
+
+Label-scoped legacy vector retrieval filters before exact cosine ranking through
+the timed Neo4j query gateway. This can cost more than indexed unfiltered search
+on large scopes. Empty retrieval does not call the LLM. Missing graph/document
+indexes recover independently on demand, with a 30-second retry cooldown.
+Companion remains bounded ontology keyword retrieval; it is not silently changed
+to the legacy vector pipeline.
 An explicitly configured shorter run/workflow deadline remains authoritative;
 increasing an inner request timeout does not extend it. Agent execution requests
 in the browser allow 3660 seconds unless a caller supplies a shorter timeout.
@@ -4465,8 +4522,8 @@ Restart backend services after deploying the updated publisher. Verify a first
 publication and a changed-source republication before customer release.
 
 `GRAPH_PUBLICATION_TIMEOUT_SECONDS` is a per-stage budget. With its default 180
-seconds, graph dispatch allows 390 seconds for graph preparation and writing;
-the enclosing ontology publication allows 600 seconds including retained-source
+seconds, graph dispatch allows 570 seconds for graph preparation, writing and activation;
+the enclosing ontology publication allows 780 seconds including retained-source
 preparation and transport overhead. Engineering and agent workflow deadlines
 still take precedence. Configure any reverse proxy timeout to cover the operation
 you invoke. A network timeout means an unverified outcome, requiring receipt
@@ -4474,7 +4531,7 @@ verification before another publication attempt.
 
 Agent merge preview and draft creation also include the merge validation budget:
 with default settings their tool wait is 210 seconds; merge-and-publish allows
-810 seconds. The original agent execution deadline remains authoritative.
+990 seconds. The original agent execution deadline remains authoritative.
 Neo4j preflight now verifies constraint labels, properties, entity type and
 uniqueness, not just names. An existing incompatible constraint requires database
 administrator reconciliation; bootstrap deliberately does not drop constraints.
@@ -4494,3 +4551,71 @@ alone does not verify PostgreSQL authentication or TLS. Correct listener/firewal
 or routing issues on the database and application VMs; for reachable TCP with a
 login timeout, inspect PostgreSQL logs and the matching SSL settings. The bounded
 connection timeout remains `DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS` (1–60 seconds).
+
+
+Metadata governance uses authenticated audit actors. Existing installations retain
+`DEPO_METADATA_STORAGE=neo4j`. To adopt PostgreSQL governance, freeze metadata writes
+and call administrator-authenticated `POST /api/v1/metadata-registry/migrations/postgres`
+with `{"asset_ids":["existing-asset-id"]}` in batches of at most 100 IDs. Verify all
+required assets and their retained legacy history before setting
+`DEPO_METADATA_STORAGE=postgres` and restarting ontology services. Adoption does not
+change storage mode or delete existing data. Earlier completed assets remain retained
+if a later asset conflicts. Do not switch back while projection events are pending.
+
+In PostgreSQL mode, asset, audit and outbox updates commit together with revision
+checks. Clients can send `expected_revision` on updates. An independent ontology
+service loop projects pending events to Neo4j; graph failures retain events for retry.
+
+Semantic Bridge source evidence now uses private ingestion API
+`POST /api/v1/bridge/source` and the registered server ingestion credential. Deploy
+agentic and ingestion updates together. Agentic no longer reads ingestion files locally.
+Vocabulary publication retains its artifact and publication identity and verifies graph
+receipts on retry. Legacy publications without identities require reconciliation.
+Business ContextGraph and live Neo4j context expose separate representation fields;
+these APIs do not claim that the two graphs are automatically synchronized.
+
+Export all ten microservice OpenAPI contracts with the installed backend runtime:
+
+```powershell
+& .\backend\.dt_venv\Scripts\python.exe .\scripts\export_service_openapi.py
+```
+
+The exporter imports service apps and validates generated contracts without listeners.
+For running services, pass `--live-template 'http://YOUR-SERVICE-HOST:{port}'`, replacing
+the hostname, or a gateway URL template ending in `/{apim_path}`. Gateway credentials
+must already be injected into the process environment. Completed bundles contain a
+`manifest.json` with all services, contract hashes and Git revision/dirty state.
+Validation failure produces no completed bundle. APIM import remains a separate
+customer deployment step; exporting does not modify APIM.
+
+Optional OCR installation is available through the supported Windows entry point:
+
+```powershell
+.\install-depo.ps1 -EnvFile '.env.local' -EnableOcr
+```
+
+Omit `-EnableOcr` for text-only installations. The switch forwards through both
+Windows installers and validates the optional hashed lock before installation.
+Development installs already include OCR. `-SkipDependencyInstall` skips installing
+OCR too. Tesseract OCR additionally requires its native executable; EasyOCR model
+files must be provisioned as described above. Missing Tesseract no longer disables
+the independent EasyOCR PDF-rendering dependencies. Existing installations are
+not automatically pruned; use a fresh environment to measure the smaller profile.
+
+Engineering workflow publication now submits a durable job using the ontology
+publication API with `background=true`. For an already approved source, the
+engineering API returns `status=publication_queued` and `publication_job`, including
+`job_id` and `ontology_id`. This confirms acceptance only. Poll
+`GET /api/v1/ontologies/{ontology_id}/publication` until a current published receipt
+is verified. The Create ontology UI opens this tracking panel automatically.
+Drafts still require normal lifecycle review before publication. The ontology
+publication worker must be running. Clients that previously required an immediate
+`published` engineering response must handle the queued response and poll status.
+
+Semantic Bridge preserves the selected ontology version ID through source lookup
+and verifies target scope during the Neo4j transaction. Mapping evidence reads
+both legacy DOMAIN/RANGE edges and published RDF domain/range predicates. Bridge
+transactions use the configured GRAPH_PUBLICATION_TIMEOUT_SECONDS (default 180
+seconds), bounded by the current operation deadline when present, with automatic
+Neo4j driver transaction retries disabled. An interrupted response still requires
+receipt reconciliation before retrying the retained publication selection.

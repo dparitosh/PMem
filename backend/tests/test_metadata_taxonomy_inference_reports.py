@@ -58,12 +58,8 @@ def test_metadata_create_uses_unique_create_and_patch_is_partial(monkeypatch):
     recorder = _RecordingGraph()
     monkeypatch.setattr(metadata_registry_routes, "graph", recorder)
 
-    metadata_registry_routes.create_metadata_asset(
-        metadata_registry_routes.MetadataAssetRequest(asset_id="asset-1", name="Pump")
-    )
-    metadata_registry_routes.update_metadata_asset(
-        "asset-1", metadata_registry_routes.MetadataAssetUpdateRequest(name="Pump v2")
-    )
+    metadata_registry_routes.create_metadata_asset(metadata_registry_routes.MetadataAssetRequest(asset_id='asset-1', name='Pump'), actor='verified-steward')
+    metadata_registry_routes.update_metadata_asset('asset-1', metadata_registry_routes.MetadataAssetUpdateRequest(name='Pump v2'), actor='verified-steward')
 
     create_cypher = next(cypher for cypher, _ in recorder.calls if "e.action = 'created'" in cypher)
     patch_call = next((cypher, params) for cypher, params in recorder.calls if "a += $updates" in cypher)
@@ -92,10 +88,7 @@ def test_metadata_patch_cannot_bypass_lifecycle_transition(monkeypatch):
     monkeypatch.setattr(metadata_registry_routes, "graph", recorder)
 
     with pytest.raises(Exception) as exc_info:
-        metadata_registry_routes.update_metadata_asset(
-            "asset-1",
-            metadata_registry_routes.MetadataAssetUpdateRequest(lifecycle_status="approved"),
-        )
+        metadata_registry_routes.update_metadata_asset('asset-1', metadata_registry_routes.MetadataAssetUpdateRequest(lifecycle_status='approved'), actor='verified-steward')
 
     assert getattr(exc_info.value, "status_code", None) == 400
     assert "transition endpoint" in str(getattr(exc_info.value, "detail", ""))
@@ -106,10 +99,7 @@ def test_metadata_lifecycle_transition_keeps_previous_status_for_audit(monkeypat
     recorder = _RecordingGraph()
     monkeypatch.setattr(metadata_registry_routes, "graph", recorder)
 
-    metadata_registry_routes.transition_metadata_asset(
-        "asset-1",
-        metadata_registry_routes.LifecycleTransitionRequest(status="in_review", actor="steward"),
-    )
+    metadata_registry_routes.transition_metadata_asset('asset-1', metadata_registry_routes.LifecycleTransitionRequest(status='in_review', actor='steward'), actor='verified-steward')
 
     transition_cypher = next(cypher for cypher, _ in recorder.calls if "lifecycle_transition" in cypher)
     assert "WITH a, previous_status" in transition_cypher
@@ -125,12 +115,7 @@ def test_metadata_approval_transition_requires_and_records_evidence(monkeypatch)
     with pytest.raises(ValueError, match="approval_evidence"):
         metadata_registry_routes.LifecycleTransitionRequest(status="approved", actor="steward")
 
-    metadata_registry_routes.transition_metadata_asset(
-        "asset-1",
-        metadata_registry_routes.LifecycleTransitionRequest(
-            status="approved", actor="steward", approval_evidence="review://CAB-123"
-        ),
-    )
+    metadata_registry_routes.transition_metadata_asset('asset-1', metadata_registry_routes.LifecycleTransitionRequest(status='approved', actor='steward', approval_evidence='review://CAB-123'), actor='verified-steward')
     transition_cypher, transition_params = next((cypher, params) for cypher, params in recorder.calls if "lifecycle_transition" in cypher)
     assert "e.approval_evidence = $approval_evidence" in transition_cypher
     assert transition_params["allowed_from"] == ["in_review"]

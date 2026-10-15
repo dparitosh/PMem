@@ -13,6 +13,13 @@ def test_oslc_graph_rag_returns_bounded_context(monkeypatch):
             assert endpoint.endswith('/oslc/query/resources')
             assert params['oslc.searchTerms'] == 'pump'
             return httpx.Response(200, request=httpx.Request('GET', endpoint), json={'results': [{'uri': 'urn:r1', 'title': 'Pump', 'ontology_id': 'ap242', 'revision': 'A', 'validation_status': 'valid'}]})
+        def stream(self, method, endpoint, *, params, headers):
+            assert method == 'GET'
+            client = self
+            class ResponseContext:
+                async def __aenter__(self): return await client.get(endpoint, params=params, headers=headers)
+                async def __aexit__(self, *_): pass
+            return ResponseContext()
     monkeypatch.setattr('backend.agentic_service.oslc_graph_rag.httpx.AsyncClient', Client)
     result = asyncio.run(oslc_graph_rag.retrieve('pump'))
     assert result['status'] == 'grounded'

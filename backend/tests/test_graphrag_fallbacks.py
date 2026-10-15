@@ -68,10 +68,12 @@ def _load_chat_module(monkeypatch):
     fake_llm = ModuleType("core.llm")
     fake_llm.llm = None
     fake_llm.LLM_AVAILABLE = False
+    fake_llm.tool_llm = None
+    fake_llm.TOOL_LLM_AVAILABLE = False
 
-    monkeypatch.setitem(sys.modules, "chains.vector", fake_vector)
-    monkeypatch.setitem(sys.modules, "chains.cypher", fake_cypher)
-    monkeypatch.setitem(sys.modules, "agent.memory", fake_memory)
+    monkeypatch.setitem(sys.modules, "backend.chains.vector", fake_vector)
+    monkeypatch.setitem(sys.modules, "backend.chains.cypher", fake_cypher)
+    monkeypatch.setitem(sys.modules, "backend.agent.memory", fake_memory)
     monkeypatch.setitem(sys.modules, "core.llm", fake_llm)
     monkeypatch.setitem(sys.modules, "backend.core.llm", fake_llm)
 
@@ -88,7 +90,7 @@ def test_deep_vector_search_uses_chunk_node_id_property(monkeypatch):
         captured["params"] = params
         return []
 
-    monkeypatch.setattr(vector, "general_retrieval_chain", _FakeRetriever())
+    monkeypatch.setattr(vector, "general_retriever", SimpleNamespace(invoke=lambda _: _FakeRetriever().invoke({})['context']))
     monkeypatch.setattr(vector, "general_qa_chain", _FakeQAChain())
     monkeypatch.setattr(vector, "graph", SimpleNamespace(query=fake_query))
 

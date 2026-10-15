@@ -4,7 +4,7 @@ from __future__ import annotations
 # Older ingestion writes typed nodes directly, without an OntologyResource
 # projection. Keep its counts distinct from explicit RDF declarations.
 LEGACY_NODE_FILTER = "(n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:OntologyResource"
-LEGACY_SCOPE_FILTER = "($ontology_id = '' OR n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id OR ($ontology_prefix <> '' AND (n.prefix = $ontology_prefix OR n.source_ontology = $ontology_prefix)))"
+LEGACY_SCOPE_FILTER = "(($ontology_id = '' AND $ontology_prefix = '') OR ($ontology_id <> '' AND (n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id)) OR ($ontology_prefix <> '' AND (n.prefix = $ontology_prefix OR n.source_ontology = $ontology_prefix) AND ($ontology_id = '' OR (n.ontology_id IS NULL AND (n.source_ontology IS NULL OR n.source_ontology = $ontology_prefix)))))"
 LEGACY_METRICS = (
     "CALL { MATCH (n) WHERE " + LEGACY_NODE_FILTER + " AND " + LEGACY_SCOPE_FILTER + " "
     "RETURN count(n) AS resources, "
@@ -81,7 +81,7 @@ ONTOLOGY_TRAVERSAL_EDGES = (
 )
 ONTOLOGY_SEARCH_NODES = (
     "MATCH (n:OntologyResource) "
-    "WHERE $ontology_id = '' OR n.ontology_id = $ontology_id "
+    "WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
     "WITH n, reduce(score = 0, term IN $terms | score + CASE "
     "WHEN toLower(coalesce(n.label, '')) = term OR toLower(n.iri) ENDS WITH '/' + term OR toLower(n.iri) ENDS WITH '#' + term THEN 5 "
     "WHEN toLower(coalesce(n.label, '')) CONTAINS term OR toLower(n.iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
@@ -92,9 +92,13 @@ ONTOLOGY_SEARCH_NODES = (
 
 
 # Complete bounded mapping targets; executed only by the Graph data service.
-MAPPING_TERMS = """UNWIND $kinds AS kind
-            MATCH (n) WHERE (n.prefix IN $scopes OR n.ontology_prefix IN $scopes
-                OR n.ontology_id IN $scopes OR n.source_ontology IN $scopes)
+MAPPING_TERMS = """WITH EXISTS {
+                MATCH (selected) WHERE selected.ontology_id=$scope OR selected.source_ontology=$scope
+            } AS exact_scope
+            UNWIND $kinds AS kind
+            MATCH (n) WHERE (n.ontology_id=$scope OR n.source_ontology=$scope
+                OR (NOT exact_scope AND (n.prefix IN $scopes OR n.ontology_prefix IN $scopes)))
+            AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity
             AND ((kind.kind='Class' AND n:OntologyClass)
                 OR (kind.kind='ObjectProperty' AND n:ObjectProperty)
                 OR (kind.kind='DatatypeProperty' AND n:DatatypeProperty)
@@ -102,8 +106,12 @@ MAPPING_TERMS = """UNWIND $kinds AS kind
                 OR (n:OntologyResource AND EXISTS {
                     MATCH (n)-[r:SEMANTIC_RELATION]->(t:OntologyResource)
                     WHERE r.predicate=$rdf_type AND t.iri=kind.iri }))
-            OPTIONAL MATCH (n)-[:DOMAIN]->(domain)
-            OPTIONAL MATCH (n)-[:RANGE]->(range)
+            OPTIONAL MATCH (n)-[domain_edge]->(domain)
+            WHERE type(domain_edge)='DOMAIN' OR (type(domain_edge)='SEMANTIC_RELATION'
+                AND domain_edge.predicate='http://www.w3.org/2000/01/rdf-schema#domain')
+            OPTIONAL MATCH (n)-[range_edge]->(range)
+            WHERE type(range_edge)='RANGE' OR (type(range_edge)='SEMANTIC_RELATION'
+                AND range_edge.predicate='http://www.w3.org/2000/01/rdf-schema#range')
             RETURN elementId(n) AS element_id, coalesce(n.name,n.label,n.iri,n.uri) AS name,
                 coalesce(n.iri,n.uri) AS iri, kind.kind AS kind,
                 collect(DISTINCT coalesce(domain.iri,domain.uri,domain.name)) AS domains,

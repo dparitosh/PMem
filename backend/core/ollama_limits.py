@@ -1,9 +1,9 @@
-"""Shared per-process admission and circuit controls for sync and async Ollama."""
+"""Shared admission and circuit controls for cancellable Ollama execution."""
 import asyncio
 import os
 import threading
 import time
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 
 _lock = threading.Lock()
 _states = {}
@@ -52,7 +52,10 @@ def _success(state, generation):
 @asynccontextmanager
 async def request_slot(endpoint):
     from .ollama_auth import ollama_timeout
-    deadline = time.monotonic() + ollama_timeout()
+    from backend.depo_platform.operations import current_operation
+    operation = current_operation()
+    budget = operation.timeout(ollama_timeout()) if operation else ollama_timeout()
+    deadline = time.monotonic() + budget
     while True:
         admitted = _admit(endpoint)
         if admitted: break
@@ -64,28 +67,6 @@ async def request_slot(endpoint):
         # Caller cancellations still propagate without penalising the upstream.
         async with asyncio.timeout(max(0, deadline - time.monotonic())):
             yield
-    except Exception as exc:
-        _failure(state, threshold, cooldown, exc, generation)
-        raise
-    else: _success(state, generation)
-    finally:
-        with _lock:
-            state['active'] -= 1
-            if probe: state['probe'] = False
-
-
-@contextmanager
-def request_slot_sync(endpoint):
-    from .ollama_auth import ollama_timeout
-    deadline = time.monotonic() + ollama_timeout()
-    while True:
-        admitted = _admit(endpoint)
-        if admitted: break
-        if time.monotonic() >= deadline: raise TimeoutError('Ollama admission deadline exceeded')
-        time.sleep(.05)
-    state, threshold, cooldown, generation, probe = admitted
-    try:
-        yield
     except Exception as exc:
         _failure(state, threshold, cooldown, exc, generation)
         raise

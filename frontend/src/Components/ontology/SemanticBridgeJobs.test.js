@@ -226,3 +226,22 @@ test('ontology review displays structured evidence citations and limitations', a
     expect(api.publish).not.toHaveBeenCalled();
   } finally {configured.mockRestore();review.mockRestore();status.mockRestore();}
 });
+
+test.each(['failed', 'cancelled', 'timed_out'])('terminal %s workflow permits a fresh mapping run', async status => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'terminal-run',status,traces:[],reconciliation_required:false}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  fireEvent.click(await screen.findByText('Prepare another mapping run'));
+  expect(screen.getByText('Run automated mapping and publish')).not.toBeDisabled();
+});
+
+test('unavailable session storage still submits and retains the workflow in memory', async () => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'memory-run',status:'queued',traces:[]}});
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+  try {
+    render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+    fireEvent.click(screen.getByText('Run automated mapping and publish'));
+    await screen.findByText(/Workflow: memory-run/);
+    expect(api.automate).toHaveBeenCalledTimes(1);
+  } finally { storage.mockRestore(); }
+});

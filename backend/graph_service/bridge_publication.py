@@ -5,7 +5,7 @@ import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from backend.agentic_service.bridge_jobs import digest
+from backend.depo_platform.bridge_contract import digest
 
 
 @contextmanager
@@ -15,7 +15,7 @@ def session():
     uri = os.getenv('NEO4J_URI') or os.getenv('NEO4J_URL')
     if not uri:
         raise RuntimeError('NEO4J_URI is required for Semantic Bridge publication')
-    with GraphDatabase.driver(uri, auth=_auth(), connection_timeout=10) as driver:
+    with GraphDatabase.driver(uri, auth=_auth(), connection_timeout=10, max_transaction_retry_time=0) as driver:
         with driver.session(database=os.getenv('NEO4J_DATABASE', 'neo4j')) as value:
             yield value
 
@@ -44,7 +44,18 @@ def publish(command):
         ).single()
         if not constraint or constraint['found'] != 1:
             raise RuntimeError('Semantic Bridge publication constraint is missing. Run Neo4j schema provisioning before publishing.')
-        return graph.execute_write(_publish_transaction, command)
+        from neo4j import unit_of_work
+        from backend.depo_platform.network import bounded_timeout_seconds
+        from backend.depo_platform.operations import current_operation
+        timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180)
+        operation = current_operation()
+        if operation:
+            timeout = operation.timeout(timeout)
+        # Each request owns its decorator metadata; concurrent requests must not
+        # mutate the timeout on the shared transaction function.
+        def write(tx):
+            return _publish_transaction(tx, command)
+        return graph.execute_write(unit_of_work(timeout=timeout)(write))
 
 
 def _publish_transaction(tx, command):
@@ -60,6 +71,10 @@ def _publish_transaction(tx, command):
         MATCH (n {import_row_key:row.import_row_key, import_id:row.import_id})
         MATCH (target) WHERE elementId(target)=row.ontology_class_element_id
         AND NOT target:RetainedOntologyIdentity
+        AND NOT target:StagedOntologyResource
+        AND (target.ontology_id=$ontology_id OR target.source_ontology=$ontology_id
+          OR (target.ontology_id IS NULL
+            AND (target.prefix=$ontology_id OR target.ontology_prefix=$ontology_id)))
         AND ((row.target_ontology_type='Class' AND target:OntologyClass)
           OR (row.target_ontology_type='ObjectProperty' AND target:ObjectProperty)
           OR (row.target_ontology_type='DatatypeProperty' AND target:DatatypeProperty)
@@ -71,13 +86,17 @@ def _publish_transaction(tx, command):
           }))
         AND (coalesce(row.target_ontology_iri,'')='' OR coalesce(target.iri,target.uri,target.resource_iri,'')=row.target_ontology_iri)
         WITH row, collect(DISTINCT n) AS sources, collect(DISTINCT target) AS targets
-        RETURN row.candidate_id AS candidate_id, size(sources) AS sources, size(targets) AS targets''', rows=command['rows']).data()
+        RETURN row.candidate_id AS candidate_id, size(sources) AS sources, size(targets) AS targets''', rows=command['rows'], ontology_id=command['ontology_id']).data()
     if len(counts) != len(command['rows']) or any(c['sources'] != 1 or c['targets'] != 1 for c in counts):
         raise ValueError('Source or target changed or is ambiguous; no links were written.')
     written = tx.run('''UNWIND $rows AS row
         MATCH (n {import_row_key:row.import_row_key, import_id:row.import_id})
         MATCH (target) WHERE elementId(target)=row.ontology_class_element_id
         AND NOT target:RetainedOntologyIdentity
+        AND NOT target:StagedOntologyResource
+        AND (target.ontology_id=$ontology_id OR target.source_ontology=$ontology_id
+          OR (target.ontology_id IS NULL
+            AND (target.prefix=$ontology_id OR target.ontology_prefix=$ontology_id)))
         AND ((row.target_ontology_type='Class' AND target:OntologyClass)
           OR (row.target_ontology_type='ObjectProperty' AND target:ObjectProperty)
           OR (row.target_ontology_type='DatatypeProperty' AND target:DatatypeProperty)
@@ -99,7 +118,7 @@ def _publish_transaction(tx, command):
             SET inst.mapping=row.mapping, inst.class_name=row.ontology_term,
                 inst.import_id=row.import_id, inst.linked_by='semantic_bridge', inst.publication_id=$id)
         RETURN count(*) AS applied
-        ''', rows=command['rows'], id=publication_id, actor=command['approved_by']).single()
+        ''', rows=command['rows'], id=publication_id, actor=command['approved_by'], ontology_id=command['ontology_id']).single()
     if not written or written['applied'] != len(command['rows']):
         raise ValueError('Graph changed during publication; transaction rolled back.')
     result = {'publication_id': publication_id, 'request_digest': command['request_digest'],

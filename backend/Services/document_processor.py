@@ -30,11 +30,17 @@ except Exception:  # pragma: no cover
 
 try:  # Optional scanned-PDF OCR stack.
     import fitz
-    import pytesseract
-    from PIL import Image
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     fitz = None
+
+try:
+    import pytesseract
+except ImportError:  # pragma: no cover
     pytesseract = None
+
+try:
+    from PIL import Image
+except ImportError:  # pragma: no cover
     Image = None
 
 # EasyOCR imports PyTorch and OpenCV, so load it only when OCR actually needs it.

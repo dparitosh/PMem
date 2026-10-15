@@ -42,7 +42,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
     Promise.all([apiClient.get(root(`/${encodeURIComponent(ontologyId)}`), { signal: controller.signal }).catch(failure => { failure.catalogMissing = failure.response?.status === 404; throw failure; }), apiClient.get(root(`/${encodeURIComponent(ontologyId)}/publication`), { signal: controller.signal })])
       .then(([record, receipt]) => { if (!controller.signal.aborted) {
         if (!record.data || !['draft', 'in_review', 'approved', 'deprecated', 'retired'].includes(record.data.lifecycle_status) ||
-            !receipt.data || !['not_verified', 'not_published', 'unverified', 'publishing', 'published'].includes(receipt.data.status) ||
+            !receipt.data || !['not_verified', 'not_published', 'unverified', 'publishing', 'published', 'failed', 'timed_out', 'cancelled'].includes(receipt.data.status) ||
             (receipt.data.receipt && (!Number.isSafeInteger(receipt.data.receipt.resources) || receipt.data.receipt.resources < 0 || !Number.isSafeInteger(receipt.data.receipt.relationships) || receipt.data.receipt.relationships < 0))) throw new Error('Invalid publication response');
         setMetadata(record.data); setPublication(receipt.data);
       } })
@@ -85,6 +85,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
       {busy && activeAction === 'publish' && <p>Elapsed: {elapsedSeconds}s.{elapsedSeconds >= 60 && ' Large ontologies require RDF preparation and a graph transaction. If this continues, inspect ontology.err.log and graph.err.log for the current publication phase.'}</p>}
       {publication?.status === 'unverified' && <p role="alert">Publication outcome is uncertain. Restore service connectivity and choose Verify publication. Publish remains disabled until a current receipt or an idle publisher is verified.</p>}
       {!busy && publication?.status === 'publishing' && <p role="status">Publication {publication.phase === 'queued' ? 'queued' : 'running'} in the background. You can leave this page; status refreshes automatically when you return. {publication.job_id && `Job: ${publication.job_id}`}</p>}
+      {['failed', 'timed_out', 'cancelled'].includes(publication?.status) && <p role="alert">Publication job {publication.status}. {publication.reconciliation_required ? 'Verify the graph outcome before retrying.' : 'Verify publication to check whether another attempt is available.'}</p>}
       {error && <p role="alert">{error}</p>}
       {Number.isSafeInteger(publication?.progress?.resource_offset) && Number.isSafeInteger(publication?.progress?.resources_expected) && <p role="status">Staged resources: {publication.progress.resource_offset} / {publication.progress.resources_expected}. Staged data becomes visible only after validation and activation.</p>}
       {publication?.resumable && <p>Incomplete batches are retained. Publish again to resume the same approved artifact from its checkpoint.</p>}
@@ -92,7 +93,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
         {missing && <button disabled={busy} onClick={() => act('prepare')}>Prepare retained source for review</button>}
         {metadata?.lifecycle_status === 'draft' && <button disabled={busy || !actor.trim()} onClick={() => act('in_review')}>Submit for review</button>}
         {metadata?.lifecycle_status === 'in_review' && <button disabled={busy || !actor.trim()} onClick={() => act('approved')}>Approve ontology</button>}
-        {metadata?.lifecycle_status === 'approved' && publication?.status !== 'published' && <button disabled={busy || !actor.trim() || !['not_published', 'not_verified'].includes(publication?.status)} onClick={() => act('publish')}>Publish to Neo4j</button>}
+        {metadata?.lifecycle_status === 'approved' && publication?.status !== 'published' && <button disabled={busy || !actor.trim() || !( ['not_published', 'not_verified'].includes(publication?.status) || (['failed', 'timed_out', 'cancelled'].includes(publication?.status) && !publication.reconciliation_required && ['not_published', 'not_verified'].includes(publication.graph_status)))} onClick={() => act('publish')}>Publish to Neo4j</button>}
         {publication?.phase === 'queued' && publication?.job_id && <button disabled={busy || !actor.trim()} onClick={() => act('cancel')}>Cancel queued publication</button>}
         <button disabled={busy} onClick={() => setRevision(value => value + 1)}>Verify publication</button>
       </div>

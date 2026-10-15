@@ -7,10 +7,17 @@ from datetime import datetime, timezone
 
 
 def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
-                    relationships, relation_queries, resource_query, timeout, unit_of_work):
+                    relationships, relation_queries, resource_query, timeout, unit_of_work,
+                    activation_timeout=None, query_factory=None):
     if not publication_id:
         return None
     deadline = time.monotonic() + timeout
+
+    def read(statement, **params):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Publication staging deadline reached; checkpoints are retained')
+        return session.run(query_factory(statement, timeout=min(10, remaining)) if query_factory else statement, **params)
 
     def transaction(operation):
         remaining = deadline - time.monotonic()
@@ -19,7 +26,7 @@ def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
         return unit_of_work(timeout=remaining)(operation)
 
     # Never replace externally referenced element IDs with staging copies.
-    existing = session.run('CALL { MATCH (n:OntologyResource {ontology_id:$ontology_id}) RETURN count(n) AS active } '
+    existing = read('CALL { MATCH (n:OntologyResource {ontology_id:$ontology_id}) RETURN count(n) AS active } '
         'CALL { MATCH (n:RetainedOntologyIdentity {ontology_id:$ontology_id}) RETURN count(n) AS retained } '
         'RETURN active + retained AS count',
         ontology_id=ontology_id).single()
@@ -34,10 +41,12 @@ def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
     # JSON string and byte buffer during large publications.
     manifest = hashlib.sha256()
     for fragment in json.JSONEncoder(sort_keys=True).iterencode([prefix, resources, relationships]):
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Publication manifest preparation exceeded its deadline')
         manifest.update(fragment.encode('utf-8'))
     manifest_sha256 = manifest.hexdigest()
     params = dict(ontology_id=ontology_id, publication_id=publication_id)
-    receipt = session.run('MATCH (p:OntologyPublication {ontology_id:$ontology_id, publication_id:$publication_id}) '
+    receipt = read('MATCH (p:OntologyPublication {ontology_id:$ontology_id, publication_id:$publication_id}) '
         'RETURN p {.*} AS receipt', **params).single()
     receipt = dict(receipt['receipt']) if receipt else {}
     if receipt and (receipt.get('manifest_sha256') != manifest_sha256
@@ -103,7 +112,9 @@ def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
             logging.getLogger(__name__).warning('Staged publication relation=%s rows=%s/%s ontology_id=%s',
                                                relation_type, start + len(batch), len(rows), ontology_id)
 
-    @transaction
+    # Activation receives its own bounded transaction budget, even when staging
+    # consumed most of the write allowance. Failure leaves checkpoints hidden.
+    @unit_of_work(timeout=activation_timeout if activation_timeout is not None else timeout)
     def activate(tx):
         # Publication-wide advisory exclusion is held by the caller. Validate
         # actual persisted rows before the one atomic public-label promotion.
@@ -127,7 +138,11 @@ def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
                **params, prefix=prefix, resources=len(resources), relationships=total_relationships,
                hierarchy_edges=len(relationships['SUBCLASS_OF']) + len(relationships['HAS_PART']),
                published_at=datetime.now(timezone.utc).isoformat()).consume()
+    logging.getLogger(__name__).warning('Ontology publication phase=activation ontology_id=%s timeout_seconds=%s',
+        ontology_id, activation_timeout if activation_timeout is not None else timeout)
     session.execute_write(activate)
+    logging.getLogger(__name__).warning('Ontology publication phase=completed ontology_id=%s resources=%s relationships=%s',
+        ontology_id, len(resources), total_relationships)
     return {'status': 'success', **params, 'resources': len(resources),
             'relationships': total_relationships,
             'hierarchy_edges': len(relationships['SUBCLASS_OF']) + len(relationships['HAS_PART'])}

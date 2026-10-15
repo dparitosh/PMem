@@ -105,6 +105,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
     {run?.error_message && <p role="alert">{run.http_status ? `HTTP ${run.http_status}: ` : ''}{run.error_message}</p>}
     {run?.status === 'failed' && !run.error_message && <p role="alert">This older run retained no failure detail. Inspect service logs using its workflow ID. A new run will retain diagnostic details.</p>}
     {run?.pending_step?.child_run_id && <p>Waiting for dependent data job: {String(run.pending_step.child_run_id)}. Workflow completion requires its result.</p>}
+    {Number.isFinite(run?.pending_step?.progress?.current) && <p role="status">Tool progress: {run.pending_step.progress.current}{Number.isFinite(run.pending_step.progress.total) ? ` of ${run.pending_step.progress.total}` : ''}</p>}
     {run?.allowed_actions?.map(action => <button type="button" key={action} disabled={busy} onClick={async () => {
       const controller = new AbortController(); request.current = controller; setBusy(true);
       try { await agenticAPI.controlWorkflow(runId, action, { signal: controller.signal }); if (!controller.signal.aborted) setRevision(value => value + 1); }

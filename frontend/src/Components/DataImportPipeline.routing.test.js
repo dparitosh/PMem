@@ -262,6 +262,25 @@ describe('DataImportPipeline workflow routing', () => {
     await waitFor(() => expect(screen.getByText('123')).toBeInTheDocument());
   });
 
+  it('opens publication tracking when ontology creation queues a durable graph job', async () => {
+    await renderPipeline();
+    await act(async () => {
+      fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['schema'], 'demo.xsd', { type: 'application/xml' })] } });
+      await flushAsyncEffects();
+    });
+    apiClient.get.mockImplementation(url => Promise.resolve({data: url.endsWith('/publication') ? {status:'publishing',phase:'queued',job_id:'durable'} : {lifecycle_status:'approved'}}));
+    apiClient.post.mockResolvedValueOnce({ data: { status: 'publication_queued',
+      message: 'Graph job queued in background', ontology_registration: {ontology_id:'queued-schema'},
+      publication_job: {job_id:'durable',ontology_id:'queued-schema',status:'queued'} } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Queued schema' } });
+    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await screen.findByText('Graph job queued in background');
+    expect(screen.getByText('Review, approve and publish this ontology to Neo4j').closest('details').open).toBe(true);
+    expect(screen.queryByText(/outcome is unverified/i)).not.toBeInTheDocument();
+  });
+
   it('keeps an explicit governance rejection separate from uncertain publication', async () => {
     await renderPipeline();
     const input = document.querySelector('input[type="file"]');

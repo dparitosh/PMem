@@ -74,6 +74,10 @@ def credential_profiles(endpoint, dependency_calls, *, method, path):
         if name == '_modeling_graph_identity':
             profiles.add('GRAPH_READ_TOKEN' if method in {'GET', 'HEAD', 'OPTIONS'} else 'ONTOLOGY_APPROVAL_TOKEN')
             return
+        if name == '_metadata_registry_identity':
+            profiles.add('ADMIN_API_KEY' if path.endswith('/migrations/postgres') else
+                         'GRAPH_READ_TOKEN' if method in {'GET','HEAD','OPTIONS'} else 'ONTOLOGY_APPROVAL_TOKEN')
+            return
         if name in {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity', '_modeling_identity'}:
             if method in {'GET', 'HEAD', 'OPTIONS'}:
                 return

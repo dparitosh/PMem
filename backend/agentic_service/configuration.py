@@ -159,7 +159,9 @@ def configuration_status(*, check_workers=True):
         load_catalog()
     except (ValueError, OSError, KeyError, TypeError):
         errors.append('AGENTIC_CATALOG_PATH')
-    return {'configuration': {'status': 'unavailable' if errors else 'ready', 'invalid_settings': sorted(set(errors))}}
+    from backend.depo_platform.network import timeout_configuration_warnings
+    return {'configuration': {'status': 'unavailable' if errors else 'ready', 'invalid_settings': sorted(set(errors)),
+                              'warnings': timeout_configuration_warnings()}}
 
 
 if __name__ == '__main__':

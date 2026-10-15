@@ -13,8 +13,14 @@ TIMEOUT_RANGES = {
     'ENGINEERING_WORKFLOW_TIMEOUT_SECONDS': (1, 3600),
     'ENGINEERING_CONVERSION_TIMEOUT_SECONDS': (1, 900),
     'GRAPH_PUBLICATION_TIMEOUT_SECONDS': (1, 3600),
+    'GRAPH_PUBLICATION_WRITE_TIMEOUT_SECONDS': (1, 3600),
+    'GRAPH_PUBLICATION_ACTIVATION_TIMEOUT_SECONDS': (1, 3600),
     'MERGE_VALIDATION_TIMEOUT_SECONDS': (1, 900),
     'DEPO_READINESS_TIMEOUT_SECONDS': (1, 30),
+    'ONTOLOGY_PUBLICATION_JOB_TIMEOUT_SECONDS': (1, 86400),
+    'ONTOLOGY_PUBLICATION_QUEUE_TIMEOUT_SECONDS': (1, 86400),
+    'BRIDGE_SOURCE_TIMEOUT_SECONDS': (1, 900),
+    'BRIDGE_SOURCE_TIMEOUT_SECONDS': (1, 900),
 }
 
 
@@ -72,7 +78,17 @@ def bounded_timeout_seconds(name: str, *, default: float, minimum: float = 1.0, 
 def graph_dispatch_timeout_seconds() -> float:
     """Allow graph RDF preparation, its write transaction, and transport overhead."""
     stage = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
-    return stage * 2 + 30
+    return stage + graph_write_timeout_seconds() + graph_activation_timeout_seconds() + 30
+
+
+def graph_write_timeout_seconds() -> float:
+    stage = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+    return bounded_timeout_seconds('GRAPH_PUBLICATION_WRITE_TIMEOUT_SECONDS', default=stage, maximum=3600)
+
+
+def graph_activation_timeout_seconds() -> float:
+    stage = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+    return bounded_timeout_seconds('GRAPH_PUBLICATION_ACTIVATION_TIMEOUT_SECONDS', default=stage, maximum=3600)
 
 
 def ontology_publication_timeout_seconds() -> float:
@@ -96,8 +112,34 @@ def engineering_workflow_timeout_seconds() -> float:
 def agent_run_timeout_seconds() -> float:
     normal = bounded_timeout_seconds('AGENTIC_TOOL_TIMEOUT_SECONDS', default=30)
     merge = bounded_timeout_seconds('MERGE_VALIDATION_TIMEOUT_SECONDS', default=180, maximum=900)
-    default = min(3600, max(900, normal + 60, merge + ontology_publication_timeout_seconds() + 90))
+    default = min(3600, max(900, normal + 60, merge + ontology_publication_timeout_seconds() + 90,
+                            engineering_workflow_timeout_seconds() + 90))
     return bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=default)
+
+
+def publication_job_timeout_seconds():
+    default = min(86400, max(1800, 3 * ontology_publication_timeout_seconds() + 90))
+    return bounded_timeout_seconds('ONTOLOGY_PUBLICATION_JOB_TIMEOUT_SECONDS', default=default, maximum=86400)
+
+
+def http_timeout(seconds):
+    """Shared transport phase limits; callers still enforce their overall deadline."""
+    import httpx
+    return httpx.Timeout(seconds, connect=min(10, seconds), pool=min(5, seconds), write=min(60, seconds))
+
+
+def timeout_configuration_warnings():
+    """Short explicit outer deadlines are allowed, but their consequences are visible."""
+    required = max(engineering_workflow_timeout_seconds() + 30,
+                   bounded_timeout_seconds('MERGE_VALIDATION_TIMEOUT_SECONDS', default=180, maximum=900)
+                   + ontology_publication_timeout_seconds() + 30)
+    warnings = []
+    if agent_run_timeout_seconds() < required:
+        warnings.append({'code':'workflow_budget_shorter_than_operation', 'setting':'AGENTIC_RUN_TIMEOUT_SECONDS',
+                         'configured_seconds':agent_run_timeout_seconds(), 'operation_budget_seconds':required})
+    if engineering_workflow_timeout_seconds() < ontology_publication_timeout_seconds():
+        warnings.append({'code':'engineering_budget_shorter_than_publication', 'setting':'ENGINEERING_WORKFLOW_TIMEOUT_SECONDS'})
+    return warnings
 
 
 def service_bearer_headers(token_env: str, *, service_name: str, endpoint: str = '') -> dict[str, str]:

@@ -62,7 +62,7 @@ class VocabularyService:
             "validation": validation, "created_at": self._now(), "updated_at": self._now(),
             "history": [{"from": None, "to": "draft", "actor": actor, "at": self._now(), "reason": provenance["rationale"]}],
         }
-        return self.store.put(key, record)
+        return self.store.create(key, record)
 
     def list(self) -> list[dict[str, Any]]:
         return sorted(self.store.all().values(), key=lambda item: item.get("updated_at", ""), reverse=True)
@@ -84,7 +84,9 @@ class VocabularyService:
             **record, "lifecycle_status": target, "updated_at": now,
             "history": [*record.get("history", []), {"from": current, "to": target, "actor": actor, "at": now, "reason": reason}],
         }
-        return self.store.put(self.key(scheme_id, version), updated)
+        if not self.store.compare_and_put(self.key(scheme_id, version), record, updated):
+            raise ValueError('Vocabulary changed during review; reload before transitioning')
+        return updated
 
     @staticmethod
     def _iri(base_uri: str, value: str) -> URIRef:
@@ -135,7 +137,14 @@ class VocabularyService:
             ).hexdigest(),
             "history": [*record.get("history", []), {"from": "approved", "to": "published", "actor": actor, "at": now, "reason": "Approved SKOS publication"}],
         }
-        return self.store.put(self.key(scheme["scheme_id"], scheme["version"]), updated)
+        if record.get('publication_digest') == updated['publication_digest']:
+            updated['history'] = record.get('history',[])
+        if not self.store.compare_and_put(self.key(scheme["scheme_id"], scheme["version"]), record, updated):
+            latest = self.get(scheme['scheme_id'], scheme['version'])
+            if latest and latest.get('publication_digest') == updated['publication_digest']:
+                return latest
+            raise ValueError('Vocabulary changed during publication; verify its graph receipt before retrying')
+        return updated
 
 
 vocabularies = VocabularyService()

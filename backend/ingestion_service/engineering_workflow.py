@@ -2,7 +2,6 @@
 from __future__ import annotations
 from backend.depo_platform.ontology_maintenance import ontology_writer
 
-import os
 import hashlib
 import json
 import asyncio
@@ -58,9 +57,6 @@ class EngineeringWorkflow:
         self._isolated_conversion = converter is None
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
-        from backend.depo_platform.network import bounded_timeout_seconds
-        from backend.depo_platform.network import ontology_publication_timeout_seconds
-        self.publication_timeout = ontology_publication_timeout_seconds()
         from backend.depo_platform.network import service_request_timeout_seconds
         self.timeout = service_request_timeout_seconds()
 
@@ -68,7 +64,6 @@ class EngineeringWorkflow:
     async def run(
         self, **kwargs,
     ) -> dict[str, Any]:
-        from backend.depo_platform.network import bounded_timeout_seconds
         from backend.depo_platform.network import engineering_workflow_timeout_seconds
         deadline = engineering_workflow_timeout_seconds()
         async with asyncio.timeout(deadline):
@@ -167,10 +162,18 @@ class EngineeringWorkflow:
             published = await self._request(client, 'graph_publication', request_id,
                 f"{self.ontology_url}/ontologies/{registration['ontology_id']}/publish",
                 json={"approved_by": "engineering-ingestion"},
-                timeout=self.publication_timeout,
+                params={'background': True},
+                timeout=self.timeout,
             )
             published.raise_for_status()
             publication = published.json()
+            if published.status_code == 202:
+                if (not isinstance(publication, dict) or not publication.get('job_id')
+                        or publication.get('ontology_id') != registration['ontology_id']
+                        or publication.get('status') not in {'queued', 'running', 'published', 'reconciliation_required'}):
+                    raise RuntimeError('Invalid publication job response; verify retained ontology status before retrying.')
+                return {**result, 'status': 'publication_queued', 'publication_job': publication,
+                        'message': 'Ontology registered; graph publication is running in the background. Open publication status to follow progress.'}
             receipt = publication.get("receipt") if isinstance(publication, dict) else None
             if (not isinstance(receipt, dict)
                     or publication.get("status") != "published"
