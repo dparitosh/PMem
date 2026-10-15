@@ -59,7 +59,6 @@ GENERIC_ONTOLOGY_TERMS = {
 
 
 class SemanticWorkflowService:
-    LINK_BATCH_SIZE = 500
     AUTO_APPLY_CONFIDENCE = 0.82
     REVIEW_CONFIDENCE = 0.55
     AMBIGUITY_DELTA = 0.08
@@ -691,6 +690,11 @@ class SemanticWorkflowService:
 
             for signal in row_signals:
                 for fact in memory_facts_by_source.get(signal["normalized"], []):
+                    if fact.get('source_type') != source_type:
+                        continue
+                    # Older name-only memories remain review evidence; they cannot
+                    # establish which graph resource was approved.
+                    fact_iri = fact.get('target_iri')
                     target_key = cls._normalized_key(fact.get("target"))
                     if not target_key:
                         continue
@@ -702,10 +706,16 @@ class SemanticWorkflowService:
                         graph_element_id = match.get("graph_element_id") or (match.get("element_id") if match.get("graph_linkable") else "")
                         if not graph_element_id:
                             continue
+                        current_iri = match.get('target_ontology_iri') or match.get('iri') or match.get('uri')
+                        if fact_iri and fact_iri != current_iri:
+                            continue
                         validation = cls._validate_candidate_pair(source_type, target_type, match, row)
                         if not validation["is_valid"]:
                             continue
-                        score = min(0.98, max(float(fact.get("confidence") or 0.0), cls.AUTO_APPLY_CONFIDENCE))
+                        score = min(0.98, max(0.0, float(fact.get("confidence") or 0.0)))
+                        # Reuse is a recommendation. Validate the current instance
+                        # independently before granting automatic publication.
+                        memory_warnings = [*validation['warnings'], 'Remembered mapping requires validation against this instance.']
                         match_key = graph_element_id or match.get("target_ontology_iri") or match.get("iri") or match.get("element_id")
                         existing = scored_matches.get(match_key)
                         if existing and existing["confidence"] >= score:
@@ -723,12 +733,12 @@ class SemanticWorkflowService:
                             "mapping_type": fact.get("mapping_type") or "memoryReuse",
                             "validation_status": validation["status"],
                             "validation_errors": validation["errors"],
-                            "validation_warnings": validation["warnings"],
+                            "validation_warnings": memory_warnings,
                             "confidence": round(score, 4),
                             "mapping": ontology_prefix,
                             "match_source": "agent_memory",
                             "signal_type": "memory",
-                            "generic_match": False,
+                            "generic_match": bool(match.get('is_generic') or fact.get('generic_match')),
                             "evidence": sorted({"agent-memory-approved-mapping", signal["source_field"]}),
                         }
 
@@ -895,56 +905,6 @@ class SemanticWorkflowService:
                 "user_comment": mapping.get("userComment") or mapping.get("user_comment") or "",
             })
         return candidates
-
-    @classmethod
-    def _apply_instance_links(cls, candidates: List[Dict[str, Any]]) -> int:
-        candidates = [candidate for candidate in (candidates or []) if candidate.get("ontology_class_element_id")]
-        if not candidates:
-            return 0
-        try:
-            try:
-                from core.graph import query_with_timeout as _query_with_timeout
-            except ModuleNotFoundError:
-                from ..core.graph import query_with_timeout as _query_with_timeout
-
-            link_cypher = """
-            UNWIND $rows AS row
-            MATCH (n {import_row_key: row.import_row_key, import_id: row.import_id})
-            MATCH (target)
-            WHERE (
-                (coalesce(row.target_ontology_iri, '') <> '' AND
-                 coalesce(target.iri, target.uri, target.resource_iri, '') = row.target_ontology_iri)
-                OR elementId(target) = row.ontology_class_element_id
-            )
-            MERGE (n)-[bridge:SEMANTICALLY_MAPPED_TO]->(target)
-            SET bridge.mapping = row.mapping,
-                bridge.ontology_term = row.ontology_term,
-                bridge.target_ontology_type = row.target_ontology_type,
-                bridge.source_type = row.source_type,
-                bridge.confidence = row.confidence,
-                bridge.mapping_type = row.mapping_type,
-                bridge.validation_status = row.validation_status,
-                bridge.import_id = row.import_id,
-                bridge.linked_by = 'semantic_bridge'
-            FOREACH (_ IN CASE WHEN row.target_ontology_type = 'Class' THEN [1] ELSE [] END |
-                MERGE (n)-[inst:INSTANCE_OF]->(target)
-                SET inst.mapping = row.mapping,
-                    inst.class_name = row.ontology_term,
-                    inst.import_id = row.import_id,
-                    inst.linked_by = 'semantic_bridge'
-            )
-            RETURN count(bridge) AS linked
-            """
-
-            linked_total = 0
-            for idx in range(0, len(candidates), cls.LINK_BATCH_SIZE):
-                batch = candidates[idx:idx + cls.LINK_BATCH_SIZE]
-                result = _query_with_timeout(link_cypher, {"rows": batch}) or []
-                if result and isinstance(result[0], dict):
-                    linked_total += int(result[0].get("linked") or 0)
-            return linked_total
-        except Exception as exc:
-            raise ValueError(f"Failed to apply semantic links: {exc}") from exc
 
     @classmethod
     def execute(cls, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1214,7 +1174,7 @@ class SemanticWorkflowService:
         import_task_id = str(import_task.get("task_id") or import_manifest.get("task_id") or "")
         task_id = cls._new_task("instance.link", meta.get("original_filename", ""))
         rows = import_task.get("parsed_rows") or []
-        ontology_scope = meta.get("prefix") or meta.get("ontology_prefix") or ontology_id
+        ontology_scope = ontology_id
         candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id, import_task=import_task, ontology_id=ontology_id)
         user_candidates = cls._approved_mappings_to_candidates(
             payload.get("approved_mappings") or payload.get("approvedMappings") or [],
@@ -1240,7 +1200,7 @@ class SemanticWorkflowService:
                 candidates.append(candidate)
                 candidate_keys.add(key)
         approved_candidates = [candidate for candidate in candidates if candidate.get("selected_for_apply")]
-        applied_links = cls._apply_instance_links(approved_candidates) if apply_links else 0
+        applied_links = 0  # Writes are owned exclusively by governed Bridge publication.
         report = {
             "workflow_id": "instance.link",
             "ontology_id": ontology_id,

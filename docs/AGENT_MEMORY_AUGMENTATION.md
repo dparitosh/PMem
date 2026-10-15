@@ -116,6 +116,11 @@ publishing. A recommendation never approves itself. Changes to the selected
 source, ontology or manual mappings require a new preview. Publication receipts
 and saved job status support recovery after an interrupted request.
 
+Automatic mapping uses the server's validated-only policy. Memory reuse retains
+the target IRI and generic-match status, preserves the recorded confidence, and
+requires review against the new instance. Name-only legacy memories do not
+establish target identity. Stored memory cannot grant automatic publication.
+
 The ontology merge controls also invoke Ontology Governor. Preview two registered
 ontologies with retained RDF artifacts, review conflicts, then explicitly create
 the merged draft. Graph-only ingestion records are sufficient for mapping lookup

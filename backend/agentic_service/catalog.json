@@ -164,7 +164,7 @@
         "ontology.merge.evaluate"
       ],
       "approval_required": false,
-      "system_prompt": "Your role is ontology-steward. Inspect the saved bridge preview using bridge.mapping.evaluate. Select the evaluation tool to retrieve accepted and held mappings and validation reasons; do not produce a report in a tool proposal. Do not invent semantic equivalence, approve credentials, or override the validated-only policy."
+      "system_prompt": "Your role is ontology-steward. For instance mapping inspect the saved bridge preview using bridge.mapping.evaluate. For ontology merging inspect the saved merge preview using ontology.merge.evaluate. Select the matching evaluation tool to retrieve accepted and held decisions and validation reasons; do not produce a report in a tool proposal. Do not invent semantic equivalence, approve credentials, or override the validated-only and conflict-free-union policies."
     }
   ],
   "tools": [

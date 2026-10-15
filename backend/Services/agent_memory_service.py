@@ -127,7 +127,13 @@ class AgentMemoryService:
         if not cls.enabled():
             return []
         try:
+            from backend.depo_platform.operations import current_operation
+            from backend.depo_platform.execution_guard import ensure_execution_allowed
+            ensure_execution_allowed()
+            operation = current_operation()
             timeout = agent_memory_config.query_timeout()
+            if operation:
+                timeout = operation.timeout(timeout)
             cls.scope()
             memory_database = str(database or os.getenv("AGENT_MEMORY_NEO4J_DATABASE") or os.getenv('NEO4J_DATABASE', 'neo4j')).strip()
             if not memory_database:
@@ -136,6 +142,8 @@ class AgentMemoryService:
             from neo4j import Query
             driver = get_driver()
             with driver.session(database=memory_database) as session:
+                if operation:
+                    timeout = operation.timeout(timeout)
                 rows = session.run(Query(cypher, timeout=float(timeout)), params or {}).data()
             target = memory_database or os.getenv('NEO4J_DATABASE', 'neo4j')
             health = {**cls._health.get(target, {}), 'status': 'available', 'checked_at': _now_iso()}
@@ -341,6 +349,8 @@ class AgentMemoryService:
                 f.source = row.source,
                 f.source_type = row.source_type,
                 f.target = row.target,
+                f.target_iri = row.target_iri,
+                f.generic_match = row.generic_match,
                 f.target_type = row.target_type,
                 f.ontology_id = row.ontology_id,
                 f.import_task_id = row.import_task_id,
@@ -388,7 +398,7 @@ class AgentMemoryService:
             MATCH (f:AgentMemoryFact {kind: 'semantic_bridge_mapping'})
             WHERE f.scope = $scope AND ($ontology_id = '' OR f.ontology_id = $ontology_id)
             WITH f ORDER BY f.updated_at DESC
-            WITH f.source AS source, f.target AS target, f.ontology_id AS ontology_id,
+            WITH f.source AS source, f.target AS target, f.target_iri AS target_iri, f.ontology_id AS ontology_id,
                  f.source_type AS source_type, f.target_type AS target_type, collect(f)[0] AS f
             RETURN f.source AS source,
                    f.source_type AS source_type,
@@ -397,6 +407,8 @@ class AgentMemoryService:
                    f.ontology_id AS ontology_id,
                    f.confidence AS confidence,
                    f.mapping_type AS mapping_type,
+                   f.target_iri AS target_iri,
+                   f.generic_match AS generic_match,
                    f.updated_at AS updated_at
             ORDER BY f.updated_at DESC
             LIMIT toInteger($limit)
@@ -453,11 +465,13 @@ class AgentMemoryService:
         source = str(mapping.get("source_term") or mapping.get("source_label") or mapping.get("import_row_key") or "").strip()
         target = str(mapping.get("ontology_term") or mapping.get("target_term") or mapping.get("target_ontology_iri") or "").strip()
         return {
-            "fact_id": _stable_id("semantic_bridge", cls.scope(), ontology_id, import_task_id, source, target, mapping.get("target_ontology_type")),
+            "fact_id": _stable_id("semantic_bridge", cls.scope(), ontology_id, import_task_id, source, target, mapping.get('target_ontology_iri'), mapping.get('source_type'), mapping.get("target_ontology_type")),
             "scope": cls.scope(),
             "source": source,
             "source_type": str(mapping.get("source_type") or "")[:80],
             "target": target,
+            "target_iri": str(mapping.get('target_ontology_iri') or ''),
+            "generic_match": bool(mapping.get('generic_match')),
             "target_type": str(mapping.get("target_ontology_type") or "")[:80],
             "ontology_id": str(ontology_id or "")[:256],
             "import_task_id": str(import_task_id or "")[:256],

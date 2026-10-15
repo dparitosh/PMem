@@ -2296,7 +2296,7 @@ export default function OntologyMapper() {
       if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
-        text: res.result.publication_status === 'published' ? 'Reviewed merge approved and published to Neo4j.' : 'Merge retained; graph publication is not verified.',
+        text: res.result.publication_status === 'published' ? 'Reviewed merge approved and published to Neo4j.' : 'Reviewed merge retained. Neo4j publication is queued; follow its status below.',
         agentRunId: res.runId,
         report: { ...(mergeResult.report || {}), governed: res.result },
         governedPreview: mergeResult.governedPreview,
@@ -3069,6 +3069,10 @@ export default function OntologyMapper() {
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
                     {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">Merged ontology: {mergeResult.report.governed.ontology.ontology_id}. Publication: {mergeResult.report.governed.publication_status || "not requested"}.</p>}
+                    {mergeResult.report?.governed?.publication?.job_id && <OntologyPublicationPanel ontologyId={mergeResult.report.governed.ontology.ontology_id} fromWorkflow onPublished={() => {
+                      setMergeResult(current => ({...current, text:'Reviewed merge published to Neo4j.', report:{...current.report, governed:{...current.report.governed, publication_status:'published'}}}));
+                      window.dispatchEvent(new Event('depo:ontologies-changed'));
+                    }} />}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
                     {mergeResult.governedPreview?.conflicts?.length > 0 && <details open><summary>Conflicts requiring resolution</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(mergeResult.governedPreview.conflicts, null, 2)}</pre></details>}
                     {mergeResult.governedPreview?.changes && <details open><summary>What changes in the new draft?</summary>

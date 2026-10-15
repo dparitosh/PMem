@@ -44,6 +44,9 @@ def reconcile_graph_reset():
                                'error': 'Graph reset removed publication evidence. Create and approve a new preview.',
                                'invalidated_at': datetime.now(timezone.utc).isoformat()}), 'semantic_bridge_jobs_v1'))
         bridge_count = cursor.rowcount
+        cursor.execute("UPDATE depo_metadata_outbox SET status='pending', created_at=now()", ())
+        metadata_count = cursor.rowcount
     return {'status': 'success', 'invalidated_publications': count,
             'invalidated_bridge_publications': bridge_count,
+            'requeued_metadata_events': metadata_count,
             'governed_artifacts_retained': True}

@@ -4,6 +4,8 @@ import { bridgeApi } from '../../services/bridgeApi';
 import agenticAPI from '../../services/agenticApi';
 import { bridgeReviewPayload } from '../../services/bridgeReviewPayload';
 import WorkflowTaskPanel from '../WorkflowTaskPanel';
+import WorkflowRecoveryActions from '../WorkflowRecoveryActions';
+import { confirmedSubmissionRejection } from '../../services/workflowSubmission';
 
 
 class PreviewInputError extends Error {}
@@ -36,7 +38,9 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
   const activeOperation = useRef(null);
   const mappingsKey = JSON.stringify(manualMappings);
   const [credentialRevision, setCredentialRevision] = useState(0);
-  const workflowKey = `bridge-workflow:${publicationRecoveryScope()}:${ontologyId}:${importTaskId}`;
+  const [candidateOffset, setCandidateOffset] = useState(0);
+  const workflowKey = `bridge-workflow:${publicationRecoveryScope()}:${ontologyId}:${importTaskId}:${mappingsKey}:${candidateOffset}`;
+  useEffect(() => setCandidateOffset(0), [ontologyId, importTaskId, mappingsKey]);
   useEffect(() => {
     const invalidate = () => setCredentialRevision(value => value + 1);
     const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
@@ -103,6 +107,10 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     const traces = value.traces || [];
     if (value.allowed_actions !== undefined && (!Array.isArray(value.allowed_actions) || value.allowed_actions.some(action => !['pause','resume','cancel'].includes(action)))) throw new PreviewInputError('Invalid workflow controls. Refresh the retained run.');
     if (!Array.isArray(traces) || traces.some(trace => !trace || typeof trace !== 'object' || Array.isArray(trace))) throw new PreviewInputError('Invalid workflow evidence. Refresh the saved run.');
+    const saved = traces.find(trace => trace.tool_id === 'bridge.mapping.preview' && trace.status === 'completed')?.result;
+    if (saved && (saved.kind !== 'preview' || saved.ontology_id !== ontologyId || saved.import_task_id !== importTaskId || !saved.job_id || !saved.publication_job_id || !Array.isArray(saved.candidates) || saved.candidates.some(row => !row?.candidate_id))) {
+      throw new PreviewInputError('Workflow preview belongs to another source or ontology, or is incomplete.');
+    }
     const policy = traces.find(trace => trace.tool_id === 'bridge.mapping.evaluate' && trace.status === 'completed')?.result;
     if (policy && (!Array.isArray(policy.decisions) || !Array.isArray(policy.accepted_ids) ||
         !Number.isInteger(policy.held_count) || policy.held_count < 0 ||
@@ -112,7 +120,6 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     }
     setAutomationRun(value);
     try { sessionStorage.setItem(workflowKey, value.run_id); } catch { /* optional recovery */ }
-    const saved = traces.find(trace => trace.tool_id === 'bridge.mapping.preview' && trace.status === 'completed')?.result;
     if (saved) adoptPreview(saved);
     if (policy && Array.isArray(policy.decisions) && Array.isArray(policy.accepted_ids)) setPolicyReport(policy);
     const published = traces.find(trace => trace.tool_id === 'bridge.mapping.publish_automatic' && trace.status === 'completed')?.result;
@@ -157,12 +164,15 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       setAutomationStage('Governor → steward → governor workflow running');
       try {
         try { sessionStorage.setItem(workflowKey, 'submission-unconfirmed'); } catch { /* recovery remains in memory */ }
-        const response = await api.automate(ontologyId, importTaskId, identity, manualMappings);
+        const response = await api.automate(ontologyId, importTaskId, identity, manualMappings, candidateOffset);
         if (current()) adoptAutomation(response.data);
       } catch (error) {
         const id = error.response?.headers?.['x-depo-run-id'];
         if (current()) {
-          setAutomationRun({run_id:id || '',status:'unknown'});
+          if (confirmedSubmissionRejection(error)) {
+            setAutomationRun(null); setAutomationStage('Task rejected; check inputs and access');
+            try { sessionStorage.removeItem(workflowKey); } catch {}
+          } else setAutomationRun({run_id:id || '',status:'unknown'});
           if (id) try { sessionStorage.setItem(workflowKey, id); } catch { /* optional recovery */ }
         }
         throw error;
@@ -179,6 +189,11 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       const response = await api.automationStatus(automationRun.run_id);
       if (current()) adoptAutomation(response.data);
     })}>{action}</button>)}
+    <WorkflowRecoveryActions key={automationRun?.run_id} run={automationRun} disabled={busy} onRefresh={async () => {
+      const response = await api.automationStatus(automationRun.run_id); adoptAutomation(response.data);
+    }} />
+    {Number.isInteger(preview?.partition?.next_offset) && ((automationRun?.status === 'completed' && !automationRun.reconciliation_required) || (!automationRun && job?.status === 'published')) && <button type="button" disabled={busy} onClick={() => setCandidateOffset(preview.partition.next_offset)}>Prepare next mapping batch</button>}
+    {preview?.partition && <p>Batch starts at candidate {preview.partition.offset + 1}; {preview.partition.total_candidates} total candidates. Each batch retains its own approval and publication receipt.</p>}
     {['completed', 'failed', 'cancelled', 'timed_out'].includes(automationRun?.status) && !automationRun.reconciliation_required && <button type="button" disabled={busy} onClick={() => {
       try { sessionStorage.removeItem(workflowKey); } catch { /* optional recovery */ }
       setAutomationRun(null); setAutomationStage('idle'); setPreview(null); setJob(null); setPolicyReport(null); setSelected([]);
@@ -202,7 +217,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     </details>
     {!hasApproval && <p>Enter an approver and connect governed agent access in Admin before preview or publication.</p>}
     <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !hasApproval} onClick={() => invoke(async current => {
-      const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings);
+      const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings, candidateOffset);
       if (current()) adoptPreview(result.data);
     })}>Create preview</button>
     <WorkflowTaskPanel workflowId="ontology-review-and-bridge-plan" inputs={{ ontology_id: ontologyId, import_task_id: importTaskId }} label="Run ontology agent review" disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onResult={run => setAgentReport(bridgeReviewPayload({ steps: run.traces.map(trace => ({ result: trace.result })) }))} />
@@ -256,6 +271,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       {preview.candidates.map(candidate => <details key={`evidence:${candidate.candidate_id}`}><summary>{candidate.source_term} → {candidate.ontology_term}: recommendation evidence</summary>
         <p>{(candidate.evidence || []).join(', ') || 'No supporting evidence recorded.'}</p>
         <p>{candidate.eligible ? 'Eligible for review' : 'Not eligible for publication'}. {(candidate.validation_errors || []).join('; ')}</p>
+        {(candidate.validation_warnings || []).length > 0 && <p>Review required: {candidate.validation_warnings.join('; ')}</p>}
       </details>)}
       <div style={{ maxHeight: 360, overflow: 'auto' }}><table style={{ width: '100%', textAlign: 'left' }}>
         <thead><tr><th>Approve</th><th>Source</th><th>Ontology target</th><th>Validation</th><th>Confidence</th></tr></thead>

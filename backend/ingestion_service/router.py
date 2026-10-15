@@ -63,8 +63,8 @@ def bridge_source(payload: BridgeSourceBody) -> dict:
         if payload['operation'] == 'snapshot':
             return {'snapshot':source.snapshot(*arguments)}
         if payload['operation'] == 'preview':
-            snapshot, candidates = source.preview(*arguments)
-            return {'snapshot':snapshot,'candidates':candidates}
+            snapshot, candidates, partition = source.preview_partition(*arguments, payload.get('mappings', []), payload.get('candidate_offset', 0))
+            return {'snapshot':snapshot,'candidates':candidates,'partition':partition}
         return {'candidates':source.manual_candidates(*arguments,payload.get('mappings',[]))}
     except BridgeConflict as exc:
         raise HTTPException(409,'Source changed while reading mapping evidence') from exc

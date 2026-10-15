@@ -26,16 +26,26 @@ class BridgeJobs:
             raise KeyError(job_id)
         return copy.deepcopy(job)
 
-    def preview(self, ontology_id, import_task_id, actor, manual_mappings=None):
+    def preview(self, ontology_id, import_task_id, actor, manual_mappings=None, candidate_offset=0):
         if not ontology_id or not import_task_id:
             raise ValueError('Select an ontology and an imported instance.')
-        snapshot, candidates = self.source.preview(ontology_id, import_task_id)
-        if manual_mappings:
+        partition_reader = getattr(self.source, 'preview_partition', None)
+        partition = None
+        if callable(partition_reader):
+            snapshot, candidates, partition = partition_reader(ontology_id, import_task_id, manual_mappings, candidate_offset)
+        else:
+            snapshot, candidates = self.source.preview(ontology_id, import_task_id)
+        if manual_mappings and partition is None:
             candidates.extend(self.source.manual_candidates(ontology_id, import_task_id, manual_mappings))
             if snapshot != self.source.snapshot(ontology_id, import_task_id):
                 raise BridgeConflict('Source changed while resolving manual mappings. Retry preview.')
-        if len(candidates) > 2000:
-            raise ValueError('Preview exceeds 2000 candidates. Narrow the imported source before review.')
+        if type(candidate_offset) is not int or candidate_offset < 0:
+            raise ValueError('candidate_offset must be a nonnegative integer')
+        total = partition['total_candidates'] if partition else len(candidates)
+        if candidate_offset and candidate_offset >= total:
+            raise ValueError('Candidate partition is no longer available; start a new preview')
+        if partition is None and (total > 2000 or candidate_offset):
+            candidates = sorted(candidates, key=digest)[candidate_offset:candidate_offset + 2000]
         rows = {}
         for candidate in candidates:
             row = dict(candidate)
@@ -52,6 +62,8 @@ class BridgeJobs:
                'ontology_id': ontology_id, 'import_task_id': import_task_id,
                'created_by': actor, 'created_at': now(), 'snapshot': snapshot,
                'candidates': list(rows.values())}
+        job['partition'] = {'offset': candidate_offset, 'total_candidates': total,
+                            'next_offset': candidate_offset + 2000 if candidate_offset + 2000 < total else None}
         job['recommendation_summary'] = {'total': len(rows),
             'eligible': sum(1 for row in rows.values() if row['eligible']),
             'requires_review': True,
@@ -182,9 +194,12 @@ class BridgeJobs:
             return self._completed(job, receipt)
 
     def _completed(self, job, receipt):
-        if (not job.get('request_digest') or
+        if (not isinstance(receipt, dict) or not job.get('request_digest') or
                 receipt.get('request_digest') != job['request_digest'] or
-                receipt.get('publication_id') != job['job_id']):
+                receipt.get('publication_id') != job['job_id'] or
+                type(receipt.get('applied_links')) is not int or
+                receipt['applied_links'] != len(job['approved_ids']) or
+                receipt.get('approved_by') != job['approved_by']):
             raise BridgeConflict('Graph receipt does not match the approved publication.')
         job.update(status='published', receipt=receipt, updated_at=now())
         job.pop('error', None)
@@ -193,7 +208,7 @@ class BridgeJobs:
 
 
 class BridgeSource:
-    def _request(self, action, ontology_id, import_id, mappings=None):
+    def _request(self, action, ontology_id, import_id, mappings=None, candidate_offset=0):
         from backend.depo_platform.peer_http import peer_response
         from backend.depo_platform.service_urls import service_url
         from backend.depo_platform.network import service_bearer_headers
@@ -202,7 +217,7 @@ class BridgeSource:
         endpoint = base + '/bridge/source'
         response = peer_response('POST',endpoint,budget=bounded_timeout_seconds('BRIDGE_SOURCE_TIMEOUT_SECONDS',default=300,maximum=900),
             headers=service_bearer_headers('INGESTION_WRITE_TOKEN',service_name='bridge source',endpoint=endpoint),
-            json={'operation':action,'ontology_id':ontology_id,'import_task_id':import_id,'mappings':mappings or []})
+            json={'operation':action,'ontology_id':ontology_id,'import_task_id':import_id,'mappings':mappings or [],'candidate_offset':candidate_offset})
         if response.status_code == 409: raise BridgeConflict('Source changed; create a new preview')
         response.raise_for_status()
         result = response.json()
@@ -221,6 +236,17 @@ class BridgeSource:
         if not isinstance(result.get('snapshot'),dict) or not isinstance(result.get('candidates'),list):
             raise ValueError('Invalid bridge source preview')
         return result['snapshot'], result['candidates']
+
+    def preview_partition(self, ontology_id, import_id, mappings=None, candidate_offset=0):
+        result = self._request('preview', ontology_id, import_id, mappings, candidate_offset)
+        partition = result.get('partition')
+        candidates = result.get('candidates')
+        if (not isinstance(result.get('snapshot'), dict) or not isinstance(candidates, list) or len(candidates) > 2000
+                or not isinstance(partition, dict) or partition.get('offset') != candidate_offset
+                or type(partition.get('total_candidates')) is not int or partition['total_candidates'] < candidate_offset + len(candidates)
+                or partition.get('next_offset') != (candidate_offset + 2000 if candidate_offset + 2000 < partition['total_candidates'] else None)):
+            raise ValueError('Invalid bridge source partition')
+        return result['snapshot'], candidates, partition
 
     def manual_candidates(self, ontology_id, import_id, mappings):
         result = self._request('manual',ontology_id,import_id,mappings)

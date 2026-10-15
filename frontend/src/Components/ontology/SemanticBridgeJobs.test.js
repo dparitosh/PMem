@@ -94,7 +94,7 @@ test('saves manual drafts as visible recommendations without selecting publicati
   render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" manualMappings={manual} api={api} />);
   fireEvent.change(screen.getByLabelText('Approver'), { target: { value: 'reviewer' } });
   await create();
-  expect(api.preview).toHaveBeenCalledWith('ontology', 'import', { approved_by: 'reviewer', approval_token: 'supervisor' }, manual);
+  expect(api.preview).toHaveBeenCalledWith('ontology', 'import', { approved_by: 'reviewer', approval_token: 'supervisor' }, manual, 0);
   expect(screen.getByText(/2 mapping recommendations; 1 eligible/)).toBeInTheDocument();
   expect(screen.getByText('server-resolved source and target')).toBeInTheDocument();
   expect(screen.getByText('Preview agent run: agent-run-1')).toBeInTheDocument();

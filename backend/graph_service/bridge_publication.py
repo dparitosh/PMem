@@ -22,8 +22,17 @@ def session():
 
 def receipt(publication_id):
     with session() as graph:
-        row = graph.run('MATCH (p:DepoBridgePublication {publication_id:$id}) RETURN p.receipt AS receipt', id=publication_id).single()
+        row = graph.run(_bounded_query('MATCH (p:DepoBridgePublication {publication_id:$id}) RETURN p.receipt AS receipt'), id=publication_id).single()
         return json.loads(row['receipt']) if row and row['receipt'] else None
+
+
+def _bounded_query(text):
+    from neo4j import Query
+    from backend.depo_platform.network import bounded_timeout_seconds
+    from backend.depo_platform.operations import current_operation
+    budget = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180)
+    operation = current_operation()
+    return Query(text, timeout=operation.timeout(budget) if operation else budget)
 
 
 @ontology_writer
@@ -39,7 +48,7 @@ def publish(command):
             raise ValueError('Invalid approved mapping target or source.')
     with session() as graph:
         constraint = graph.run(
-            'SHOW CONSTRAINTS YIELD name WHERE name = $name RETURN count(*) AS found',
+            _bounded_query('SHOW CONSTRAINTS YIELD name, type, labelsOrTypes, properties WHERE name = $name AND type = \'UNIQUENESS\' AND labelsOrTypes = [\'DepoBridgePublication\'] AND properties = [\'publication_id\'] RETURN count(*) AS found'),
             name='depo_bridge_publication_id',
         ).single()
         if not constraint or constraint['found'] != 1:
@@ -117,6 +126,17 @@ def _publish_transaction(tx, command):
             MERGE (n)-[inst:INSTANCE_OF]->(target)
             SET inst.mapping=row.mapping, inst.class_name=row.ontology_term,
                 inst.import_id=row.import_id, inst.linked_by='semantic_bridge', inst.publication_id=$id)
+        WITH n, target, row
+        MATCH (publication:DepoBridgePublication {publication_id:$id})
+        MERGE (publication)-[:RECORDED_MAPPING]->(evidence:DepoBridgeMapping {publication_id:$id, candidate_id:row.candidate_id})
+        SET evidence.mapping=row.mapping, evidence.mapping_type=row.mapping_type,
+            evidence.confidence=row.confidence, evidence.approved_by=$actor,
+            evidence.target_ontology_type=row.target_ontology_type,
+            evidence.source_type=row.source_type, evidence.import_id=row.import_id,
+            evidence.import_row_key=row.import_row_key, evidence.ontology_id=$ontology_id,
+            evidence.target_iri=row.target_ontology_iri
+        MERGE (evidence)-[:SOURCE]->(n)
+        MERGE (evidence)-[:TARGET]->(target)
         RETURN count(*) AS applied
         ''', rows=command['rows'], id=publication_id, actor=command['approved_by'], ontology_id=command['ontology_id']).single()
     if not written or written['applied'] != len(command['rows']):
@@ -141,6 +161,7 @@ def _publish_transaction(tx, command):
             ON CREATE SET f.created_at=$completed
             SET f.kind='semantic_bridge_mapping', f.scope=row.scope, f.source=row.source,
                 f.source_type=row.source_type, f.target=row.target,
+                f.target_iri=row.target_iri, f.generic_match=row.generic_match,
                 f.target_type=row.target_type, f.ontology_id=row.ontology_id,
                 f.import_task_id=row.import_task_id, f.confidence=row.confidence,
                 f.mapping_type=row.mapping_type, f.task_id=row.task_id, f.updated_at=$completed''',

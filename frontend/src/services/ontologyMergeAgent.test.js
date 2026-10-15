@@ -28,3 +28,12 @@ test('missing approval prevents dispatch', async () => {
   await expect(ontologyMergeAgent.apply('reviewed', 'steward')).rejects.toThrow('governed agent access');
   expect(agenticAPI.runAgent).not.toHaveBeenCalled();
 });
+
+test('queued merge publication retains its job identity without claiming graph completion', async () => {
+  agenticAPI.runAgent.mockResolvedValue({data:{agent_id:'ontology-governor',tool_id:'ontology.merge.apply',run_id:'run',result:{
+    status:'merged',preview_id:'reviewed',ontology:{ontology_id:'merged'},publication_status:'queued',publication:{status:'queued',ontology_id:'merged',job_id:'job'}
+  }}});
+  const response = await ontologyMergeAgent.apply('reviewed','steward');
+  expect(response.result.publication.job_id).toBe('job');
+  expect(response.result.publication_status).toBe('queued');
+});

@@ -2,7 +2,8 @@ import sys
 import types
 import unittest
 from unittest.mock import patch
-from backend.agentic_service.bridge_jobs import BridgeSource, BridgeJobs
+from backend.agentic_service.bridge_jobs import BridgeJobs
+from backend.ingestion_service.bridge_source import LocalBridgeSource as BridgeSource
 from backend.mesh_store import InMemoryRegistry
 
 

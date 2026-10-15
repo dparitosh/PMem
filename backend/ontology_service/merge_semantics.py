@@ -1,5 +1,5 @@
 """SHACL and OWL-RL checks over the exact proposed graph; never claim OWL-DL proof."""
-def validate_merge(graph, source_metadata, entity_mappings=None):
+def validate_merge(graph, source_metadata, entity_mappings=None, *, declarations_only=False):
     import pickle
     import subprocess
     import sys
@@ -7,8 +7,11 @@ def validate_merge(graph, source_metadata, entity_mappings=None):
     from pathlib import Path
     from backend.depo_platform.network import bounded_timeout_seconds
     timeout = bounded_timeout_seconds('MERGE_VALIDATION_TIMEOUT_SECONDS', default=180, maximum=900)
+    from backend.depo_platform.operations import current_operation
+    operation = current_operation()
+    if operation: timeout = operation.timeout(timeout)
     started = time.monotonic()
-    payload = pickle.dumps((list(graph), source_metadata, entity_mappings), protocol=pickle.HIGHEST_PROTOCOL)
+    payload = pickle.dumps((graph if isinstance(graph, str) else list(graph), source_metadata, entity_mappings, declarations_only), protocol=pickle.HIGHEST_PROTOCOL)
     remaining = timeout - (time.monotonic() - started)
     if remaining <= 0: raise ValueError('Merge validation preparation exceeded its deadline')
     try:
@@ -72,7 +75,8 @@ def _validate_merge(graph, source_metadata, entity_mappings=None):
     conforms, _, report = validate(checked, shacl_graph=shapes, inference='owlrl', inplace=True,
         allow_infos=False, allow_warnings=False, advanced=False, do_owl_imports=False)
     if type(conforms) is not bool: raise ValueError('Merge SHACL validation did not return conformance')
-    conflicts = explicit_conflicts(checked)
+    from .merge_service import GovernedMergeService
+    conflicts = explicit_conflicts(checked) + GovernedMergeService._literal_conflicts(checked)
     return {'shacl_conforms':conforms, 'shape_sources':shape_sources, 'shape_digests':shape_digests, 'report':str(report)[:20000],
         'inferred_conflicts':conflicts, 'owl_rl_performed':True, 'full_owl_dl_consistency_established':False}
 
@@ -82,8 +86,15 @@ if __name__ == '__main__':
     import sys
     from rdflib import Graph
     from contextlib import redirect_stdout
-    triples, metadata, mappings = pickle.loads(sys.stdin.buffer.read())
+    triples, metadata, mappings, declarations_only = pickle.loads(sys.stdin.buffer.read())
     graph = Graph()
-    for triple in triples: graph.add(triple)
-    with redirect_stdout(sys.stderr): evidence = _validate_merge(graph, metadata, mappings)
+    with redirect_stdout(sys.stderr):
+        if isinstance(triples, str): graph.parse(data=triples, format='turtle')
+        else:
+            for triple in triples: graph.add(triple)
+        if declarations_only:
+            from .merge_service import GovernedMergeService
+            from .merge_validation import explicit_conflicts
+            evidence = {'inferred_conflicts': explicit_conflicts(graph) + GovernedMergeService._literal_conflicts(graph)}
+        else: evidence = _validate_merge(graph, metadata, mappings)
     sys.stdout.buffer.write(pickle.dumps(evidence, protocol=pickle.HIGHEST_PROTOCOL))

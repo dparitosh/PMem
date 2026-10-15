@@ -25,7 +25,7 @@ class Graph:
     def receipt(self, key): return self.receipts.get(key)
     def publish(self, command):
         self.calls.append(copy.deepcopy(command))
-        result = {'publication_id': command['publication_id'], 'request_digest': command['request_digest'], 'applied_links': len(command['rows'])}
+        result = {'publication_id': command['publication_id'], 'request_digest': command['request_digest'], 'applied_links': len(command['rows']), 'approved_by': command['approved_by']}
         self.receipts[command['publication_id']] = result
         if self.lose_response: raise TimeoutError('simulated lost response')
         return result

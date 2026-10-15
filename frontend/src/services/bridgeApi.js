@@ -18,8 +18,8 @@ client.interceptors.request.use((request) => {
 const root = '/api/v1/workflows/bridge';
 const auth = (token) => ({ headers: { ...serviceAuthHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 export const bridgeApi = {
-  automate: (ontologyId, importId, identity, manualMappings = []) => agenticAPI.runWorkflow(
-    'bridge-validated-automation', {}, {...identity, step_inputs:[{ontology_id:ontologyId,import_task_id:importId,manual_mappings:manualMappings},{},{}]}),
+  automate: (ontologyId, importId, identity, manualMappings = [], candidateOffset = 0) => agenticAPI.runWorkflow(
+    'bridge-validated-automation', {}, {...identity, step_inputs:[{ontology_id:ontologyId,import_task_id:importId,manual_mappings:manualMappings,candidate_offset:candidateOffset},{},{}]}),
   automationStatus: (id) => agenticAPI.getRun(id, 'workflow'),
   evaluate: async (id) => {
     const response = await agenticAPI.runAgent('ontology-steward', 'bridge.mapping.evaluate', {preview_id:id});
@@ -33,9 +33,9 @@ export const bridgeApi = {
     const run = governorResult(response, 'bridge.mapping.publish_automatic');
     return {data:{...run.result, agent_run_id:run.runId}};
   },
-  preview: async (ontologyId, importId, identity, manualMappings = []) => {
+  preview: async (ontologyId, importId, identity, manualMappings = [], candidateOffset = 0) => {
     const response = await agenticAPI.runAgent('ontology-governor', 'bridge.mapping.preview',
-      { ontology_id: ontologyId, import_task_id: importId, manual_mappings: manualMappings }, identity);
+      { ontology_id: ontologyId, import_task_id: importId, manual_mappings: manualMappings, candidate_offset:candidateOffset }, identity);
     const run = governorResult(response, 'bridge.mapping.preview');
     return { data: { ...run.result, agent_run_id: run.runId } };
   },

@@ -382,7 +382,8 @@ async def apply_merge(preview_id: str, payload: MergeApplyBody, request: Request
             metadata = await run_in_threadpool(catalog.get, ontology_id)
         if metadata.get('lifecycle_status') == 'in_review':
             await run_in_threadpool(catalog.transition, ontology_id=ontology_id, target='approved', actor=approver, reason=f'Approved merge {preview_id}')
-        publication = await publish_registered_ontology(ontology_id, payload, request)
+        publication_response = await publish_registered_ontology(ontology_id, payload, request, background=True)
+        publication = json.loads(publication_response.body)
         return {**result, 'ontology': await run_in_threadpool(catalog.get, ontology_id),
                 'publication_status': publication['status'], 'publication': publication}
     except ValueError as exc:

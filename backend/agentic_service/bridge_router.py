@@ -14,6 +14,7 @@ class PreviewInput(BaseModel):
     ontology_id: str = Field(min_length=1, max_length=256)
     import_task_id: str = Field(min_length=1, max_length=256)
     manual_mappings: list[dict] = Field(default_factory=list, max_length=2000)
+    candidate_offset: int = Field(default=0, ge=0, strict=True)
 
 
 class ApprovalInput(BaseModel):
@@ -44,7 +45,7 @@ def translate(action):
 
 @router.post('/bridge/previews', status_code=201)
 def preview(payload: PreviewInput, actor: str = Depends(graph_read_identity)):
-    return translate(lambda: jobs.preview(payload.ontology_id, payload.import_task_id, actor, payload.manual_mappings))
+    return translate(lambda: jobs.preview(payload.ontology_id, payload.import_task_id, actor, payload.manual_mappings, payload.candidate_offset))
 
 
 @router.get('/bridge/jobs/{job_id}', dependencies=[Depends(graph_read_identity)])

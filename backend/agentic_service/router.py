@@ -780,7 +780,7 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
         except ValidationError as exc:
             raise HTTPException(422, 'Invalid Bridge inputs; check source IDs and reviewed candidate selection') from exc
         if tool['id'] == 'bridge.mapping.preview':
-            result = await _agent_io(translate, lambda: jobs.preview(command.ontology_id, command.import_task_id, approved_by, command.manual_mappings))
+            result = await _agent_io(translate, lambda: jobs.preview(command.ontology_id, command.import_task_id, approved_by, command.manual_mappings, command.candidate_offset))
         else:
             preview_id = inputs.pop('preview_id', '')
             result = await _agent_io(translate, lambda: jobs.publish(preview_id, command.approved_candidate_ids, approved_by))

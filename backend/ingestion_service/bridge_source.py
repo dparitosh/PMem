@@ -16,6 +16,9 @@ class LocalBridgeSource:
             # does not claim to perform RDF reasoning or ontology merging.
             meta = {'prefix': ontology_id}
         task = service._load_import_task({'task_id': import_id})
+        lifecycle = {key: meta.get(key) for key in ('lifecycle_status', 'status')}
+        if meta.get('lifecycle_status') in {'retired', 'deprecated'} or meta.get('status') == 'superseded':
+            raise BridgeConflict('Selected ontology is inactive. Select a current ontology and create a new preview.')
         # Preserve the selected version identity; a prefix can name many versions.
         scope = ontology_id
         # Include live graph IDs/type metadata as well as retained ontology bytes.
@@ -24,7 +27,7 @@ class LocalBridgeSource:
         if not terms and not classes:
             raise ValueError('No ontology terms are available for mapping. Check the selected ontology and graph projection.')
         snapshot = {'source': digest(task.get('parsed_rows') or []),
-                    'ontology': digest([ontology_id, scope, service._read_ontology_file(meta), canonical_lookup(terms), canonical_lookup(classes)])}
+                    'ontology': digest([ontology_id, scope, lifecycle, service._read_ontology_file(meta), canonical_lookup(terms), canonical_lookup(classes)])}
         return service, task, scope, snapshot
 
     def snapshot(self, ontology_id, import_id):
@@ -85,5 +88,22 @@ class LocalBridgeSource:
                     'target_ontology_iri': term.get('target_ontology_iri') or term.get('iri') or term.get('uri'),
                     'mapping': scope, 'mapping_type': 'closeMatch', 'confidence': 1,
                     'validation_status': validation['status'], 'validation_errors': validation['errors'],
+                    'validation_warnings': validation.get('warnings', []),
                     'evidence': ['user-selected mapping; server-resolved source and target']})
         return candidates
+
+    def preview_partition(self, ontology_id, import_id, mappings=None, candidate_offset=0):
+        if type(candidate_offset) is not int or candidate_offset < 0:
+            raise ValueError('candidate_offset must be a nonnegative integer')
+        snapshot, candidates = self.preview(ontology_id, import_id)
+        if mappings:
+            candidates.extend(self.manual_candidates(ontology_id, import_id, mappings))
+            if snapshot != self.snapshot(ontology_id, import_id):
+                raise BridgeConflict('Source changed while resolving manual mappings')
+        total = len(candidates)
+        if candidate_offset and candidate_offset >= total:
+            raise ValueError('Candidate partition is unavailable; start a new preview')
+        if total > 2000 or candidate_offset:
+            candidates = sorted(candidates, key=digest)[candidate_offset:candidate_offset + 2000]
+        return snapshot, candidates, {'offset':candidate_offset, 'total_candidates':total,
+            'next_offset':candidate_offset + 2000 if candidate_offset + 2000 < total else None}

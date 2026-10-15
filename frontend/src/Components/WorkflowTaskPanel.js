@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import agenticAPI from '../services/agenticApi';
 import { publicationRecoveryScope, getCredentialProfile } from '../services/serviceAuth';
+import { confirmedSubmissionRejection } from '../services/workflowSubmission';
+import WorkflowRecoveryActions from './WorkflowRecoveryActions';
 
 export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled, onResult, governed = false, stepInputs, onActivityChange }) {
   const key = JSON.stringify(['depo:task-run', publicationRecoveryScope(), workflowId, inputs, stepInputs || null, governed]);
@@ -75,18 +77,30 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
   const start = async () => {
     if (busy) return;
     const controller = new AbortController(); request.current = controller; setBusy(true); setError('');
+    let submitted = false;
     try {
       const token = getCredentialProfile('GRAPH_READ_TOKEN');
       const approval = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
       if (!token || (governed && !approval)) throw new Error('Connect reader and governed agent access in Admin.');
       const execution = { ...(governed ? {approved_by:'ontology-merge-automation',approval_token:approval} : {}), ...(stepInputs ? {step_inputs:stepInputs} : {}) };
       try { sessionStorage.setItem(key, 'submission-unconfirmed'); } catch { /* server retains the workflow */ }
+      submitted = true;
       const { data } = await agenticAPI.runWorkflow(workflowId, inputs, execution, { signal: controller.signal, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) });
       if (controller.signal.aborted) return;
       if (!data.run_id) throw new Error('Missing workflow identity.');
       setRunId(data.run_id);
       try { sessionStorage.setItem(key, data.run_id); } catch { setError('Run started; bookmark its ID because browser recovery storage is unavailable.'); }
-    } catch (failure) { if (!controller.signal.aborted) { setSubmissionUnknown(true); setError('Task submission was not confirmed. Check workflow history before retrying.'); } }
+    } catch (failure) { if (!controller.signal.aborted) {
+      const retainedId = failure.response?.headers?.['x-depo-run-id'];
+      if (retainedId) {
+        setRunId(retainedId);
+        try { sessionStorage.setItem(key, retainedId); } catch {}
+        setError('Task retained by the server. Refresh its status.');
+      } else if (!submitted || confirmedSubmissionRejection(failure)) {
+        try { sessionStorage.removeItem(key); } catch {}
+        setSubmissionUnknown(false); setError('Task was not accepted. Check access and inputs, then retry.');
+      } else { setSubmissionUnknown(true); setError('Task submission was not confirmed. Check workflow history before retrying.'); }
+    } }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
   return <section className="depo-workflow-reconciliation" aria-label="Background agent task">
@@ -112,6 +126,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       catch { if (!controller.signal.aborted) setError('Control was not confirmed. Refresh status before retrying.'); }
       finally { if (!controller.signal.aborted) setBusy(false); }
     }}>{action}</button>)}
+    <WorkflowRecoveryActions key={runId} run={run} disabled={busy} onRefresh={() => setRevision(value => value + 1)} />
     {runId && <small>Controls take effect between tools. Completed writes remain retained.</small>}
     {runId && error && <p>Reconnect access and refresh this retained workflow. An inaccessible run cannot be cleared while its outcome is unverified.</p>}
     {['completed', 'cancelled', 'failed', 'timed_out'].includes(run?.status) && !run?.reconciliation_required && <button type="button" onClick={() => {

@@ -36,6 +36,8 @@ function agenticUrl(endpoint) {
 export const agenticAPI = {
   importOpenApi: async (document, filename) => ({ data: openApiPreview(document, filename) }),
   controlWorkflow: (id, action, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/control`), { action }, options),
+  recoverWorkflow: (id, identity, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/recover`), identity, options),
+  reconcileWorkflowReceipt: (id, identity, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/reconcile-receipt`), identity, options),
   getRun: (id, kind = 'workflow', options = {}) => agenticClient.get(agenticUrl(`/api/v1/${kind === 'dt' ? 'integrations/dt-requirements-design/runs' : kind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(id)}`), options),
   isEnabled: () => true,
   isConfigured: () => Boolean(config.semanticServiceUrls?.agentic),

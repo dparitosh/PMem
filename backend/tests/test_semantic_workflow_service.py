@@ -578,7 +578,6 @@ def test_instance_link_preview_does_not_record_agent_memory(monkeypatch):
             "approvedByUser": True,
         }],
     )
-    monkeypatch.setattr(SemanticWorkflowService, "_apply_instance_links", lambda candidates: len(candidates))
     monkeypatch.setattr(SemanticWorkflowService, "_new_task", lambda workflow_id, source_filename="": "link-task")
     monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.write_json", lambda *args, **kwargs: None)
     monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.get_manifest", lambda task_id: {"task_id": task_id})

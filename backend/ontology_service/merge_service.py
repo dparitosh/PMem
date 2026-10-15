@@ -27,8 +27,8 @@ class GovernedMergeService:
             from backend.mesh_store import PostgresRegistry
             self.registry = PostgresRegistry('ontology_merge_previews')
 
-    def _operation_lock(self):
-        return self.registry.advisory_lock('merge-store') if self.registry is not None else self.lock
+    def _operation_lock(self, key='merge-store'):
+        return self.registry.advisory_lock(key) if self.registry is not None else self.lock
 
     def _load(self) -> dict[str, dict[str, Any]]:
         values = json.loads(self.path.read_text(encoding='utf-8')) if self.path.exists() else {}
@@ -47,10 +47,16 @@ class GovernedMergeService:
         temporary.replace(self.path)
 
     def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
-        with self._operation_lock() as acquired:
+        key = 'preview:' + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        with self._operation_lock(key) as acquired:
             if acquired is False:
                 raise ValueError('A merge operation is already running; refresh and retry')
-            return self._preview(payload)
+            from .merge_preparation import prepare
+            record = prepare(self, payload)
+            values = {} if self.registry is not None else self._load()
+            values[record['preview_id']] = record
+            self._save(values, record['preview_id'])
+            return {key: value for key, value in record.items() if key != 'turtle'}
 
     def _preview(self, payload: dict[str, Any]) -> dict[str, Any]:
         supplied = payload.get('source_ontology_ids', [])
@@ -121,12 +127,13 @@ class GovernedMergeService:
                 merged.add(tuple(replacements.get(term, term) for term in triple))
         proposed = set(merged)
         added, removed, unchanged = proposed - baseline, baseline - proposed, proposed & baseline
+        from heapq import nsmallest
         changes = {'baseline_ontology_id': source_ids[-1], 'added': len(added), 'removed': len(removed),
                    'unchanged': len(unchanged), 'entity_mappings': mappings,
                    'modified_entity_count': len(replacements), 'sample_limit': 200,
-                   'added_sample': sorted(' '.join(term.n3() for term in triple) for triple in added)[:200],
-                   'removed_sample': sorted(' '.join(term.n3() for term in triple) for triple in removed)[:200],
-                   'unchanged_sample': sorted(' '.join(term.n3() for term in triple) for triple in unchanged)[:200]}
+                   'added_sample': nsmallest(200, (' '.join(term.n3() for term in triple) for triple in added)),
+                   'removed_sample': nsmallest(200, (' '.join(term.n3() for term in triple) for triple in removed)),
+                   'unchanged_sample': nsmallest(200, (' '.join(term.n3() for term in triple) for triple in unchanged))}
         from .merge_validation import explicit_conflicts
         conflicts = self._literal_conflicts(merged) + explicit_conflicts(merged)
         from .merge_semantics import validate_merge
@@ -195,7 +202,7 @@ class GovernedMergeService:
         return suggestions
 
     def apply(self, preview_id: str, approved_by: str) -> dict[str, Any]:
-        with self._operation_lock() as acquired:
+        with self._operation_lock(preview_id) as acquired:
             if acquired is False:
                 raise ValueError('A merge operation is already running; refresh and retry')
             return self._with_source_locks(preview_id, lambda: self._apply(preview_id, approved_by))
@@ -216,10 +223,8 @@ class GovernedMergeService:
         record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
         if not record:
             raise ValueError('Merge preview not found')
-        graph = Graph()
-        graph.parse(data=record['turtle'], format='turtle')
-        from .merge_validation import explicit_conflicts
-        conflicts = self._literal_conflicts(graph) + explicit_conflicts(graph)
+        from .merge_semantics import validate_merge
+        conflicts = validate_merge(record['turtle'], [], declarations_only=True)['inferred_conflicts']
         # Automatic union preserves every entity identity. Consolidations remain
         # explicit reviewed operations because RDF union cannot prove equivalence.
         reasons = []
@@ -244,7 +249,7 @@ class GovernedMergeService:
         return result
 
     def apply_automatic(self, preview_id: str, approved_by: str) -> dict[str, Any]:
-        with self._operation_lock() as acquired:
+        with self._operation_lock(preview_id) as acquired:
             if acquired is False:
                 raise ValueError('A merge operation is already running; refresh and retry')
             decision = self.evaluate_policy(preview_id)
@@ -285,13 +290,8 @@ class GovernedMergeService:
             source_metadata.append(metadata)
         if not record.get('sources'):
             raise ValueError('Merge preview lacks verified sources; generate a new preview')
-        from .merge_validation import explicit_conflicts
-        retained_graph = Graph()
-        retained_graph.parse(data=record['turtle'], format='turtle')
-        if explicit_conflicts(retained_graph) or self._literal_conflicts(retained_graph):
-            raise ValueError('Merge contains explicit RDF/OWL contradictions; create and review a new preview')
         from .merge_semantics import validate_merge
-        semantic_checks = validate_merge(retained_graph, source_metadata, record.get('changes', {}).get('entity_mappings', []))
+        semantic_checks = validate_merge(record['turtle'], source_metadata, record.get('changes', {}).get('entity_mappings', []))
         if semantic_checks['shape_digests'] != (record.get('semantic_checks') or {}).get('shape_digests'):
             raise ValueError('Merge validation shapes changed; generate and review a new preview')
         if not semantic_checks['shacl_conforms'] or semantic_checks['inferred_conflicts']:

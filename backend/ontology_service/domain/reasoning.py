@@ -425,14 +425,58 @@ class OntologyReasoningService:
 
         match = match or {}
         row = row or {}
+        def values(value):
+            return value if isinstance(value, (list, tuple, set)) else [value] if value else []
+
+        def identity(value):
+            return str(value).strip()
+
+        if source == "Relationship" and target == "ObjectProperty":
+            for constraint, evidence in (("domain", row.get("domain") or row.get("source_class") or row.get("subject_type")),
+                                         ("range", row.get("range") or row.get("target_class") or row.get("object_type"))):
+                required = {identity(value) for value in values(match.get(constraint))}
+                supplied = {identity(value) for value in values(evidence)}
+                if not required or not supplied:
+                    warnings.append(f"Relationship {constraint} compatibility is unverified; class identities are required.")
+                elif not required <= supplied:
+                    warnings.append(f"Relationship {constraint} does not establish all ontology class constraints.")
         if source == "Attribute" and target == "DatatypeProperty":
-            expected_range = match.get("range") or []
-            row_datatype = row.get("datatype") or row.get("data_type") or row.get("type")
-            if expected_range and row_datatype:
-                row_datatype_text = str(row_datatype).lower()
-                range_text = " ".join(str(item).lower() for item in expected_range)
-                if row_datatype_text not in range_text and range_text not in row_datatype_text:
-                    warnings.append("Attribute datatype does not clearly match ontology property range.")
+            expected_range = values(match.get("range"))
+            row_datatype = row.get("datatype") or row.get("data_type")
+            def datatype(value):
+                text = str(value).strip()
+                if text.startswith('http://www.w3.org/2001/XMLSchema#'): return text.split('#')[-1]
+                if text.startswith('xsd:'): return text[4:]
+                return text
+            if not expected_range or not row_datatype:
+                warnings.append("Attribute datatype compatibility is unverified; source datatype and property range are required.")
+            elif {datatype(value) for value in expected_range} != {datatype(row_datatype)}:
+                warnings.append("Attribute datatype does not establish all ontology property ranges.")
+            elif 'value' in row:
+                kind, value = datatype(row_datatype), row['value']
+                try:
+                    import re
+                    from decimal import Decimal
+                    if kind in {'integer', 'int', 'long', 'short', 'byte', 'nonNegativeInteger', 'positiveInteger', 'unsignedInt', 'unsignedLong', 'unsignedShort', 'unsignedByte'}:
+                        if isinstance(value, bool) or not re.fullmatch(r'[+-]?[0-9]+', str(value)): raise ValueError()
+                        number = int(value)
+                        bounds = {'int':(-2**31,2**31-1),'long':(-2**63,2**63-1),'short':(-32768,32767),'byte':(-128,127),
+                                  'unsignedInt':(0,2**32-1),'unsignedLong':(0,2**64-1),'unsignedShort':(0,65535),'unsignedByte':(0,255)}
+                        if kind in bounds and not bounds[kind][0] <= number <= bounds[kind][1]: raise ValueError()
+                        if kind == 'nonNegativeInteger' and number < 0 or kind == 'positiveInteger' and number <= 0: raise ValueError()
+                    elif kind == 'decimal':
+                        if not re.fullmatch(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)', str(value)) or not Decimal(str(value)).is_finite(): raise ValueError()
+                    elif kind == 'boolean':
+                        if str(value) not in {'true','false','0','1','True','False'}: raise ValueError()
+                    elif kind in {'float', 'double'}:
+                        float(value)
+                    elif kind in {'date', 'dateTime'}:
+                        from datetime import date, datetime
+                        (date.fromisoformat if kind == 'date' else datetime.fromisoformat)(str(value).replace('Z', '+00:00'))
+                    elif kind not in {'string', 'normalizedString', 'token', 'anyURI'}:
+                        warnings.append('Custom datatype value constraints require review.')
+                except (ValueError, ArithmeticError):
+                    errors.append("Attribute value is incompatible with its declared datatype.")
 
         return {
             "status": "invalid" if errors else ("warning" if warnings else "valid"),

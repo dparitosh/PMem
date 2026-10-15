@@ -26,6 +26,11 @@ export const ontologyMergeAgent = {
     const ontologyId = result.ontology?.ontology_id;
     const publication = result.publication;
     const receipt = publication?.receipt;
+    if (result.status === 'merged' && result.preview_id === previewId && ontologyId &&
+        ['queued', 'running'].includes(result.publication_status) && publication?.status === result.publication_status &&
+        publication.ontology_id === ontologyId && typeof publication.job_id === 'string' && publication.job_id) {
+      return response;
+    }
     if (result.status !== 'merged' || result.preview_id !== previewId || !ontologyId || result.publication_status !== 'published' ||
         publication?.status !== 'published' || publication.ontology_id !== ontologyId || !publication.publication_id ||
         receipt?.status !== 'published' || receipt.current !== true || receipt.ontology_id !== ontologyId || receipt.publication_id !== publication.publication_id ||

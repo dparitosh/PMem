@@ -4619,3 +4619,50 @@ transactions use the configured GRAPH_PUBLICATION_TIMEOUT_SECONDS (default 180
 seconds), bounded by the current operation deadline when present, with automatic
 Neo4j driver transaction retries disabled. An interrupted response still requires
 receipt reconciliation before retrying the retained publication selection.
+
+Reviewed merge-and-publish now also queues the durable ontology publication job.
+Its response can contain `publication_status=queued` and `publication.job_id`;
+the Semantic Bridge UI tracks completion through the same publication panel.
+Keep the ontology publication worker running and deploy the matching frontend.
+
+Bridge previews support `candidate_offset` (default 0) and retain a `partition`
+with `total_candidates` and `next_offset`. The UI offers **Prepare next mapping
+batch** after the current automatic workflow completes. Each batch contains at
+most 2,000 candidates and retains its own selection and graph receipt. Review
+held candidates separately. An inactive ontology invalidates the source snapshot.
+Relationship domain/range and attribute datatype evidence must be established
+before automatic publication; missing evidence is held for review. Remembered
+mappings remain recommendations and cannot raise confidence to obtain approval.
+
+Merge preview parsing, union preparation and semantic checks run in a terminable
+worker under `MERGE_VALIDATION_TIMEOUT_SECONDS`. Apply and policy checks also
+parse retained Turtle in a bounded worker. Combined merge source bytes must fit
+`ONTOLOGY_MAX_UPLOAD_BYTES`; partition larger merges. PostgreSQL merge locks are
+scoped to the preview or application identity so unrelated merges can proceed.
+Workflow pages expose receipt verification and recovery when the server permits
+them. Verify the previous executor has stopped when requested before reconciling.
+
+
+### Metadata delivery recovery and database deadlines
+
+With `DEPO_METADATA_STORAGE=postgres`, the ontology service projects retained metadata
+revision events into Neo4j. Each event has its own PostgreSQL acknowledgement transaction.
+A failed event remains pending and its outbox scheduling timestamp is deferred by 30 seconds;
+other events can proceed. Audit event creation timestamps remain unchanged. Inspect ontology
+service logs for `Metadata projection deferred` and the retained event ID when failures repeat.
+Projection takes the shared ontology maintenance lock, so graph cleanup cannot overlap it.
+A graph reset requeues retained metadata events; while the ontology service runs, governed
+metadata and its history are rebuilt in Neo4j. Ontology and Bridge publications still require
+their normal publication workflow after reset.
+
+Workflow operation budgets cap shared graph queries, agent memory queries, PostgreSQL pool
+waiting and statements. SQL budgets are recalculated before each cursor dispatch. Connections
+used with an operation deadline are closed after use to avoid leaking session timeout settings.
+A new PostgreSQL connection requires at least two seconds of remaining budget because libpq
+has a minimum connection timeout. Existing independent configuration limits remain upper bounds.
+
+New Semantic Bridge publications retain per-candidate `DepoBridgeMapping` evidence connected
+to their publication, source and target. Current semantic relationships can be updated by a
+later approval without removing this historical evidence or adding duplicate instance links.
+Earlier publications created before this change retain their existing receipts; detailed
+historical mapping evidence is recorded for new publications only.

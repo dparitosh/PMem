@@ -166,6 +166,12 @@ def query_with_timeout(query_text: str, params: dict = None, timeout: int = None
     if timeout is None:
         timeout = NEO4J_QUERY_TIMEOUT
 
+    from backend.depo_platform.operations import current_operation
+    from backend.depo_platform.execution_guard import ensure_execution_allowed
+    ensure_execution_allowed()
+    operation = current_operation()
+    if operation:
+        timeout = operation.timeout(timeout)
     start_time = time.time()
     query_params = params or {}
 
@@ -173,16 +179,23 @@ def query_with_timeout(query_text: str, params: dict = None, timeout: int = None
         if CENTRALIZED_CONFIG_AVAILABLE:
             config = get_config()
             driver = get_driver()
+            if operation:
+                timeout = operation.timeout(timeout)
             cypher = Query(query_text, timeout=float(timeout))
             with driver.session(database=config.database) as session:
                 result = session.run(cypher, query_params)
                 rows = result.data()
         else:
             legacy_graph = get_graph()
-            if query_params:
-                rows = legacy_graph.query(query_text, params=query_params)
-            else:
-                rows = legacy_graph.query(query_text)
+            # The compatibility wrapper does not consistently preserve Query
+            # metadata. Dispatch through its native driver to retain the limit.
+            legacy_driver = getattr(legacy_graph, '_driver', None)
+            if legacy_driver is None:
+                raise RuntimeError('Neo4j compatibility driver cannot enforce query deadlines')
+            with legacy_driver.session(database=database) as session:
+                if operation:
+                    timeout = operation.timeout(timeout)
+                rows = session.run(Query(query_text, timeout=float(timeout)), query_params).data()
 
         elapsed = time.time() - start_time
         if elapsed > timeout:

@@ -31,13 +31,14 @@ class MetadataDeliveryTests(unittest.TestCase):
         db=MagicMock(); db.__enter__.return_value=db
         cursor=db.cursor.return_value.__enter__.return_value
         event={'before':None,'after':{'asset_id':'part','name':'Part'},'actor':'verified'}
-        cursor.fetchall.return_value=[('event','part',1,event)]
+        cursor.fetchone.side_effect=[('event','part',1,event),None]
         store=SimpleNamespace(_connect=lambda:db)
         graph=SimpleNamespace(query=Mock(side_effect=[None,RuntimeError('graph unavailable')]))
         module=ModuleType('backend.core.graph'); module.graph=graph
-        with patch.object(metadata_service,'enabled',return_value=True), patch.object(metadata_service,'repository',return_value=SimpleNamespace(store=store)), patch.dict('sys.modules',{'backend.core.graph':module}), self.assertRaises(RuntimeError):
-            project_pending()
-        self.assertFalse(any('UPDATE depo_metadata_outbox' in call.args[0] for call in cursor.execute.call_args_list))
+        with patch.object(metadata_service,'enabled',return_value=True), patch.object(metadata_service,'repository',return_value=SimpleNamespace(store=store)), patch.dict('sys.modules',{'backend.core.graph':module}), patch('backend.depo_platform.ontology_maintenance.ontology_operation', return_value=__import__('contextlib').nullcontext()):
+            self.assertEqual(project_pending(), 0)
+        self.assertFalse(any("SET status='published'" in call.args[0] for call in cursor.execute.call_args_list))
+        self.assertTrue(any("interval '30 seconds'" in call.args[0] for call in cursor.execute.call_args_list))
 
     def test_context_deadline_survives_sync_adapter_thread(self):
         from backend.core.sync_async import call_async

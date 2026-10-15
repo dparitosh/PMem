@@ -21,6 +21,7 @@ class BridgeSourceBody(RequestBody, total=False):
     ontology_id: Required[Text]
     import_task_id: Required[Text]
     mappings: list[dict[str, Any]]
+    candidate_offset: Annotated[int, Field(ge=0, strict=True)]
 
 class MetadataMigrationBody(RequestBody, total=False):
     asset_ids: Required[list[Text]]

@@ -33,7 +33,7 @@ class BridgeWorkflowRegressionTests(unittest.TestCase):
                 return work
             return decorate
         neo.unit_of_work=unit_of_work
-        scope=dict(digest=lambda _: 'digest',session=session,_publish_transaction=lambda *args:None)
+        scope=dict(digest=lambda _: 'digest',session=session,_publish_transaction=lambda *args:None,_bounded_query=lambda text:text)
         publish=load('backend/graph_service/bridge_publication.py','publish',scope)
         command={'request_digest':'digest','rows':[{'candidate_id':'a','import_id':'i','import_row_key':'r','ontology_class_element_id':'t','target_ontology_type':'Class'}]}
         from backend.depo_platform.operations import OperationContext, operation_scope
