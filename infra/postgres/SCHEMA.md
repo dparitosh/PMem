@@ -83,8 +83,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\test-postgr
 if ($LASTEXITCODE -ne 0) { throw 'Schema verification failed.' }
 ```
 
-Existing application relations must be owned by the migration role (or an
-owner role it can assume). Table DML grants alone do not permit ALTER TABLE.
+Existing application tables must be owned by the migration role (or an
+owner role whose privileges it inherits). Table DML grants alone do not permit ALTER TABLE.
+The existing `depo_ontology_analytics` view requires `SELECT`, not ownership:
+current migrations create it once and do not alter it on upgrades. A readable
+view owned by the DBA therefore does not block installation. If read access is
+missing, the DBA can run `GRANT SELECT ON semantic.depo_ontology_analytics TO depo_app;`
+using the actual configured schema and migration role. No ownership transfer or
+view recreation is needed. Future migrations that alter views must validate
+the required ownership for those operations.
 Have the DBA review object ownership before upgrading an older installation;
 do not grant administrator privileges to the application to bypass this check.
 

@@ -26,7 +26,10 @@ if (-not $SkipFrontend) {
 }
 & (Join-Path $PSScriptRoot 'install-depo.ps1') -CheckPrerequisites -SkipFrontend:$SkipFrontend -EnvFile $envPath
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Runtime prerequisite check failed. Services were not stopped.' }
+& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $envPath -UpgradePreflight
+& (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $envPath -UpgradePreflight
 & (Join-Path $PSScriptRoot 'update-depo-runtime-timeouts.ps1') -EnvFile $envPath -LlmTimeoutSeconds $LlmTimeoutSeconds
+Write-Host 'Read-only database upgrade checks passed. Stopping application processes next.'
 if (-not $SkipFrontend) { & (Join-Path $PSScriptRoot 'stop-depo-frontend.ps1') }
 & (Join-Path $PSScriptRoot 'stop-depo-services.ps1') -EnvFile $envPath
 # Delegate migration, graph provisioning and release validation to the same

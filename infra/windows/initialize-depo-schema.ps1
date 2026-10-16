@@ -1,5 +1,6 @@
-param([string]$EnvFile = '.env.local', [switch]$CheckOnly)
+param([string]$EnvFile = '.env.local', [switch]$CheckOnly, [switch]$UpgradePreflight)
 $ErrorActionPreference = 'Stop'
+if ($CheckOnly -and $UpgradePreflight) { throw 'Choose CheckOnly or UpgradePreflight.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 $databaseSettings = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
@@ -13,6 +14,7 @@ Push-Location $root
 try {
   $arguments = @('-m', 'backend.depo_platform.database_setup')
   if ($CheckOnly) { $arguments += '--check-only' }
+  if ($UpgradePreflight) { $arguments += '--upgrade-preflight' }
   & $python @arguments
   $databaseExitCode = $LASTEXITCODE
   if ($databaseExitCode -ne 0) {

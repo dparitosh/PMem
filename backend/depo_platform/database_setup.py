@@ -132,7 +132,7 @@ def verify_migration_privileges(connection) -> None:
             )
         cursor.execute(
             "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-            "WHERE n.nspname=%s AND c.relname=ANY(%s) AND c.relkind IN ('r','p','v','m') "
+            "WHERE n.nspname=%s AND c.relname=ANY(%s) AND c.relkind IN ('r','p') "
             "AND NOT (pg_has_role(current_user, c.relowner, 'USAGE') "
             "OR (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)) ORDER BY c.relname",
             (schema, list(EXPECTED_COLUMNS)),
@@ -143,6 +143,22 @@ def verify_migration_privileges(connection) -> None:
                 'Migration role cannot alter existing DEPO relations: ' + ', '.join(incompatible) +
                 '. Use the owning migration role or ask the DBA to reconcile ownership or inherited role membership. '
                 'Schema CREATE grants alone are insufficient; do not delete or recreate these relations.'
+            )
+        # Migration 004 creates this view once. No current migration alters an
+        # existing view, so its owner need not be the application's DDL role.
+        # Require read access instead; ownership is not a substitute for access.
+        cursor.execute(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname=%s AND c.relname=ANY(%s) AND c.relkind IN ('v','m') "
+            "AND NOT has_table_privilege(current_user, c.oid, 'SELECT') ORDER BY c.relname",
+            (schema, list(EXPECTED_COLUMNS)),
+        )
+        unreadable = [row[0] for row in cursor.fetchall()]
+        if unreadable:
+            raise RuntimeError(
+                'Migration role requires SELECT on existing DEPO views: ' + ', '.join(unreadable) +
+                '. Ask the DBA to grant view read access; ownership transfer is not required. '
+                'Do not delete or recreate these views.'
             )
 
 
@@ -199,7 +215,31 @@ def verify_schema(connection):
             'migration_versions': sorted(version for version, _, _ in MIGRATIONS)}
 
 
-def setup_database(*, check_only=False, connection_only=False):
+def verify_upgrade_history(connection):
+    """Inspect recorded migrations without requiring the new schema or writing DDL."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass('depo_schema_migrations')")
+        if cursor.fetchone()[0] is None:
+            raise RuntimeError('Upgrade requires existing migration history; use the first-install command for a new database')
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=%s AND table_name='depo_schema_migrations'", (configured_schema(),))
+        has_checksum = 'checksum' in {row[0] for row in cursor.fetchall()}
+        cursor.execute('SELECT version, name, ' + ('checksum' if has_checksum else 'NULL') + ' FROM depo_schema_migrations')
+        rows = cursor.fetchall()
+    known = {version: (name, migration_checksum(sql)) for version, name, sql in MIGRATIONS}
+    versions = sorted(int(row[0]) for row in rows)
+    if versions and versions != list(range(1, max(versions) + 1)):
+        raise RuntimeError('PostgreSQL migration history has missing earlier versions; reconcile history before upgrading')
+    for version, name, checksum in rows:
+        if version not in known or name != known[version][0]:
+            raise RuntimeError('PostgreSQL migration history does not match this release')
+        if checksum is None:
+            if os.getenv('DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS', 'false').lower() != 'true':
+                raise RuntimeError('Legacy migration checksums require explicit DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=true after DBA review')
+        elif checksum != known[version][1]:
+            raise RuntimeError('PostgreSQL migration checksum differs from this release')
+
+
+def setup_database(*, check_only=False, connection_only=False, upgrade_preflight=False):
     import psycopg
     url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
     if not url:
@@ -210,6 +250,14 @@ def setup_database(*, check_only=False, connection_only=False):
                 cursor.execute('SELECT current_database(), current_user')
                 database, user = cursor.fetchone()
             return {'status': 'ok', 'database': database, 'user': user, 'schema': configured_schema(), 'check': 'connectivity'}
+        if upgrade_preflight:
+            with connection.transaction():
+                with connection.cursor() as cursor:
+                    cursor.execute('SET TRANSACTION READ ONLY')
+                    initialise_schema(cursor)
+                verify_migration_privileges(connection)
+                verify_upgrade_history(connection)
+            return {'status': 'ok', 'check': 'read-only upgrade preflight'}
         if not check_only:
             with connection.transaction():
                 with connection.cursor() as cursor:
@@ -227,8 +275,9 @@ def main():
     parser.add_argument('--check-only', action='store_true', help='Verify existing columns and migration versions without DDL or data writes')
     parser.add_argument('--connection-only', action='store_true', help='Verify PostgreSQL login without requiring or modifying the application schema')
     parser.add_argument('--network-check', action='store_true', help='Check explicit PostgreSQL TCP endpoints without login or schema changes')
+    parser.add_argument('--upgrade-preflight', action='store_true', help='Check existing migration ownership/history without applying migrations')
     args = parser.parse_args()
-    if sum((args.check_only, args.connection_only, args.network_check)) > 1:
+    if sum((args.check_only, args.connection_only, args.network_check, args.upgrade_preflight)) > 1:
         parser.error('Choose only one diagnostic mode')
     try:
         if args.network_check:
@@ -237,7 +286,7 @@ def main():
             print(json.dumps(result))
             if result['status'] != 'ok': raise SystemExit(1)
         else:
-            print(json.dumps(setup_database(check_only=args.check_only, connection_only=args.connection_only)))
+            print(json.dumps(setup_database(check_only=args.check_only, connection_only=args.connection_only, upgrade_preflight=args.upgrade_preflight)))
     except Exception as exc:
         # Driver exception strings can contain connection details. Emit only a
         # SQLSTATE-based action and DEPO-authored RuntimeError messages.

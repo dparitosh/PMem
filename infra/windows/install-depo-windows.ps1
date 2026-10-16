@@ -93,6 +93,13 @@ $effectiveScheduler = [bool]($EnablePipelineScheduler -or $configuredScheduler)
 if (($effectiveConnector -or $effectivePostgresConnector) -and -not $effectiveSpark) {
   throw 'Spark connectors require Spark enabled through -EnableSpark or DEPO_SPARK_ENABLED=true in .env.local.'
 }
+if ($effectiveSpark) {
+  Assert-DepoSparkRuntime $settings.DEPO_SPARK_HOME $settings.DEPO_JAVA_HOME $settings.DEPO_HADOOP_HOME $settings.DEPO_SPARK_OUTPUT_ROOT
+  if ($effectivePostgresConnector) { Assert-DepoSparkPostgresConfiguration -Values $settings }
+  if ($effectiveConnector -and (-not $settings.DEPO_SPARK_NEO4J_PACKAGE -or $settings.DEPO_SPARK_NEO4J_PACKAGE -match '<.*>')) {
+    throw 'DEPO_SPARK_NEO4J_PACKAGE is required for the selected Neo4j connector.'
+  }
+}
 
 if (-not $SkipDependencyInstall) {
   Invoke-DepoStage 'Prerequisites' {
@@ -174,7 +181,9 @@ if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -
 }
 if (-not $SkipReleasePreflight) {
   Invoke-DepoStage 'Release preflight' {
-    & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') -Action ReleasePreflight -EnvFile $envPath -Profile $Profile
+    $releaseParameters = @{Action='ReleasePreflight'; EnvFile=$envPath; Profile=$Profile}
+    if ($Profile -eq 'Bootstrap' -and $settings.AUTH_MODE -eq 'disabled') { $releaseParameters.LocalInsecureDemo = $true }
+    & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') @releaseParameters
   }
 }
 

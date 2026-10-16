@@ -180,21 +180,40 @@ def test_migration_requires_dba_provisioned_schema(monkeypatch):
     assert not any('CREATE SCHEMA' in call.args[0] for call in cursor.execute.call_args_list)
 
 
-@pytest.mark.parametrize('blocked', [[], [('depo_registry',)], [('depo_registry',), ('depo_ontology_analytics',)]])
+@pytest.mark.parametrize('blocked', [[], [('depo_registry',)]])
 def test_migration_checks_existing_relation_ownership(monkeypatch, blocked):
     monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
     conn = MagicMock()
     cursor = conn.cursor.return_value.__enter__.return_value
     cursor.fetchone.return_value = (True, True, True)
-    cursor.fetchall.return_value = blocked
+    cursor.fetchall.side_effect = [blocked, []]
     if blocked:
         with pytest.raises(RuntimeError, match='owning migration role') as failure:
             setup.verify_migration_privileges(conn)
         assert 'depo_registry' in str(failure.value)
     else:
         setup.verify_migration_privileges(conn)
-    sql, params = cursor.execute.call_args_list[-1].args
+    sql, params = cursor.execute.call_args_list[1].args
     assert 'pg_has_role' in sql and 'rolsuper' in sql
+    assert "c.relkind IN ('r','p')" in sql
+    assert params == ('customer', list(setup.EXPECTED_COLUMNS))
+
+
+@pytest.mark.parametrize('unreadable', [[], [('depo_ontology_analytics',)]])
+def test_existing_view_requires_select_not_ownership(monkeypatch, unreadable):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (True, True, True)
+    cursor.fetchall.side_effect = [[], unreadable]
+    if unreadable:
+        with pytest.raises(RuntimeError, match='requires SELECT on existing DEPO views'):
+            setup.verify_migration_privileges(conn)
+    else:
+        setup.verify_migration_privileges(conn)
+    sql, params = cursor.execute.call_args_list[-1].args
+    assert 'has_table_privilege' in sql and "'SELECT'" in sql
+    assert 'pg_has_role' not in sql
     assert params == ('customer', list(setup.EXPECTED_COLUMNS))
 
 

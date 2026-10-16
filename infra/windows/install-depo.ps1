@@ -20,6 +20,8 @@ $pythonVersion = & $pythonToCheck -c 'import sys; print(sys.version.split()[0])'
 if ($LASTEXITCODE -ne 0 -or ([version]$pythonVersion).Major -ne 3 -or ([version]$pythonVersion).Minor -ne 12) {
   throw 'The customer release requires CPython 3.12.x. Replace an incompatible backend/.dt_venv before installing.'
 }
+$pythonBits = & $pythonToCheck -c 'import sys; print(64 if sys.maxsize > 2**32 else 32)'
+if ($LASTEXITCODE -ne 0 -or "$pythonBits".Trim() -ne '64') { throw 'The customer release requires 64-bit CPython 3.12. No dependencies were installed.' }
 if (-not $SkipFrontend) {
   foreach ($command in @('node', 'npm.cmd')) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Missing $command. Install Node.js 24+ and npm 10.2+." }

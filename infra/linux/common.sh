@@ -6,23 +6,31 @@ DEPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 depo_load_env() {
   local env_file="${1:-$DEPO_ROOT/.env.local}"
   [[ -f "$env_file" ]] || { echo "Missing DEPO environment file: $env_file" >&2; return 1; }
-  local line key value
+  local line key value quote rest line_number=0
   declare -A seen_keys=()
   while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
     line="${line%$'\r'}"
     [[ -z "${line//[[:space:]]/}" || "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ "$line" == *=* ]] || { echo "Invalid environment entry in $env_file: $line" >&2; return 1; }
+    [[ "$line" == *=* ]] || { echo "Invalid environment entry in $env_file at line $line_number. Value hidden." >&2; return 1; }
     key="${line%%=*}"
     value="${line#*=}"
     key="${key#"${key%%[![:space:]]*}"}"
     key="${key%"${key##*[![:space:]]}"}"
-    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "Invalid environment key: $key" >&2; return 1; }
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || { echo "Invalid environment key at line $line_number. Value hidden." >&2; return 1; }
     [[ -z "${seen_keys[$key]:-}" ]] || { echo "Duplicate environment key in $env_file: $key" >&2; return 1; }
     seen_keys[$key]=1
     value="${value#"${value%%[![:space:]]*}"}"
     value="${value%"${value##*[![:space:]]}"}"
-    if [[ ${#value} -ge 2 && (( "${value:0:1}" == '"' && "${value: -1}" == '"' ) || ( "${value:0:1}" == "'" && "${value: -1}" == "'" )) ]]; then
-      value="${value:1:${#value}-2}"
+    if [[ "${value:0:1}" == '"' || "${value:0:1}" == "'" ]]; then
+      quote="${value:0:1}"
+      rest="${value:1}"
+      [[ "$rest" == *"$quote"* ]] || { echo "Unclosed environment quote at line $line_number. Value hidden." >&2; return 1; }
+      value="${rest%"$quote"*}"
+      rest="${rest##*"$quote"}"
+      [[ "$rest" =~ ^[[:space:]]*(#.*)?$ ]] || { echo "Invalid quoted environment entry at line $line_number. Value hidden." >&2; return 1; }
+    else
+      value="$(printf '%s' "$value" | sed 's/[[:space:]][[:space:]]*#.*$//;s/[[:space:]]*$//')"
     fi
     export "$key=$value"
   done < "$env_file"

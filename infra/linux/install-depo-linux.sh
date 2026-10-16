@@ -40,7 +40,8 @@ if [[ "$SKIP_FRONTEND" == false ]]; then
   depo_require_command npm
   node_major="$(node -p 'process.versions.node.split(".")[0]')"
   (( node_major >= 24 )) || { echo 'Node.js 24 or newer is required.' >&2; exit 1; }
-  (cd "$DEPO_ROOT/frontend" && npm ci && npm run build)
+  browser_routing="$("$python_bin" "$SCRIPT_DIR/browser-routing.py")"
+  (cd "$DEPO_ROOT/frontend" && npm ci && DEPO_BROWSER_ROUTING_OVERRIDE_JSON="$browser_routing" npm run build)
 fi
 
 (cd "$DEPO_ROOT" && "$python_bin" - <<'PY'

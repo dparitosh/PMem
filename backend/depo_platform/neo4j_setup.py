@@ -19,13 +19,15 @@ REQUIRED_INDEXES = {
 }
 
 
-def verify_constraints(records):
+def verify_constraints(records, *, allow_missing=False):
     rows = {row['name']:row for row in records}
     missing = REQUIRED_CONSTRAINTS - rows.keys()
-    if missing:
+    if missing and not allow_missing:
         raise RuntimeError('Missing Neo4j publication constraints: ' + ', '.join(sorted(missing)))
     invalid = []
     for name, (label, properties) in CONSTRAINT_DEFINITIONS.items():
+        if name not in rows:
+            continue
         row = rows[name]
         # Cypher 25 renamed node UNIQUENESS in SHOW CONSTRAINTS output.
         # Both names describe the same enforcement; relationship uniqueness
@@ -35,14 +37,16 @@ def verify_constraints(records):
             invalid.append(name)
     if invalid:
         raise RuntimeError('Incompatible Neo4j publication constraints: ' + ', '.join(sorted(invalid)))
-    return sorted(REQUIRED_CONSTRAINTS)
+    return sorted(REQUIRED_CONSTRAINTS & rows.keys())
 
 
-def verify_indexes(records):
+def verify_indexes(records, *, allow_missing=False):
     indexed = {row['name']: row for row in records}
     invalid = []
     for name, (label, properties) in REQUIRED_INDEXES.items():
         row = indexed.get(name)
+        if row is None and allow_missing:
+            continue
         if not row or row.get('state') != 'ONLINE' or row.get('labelsOrTypes') != [label] or row.get('properties') != properties:
             invalid.append(name)
     if invalid:
@@ -100,7 +104,7 @@ def _auth():
     return user, password
 
 
-def provision(*, check_only: bool = False) -> dict:
+def provision(*, check_only: bool = False, upgrade_preflight: bool = False) -> dict:
     from neo4j import GraphDatabase
 
     uri, database = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL"), os.getenv("NEO4J_DATABASE", "neo4j")
@@ -108,7 +112,7 @@ def provision(*, check_only: bool = False) -> dict:
         raise RuntimeError("NEO4J_URI is required")
     with GraphDatabase.driver(uri, auth=_auth(), connection_timeout=10, max_transaction_retry_time=0) as driver:
         driver.verify_connectivity()
-        if not check_only:
+        if not check_only and not upgrade_preflight:
             for statement in _statements(SCHEMA_FILE.read_text(encoding="utf-8")):
                 driver.execute_query(statement, database_=database)
         records, _, _ = driver.execute_query(
@@ -118,8 +122,8 @@ def provision(*, check_only: bool = False) -> dict:
         index_records, _, _ = driver.execute_query(
             'SHOW INDEXES YIELD name, state, labelsOrTypes, properties WHERE name IN $names RETURN name, state, labelsOrTypes, properties',
             names=sorted(REQUIRED_INDEXES), database_=database, routing_='r')
-    verified_indexes = verify_indexes([dict(row) for row in index_records])
-    verified_constraints = verify_constraints([dict(row) for row in records])
+    verified_indexes = verify_indexes([dict(row) for row in index_records], allow_missing=upgrade_preflight)
+    verified_constraints = verify_constraints([dict(row) for row in records], allow_missing=upgrade_preflight)
     return {"status": "ok", "database": database, "constraints": verified_constraints, "indexes": verified_indexes}
 
 
@@ -129,9 +133,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument('--upgrade-preflight', action='store_true')
     args = parser.parse_args()
     try:
-        print(json.dumps(provision(check_only=args.check_only)))
+        print(json.dumps(provision(check_only=args.check_only, upgrade_preflight=args.upgrade_preflight)))
     except Exception as exc:
         print(json.dumps(failure_details(exc)))
         raise SystemExit(1) from None

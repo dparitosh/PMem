@@ -2453,8 +2453,8 @@ uses the same contract in read-only mode and is safe for routine diagnostics.
 
 Proceed to startup only after each command succeeds. The migration and final
 verification run in one transaction; failure rolls back their changes. Current
-success output lists migration versions 1 through 10 and checks 11 relations,
-53 columns, 22 constraints and 8 indexes. Repeating the update skips migrations
+success output lists migration versions 1 through 11 and checks 11 relations,
+53 columns, 22 constraints and 9 indexes. Repeating the update skips migrations
 already recorded with matching checksums. Startup also runs this migration
 step automatically before launching services. Existing credential profiles
 are preserved; routine schema upgrades do not require `-Synchronize` or token
@@ -2462,6 +2462,25 @@ rotation. Missing history versions, newer database versions or changed SQL
 checksums require DBA investigation, not deletion of history rows. This
 updates the application control-plane schema; it does not regenerate customer
 analytics product schemas. There is no automatic downgrade migration.
+The automated `infra/windows/update-depo-windows.ps1` path checks PostgreSQL
+table ownership, view read access and migration history, and inspects existing
+Neo4j publication constraints/indexes before stopping application processes.
+These preflight checks are read-only and allow missing objects that pending
+migrations/provisioning will create. They do not prove that every later DDL,
+dependency installation or startup operation will succeed; maintain a backup
+and an agreed recovery plan. A preflight failure leaves running services alone.
+
+Windows prerequisites enforce 64-bit CPython 3.12. Spark and connector runtime
+settings selected by installer switches are checked before dependency or database
+installation stages. Bootstrap loopback-only disabled-auth deployments retain
+their explicit configuration checks during final release validation.
+
+Linux installation compiles browser routing from the selected root environment
+using `DEPO_ROUTING_MODE`, `DEPO_API_GATEWAY_URL` and the per-service gateway paths.
+Only public routing values are passed to Vite. Quoted environment values are
+literal; unquoted inline comments must be preceded by whitespace. Malformed
+environment diagnostics do not print the offending value.
+
 # Switching local services and API gateway routing
 
 ## Azure API Management: deploy and verify every service
