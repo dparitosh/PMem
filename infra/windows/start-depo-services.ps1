@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Write-Host 'Starting DEPO: checking backend release files (dependency runtimes are excluded)...' -ForegroundColor Cyan
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
@@ -22,6 +23,7 @@ $codeResult = & $python -B $codeCheck
 if ($LASTEXITCODE -ne 0) { throw "Backend release validation failed: $codeResult" }
 $backendFingerprint = ($codeResult | ConvertFrom-Json).backend_fingerprint
 if (-not $backendFingerprint) { throw 'Backend release fingerprint is missing; refusing to start services.' }
+Write-Host 'Backend release fingerprint verified. Loading deployment configuration...'
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
@@ -59,6 +61,7 @@ Push-Location $root
 try {
   # Workers are launched below, after PostgreSQL. Their heartbeats are checked
   # by the agentic /readyz probe after every process has been started.
+  Write-Host 'Checking agentic configuration...'
   & $python -m backend.agentic_service.configuration --preflight
   if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Configure the listed settings before starting services.' }
 } finally { Pop-Location }
@@ -67,16 +70,19 @@ try {
 $requestedSparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
 
 if (-not $SkipPostgres) {
+  Write-Host 'Checking the selected PostgreSQL runtime...'
   & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $EnvFile -PostgresBinDir $PostgresBinDir -PostgresDataDir $PostgresDataDir
 }
 
 # Use the same reviewed migration entry point as schema-only upgrades. This
 # preserves the SQLSTATE-based corrective action and guarantees startup stops
 # before any service process is created when the database is incompatible.
+Write-Host 'Checking PostgreSQL migrations and schema compatibility...'
 & (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
 
 # Reconcile missing profiles and reject configuration conflicts before any API is launched.
 if ($env:AUTH_MODE -eq 'token' -and $env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
+  Write-Host 'Checking registered service credentials...'
   & (Join-Path $PSScriptRoot 'apply-depo-service-credentials.ps1') -EnvFile $EnvFile
 }
 

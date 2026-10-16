@@ -23,7 +23,9 @@ def check(root):
         raise ValueError('Mixed converter release: owl_xsd_engine.py lacks namespace-aware datatype collection.')
     digest = hashlib.sha256()
     for directory, folders, filenames in os.walk(root/'backend'):
-        folders[:] = sorted(folder for folder in folders if folder not in {'tests', '__pycache__', '.dt_venv', '.venv', 'venv', 'node_modules'})
+        folders[:] = sorted(folder for folder in folders
+                            if folder not in {'tests', '__pycache__', '.dt_venv', '.venv', 'venv', 'node_modules'}
+                            and not folder.startswith('.dt_venv-'))
         for filename in sorted(filenames):
             if filename.endswith('.py'):
                 path = Path(directory)/filename
