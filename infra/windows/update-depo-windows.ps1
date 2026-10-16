@@ -18,6 +18,14 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw 'Existing environment file is missing; restore it before redeployment.' }
 if (-not (Test-Path -LiteralPath (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -PathType Leaf)) { throw 'Existing backend runtime is absent. Use install-depo-windows.ps1 for a first installation.' }
+# Validate the selected release configuration while the running deployment is
+# still available. No environment edits or shutdown may precede these checks.
+& (Join-Path $root 'infra/deployment/test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
+if (-not $SkipFrontend) {
+  & (Join-Path $root 'infra/deployment/test-depo-frontend-config.ps1') -RootEnvFile $envPath
+}
+& (Join-Path $PSScriptRoot 'install-depo.ps1') -CheckPrerequisites -SkipFrontend:$SkipFrontend -EnvFile $envPath
+if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Runtime prerequisite check failed. Services were not stopped.' }
 & (Join-Path $PSScriptRoot 'update-depo-runtime-timeouts.ps1') -EnvFile $envPath -LlmTimeoutSeconds $LlmTimeoutSeconds
 if (-not $SkipFrontend) { & (Join-Path $PSScriptRoot 'stop-depo-frontend.ps1') }
 & (Join-Path $PSScriptRoot 'stop-depo-services.ps1') -EnvFile $envPath
@@ -25,7 +33,6 @@ if (-not $SkipFrontend) { & (Join-Path $PSScriptRoot 'stop-depo-frontend.ps1') }
 # installer used for a new deployment; do not duplicate those lifecycle stages.
 & (Join-Path $PSScriptRoot 'install-depo-windows.ps1') -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies)
 if (-not $SkipFrontend) {
-  if (-not $InstallDependencies) { & (Join-Path $PSScriptRoot 'build-depo-frontend.ps1') -EnvFile $envPath }
   & (Join-Path $PSScriptRoot 'start-depo-frontend.ps1') -EnvFile $envPath
 }
 Write-Host 'DEPO redeployment completed: database schema/indexes verified, timeouts applied, services restarted.' -ForegroundColor Green

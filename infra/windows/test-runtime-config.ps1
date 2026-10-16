@@ -131,6 +131,17 @@ try {
   } finally {
     foreach ($name in $oldNeo4j.Keys) { [Environment]::SetEnvironmentVariable($name, $oldNeo4j[$name], 'Process') }
   }
+  $savedImport = @{}
+  foreach ($name in @('LLM_REQUEST_TIMEOUT_SECONDS','DEPO_IMPORTED_ENV_KEYS','DEPO_ENV_INJECTED')) { $savedImport[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+  try {
+    Set-Content -LiteralPath $envPath -Value 'LLM_REQUEST_TIMEOUT_SECONDS=777'
+    Import-DepoEnvironment $fixture '.env.local'
+    # Dot-source again as lifecycle helpers do: bookkeeping must survive scope.
+    . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+    Set-Content -LiteralPath $envPath -Value '# use the default timeout'
+    Import-DepoEnvironment $fixture '.env.local'
+    if ($env:LLM_REQUEST_TIMEOUT_SECONDS) { throw 'Omitted timeout inherited the previous deployment value.' }
+  } finally { foreach ($name in $savedImport.Keys) { [Environment]::SetEnvironmentVariable($name,$savedImport[$name],'Process') } }
   Set-Content -LiteralPath $envPath -Value 'DEPO_AUDIT_FIXTURE=read-only'
   $parsed = Read-DepoEnvironment $fixture $envPath
   if ($parsed.DEPO_AUDIT_FIXTURE -ne 'read-only' -or $env:DEPO_AUDIT_FIXTURE) { throw 'Reader changed process environment.' }

@@ -10,10 +10,18 @@ try {
   $replacements = @{
     DEPO_DATABASE_URL='postgresql://app:fixture@db.example/depo'; NEO4J_URI='neo4j+s://graph.example'
     NEO4J_PASS='fixture'; ALLOWED_ORIGINS='https://app.example'; OSLC_BASE_URL='https://api.example'
+    ADMIN_API_KEY=('b' * 64)
   }
   foreach ($key in $replacements.Keys) { $content = $content -replace "(?m)^$key=.*$", "$key=$($replacements[$key])" }
   Set-Content -LiteralPath $testFile -Value $content
   & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
+  foreach ($admin in @('', '<admin-key>', 'short')) {
+    Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^ADMIN_API_KEY=.*$', "ADMIN_API_KEY=$admin")
+    $rejected = $false
+    try { & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks }
+    catch { if ($_.Exception.Message -notlike '*ADMIN_API_KEY*') { throw }; $rejected = $true }
+    if (-not $rejected) { throw 'Missing, placeholder or weak production admin key accepted.' }
+  }
   foreach ($origins in @('http://10.10.12.21:3000', 'http://127.0.0.1:3000,http://localhost:3000')) {
     Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^ALLOWED_ORIGINS=.*$', "ALLOWED_ORIGINS=$origins")
     & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
@@ -31,7 +39,7 @@ try {
   }
   Set-Content -LiteralPath $testFile -Value ($content -replace 'neo4j\+s://graph.example', 'bolt+s://graph.example')
   & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
-  foreach ($invalid in @(($content -replace 'neo4j\+s://graph.example', 'neo4j+ssc://graph.example'), ($content + "`nAUTH_MODE=token"))) {
+  foreach ($invalid in @(($content -replace 'neo4j\+s://graph.example', 'neo4j+ssc://graph.example'), ($content + "`nAUTH_MODE=entra"))) {
     Set-Content -LiteralPath $testFile -Value $invalid
     $rejected = $false
     try { & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks }

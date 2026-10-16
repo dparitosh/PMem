@@ -68,7 +68,7 @@ def _failure_action(exc: Exception) -> dict:
         '28P01': 'PostgreSQL rejected the user/password. Correct DEPO_DATABASE_URL and test the same credentials in pgAdmin.',
         '28000': 'PostgreSQL rejected this login. Check the role, database access, and pg_hba.conf rule for the application VM.',
         '3D000': 'The configured PostgreSQL database does not exist. Create it on the database VM or correct DEPO_DATABASE_URL.',
-        '42501': 'The application role lacks privileges. Grant CONNECT on the database and USAGE, CREATE on the configured schema.',
+        '42501': 'The migration role lacks privileges. Check CONNECT, schema USAGE/CREATE, and ownership of existing DEPO tables/views (or inherited membership in their owning role). Schema grants alone do not authorize ALTER TABLE. Have the DBA reconcile ownership; do not recreate the database.',
         '23514': 'Existing data violates a new schema constraint. Correct the reported rows before rerunning the migration.',
         '23503': 'Existing data violates a foreign-key constraint. Correct the referenced records before rerunning the migration.',
         '42P07': 'An untracked relation already exists. Do not delete it; compare it with the versioned migration and reconcile migration history.',
@@ -129,6 +129,20 @@ def verify_migration_privileges(connection) -> None:
         if not row or len(row) != 3 or not all(row):
             raise RuntimeError(
                 f"PostgreSQL application role requires CONNECT and USAGE, CREATE privileges on schema '{schema}'"
+            )
+        cursor.execute(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname=%s AND c.relname=ANY(%s) AND c.relkind IN ('r','p','v','m') "
+            "AND NOT (pg_has_role(current_user, c.relowner, 'USAGE') "
+            "OR (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)) ORDER BY c.relname",
+            (schema, list(EXPECTED_COLUMNS)),
+        )
+        incompatible = [row[0] for row in cursor.fetchall()]
+        if incompatible:
+            raise RuntimeError(
+                'Migration role cannot alter existing DEPO relations: ' + ', '.join(incompatible) +
+                '. Use the owning migration role or ask the DBA to reconcile ownership or inherited role membership. '
+                'Schema CREATE grants alone are insufficient; do not delete or recreate these relations.'
             )
 
 

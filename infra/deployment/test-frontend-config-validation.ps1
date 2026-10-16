@@ -17,7 +17,9 @@ try {
   Assert-BrowserRejected @('VITE_GRAPH_SERVICE_URL=http:////127.0.0.1:8013') 'Invalid browser URL'
   Assert-BrowserRejected @('VITE_GRAPH_READ_TOKEN=fixture') 'Do not compile credentials'
   Assert-BrowserRejected @('VITE_API_GATEWAY_URL=https://<customer-host>') 'placeholder'
-  Assert-BrowserRejected @('VITE_API_GATEWAY_URL=', 'VITE_API_GATEWAY_URL=') 'Duplicate'
+  Set-Content -LiteralPath $fixture -Value @('VITE_API_GATEWAY_URL=', 'VITE_API_GATEWAY_URL=')
+  & $validator -EnvFile $fixture
+  Assert-BrowserRejected @('VITE_API_GATEWAY_URL=', 'VITE_API_GATEWAY_URL=https://other.example') 'Conflicting duplicate'
 } finally {
   if (Test-Path -LiteralPath $fixture) { Remove-Item -LiteralPath $fixture -Force }
 }

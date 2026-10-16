@@ -82,6 +82,7 @@ if ($values.AUTH_MODE -eq "disabled") {
 if ($values.AUTH_MODE -eq "token") {
   if (-not $values.ONTOLOGY_APPROVAL_TOKEN -or $values.ONTOLOGY_APPROVAL_TOKEN -match '<.*>') { throw 'Missing generated bootstrap token: ONTOLOGY_APPROVAL_TOKEN' }
   $tokenKeys = @("DATA_PRODUCT_APPROVAL_TOKEN", "AGENTIC_APPROVAL_TOKEN", "ARTIFACT_RETENTION_APPROVAL_TOKEN", "DATA_JOB_EXECUTION_TOKEN", "DATA_JOB_APPROVAL_TOKEN", "CEIM_PUBLISH_APPROVAL_TOKEN", "CEIM_RESOLUTION_APPROVAL_TOKEN", "SPEED_PATH_APPROVAL_TOKEN", "SPEED_EVENT_TOKEN", "SPARQL_FEDERATION_APPROVAL_TOKEN", "VOCABULARY_APPROVAL_TOKEN", "GRAPH_READ_TOKEN", "GRAPH_PUBLICATION_TOKEN", "INGESTION_WRITE_TOKEN", "CATALOG_SERVICE_TOKEN")
+  if ($values.DEPO_CREDENTIAL_STORE -eq 'postgres') { $tokenKeys += 'ADMIN_API_KEY' }
   foreach ($name in ($tokenKeys + 'ONTOLOGY_APPROVAL_TOKEN')) {
     if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing API key: $name" }
     if ($Profile -eq 'Production' -and $values[$name].Length -lt 32) { throw "Production API key must be at least 32 characters: $name" }

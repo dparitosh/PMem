@@ -152,6 +152,11 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   # or routing must not leave a partially imported deployment.
   $neo4j = Resolve-DepoNeo4jConfiguration $values
   $routing = Resolve-DepoRouting $values
+  $previousNames = @()
+  $tracked = [Environment]::GetEnvironmentVariable('DEPO_IMPORTED_ENV_KEYS', 'Process')
+  if ($tracked) {
+    try { $previousNames = @($tracked | ConvertFrom-Json) } catch { throw 'Invalid environment import bookkeeping. Open a fresh PowerShell session.' }
+  }
   foreach ($limitName in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES')) {
     if (-not $values.ContainsKey($limitName)) { [Environment]::SetEnvironmentVariable($limitName, $null, 'Process') }
   }
@@ -174,7 +179,15 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   }
   foreach ($key in $neo4j.Keys) { $values[$key] = $neo4j[$key] }
   foreach ($key in $routing.Keys) { $values[$key] = $routing[$key] }
+  # Track names, never values, across dot-sourced helpers and child scripts.
+  # An omitted setting in the next selected file must return to its default.
+  foreach ($name in $previousNames) {
+    if ($name -is [string] -and $name -match '^[A-Za-z_][A-Za-z0-9_]*$' -and -not $values.ContainsKey($name)) {
+      [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    }
+  }
   foreach ($key in $values.Keys) { [Environment]::SetEnvironmentVariable($key, $values[$key], 'Process') }
+  [Environment]::SetEnvironmentVariable('DEPO_IMPORTED_ENV_KEYS', (ConvertTo-Json -InputObject @($values.Keys) -Compress), 'Process')
   [Environment]::SetEnvironmentVariable('DEPO_ENV_INJECTED', 'true', 'Process')
 }
 

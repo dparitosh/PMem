@@ -23,6 +23,18 @@ export default defineConfig(({ mode }) => {
   const clientEnv = Object.fromEntries(
     Object.entries({ ...loaded, ...process.env }).filter(([key]) => isPublicClientSetting(key)),
   );
+  const rootRouting = process.env.DEPO_BROWSER_ROUTING_OVERRIDE_JSON ? JSON.parse(process.env.DEPO_BROWSER_ROUTING_OVERRIDE_JSON) : {};
+  if (process.env.DEPO_BROWSER_ROUTING_OVERRIDE_JSON) {
+    const routing = rootRouting;
+    if (!routing || typeof routing !== 'object' || Array.isArray(routing)) throw new Error('Invalid root browser routing override.');
+    for (const [key, value] of Object.entries(routing)) {
+      if (!/^VITE_(?:API_GATEWAY_URL|BACKEND_URL|(?:QIF|ONTOLOGY|AGENTIC|GRAPH|INGESTION|OSLC|CATALOG|DATA_PRODUCT|CEIM|DATA_PIPELINE)_SERVICE_URL)$/.test(key) || typeof value !== 'string') {
+        throw new Error('Invalid root browser routing setting.');
+      }
+      clientEnv[key] = value;
+      clientEnv[`REACT_APP_${key.slice(5)}`] = value;
+    }
+  }
 
   for (const [key, value] of Object.entries(clientEnv)) {
     if (key.startsWith('VITE_')) {
@@ -36,6 +48,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), buildReceiptPlugin(process.cwd())],
     define: {
+      '__DEPO_ROOT_ROUTING__': JSON.stringify(rootRouting),
       'process.env': JSON.stringify(clientEnv),
     },
     server: { host: '127.0.0.1', port: 3000, strictPort: true },

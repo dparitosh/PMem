@@ -558,7 +558,7 @@ Open **Tools > Query Tool** and run these read-only checks:
 
 ```sql
 SELECT current_database(), current_user;
-SELECT has_schema_privilege(current_user, 'semantic', 'USAGE, CREATE') AS can_migrate_semantic;
+SELECT has_schema_privilege(current_user, 'semantic', 'USAGE, CREATE') AS has_semantic_schema_grants;
 SELECT table_schema, table_name
 FROM information_schema.tables
 WHERE table_schema = 'semantic'
@@ -569,7 +569,11 @@ The first query must show `depo` and `depo_app`; the privilege query must return
 `true`. pgAdmin may report `public` for `current_schema()` because it does not
 use DEPO's runtime search path. The table query confirms that the application
 schema is reachable. A pgAdmin connection
-proves PostgreSQL network access and credentials only; continue with the ODBC
+proves PostgreSQL network access and credentials only. For upgrades, the migration
+role must also own the existing DEPO tables/views or inherit privileges from their
+owning role. The migration command checks this before running migration SQL and
+reports blocked relation names. Schema grants alone do not authorize `ALTER TABLE`;
+have the DBA reconcile ownership rather than recreating the database. Continue with the ODBC
 test below when another Windows application requires ODBC.
 
 The Section 3 installer tests the **actual DEPO URL** after installing backend
@@ -4449,10 +4453,21 @@ settings are updated; API keys and connection settings are preserved. The backen
 accepts LLM_REQUEST_TIMEOUT_SECONDS from 1 through 900. Ollama diagnostics use the
 same environment value unless -TimeoutSeconds is explicitly supplied.
 
+The updater validates backend/frontend configuration and Python, Node, npm and
+dependency-lock prerequisites before editing timeouts or stopping services.
+Token authentication with PostgreSQL credential storage requires
+a nonempty `ADMIN_API_KEY`; Production also requires at least 32 characters. Existing
+keys remain unchanged. Fill customer placeholders before running the update.
+
 The updater stops the frontend and backend services, delegates PostgreSQL migration
 011 and Neo4j index provisioning/validation to the existing installer, builds the
 frontend, and restarts it. It does not stop an external PostgreSQL VM. Dependencies
 are reused by default; add -InstallDependencies if the new release changes them.
+The delegated installer builds the frontend once. Root routing overrides include
+explicitly empty gateway and aggregate URLs, so obsolete frontend aliases cannot
+restore them. Reimporting an environment file clears settings imported previously
+by these launchers when the selected file now omits them; unrelated shell settings
+are preserved.
 A failed stage stops the update and reports the error; correct it and rerun the
 same command. Credential mismatches require restoring the current keys or deliberate
 rotation; redeployment does not automatically rotate keys.

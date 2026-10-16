@@ -13,7 +13,7 @@ def connection(rows=None, history=None, constraints=None, indexes=None):
     conn = MagicMock()
     cursor = conn.cursor.return_value.__enter__.return_value
     structures, singles = catalog_fixture(__import__('os').getenv('DEPO_DATABASE_SCHEMA','semantic'))
-    cursor.fetchone.side_effect = singles
+    cursor.fetchone.side_effect = [(True, True, 'depo_registry', 'namespace', "(value ->> 'source'::text)", 'key'), *singles]
     cursor.fetchall.side_effect = [
         rows if rows is not None else [(t, c, d) for t, cols in setup.EXPECTED_COLUMNS.items() for c, d in cols.items()],
         [(value,) for value in (constraints if constraints is not None else setup.EXPECTED_CONSTRAINTS)],
@@ -178,6 +178,32 @@ def test_migration_requires_dba_provisioned_schema(monkeypatch):
     with pytest.raises(RuntimeError, match='Create it as the database administrator'):
         postgres_schema.initialise_schema(cursor)
     assert not any('CREATE SCHEMA' in call.args[0] for call in cursor.execute.call_args_list)
+
+
+@pytest.mark.parametrize('blocked', [[], [('depo_registry',)], [('depo_registry',), ('depo_ontology_analytics',)]])
+def test_migration_checks_existing_relation_ownership(monkeypatch, blocked):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (True, True, True)
+    cursor.fetchall.return_value = blocked
+    if blocked:
+        with pytest.raises(RuntimeError, match='owning migration role') as failure:
+            setup.verify_migration_privileges(conn)
+        assert 'depo_registry' in str(failure.value)
+    else:
+        setup.verify_migration_privileges(conn)
+    sql, params = cursor.execute.call_args_list[-1].args
+    assert 'pg_has_role' in sql and 'rolsuper' in sql
+    assert params == ('customer', list(setup.EXPECTED_COLUMNS))
+
+
+def test_privilege_failure_guidance_includes_ownership():
+    class PrivilegeFailure(Exception):
+        sqlstate = '42501'
+    result = setup._failure_action(PrivilegeFailure('private connection details'))
+    assert 'ownership' in result['action']
+    assert 'private connection details' not in str(result)
 
 
 def test_migration_selects_existing_schema_without_database_create(monkeypatch):

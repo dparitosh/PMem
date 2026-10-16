@@ -1,7 +1,7 @@
 <# .SYNOPSIS Builds the frontend using authoritative root service routing.
 .DESCRIPTION
 Does not install dependencies or edit configuration. Overrides both Vite and
-legacy CRA aliases for nonempty root routing values for this build only,
+legacy CRA aliases for all root routing values for this build only,
 then restores the process environment. Other alias conflicts still fail.
 #>
 [CmdletBinding()]
@@ -12,15 +12,22 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
 $routing = Resolve-DepoRouting $values
 $previous = @{}
+$overrideName = 'DEPO_BROWSER_ROUTING_OVERRIDE_JSON'
+$previous[$overrideName] = [Environment]::GetEnvironmentVariable($overrideName, 'Process')
 try {
+  $browser = @{}
   foreach ($key in $routing.Keys) {
-    if ($key.StartsWith('VITE_') -and $routing[$key]) {
+    if ($key.StartsWith('VITE_')) {
+      $browser[$key] = [string]$routing[$key]
       foreach ($alias in @($key, ('REACT_APP_' + $key.Substring(5)))) {
         $previous[$alias] = [Environment]::GetEnvironmentVariable($alias, 'Process')
         [Environment]::SetEnvironmentVariable($alias, [string]$routing[$key], 'Process')
       }
     }
   }
+  # Windows PowerShell removes empty process variables. Carry explicit empty
+  # routing values separately so dotenv cannot reintroduce an old gateway.
+  [Environment]::SetEnvironmentVariable($overrideName, (ConvertTo-Json -InputObject $browser -Compress), 'Process')
   Push-Location (Join-Path $root 'frontend')
   try {
     if (-not (Test-Path -LiteralPath 'node_modules/.bin/vite.cmd' -PathType Leaf)) {
