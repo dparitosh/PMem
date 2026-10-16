@@ -36,7 +36,8 @@ $env:SPARK_HOME = $SparkHome
 $env:JAVA_HOME = $JavaHome
 $env:HADOOP_HOME = $HadoopHome
 $env:PATH = (Join-Path $HadoopHome 'bin') + ';' + $env:PATH
-$env:PYSPARK_PYTHON = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
+. (Join-Path $PSScriptRoot 'service-runtimes.ps1')
+$env:PYSPARK_PYTHON = Get-DepoServicePython -Root $root -ServiceId 'data-pipeline-worker'
 if (-not (Test-Path $env:PYSPARK_PYTHON)) { throw "DEPO Python runtime was not found: $env:PYSPARK_PYTHON" }
 
 $env:PYSPARK_DRIVER_PYTHON = $env:PYSPARK_PYTHON

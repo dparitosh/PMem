@@ -28,6 +28,17 @@ class UpgradeHistoryTests(unittest.TestCase):
         cursor = self.run_upgrade([(v, n, migrations.migration_checksum(s)) for v, n, s in migrations.MIGRATIONS])
         self.assertFalse(any(call.args[0].startswith('INSERT INTO depo_schema_migrations') for call in cursor.execute.call_args_list))
 
+    def test_customer_version_eleven_only_adds_catalog_index(self):
+        history = [(v, n, migrations.migration_checksum(s)) for v, n, s in migrations.MIGRATIONS if v <= 11]
+        cursor = self.run_upgrade(history)
+        pending = [(v, n, s) for v, n, s in migrations.MIGRATIONS if v > 11]
+        self.assertEqual([(v, n) for v, n, _ in pending], [(12, 'ontology_catalog_pagination')])
+        sql = pending[0][2][0]
+        self.assertIn('CREATE INDEX idx_depo_ontology_catalog_created', sql)
+        self.assertIn(sql, [call.args[0] for call in cursor.execute.call_args_list])
+        for destructive in ('DROP TABLE', 'DELETE FROM', 'TRUNCATE', 'ALTER TABLE'):
+            self.assertNotIn(destructive, sql.upper())
+
     def test_every_previous_release_prefix_applies_only_pending_migrations(self):
         for count in range(len(migrations.MIGRATIONS) + 1):
             with self.subTest(applied_count=count):

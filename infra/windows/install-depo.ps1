@@ -51,6 +51,9 @@ if ($CheckPrerequisites) {
 # Import the selected deployment configuration before any service imports.
 # Python's legacy .env lookup does not load root .env.local automatically.
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+$isolatedServices = $env:DEPO_SERVICE_RUNTIME_MODE -eq 'isolated'
+if ($isolatedServices -and $Development) { throw 'Isolated service deployment uses reviewed production locks; omit -Development.' }
+if ($isolatedServices) { $productionLock = Join-Path $root 'backend/dependency-profiles/platform-tools.txt' }
 if (-not (Test-Path $venvPython)) {
   & $Python -m venv $VenvPath
   if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed." }
@@ -63,10 +66,13 @@ $pipLog = Join-Path $installLogDir ('pip-install-' + [guid]::NewGuid().ToString(
 $pipArguments = @('-m', 'pip', 'install', '--disable-pip-version-check')
 if (-not $Development) { $pipArguments += '--require-hashes' }
 $pipArguments += @('-r', $requirements)
-if ($EnableOcr -and -not $Development) { $pipArguments += @('-r', $ocrLock) }
+if ($EnableOcr -and -not $Development -and -not $isolatedServices) { $pipArguments += @('-r', $ocrLock) }
 Write-Host "Installing backend dependencies. Output log: $pipLog"
 $pipExitCode = Invoke-DepoInstallCommand -Executable $venvPython -NativeArguments $pipArguments -LogPath $pipLog
 if ($pipExitCode -ne 0) { throw "Backend dependency installation failed with exit code $pipExitCode. Inspect $pipLog for the actual pip error; environment files and database were preserved." }
+if ($isolatedServices) {
+  & (Join-Path $PSScriptRoot 'install-depo-service.ps1') -ServiceId all -EnvFile $EnvFile -Python $venvPython -EnableOcr:$EnableOcr
+} else {
 Push-Location $root
 try {
   # Do not use ``python -c`` here. Windows PowerShell removes embedded double
@@ -90,6 +96,7 @@ for item in manifest.get("workers", []):
 '@ | & $venvPython -
   if ($LASTEXITCODE -ne 0) { throw 'Service installation import/OpenAPI smoke check failed.' }
 } finally { Pop-Location }
+}
 if (-not $SkipFrontend) {
   $frontend = Join-Path $root "frontend"
   Push-Location $frontend

@@ -1,0 +1,317 @@
+{
+  "agentic-workflow-worker": {
+    "packages": 70,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "networkx",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "rdflib",
+      "starlette",
+      "typing-extensions"
+    ]
+  },
+  "agentic": {
+    "packages": 75,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "networkx",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "catalog": {
+    "packages": 74,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "ceim": {
+    "packages": 74,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "data-pipeline-worker": {
+    "packages": 69,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "rdflib"
+    ]
+  },
+  "data-pipeline": {
+    "packages": 74,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "data-product-outbox": {
+    "packages": 17,
+    "roots": [
+      "fastapi",
+      "httpx",
+      "psycopg[binary]",
+      "pydantic",
+      "typing-extensions"
+    ]
+  },
+  "data-products": {
+    "packages": 74,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "graph": {
+    "packages": 177,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "graphql-core",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "semantica",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "ingestion": {
+    "packages": 86,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-core",
+      "langchain-neo4j",
+      "langchain-ollama",
+      "langchain-openai",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "pillow",
+      "psycopg[binary]",
+      "pydantic",
+      "pypdf",
+      "pyshacl",
+      "python-docx",
+      "python-dotenv",
+      "python-multipart",
+      "python-pptx",
+      "rdflib",
+      "starlette",
+      "tiktoken",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "ocr": {
+    "packages": 28,
+    "roots": [
+      "easyocr",
+      "PyMuPDF",
+      "pytesseract"
+    ]
+  },
+  "ontology": {
+    "packages": 176,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "semantica",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "oslc": {
+    "packages": 74,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "rdflib",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  },
+  "platform-tools": {
+    "packages": 26,
+    "roots": [
+      "fastapi",
+      "uvicorn[standard]",
+      "pydantic",
+      "httpx",
+      "psycopg[binary]",
+      "neo4j",
+      "python-dotenv"
+    ]
+  },
+  "schema-sets": {
+    "packages": 176,
+    "roots": [
+      "defusedxml",
+      "fastapi",
+      "httpx",
+      "langchain-neo4j",
+      "loguru",
+      "lxml",
+      "neo4j",
+      "openpyxl",
+      "pandas",
+      "psycopg[binary]",
+      "pydantic",
+      "pyshacl",
+      "python-dotenv",
+      "python-multipart",
+      "pyyaml",
+      "rdflib",
+      "semantica",
+      "starlette",
+      "typing-extensions",
+      "uvicorn[standard]"
+    ]
+  }
+}

@@ -5,12 +5,16 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
+  'infra/windows/service-runtimes.ps1', 'infra/windows/install-depo-service.ps1',
+  'backend/depo_platform/service_smoke.py', 'backend/dependency-profiles/platform-tools.txt',
+  'backend/dependency-profiles/ocr.txt', 'backend/dependency-profiles/windows-metadata.json',
   'infra/windows/native-install-command.ps1',
   'infra/windows/update-depo-windows.ps1', 'infra/windows/update-depo-runtime-timeouts.ps1',
   'infra/postgres/migrations/011_registry_source_lookup_index.sql',
+  'infra/postgres/migrations/012_ontology_catalog_pagination.sql',
   'backend/depo_platform/release_code_check.py',
   'INSTALLATION.md', 'configure-depo.ps1', 'install-depo.ps1', 'diagnose-depo.ps1',
-  'manage-depo.ps1', 'certify-depo-release.ps1', 'backend/requirements-lock.txt',
+  'manage-depo.ps1', 'update-depo.ps1', 'certify-depo-release.ps1', 'backend/requirements-lock.txt',
   'frontend/package-lock.json', 'infra/deployment/services.json',
   'infra/postgres/create-depo-database.sql', 'infra/postgres/update-postgres-schema.ps1',
   'infra/postgres/test-postgres-schema.ps1', 'infra/postgres/test-postgres-connectivity.ps1',
@@ -68,6 +72,12 @@ $manifest = Get-Content -LiteralPath (Join-Path $root 'infra\deployment\services
 $services = @($manifest.services); $workers = @($manifest.workers)
 if ($services.Count -ne 10 -or $workers.Count -ne 3) { throw 'Service manifest must define ten APIs and three workers.' }
 $ids = @($services.id) + @($workers.id)
+foreach ($id in $ids) {
+  $profile = Join-Path $root ("backend/dependency-profiles/{0}.txt" -f $id)
+  if (-not (Test-Path -LiteralPath $profile -PathType Leaf)) { throw "Missing service dependency lock: $id" }
+  $entries = @(Get-Content -LiteralPath $profile | Where-Object { $_ -and -not $_.StartsWith('#') })
+  if (-not $entries.Count -or @($entries | Where-Object { $_ -notmatch '^[a-z0-9][a-z0-9.-]*==[^ ]+ --hash=sha256:[0-9a-f]{64}$' }).Count) { throw "Invalid service dependency lock: $id" }
+}
 if (($ids | Sort-Object -Unique).Count -ne $ids.Count) { throw 'Service manifest contains duplicate component IDs.' }
 $ports = @($services.port | ForEach-Object { [int]$_ })
 if (($ports | Sort-Object -Unique).Count -ne $ports.Count) { throw 'Service manifest contains duplicate API ports.' }

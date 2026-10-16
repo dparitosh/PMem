@@ -10,7 +10,7 @@ from backend.depo_platform.service_urls import service_url
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, Query
 from starlette.concurrency import run_in_threadpool
 
 from .catalog import catalog, ontology_upload_limit
@@ -54,16 +54,14 @@ async def ontology_publication_status(ontology_id: str, include_job: bool = True
     record = await run_in_threadpool(graph_publications.get, ontology_id)
     original_record = record
     if record:
-        metadata, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
-        digest = hashlib.sha256(content).hexdigest()
+        digest = await run_in_threadpool(catalog.artifact_digest, ontology_id)
         if record.get('artifact_sha256', record.get('publication_id')) != digest:
             record = {'ontology_id': ontology_id, 'publication_id': digest}
     if not record:
         metadata = await run_in_threadpool(catalog.get, ontology_id)
         if not metadata:
             return status({'ontology_id': ontology_id, 'status': 'not_verified'})
-        _, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
-        identifier = hashlib.sha256(content).hexdigest()
+        identifier = await run_in_threadpool(catalog.artifact_digest, ontology_id)
         record = {'ontology_id': ontology_id, 'publication_id': identifier}
     graph_root = service_url('GRAPH_SERVICE_URL', 'http://127.0.0.1:8013').rstrip('/')
     if not graph_root.endswith('/api/v1'): graph_root += '/api/v1'
@@ -516,7 +514,11 @@ async def publish_vocabulary(scheme_id: str, version: str, payload: ApprovalBody
 
 
 @router.get("", summary="List ontology artifacts registered by this service")
-def list_ontologies() -> dict:
+def list_ontologies(limit: Annotated[int | None, Query(ge=1, le=1000)] = None, offset: Annotated[int, Query(ge=0)] = 0) -> dict:
+    if limit is not None:
+        total, ontologies = catalog.page(limit=limit, offset=offset)
+        return {'ontologies': ontologies, 'count': total, 'offset': offset,
+                'next_offset': offset + len(ontologies) if offset + len(ontologies) < total and ontologies else None}
     ontologies = catalog.list()
     return {"ontologies": ontologies, "count": len(ontologies)}
 

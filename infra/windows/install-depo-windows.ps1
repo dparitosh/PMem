@@ -103,7 +103,7 @@ if ($effectiveSpark) {
 
 if (-not $SkipDependencyInstall) {
   Invoke-DepoStage 'Prerequisites' {
-    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnableOcr:$EnableOcr -CheckPrerequisites
+    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnableOcr:$EnableOcr -CheckPrerequisites -EnvFile $envPath
   }
   Invoke-DepoStage 'Application dependencies and frontend build' {
     & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnableOcr:$EnableOcr -EnvFile $envPath
@@ -121,6 +121,16 @@ if (-not $SkipFrontend -and -not (Test-Path -LiteralPath (Join-Path $root 'front
 
 Invoke-DepoStage 'Deployment configuration validation' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
+}
+if ($SkipDependencyInstall) {
+  Invoke-DepoStage 'Existing service runtime availability' {
+    . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
+    $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
+    foreach ($entry in (@($manifest.services) + @($manifest.workers))) {
+      $runtime = Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode $settings.DEPO_SERVICE_RUNTIME_MODE
+      if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "Missing runtime for '$($entry.id)'. Omit -SkipDependencyInstall to install this release's dependencies. No migrations were applied." }
+    }
+  }
 }
 Invoke-DepoStage 'Selected PostgreSQL runtime startup' {
   & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $envPath

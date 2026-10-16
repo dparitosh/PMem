@@ -8,8 +8,10 @@ No uploads, approvals or data jobs run. No keys or session tokens are printed.
 Use -Gateway to check configured APIM routing; otherwise checks local APIs.
 #>
 [CmdletBinding()]
-param([string]$EnvFile = '.env.local', [switch]$Gateway)
+param([string]$EnvFile = '.env.local', [switch]$Gateway, [string]$OntologyId = '', [switch]$RequirePublished)
 $ErrorActionPreference = 'Stop'
+if ($OntologyId -and $OntologyId -notmatch '^[A-Za-z0-9_-]{1,128}$') { throw 'Use the retained ontology ID, without URL characters.' }
+if ($RequirePublished -and -not $OntologyId) { throw '-RequirePublished requires -OntologyId.' }
 function Get-DepoSessionFailureHint($Failure) {
   $status = $null
   if ($Failure.Exception.Response) {
@@ -68,6 +70,22 @@ try {
       if ($access.status -ne 'authorized') { throw 'Not authorized' }
     } catch { throw ("Browser session check failed at $($service.id) GET /auth/access: " + (Get-DepoSessionFailureHint $_)) }
     Write-Host "PASS: central browser session accepted by $($service.id)."
+  }
+  # Authentication endpoints alone do not prove that the UI's business routes
+  # accept the same delegated session. Exercise the exact failing read paths.
+  foreach ($path in @('/api/v1/ontologies/health','/api/v1/ontologies')) {
+    try { $null = Invoke-RestMethod -Uri ($bases['ontology'] + $path) -Headers $headers -MaximumRedirection 0 -TimeoutSec 30 }
+    catch { throw ("Ontology business-route session check failed at GET ${path}: " + (Get-DepoSessionFailureHint $_)) }
+    Write-Host "PASS: delegated read access accepted by GET $path."
+  }
+  if ($OntologyId) {
+    try { $publication = Invoke-RestMethod -Uri ($bases['ontology'] + '/api/v1/ontologies/' + $OntologyId + '/publication') -Headers $headers -MaximumRedirection 0 -TimeoutSec 30 }
+    catch { throw ('Publication status could not be verified: ' + (Get-DepoSessionFailureHint $_)) }
+    if ($publication.status -notin @('not_verified','not_published','unverified','publishing','published','failed','timed_out','cancelled')) { throw 'Invalid publication status contract.' }
+    Write-Host "Publication status: $($publication.status). No publication was submitted or retried."
+    if ($RequirePublished -and ($publication.status -ne 'published' -or -not $publication.receipt)) {
+      throw 'Release gate failed: a current graph publication receipt has not been verified. Preserve the job ID and inspect service logs; do not resubmit blindly.'
+    }
   }
 } catch { $failed = $true; throw }
 finally {

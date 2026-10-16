@@ -1,0 +1,19 @@
+# Conservative closure of service imports, including lazy feature paths.
+defusedxml
+fastapi
+httpx
+langchain-neo4j
+loguru
+lxml
+neo4j
+openpyxl
+pandas
+psycopg[binary]
+pydantic
+pyshacl
+python-dotenv
+python-multipart
+rdflib
+starlette
+typing-extensions
+uvicorn[standard]

@@ -94,6 +94,9 @@ function restoreBrowserSession() {
 }
 export function handleSessionRejection(status, authorization, detail = '') {
   const value = String(authorization || '');
+  const credentialRejected = status === 401 || (status === 403 &&
+    /required api key is missing or invalid|invalid or revoked|^revoked [A-Z_]+|browser session|administrator key changed|graph read (?:authorization|key)|valid service write token/i.test(String(detail)));
+  if (credentialRejected && typeof window !== 'undefined') window.dispatchEvent(new Event('depo:access-rejected'));
   const invalidSession = status === 401 || (status === 403 &&
     /browser session scope is unavailable or credentials changed|administrator key changed|invalid or revoked|^revoked [A-Z_]+|expired session|session expired/i.test(String(detail)));
   if (invalidSession && value.startsWith('Bearer depo_session_')) expireBrowserSession(value.slice(7));

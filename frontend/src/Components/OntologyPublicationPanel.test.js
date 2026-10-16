@@ -4,6 +4,57 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { apiClient } from '../services/apiClient';
 import OntologyPublicationPanel from './OntologyPublicationPanel';
 afterEach(() => vi.restoreAllMocks());
+
+test('hidden tabs pause publication polling and automatic refresh skips metadata', async () => {
+  const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+  const get = vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({ data: url.endsWith('/publication')
+    ? { status: 'publishing', job_id: 'poll-job' } : { lifecycle_status: 'approved' } }));
+  const view = render(<OntologyPublicationPanel ontologyId="poll-demo" />);
+  await screen.findByText(/Job: poll-job/);
+  vi.useFakeTimers();
+  try {
+    act(() => { hidden.mockReturnValue(true); document.dispatchEvent(new Event('visibilitychange')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(get).toHaveBeenCalledTimes(2);
+    act(() => { hidden.mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(get).toHaveBeenCalledTimes(3);
+    expect(get.mock.calls[2][0]).toContain('/publication');
+  } finally { view.unmount(); vi.useRealTimers(); }
+});
+test('a failed refresh of an idle publisher disables stale write controls until verification succeeds', async () => {
+  let reject = false;
+  vi.spyOn(apiClient, 'get').mockImplementation(url => reject
+    ? Promise.reject({ response: { status: 503, data: { detail: 'Graph unavailable' } } })
+    : Promise.resolve({ data: url.endsWith('/publication') ? { status: 'not_published' } : { lifecycle_status: 'approved' } }));
+  const view = render(<OntologyPublicationPanel ontologyId="idle-refresh" />);
+  await screen.findByText('Publish to Neo4j');
+  fireEvent.change(screen.getByPlaceholderText('Your approval identity'), { target: { value: 'reviewer' } });
+  await waitFor(() => expect(screen.getByText('Publish to Neo4j')).toBeEnabled());
+  reject = true;
+  fireEvent.click(screen.getByText('Verify publication'));
+  await screen.findByRole('alert');
+  expect(screen.getByText('Publish to Neo4j')).toBeDisabled();
+  reject = false;
+  fireEvent.click(screen.getByText('Verify publication'));
+  await waitFor(() => expect(screen.getByText('Publish to Neo4j')).toBeEnabled());
+  view.unmount();
+});
+test('failed status refresh retains the background job and disables duplicate publication', async () => {
+  let reject = false;
+  vi.spyOn(apiClient, 'get').mockImplementation(url => reject
+    ? Promise.reject({ response: { status: 403, data: { detail: 'Invalid or revoked GRAPH_READ_TOKEN' }, headers: { 'x-request-id': 'customer-status-42' } } })
+    : Promise.resolve({ data: url.endsWith('/publication') ? { status: 'publishing', phase: 'running', job_id: 'retained-customer-job' } : { lifecycle_status: 'approved' } }));
+  const view = render(<OntologyPublicationPanel ontologyId="customer-status" />);
+  await screen.findByText(/Job: retained-customer-job/);
+  reject = true;
+  fireEvent.click(screen.getByText('Verify publication'));
+  await screen.findByText(/Last confirmed job details are retained/);
+  expect(screen.getByText(/Job: retained-customer-job/)).toBeInTheDocument();
+  expect(screen.getByText(/Request ID: customer-status-42/)).toBeInTheDocument();
+  expect(screen.getByText('Publish to Neo4j')).toBeDisabled();
+  view.unmount();
+});
 test('registration stays separate from publication and approval is required', async () => {
   vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({ data: url.endsWith('/publication') ? { status: 'not_published' } : { lifecycle_status: 'draft' } }));
   const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: {} });

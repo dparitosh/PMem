@@ -15,6 +15,8 @@ import uuid
 import threading
 import logging
 import time
+import hashlib
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -92,6 +94,8 @@ class OntologyCatalog:
         self.root = root or (Path(configured) if configured else Path(__file__).resolve().parents[2] / "data" / "ontology_service")
         self.root.mkdir(parents=True, exist_ok=True)
         self.registry = registry or PostgresRegistry("ontology_catalog")
+        self._digest_cache = OrderedDict()
+        self._digest_lock = threading.Lock()
 
     @property
     def _postgres_enabled(self) -> bool:
@@ -355,6 +359,31 @@ class OntologyCatalog:
             raise ValueError(f"Ontology artifact is missing: {ontology_id}")
         return metadata, path.read_bytes()
 
+    def artifact_digest(self, ontology_id: str) -> str:
+        """Bounded verification cache; invalidate whenever artifact stat changes."""
+        metadata = self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f"Ontology artifact not found: {ontology_id}")
+        path = Path(str(metadata['artifact_path'])).resolve()
+        if not path.is_relative_to((self.root / ontology_id).resolve()):
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        with path.open('rb') as source:
+            before = os.fstat(source.fileno())
+            key = (str(path), before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+            with self._digest_lock:
+                if key in self._digest_cache:
+                    self._digest_cache.move_to_end(key)
+                    return self._digest_cache[key]
+            digest = hashlib.file_digest(source, 'sha256').hexdigest()
+            after = os.fstat(source.fileno())
+            if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                raise ValueError('Ontology artifact changed during verification')
+        with self._digest_lock:
+            self._digest_cache[key] = digest
+            while len(self._digest_cache) > 256:
+                self._digest_cache.popitem(last=False)
+        return digest
+
     @ontology_writer
     def mark_superseded(self, *, ontology_id: str, successor_id: str) -> dict[str, Any]:
         """Retire an accidental or replaced catalog version without deleting it."""
@@ -479,6 +508,14 @@ class OntologyCatalog:
                 logging.getLogger(__name__).exception('Could not clear ontology registration %s', identifier)
                 failed.append(identifier)
         return {'status': 'partial' if failed else 'success', 'cleared': cleared, 'failed': failed}
+
+    def page(self, *, limit=100, offset=0):
+        if not 1 <= limit <= 1000 or offset < 0:
+            raise ValueError('Invalid ontology catalog page')
+        if self._postgres_enabled:
+            return self.registry.page(limit=limit, offset=offset, exclude_superseded=True, order_field='created_at')
+        rows = self.list()
+        return len(rows), rows[offset:offset + limit]
 
     def list(self, *, include_superseded=False) -> list[dict[str, Any]]:
         if self._postgres_enabled:

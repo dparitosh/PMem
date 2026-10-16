@@ -122,5 +122,6 @@ backend/test_data/integration_test_results.json
 .pptx-review-build/
 **/* - Copy.*
 backend/ttl_cache/
+backend/.dt_venv-*/
 deliverables/.env-reference-review/
 release-dist/

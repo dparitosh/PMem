@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
 import OntologyPublicationPanel from './OntologyPublicationPanel';
+import { withApiRequestId } from '../utils/apiErrorMessage';
 import { combineXsdFiles } from './xsdFolderBundle';
 import XsdDependencies, { appendXsdDependencies } from './XsdDependencies';
 import { fileSha256 } from '../utils/fileDigest';
@@ -737,12 +738,12 @@ export default function DataImportPipeline() {
       if (controller.signal.aborted) return;
       const backendDetail = err?.response?.data?.detail;
       const outcomeUnknown = requestSubmitted && (!err?.response || err.response.status >= 500);
-      const detail = Array.isArray(backendDetail)
+      const detail = withApiRequestId(Array.isArray(backendDetail)
         ? backendDetail.map(item => `${Array.isArray(item.loc) ? item.loc.join('.') : 'Upload'}: ${item.msg || 'Invalid value'}`).join('; ')
         : typeof backendDetail === 'string' ? backendDetail
           : backendDetail && typeof backendDetail === 'object'
             ? `${backendDetail.stage ? `Stage ${backendDetail.stage}: ` : ''}${backendDetail.message || backendDetail.code || err.message}${backendDetail.failure_kind ? ` (${backendDetail.failure_kind})` : ''}`
-            : err.message;
+            : err.message, err);
       setPipelineStatus(prev => ({
         ...prev,
         [fileId]: {

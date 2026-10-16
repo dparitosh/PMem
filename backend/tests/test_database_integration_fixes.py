@@ -98,14 +98,16 @@ class DatabaseIntegrationFixes(unittest.TestCase):
             with postgres_pool.connection('expired-test'): pass
         connect.assert_not_called()
 
-    def test_deadline_connection_is_closed_and_does_not_leak_session_limits(self):
+    def test_deadline_connection_resets_session_limits_before_reuse(self):
         database=Mock(closed=False,info=SimpleNamespace(transaction_status='idle'))
         connect=Mock(return_value=database)
         modules={'psycopg':SimpleNamespace(connect=connect),'psycopg.pq':SimpleNamespace(TransactionStatus=SimpleNamespace(IDLE='idle'))}
         with patch.dict(sys.modules,modules),operation_scope(self.context(3)):
             with postgres_pool.connection('operation-owned-connection',connect_timeout=10) as connection:
                 self.assertIs(connection.database,database)
-        database.close.assert_called_once()
+        self.assertEqual([call.args[0] for call in database.execute.call_args_list], ['RESET statement_timeout', 'RESET lock_timeout'])
+        database.close.assert_not_called()
+        postgres_pool.close_idle()
         self.assertGreaterEqual(connect.call_args.kwargs['connect_timeout'],2)
         self.assertLessEqual(connect.call_args.kwargs['connect_timeout'],3)
 

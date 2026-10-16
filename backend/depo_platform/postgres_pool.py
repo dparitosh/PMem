@@ -112,7 +112,16 @@ def connection(dsn, **options):
         yield _DeadlineConnection(database) if operation else database
         # Session locks use dedicated connections. Non-idle transactions are
         # discarded instead of leaking state or replaying failed operations.
-        reusable = operation is None and not database.closed and database.info.transaction_status == TransactionStatus.IDLE
+        reusable = not database.closed and database.info.transaction_status == TransactionStatus.IDLE
+        if reusable and operation is not None:
+            # Deadline settings are session scoped. Restore the connection's
+            # configured defaults before another operation borrows it.
+            try:
+                database.execute('RESET statement_timeout')
+                database.execute('RESET lock_timeout')
+                reusable = database.info.transaction_status == TransactionStatus.IDLE
+            except Exception:
+                reusable = False
     finally:
         try:
             if database is not None:

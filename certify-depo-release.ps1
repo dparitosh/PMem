@@ -59,6 +59,9 @@ $trackedReleaseFiles = @(
 )
 $trackedReleaseFiles += @(Get-ChildItem -LiteralPath (Join-Path $root 'infra\postgres\migrations') -Filter '*.sql' -File |
   Sort-Object Name | ForEach-Object { 'infra/postgres/migrations/' + $_.Name })
+$trackedReleaseFiles += @(Get-ChildItem -LiteralPath (Join-Path $root 'backend/dependency-profiles') -Filter '*.txt' -File |
+  Sort-Object Name | ForEach-Object { 'backend/dependency-profiles/' + $_.Name })
+$trackedReleaseFiles += 'backend/dependency-profiles/windows-metadata.json'
 $hashes = foreach ($relative in $trackedReleaseFiles) {
   $path = Join-Path $root $relative
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing release artifact: $relative" }

@@ -77,7 +77,7 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
-    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None):
+    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None, exclude_superseded=False):
         """Bounded, deterministic database pagination over JSON registry records."""
         if offset < 0 or not 1 <= limit <= 1000:
             raise ValueError('Invalid registry page')
@@ -88,6 +88,8 @@ class PostgresRegistry:
             args.extend([field, value])
         if exclude_latest:
             where += " AND right(key,7) <> ':latest'"
+        if exclude_superseded:
+            where += " AND COALESCE(value->>'status','') <> 'superseded'"
         with self._connect() as db, db.transaction(), db.cursor() as cursor:
             cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
             cursor.execute('SELECT count(*) FROM depo_registry WHERE '+where, args)
@@ -184,7 +186,12 @@ class PostgresRegistry:
         # _connect() uses autocommit for single-statement operations. A bulk
         # write must commit or roll back as one unit if any item is invalid.
         with self._connect() as connection, connection.transaction(), connection.cursor() as cursor:
-            cursor.executemany("INSERT INTO depo_registry(namespace, key, value) VALUES (%s, %s, %s::jsonb) ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value, updated_at=now()", [(self.namespace, key, json.dumps(value)) for key, value in values.items()])
+            # One server statement per bounded batch preserves deadline checks
+            # without a network round trip for each individual registry row.
+            rows = list(values.items())
+            for offset in range(0, len(rows), 100):
+                cursor.execute("INSERT INTO depo_registry(namespace, key, value) SELECT %s, entry.key, entry.value FROM jsonb_each(%s::jsonb) AS entry ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value, updated_at=now()",
+                               (self.namespace, json.dumps(dict(rows[offset:offset + 100]))))
         return values
 
     def due_pending(self, limit: int = 100) -> list[tuple[str, dict[str, Any]]]:

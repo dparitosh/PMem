@@ -62,6 +62,9 @@ function Read-DepoEnvironment([string]$Root, [string]$EnvFile) {
     $firstLines[$key] = $lineNumber
   }
   Assert-DepoIngestionConfiguration -Values $seen -EnvPath $path -LineNumbers $firstLines
+  if ($seen['DEPO_SERVICE_RUNTIME_MODE'] -and $seen['DEPO_SERVICE_RUNTIME_MODE'] -notin @('shared','isolated')) {
+    throw 'DEPO_SERVICE_RUNTIME_MODE must be shared or isolated.'
+  }
   return $seen
 }
 
@@ -157,7 +160,7 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   if ($tracked) {
     try { $previousNames = @($tracked | ConvertFrom-Json) } catch { throw 'Invalid environment import bookkeeping. Open a fresh PowerShell session.' }
   }
-  foreach ($limitName in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES')) {
+  foreach ($limitName in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES','DEPO_SERVICE_RUNTIME_MODE')) {
     if (-not $values.ContainsKey($limitName)) { [Environment]::SetEnvironmentVariable($limitName, $null, 'Process') }
   }
   # These aliases are one setting. Clear a previously imported alias when the

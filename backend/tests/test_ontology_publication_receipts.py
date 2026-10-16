@@ -3,6 +3,9 @@ import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+import logging
+import time
+import httpx
 
 class ApiError(Exception):
     def __init__(self, status, detail): self.status_code, self.detail = status, detail
@@ -22,11 +25,13 @@ class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
             async def get(self, *args, **kwargs): return SimpleNamespace(status_code=404, json=lambda: lookup_body if lookup_body is not None else {'detail': 'Publication receipt was not found'})
             async def post(self, *args, **kwargs): calls.append(kwargs); return Response()
         async def thread(fn, *args): return fn(*args)
-        scope = {'Any': object, 'Request': object, 'HTTPException': ApiError, 'hashlib': hashlib,
+        scope = {'__name__': 'backend.ontology_service.router', '__package__': 'backend.ontology_service',
+                 'Any': object, 'Request': object, 'HTTPException': ApiError, 'hashlib': hashlib,
+                 'time': time, 'logging': logging, 'prepare_publication_turtle': lambda content, _format: content,
                  'approval_identity': lambda *args, **kwargs: 'approver', 'run_in_threadpool': thread,
                  'service_url': lambda *args: 'http://graph', 'service_bearer_headers': lambda *args, **kwargs: {},
-                 'httpx': SimpleNamespace(AsyncClient=Client, HTTPError=OSError),
-                 'catalog': SimpleNamespace(get=lambda key: {'lifecycle_status': 'approved' if approved else 'draft', 'prefix': 'demo', 'validation': {'rdf_format': 'turtle'}}, read_artifact=lambda key: ({'lifecycle_status': 'approved' if approved else 'draft'}, content)),
+                 'httpx': SimpleNamespace(AsyncClient=Client, HTTPError=httpx.HTTPError, HTTPStatusError=httpx.HTTPStatusError),
+                 'catalog': SimpleNamespace(get=lambda key: {'lifecycle_status': 'approved' if approved else 'draft', 'prefix': 'demo', 'validation': {'rdf_format': 'turtle'}}, read_artifact=lambda key: ({'lifecycle_status': 'approved' if approved else 'draft'}, content), artifact_digest=lambda key: hashlib.sha256(content).hexdigest()),
                  'graph_publications': SimpleNamespace(get=records.get, put=lambda key, value: records.update({key: value}))}
         tree = ast.parse(Path('backend/ontology_service/router.py').read_text(encoding='utf-8'))
         nodes = [node for node in tree.body if getattr(node, 'name', '') in {'ontology_publication_status', '_publish_registered_ontology'}]
@@ -48,7 +53,7 @@ class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
         operation, records, calls = self.operation(valid=False)
         with self.assertRaises(ApiError) as failure: await operation('demo', {}, object())
         self.assertEqual(failure.exception.status_code, 503)
-        self.assertEqual(records['demo']['status'], 'publishing')
+        self.assertEqual(records['demo']['status'], 'unverified')
 
     async def test_gateway_route_missing_does_not_authorize_a_write(self):
         operation, records, calls = self.operation(lookup_body={'detail': 'Not Found'})

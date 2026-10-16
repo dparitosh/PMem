@@ -25,6 +25,7 @@ if (-not $backendFingerprint) { throw 'Backend release fingerprint is missing; r
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
+. (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 $configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
 $corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
@@ -130,10 +131,16 @@ $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=[int]$_.port } })
 $services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
 if ($services.Count -ne 13) { throw "Deployment manifest must define ten HTTP services and three workers." }
+foreach ($service in $services) {
+  $service.Python = Get-DepoServicePython -Root $root -ServiceId $service.Name
+  if (-not (Test-Path -LiteralPath $service.Python -PathType Leaf)) { throw "Missing runtime for '$($service.Name)'. Run the installer using the selected DEPO_SERVICE_RUNTIME_MODE." }
+}
 $startedServices = @()
 Write-Host 'Schema and credential checks passed. Checking tracked processes and launching services/workers...' -ForegroundColor Cyan
 try {
 foreach ($service in $services) {
+  $python = $service.Python
+  if ($EnableSpark) { $env:PYSPARK_PYTHON = $python; $env:PYSPARK_DRIVER_PYTHON = $python }
   Write-Host ("Checking startup for '{0}'{1}..." -f $service.Name, $(if ($service.Port) { " on port $($service.Port)" } else { ' worker' }))
   $pidFile = Join-Path $stateDir "$($service.Name).pid"
   $fingerprintFile = Join-Path $stateDir "$($service.Name).code.sha256"
@@ -175,12 +182,13 @@ foreach ($service in $services) {
   Write-Host "Launched '$($service.Name)' (PID $($process.Id)); readiness validation follows."
   # Roll back only processes launched by this invocation. Existing healthy
   # services are intentionally not part of a failed start attempt.
-  $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile; Module = $service.Module }
+  $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile; Module = $service.Module; Python = $python }
   Set-Content -LiteralPath $pidFile -Value $process.Id
   Set-Content -LiteralPath $fingerprintFile -Value $backendFingerprint
 }
 
 foreach ($service in $services | Where-Object { $_.Port }) {
+  $python = $service.Python
   Write-Host "Waiting up to $ServiceStartupTimeoutSeconds seconds for '$($service.Name)' readiness on port $($service.Port)..."
   $deadline = (Get-Date).AddSeconds($ServiceStartupTimeoutSeconds)
   $ready = $false
@@ -273,7 +281,7 @@ if ($env:DEPO_PIPELINE_EXECUTION_MODE -eq 'worker') {
 } catch {
   Write-Warning 'Startup failed. Stopping services launched by this attempt and removing their PID files; startup logs are retained. Missing listeners after this cleanup do not identify the original readiness failure.'
   foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {
-    try { Stop-DepoProcessTree $startedService.ProcessId $python $startedService.Module }
+    try { Stop-DepoProcessTree $startedService.ProcessId $startedService.Python $startedService.Module }
     catch { Write-Warning "Cleanup failed for $($startedService.Module): $($_.Exception.Message)"; continue }
     if (Test-Path -LiteralPath $startedService.PidFile) {
       Remove-Item -LiteralPath $startedService.PidFile -Force -ErrorAction SilentlyContinue

@@ -8,10 +8,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$expectedPython = (Join-Path $root "backend\.dt_venv\Scripts\python.exe").ToLowerInvariant()
 $stateDir = Join-Path $root "logs\windows-services"
 $manifestPath = Join-Path $root "infra\deployment\services.json"
 . (Join-Path $PSScriptRoot 'process-control.ps1')
+. (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 if (-not (Test-Path -LiteralPath $manifestPath)) { throw 'Service manifest is required for safe shutdown.' }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $entries = @($manifest.workers) + @($manifest.services)
@@ -21,9 +21,10 @@ $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
 # Request graceful shutdown together, before waiting on any individual service.
 # Only verified launchers receive requests; PID reuse is rechecked by tree control.
 foreach ($entry in $entries) {
+  $allowedRuntimes = @((Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode shared), (Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode isolated))
   $pattern = '(?<![A-Za-z0-9_.])' + [regex]::Escape([string]$entry.module) + '(?![A-Za-z0-9_.])'
   foreach ($candidate in @($snapshot | Where-Object {
-    $_.ExecutablePath -ieq $expectedPython -and $_.CommandLine -match $pattern -and
+    $_.ExecutablePath -in $allowedRuntimes -and $_.CommandLine -match $pattern -and
     $_.CommandLine -match 'backend\.depo_platform\.windows_runtime'
   })) {
     Set-Content -LiteralPath (Join-Path $stateDir "stop-$($candidate.ProcessId).request") -Value 'stop' -NoNewline
@@ -32,14 +33,15 @@ foreach ($entry in $entries) {
 $batchDeadline = (Get-Date).AddSeconds($ShutdownGraceSeconds)
 Write-Host "Stopping DEPO services together; shared graceful shutdown allowance: $ShutdownGraceSeconds seconds."
 foreach ($entry in $entries) {
+  $allowedRuntimes = @((Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode shared), (Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode isolated))
   Write-Host "Stopping $($entry.id)..."
   $module = [string]$entry.module
   $pattern = '(?<![A-Za-z0-9_.])' + [regex]::Escape($module) + '(?![A-Za-z0-9_.])'
   $roots = @($snapshot | Where-Object {
-    $_.ExecutablePath -ieq $expectedPython -and $_.CommandLine -match $pattern
+    $_.ExecutablePath -in $allowedRuntimes -and $_.CommandLine -match $pattern
   })
   foreach ($candidate in $roots) {
-    Stop-DepoProcessTree ([int]$candidate.ProcessId) $expectedPython $module $batchDeadline
+    Stop-DepoProcessTree ([int]$candidate.ProcessId) $candidate.ExecutablePath $module $batchDeadline
     Remove-Item -LiteralPath (Join-Path $stateDir "stop-$($candidate.ProcessId).request") -Force -ErrorAction SilentlyContinue
   }
   $pidPath = Join-Path $stateDir ($entry.id + '.pid')
@@ -47,8 +49,9 @@ foreach ($entry in $entries) {
     $trackedPid = [int](Get-Content -LiteralPath $pidPath)
     $current = Get-CimInstance Win32_Process -Filter "ProcessId = $trackedPid" -ErrorAction Stop
     if ($current) {
+      if ($current.ExecutablePath -notin $allowedRuntimes) { throw 'Tracked PID does not belong to an approved DEPO runtime; tracking retained.' }
       # An unrelated reused PID must not be killed or silently untracked.
-      Stop-DepoProcessTree $trackedPid $expectedPython $module $batchDeadline
+      Stop-DepoProcessTree $trackedPid $current.ExecutablePath $module $batchDeadline
     }
     Remove-Item -LiteralPath $pidPath -Force
   }

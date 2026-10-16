@@ -108,3 +108,13 @@ test('expired access opens the API access tab for reconnection', async () => {
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('admin'));
   expect(sessionStorage.getItem('depo:admin-tab')).toBe('access');
 });
+
+test('a subsequent credential rejection invalidates an earlier verified banner', async () => {
+  verifyStoredAccess.mockResolvedValue({status:'verified', message:'Read access verified.'});
+  render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+  fireEvent.click(screen.getByRole('button', {name:'Revalidate or reconnect API access'}));
+  await screen.findByText('Read access verified.');
+  fireEvent(window, new Event('depo:access-rejected'));
+  expect(screen.queryByText('Read access verified.')).toBeNull();
+  expect(screen.getByText(/A service rejected the current access/)).toBeInTheDocument();
+});

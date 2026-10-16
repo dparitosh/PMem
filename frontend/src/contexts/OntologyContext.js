@@ -53,8 +53,22 @@ export const OntologyProvider = ({ children }) => {
         // This prevents existing QIF/AP242 artifacts from disappearing while
         // their catalog migration is completed.
         const paths = ['/api/v1/ontologies', '/api/v1/ontology/registered'];
-        const results = await Promise.allSettled(paths.map(path => Promise.resolve().then(() =>
-          apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 }))));
+        const results = await Promise.allSettled(paths.map(async path => {
+          if (path !== '/api/v1/ontologies') return apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 });
+          const rows = [];
+          let offset = 0;
+          do {
+            const response = await apiClient.get(buildUrl(`${path}?limit=200&offset=${offset}`), { signal: controller.signal, timeout: 15000 });
+            // Accept older servers without pagination metadata during upgrades.
+            if (!Array.isArray(response.data?.ontologies)) return response;
+            rows.push(...response.data.ontologies);
+            const next = response.data.next_offset;
+            if (next == null) return { data: { ...response.data, ontologies: rows } };
+            if (!Number.isSafeInteger(next) || next <= offset) throw new Error('Invalid ontology catalog pagination');
+            offset = next;
+          } while (!controller.signal.aborted);
+          throw new DOMException('Aborted', 'AbortError');
+        }));
         const merged = new Map();
         let successes = 0;
         let lastError = null;

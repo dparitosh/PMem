@@ -41,6 +41,27 @@ def public_endpoint():
 
 
 class CredentialProfiles(unittest.TestCase):
+    def test_nested_router_authorization_keeps_the_effective_prefix(self):
+        from fastapi import FastAPI, APIRouter
+        child = APIRouter()
+        child.post('/publish')(approval_endpoint)
+        parent = APIRouter()
+        parent.include_router(child, prefix='/child')
+        app = FastAPI()
+        app.include_router(parent, prefix='/api/v1')
+        document = describe_security(app.openapi(), app.routes)
+        operation = document['paths']['/api/v1/child/publish']['post']
+        self.assertEqual(operation['x-depo-authorization']['credential_profiles'], ['DATA_PRODUCT_APPROVAL_TOKEN'])
+        self.assertIn({}, operation['security'])
+
+    def test_modeling_read_guard_requires_graph_read_access(self):
+        def _modeling_identity(): pass
+        route = SimpleNamespace(path_format='/ontologies/health', endpoint=public_endpoint, methods={'GET'},
+            dependant=SimpleNamespace(dependencies=[SimpleNamespace(call=_modeling_identity, dependencies=[])]))
+        operation = describe_security({'paths': {'/ontologies/health': {'get': {}}}}, [route])['paths']['/ontologies/health']['get']
+        self.assertEqual(operation['x-depo-authorization']['credential_profiles'], ['GRAPH_READ_TOKEN'])
+        self.assertNotIn({}, operation['security'])
+
     def test_exact_header_and_approval_names(self):
         self.assertEqual(credential_profiles(write_endpoint, [], method="POST", path="/publish"), ["GRAPH_PUBLICATION_TOKEN"])
         self.assertEqual(credential_profiles(approval_endpoint, [], method="POST", path="/publish"), ["DATA_PRODUCT_APPROVAL_TOKEN"])

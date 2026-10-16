@@ -43,6 +43,7 @@ EXPECTED_INDEXES = {
     'idx_depo_chat_messages', 'idx_depo_rate_limits', 'idx_metadata_pending',
     'idx_depo_pipeline_runnable', 'idx_depo_registry_recent',
     'idx_depo_registry_source_lookup',
+    'idx_depo_ontology_catalog_created',
     'idx_depo_product_published', 'idx_depo_job_started', 'idx_depo_catalog_updated',
 }
 EXPECTED_CONSTRAINTS.update({'depo_api_credentials_actor_nonempty', 'depo_api_credentials_digest_lengths', 'depo_api_credential_events_action_valid'})

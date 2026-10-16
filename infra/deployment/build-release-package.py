@@ -12,7 +12,7 @@ EXCLUDED = {'.git', '.codex', 'logs', 'ontology_uploads', 'uploads',
 
 def allowed(name):
     path = PurePosixPath(name)
-    return (not any(part in EXCLUDED for part in path.parts)
+    return (not any(part in EXCLUDED or part.startswith('.dt_venv-') for part in path.parts)
             and path.name not in {'.env', '.env.local', '.env.production', '.env.development', '.env.test'}
             and not path.name.endswith('.local')
             and not (path.name.startswith('.env') and not path.name.endswith(('.example', '.sample')))

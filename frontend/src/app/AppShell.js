@@ -72,6 +72,14 @@ export default function AppShell({
     }
   };
   useEffect(() => {
+    const rejected = () => {
+      accessRequest.current?.abort(); accessRequest.current = null; setVerifyingAccess(false);
+      setAccessMessage('A service rejected the current access. Revalidate access to check service configuration or reconnect; background jobs are retained.');
+    };
+    window.addEventListener('depo:access-rejected', rejected);
+    return () => window.removeEventListener('depo:access-rejected', rejected);
+  }, []);
+  useEffect(() => {
     const changed = event => { setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);

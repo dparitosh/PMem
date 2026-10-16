@@ -22,6 +22,13 @@ if (-not (Test-Path $path)) { throw "Missing environment file: $path" }
 . (Join-Path $root 'infra/windows/runtime-config.ps1')
 Write-Host "Validating deployment environment file: $path"
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+if ($values.DEPO_SERVICE_RUNTIME_MODE -eq 'isolated') {
+  foreach ($entry in (@($manifest.services) + @($manifest.workers))) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root ("backend/dependency-profiles/{0}.txt" -f $entry.id)) -PathType Leaf)) {
+      throw "Missing reviewed dependency profile for '$($entry.id)'. Restore the complete release."
+    }
+  }
+}
 $resolvedRouting = Resolve-DepoRouting $values
 foreach ($key in $resolvedRouting.Keys) { $values[$key] = $resolvedRouting[$key] }
 Assert-DepoNeo4jConfiguration -Values $values -Production:($Profile -eq 'Production')

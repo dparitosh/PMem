@@ -12,6 +12,17 @@ function Registry() {
   return <><span>{ontologies.map(row => row.name).join(',') || 'Empty registry'}</span>{error && <span role="alert">{error}</span>}</>;
 }
 
+test('native catalog follows bounded pages and merges all ontology identities', async () => {
+  mocks.get.mockImplementation(path => Promise.resolve({ data: path.includes('offset=200')
+    ? { ontologies: [{ ontology_id: 'target', name: 'Target' }], next_offset: null }
+    : path.includes('/ontologies?')
+      ? { ontologies: [{ ontology_id: 'source', name: 'Source' }], next_offset: 200 }
+      : { ontologies: [] } }));
+  render(<OntologyProvider><Registry /></OntologyProvider>);
+  await screen.findByText('Source,Target');
+  expect(mocks.get).toHaveBeenCalledWith('/api/v1/ontologies?limit=200&offset=200', expect.any(Object));
+});
+
 test('cleanup removes displayed registrations even when refresh fails', async () => {
   mocks.get.mockResolvedValue({ data: { ontologies: [{ ontology_id: 'qif', name: 'QIF' }] } });
   render(<OntologyProvider><Registry /></OntologyProvider>);

@@ -1,0 +1,8 @@
+# Shared installation, database diagnostics and frontend file server.
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+psycopg[binary]
+neo4j
+python-dotenv

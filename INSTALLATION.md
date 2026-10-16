@@ -2470,6 +2470,72 @@ migrations/provisioning will create. They do not prove that every later DDL,
 dependency installation or startup operation will succeed; maintain a backup
 and an agreed recovery plan. A preflight failure leaves running services alone.
 
+### Optional Windows dependency isolation by microservice
+
+The default `DEPO_SERVICE_RUNTIME_MODE=shared` preserves the existing common
+`backend/.dt_venv` installation. To install separate CPython 3.12 Windows x64
+environments, set `DEPO_SERVICE_RUNTIME_MODE=isolated` in the selected root
+environment file, stop the existing services, then run the full installer with
+dependency installation enabled. Do not use `-SkipDependencyInstall` for the
+first switch. The installer retains `backend/.dt_venv` for platform tools and
+creates `backend/.dt_venv-<service-id>` for each API and worker. Startup verifies
+every selected runtime before launching processes. Shutdown recognizes both
+shared and isolated runtimes, including after a mode change.
+
+| API / worker | Locked packages | Fewer than shared 199-package runtime |
+| --- | ---: | ---: |
+| Schema sets | 176 | 23 |
+| Ontology | 176 | 23 |
+| Agentic | 75 | 124 |
+| Graph | 177 | 22 |
+| Ingestion | 86 | 113 |
+| OSLC | 74 | 125 |
+| Catalog | 74 | 125 |
+| Data products | 74 | 125 |
+| CEIM | 74 | 125 |
+| Data pipeline | 74 | 125 |
+| Product outbox worker | 17 | 182 |
+| Pipeline worker | 69 | 130 |
+| Agentic workflow worker | 70 | 129 |
+
+These are package distributions in each lock, including transitive dependencies;
+they exclude pip and optional OCR. Three semantic services retain Semantica and
+its mandatory ML/visualization dependencies. LangChain integrations already
+used by feature paths remain present where required. LangChain does not replace
+RDF/XSD validation, XML parsers, database drivers, approval controls or durable
+publication receipts. Versions and artifact hashes match the shared release.
+
+Platform tools have a 26-package profile. `-EnableOcr` installs the complete
+28-package OCR closure into the isolated ingestion environment (some packages
+overlap its base profile). It does not add OCR to every service. Existing
+environments are not pruned automatically: switching an already populated
+environment to a smaller lock does not uninstall old distributions. Use a new
+reviewed environment for measured reductions. Multiple environments on one VM
+duplicate shared packages and can consume more total disk than one shared
+environment; per-service/container deployments benefit most from isolation.
+
+To install or validate an individual stopped service without migrating the
+database or starting processes:
+
+```powershell
+.\infra\windows\install-depo-service.ps1 -ServiceId catalog -EnvFile .env.local -CheckOnly
+.\infra\windows\install-depo-service.ps1 -ServiceId catalog -EnvFile .env.local -Python .\backend\.dt_venv\Scripts\python.exe
+```
+
+`-ServiceId all` covers all ten APIs and three workers. The installer rejects
+unknown IDs and running target runtimes, uses `--require-hashes`, runs `pip check`,
+and verifies the selected service import/OpenAPI contract or worker import.
+This smoke check does not prove live database, gateway or model connectivity.
+
+Release builders can inventory imports with
+`python infra/deployment/service-dependencies.py` and verify the reviewed locks
+with `python infra/deployment/build-service-locks.py --check` (build dependency:
+`packaging`). `backend/dependency-profiles/windows-metadata.json` records the
+official PyPI requirements and verified existing artifact hashes used to derive
+the locks. Refresh metadata and shared pins together when upgrading packages.
+Do not reuse Windows wheel locks on Linux; the existing native Linux release
+builder remains required for Linux dependency locks.
+
 Windows prerequisites enforce 64-bit CPython 3.12. Spark and connector runtime
 settings selected by installer switches are checked before dependency or database
 installation stages. Bootstrap loopback-only disabled-auth deployments retain
@@ -4482,6 +4548,7 @@ The updater stops the frontend and backend services, delegates PostgreSQL migrat
 011 and Neo4j index provisioning/validation to the existing installer, builds the
 frontend, and restarts it. It does not stop an external PostgreSQL VM. Dependencies
 are reused by default; add -InstallDependencies if the new release changes them.
+Timeout settings are preserved unless `-LlmTimeoutSeconds` is explicitly supplied.
 The delegated installer builds the frontend once. Root routing overrides include
 explicitly empty gateway and aggregate URLs, so obsolete frontend aliases cannot
 restore them. Reimporting an environment file clears settings imported previously
@@ -4793,3 +4860,57 @@ Retained pipeline runs open through the pipeline status API; agent/workflow runs
 continue through their own status APIs. Recommendation forms consume discovered
 approval metadata to mark required approver fields before execution. The backend
 still validates the actual credential scope and approval for every operation.
+
+### Customer upgrade: performance and service runtime release
+
+For an existing Windows deployment, place the complete matching release in the
+application directory while retaining root `.env.local`, frontend `.env.local`,
+artifact storage and database contents. Keep the previous release and a verified
+database/artifact backup available before the maintenance window. Run from the
+repository root; do not run both installers or recreate the database.
+
+```powershell
+# Read-only checks: no service shutdown, migrations or configuration changes.
+.\update-depo.ps1 -EnvFile 'E:\App\PMem\.env.local' -PreflightOnly
+
+# During the maintenance window: dependencies, pending migrations, frontend
+# rebuild, service restart, authenticated route checks and release preflight.
+.\update-depo.ps1 -EnvFile 'E:\App\PMem\.env.local' -InstallDependencies
+```
+
+The updater delegates to `infra/windows/update-depo-windows.ps1` and the existing
+installer. It preserves credential profiles, does not rotate keys, and skips
+baseline seeding on upgrade. Timeout changes require an explicit
+`-LlmTimeoutSeconds` argument. Use `-SkipFrontend` only when frontend build and
+hosting are managed separately. Add `-EnableOcr` with `-InstallDependencies` if
+this deployment requires OCR. Changing `DEPO_SERVICE_RUNTIME_MODE` to `isolated`
+requires `-InstallDependencies` to create the thirteen selected runtimes;
+omitting the setting retains the existing shared runtime.
+
+Migration **012_ontology_catalog_pagination** adds an index supporting active
+ontology catalog pages. Existing migrations 001–011 remain immutable. The
+migration runner applies pending versions transactionally under its advisory
+lock, verifies recorded checksums and checks the resulting schema. Index creation
+can hold a table lock and take time on large registries; apply it in this stopped
+service maintenance window with the owning migration role. No ontology or
+customer data is deleted. No Neo4j schema changes are required by these performance
+fixes; existing graph schema compatibility checks remain enabled.
+
+If an upgrade fails after shutdown, inspect the named failing stage and service
+logs, correct the cause and rerun the same command. Services may remain stopped.
+Do not automatically restart older application code against a newer schema;
+coordinate rollback with the retained release and reviewed database backup.
+`-PreflightOnly` checks existing database compatibility and privileges but does
+not prove that every pending migration or live customer workflow will succeed.
+
+After startup, verify the customer's retained ontology publication without
+resubmitting a publication write:
+
+```powershell
+$ontologyId = Read-Host 'Retained ontology ID to verify'
+.\infra\windows\test-depo-browser-session.ps1 -EnvFile 'E:\App\PMem\.env.local' -OntologyId $ontologyId -RequirePublished
+```
+
+This checks current authenticated ontology routes and the published graph receipt.
+Customer gateway access, large ontology publication and browser acceptance still
+require validation in the deployed environment.

@@ -1,6 +1,9 @@
 # DEPO supported runtime dependencies.
 # Shared base for independently deployable services. Optional scanned-document
 # OCR lives in requirements-ocr.txt; development includes that profile.
+# Windows per-microservice locks live in dependency-profiles/. The supported
+# installer selects those only with DEPO_SERVICE_RUNTIME_MODE=isolated; this
+# shared profile remains the compatibility/default installation.
 fastapi>=0.116,<1
 uvicorn[standard]>=0.35,<1
 pydantic>=2.11,<3

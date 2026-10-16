@@ -78,14 +78,14 @@ def _authorization_details(endpoint, dependency_calls, *, method, path):
         if name == 'require_admin_api_key':
             profiles.add('ADMIN_API_KEY')
             return
-        if name == '_modeling_graph_identity':
+        if name in {'_modeling_graph_identity', '_modeling_identity'}:
             profiles.add('GRAPH_READ_TOKEN' if method in {'GET', 'HEAD', 'OPTIONS'} else 'ONTOLOGY_APPROVAL_TOKEN')
             return
         if name == '_metadata_registry_identity':
             profiles.add('ADMIN_API_KEY' if path.endswith('/migrations/postgres') else
                          'GRAPH_READ_TOKEN' if method in {'GET','HEAD','OPTIONS'} else 'ONTOLOGY_APPROVAL_TOKEN')
             return
-        if name in {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity', '_modeling_identity'}:
+        if name in {'_qif_identity', '_ingestion_identity'}:
             if method in {'GET', 'HEAD', 'OPTIONS'}:
                 return
             if name == '_ingestion_identity':
@@ -122,11 +122,26 @@ def credential_profiles(endpoint, dependency_calls, *, method, path):
     return _authorization_details(endpoint, dependency_calls, method=method, path=path)[0]
 
 
+def effective_routes(routes):
+    """Visit concrete routes on both eager and lazy FastAPI router versions.
+
+    Newer FastAPI retains included routers until route-context resolution.
+    Their effective contexts carry the combined prefix and dependencies; using
+    original_router.routes would lose that context and mislabel operations.
+    """
+    for route in routes:
+        contexts = getattr(route, 'effective_route_contexts', None)
+        if callable(contexts):
+            yield from contexts()
+        else:
+            yield route
+
+
 def describe_security(document, routes):
     schemes = document.setdefault('components', {}).setdefault('securitySchemes', {})
     schemes.update({'BearerKey': {'type': 'http', 'scheme': 'bearer', 'description': 'Runtime service API key or gateway bearer. Credential scopes differ by service and operation.'},
                     'ApiKey': {'type': 'apiKey', 'in': 'header', 'name': 'X-API-Key'}})
-    for route in routes:
+    for route in effective_routes(routes):
         path = getattr(route, 'path_format', None)
         if path not in document.get('paths', {}):
             continue
@@ -142,7 +157,7 @@ def describe_security(document, routes):
                 dependency_calls.append(dependency.call)
                 visit(dependency)
         visit(getattr(route, 'dependant', None))
-        header_required = bool(dependency_names & {'graph_read_identity', '_qif_identity', '_ingestion_identity', '_modeling_identity', '_metadata_registry_identity'})
+        header_required = bool(dependency_names & {'graph_read_identity', '_qif_identity', '_ingestion_identity', '_modeling_identity', '_modeling_graph_identity', '_metadata_registry_identity'})
         header_required = header_required or 'graph_read_identity(' in source or 'service_write_identity(' in source
         for method in getattr(route, 'methods', []):
             operation = document['paths'][path].get(method.lower())
@@ -151,7 +166,7 @@ def describe_security(document, routes):
             profiles, approval = _authorization_details(route.endpoint, dependency_calls, method=method, path=path)
             # Public QIF/ingestion reads remain public; modeling reads require
             # graph-read identity. Body approval is a separate documented path.
-            public_read = method in {'GET', 'HEAD'} and dependency_names and dependency_names <= {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity', '_modeling_identity'}
+            public_read = method in {'GET', 'HEAD'} and dependency_names and dependency_names <= {'_qif_identity', '_ingestion_identity'}
             if 'require_admin_api_key' in dependency_names:
                 operation['security'] = [{'ApiKey': []}]
                 operation.setdefault('responses', {}).setdefault('401', {'description': 'Invalid or missing administrator API key'})

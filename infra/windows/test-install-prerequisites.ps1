@@ -11,6 +11,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $testRoot 'infra/windows'),
 function TestPython {
   if ($args[0] -ne '-c') { throw 'Unexpected Python installation attempted.' }
   $global:LASTEXITCODE = 0
+  if ($args[1] -like '*sys.maxsize*') { return $global:depoTestPythonBits }
   $global:depoTestPythonVersion
 }
 function node {
@@ -34,12 +35,16 @@ try {
   Set-Content -LiteralPath (Join-Path $testRoot 'backend/requirements-lock.txt') -Value ('example==1.0 --hash=sha256:' + ('a' * 64))
   $script:installer = Join-Path $testRoot 'infra/windows/install-depo.ps1'
   $global:depoTestPythonVersion = '3.12.12'
+  $global:depoTestPythonBits = '64'
   $global:depoTestNodeVersion = 'v24.0.0'
   $global:depoTestNpmVersion = '10.2.0'
   & $script:installer -Python TestPython -CheckPrerequisites -Development
   $global:depoTestPythonVersion = '3.11.9'
   Assert-Rejected 'CPython 3.12'
   $global:depoTestPythonVersion = '3.12.12'
+  $global:depoTestPythonBits = '32'
+  Assert-Rejected '64-bit CPython'
+  $global:depoTestPythonBits = '64'
   $global:depoTestNodeVersion = 'v20.0.0'
   Assert-Rejected 'Node.js 24'
   $global:depoTestNodeVersion = 'v24.0.0'
