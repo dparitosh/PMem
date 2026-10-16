@@ -6,6 +6,19 @@ import { AxiosHeaders } from 'axios';
 import { buildUrl } from '../config';
 import { clearServiceAuthToken, setCredentialProfile } from './serviceAuth';
 
+test('pipeline errors preserve diagnostic and recovery identities', async () => {
+  const receive = vi.fn();
+  window.addEventListener('depo:run-recovery', receive);
+  const failure = { message:'failed', config:{url:buildUrl('/api/v1/pipeline/jobs/runs/retained/reconcile-analytics'),method:'post'},
+    response:{status:503,headers:{'x-request-id':'request-123','x-depo-run-id':'retained','x-depo-run-kind':'pipeline'},data:{detail:'Storage unavailable'}} };
+  try {
+    await expect(apiClient.interceptors.response.handlers[0].rejected(failure)).rejects.toBe(failure);
+    expect(failure.apiError.requestId).toBe('request-123');
+    expect(failure.apiError.message).toBe('Storage unavailable Request ID: request-123');
+    expect(receive.mock.calls[0][0].detail).toEqual({runId:'retained',kind:'pipeline'});
+  } finally { window.removeEventListener('depo:run-recovery', receive); }
+});
+
 test.each([
   { 'X-API-Key': 'explicit-admin-key' },
   { 'x-api-key': 'explicit-admin-key' },

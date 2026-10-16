@@ -3,6 +3,7 @@ import agenticAPI from '../services/agenticApi';
 import { publicationRecoveryScope, getCredentialProfile } from '../services/serviceAuth';
 import { confirmedSubmissionRejection } from '../services/workflowSubmission';
 import WorkflowRecoveryActions from './WorkflowRecoveryActions';
+import { withApiRequestId } from '../utils/apiErrorMessage';
 
 export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled, onResult, governed = false, stepInputs, onActivityChange }) {
   const key = JSON.stringify(['depo:task-run', publicationRecoveryScope(), workflowId, inputs, stepInputs || null, governed]);
@@ -95,11 +96,11 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       if (retainedId) {
         setRunId(retainedId);
         try { sessionStorage.setItem(key, retainedId); } catch {}
-        setError('Task retained by the server. Refresh its status.');
+        setError(withApiRequestId('Task retained by the server. Refresh its status.', failure));
       } else if (!submitted || confirmedSubmissionRejection(failure)) {
         try { sessionStorage.removeItem(key); } catch {}
-        setSubmissionUnknown(false); setError('Task was not accepted. Check access and inputs, then retry.');
-      } else { setSubmissionUnknown(true); setError('Task submission was not confirmed. Check workflow history before retrying.'); }
+        setSubmissionUnknown(false); setError(withApiRequestId('Task was not accepted. Check access and inputs, then retry.', failure));
+      } else { setSubmissionUnknown(true); setError(withApiRequestId('Task submission was not confirmed. Check workflow history before retrying.', failure)); }
     } }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };

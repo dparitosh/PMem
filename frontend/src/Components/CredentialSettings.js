@@ -1,4 +1,5 @@
 import { credentialServices } from '../services/credentialProfiles';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useState, useEffect } from 'react';
 import { buildSemanticServiceUrl, config } from '../config';
 import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry, getBrowserSessionStatus, handleSessionRejection } from '../services/serviceAuth';
@@ -67,7 +68,7 @@ export default function CredentialSettings() {
       delete headers.Authorization;
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ include_writes: includeWrites, include_maintenance: includeMaintenance }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Connection failed (${response.status})`);
+      if (!response.ok) throw new Error(apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, `Connection failed (${response.status})`));
       if (!body.token?.startsWith('depo_session_') || !Array.isArray(body.profiles) || !body.profiles.includes('GRAPH_READ_TOKEN') || !body.expires_at) throw new Error('Invalid central session response');
       pendingSession = body.token;
       const sessionDeadline = Date.parse(body.expires_at);
@@ -78,7 +79,7 @@ export default function CredentialSettings() {
         const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
         const result = await probe.json().catch(() => ({}));
         if (!probe.ok || result.status !== 'authorized') {
-          const failure = new Error(`${service}: HTTP ${probe.status}; ${typeof result.detail === 'string' ? result.detail : 'central session was not accepted'}`);
+          const failure = new Error(`${service}: HTTP ${probe.status}; ${apiErrorMessage({ response: { data: result, headers: probe.headers, status: probe.status } }, 'central session was not accepted')}`);
           failure.authenticationRejected = [401, 403].includes(probe.status);
           throw failure;
         }
@@ -122,7 +123,7 @@ export default function CredentialSettings() {
           headers[profile === 'ADMIN_API_KEY' ? 'X-API-Key' : 'Authorization'] = profile === 'ADMIN_API_KEY' ? key : `Bearer ${key}`;
           const response = await fetch(url, { headers, signal: controller.signal, credentials: 'omit', redirect: 'error' });
           const body = await response.json().catch(() => ({}));
-          if (!response.ok || body.status !== 'authorized') throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+          if (!response.ok || body.status !== 'authorized') throw new Error(apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, `HTTP ${response.status}`));
           return { service, valid: true };
         } catch (error) { return { service, valid: false, message: error.message }; }
       }));
@@ -151,7 +152,7 @@ export default function CredentialSettings() {
       delete headers.Authorization;
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ key: values[profile].trim(), actor: actor.trim(), expires_at: expiry.trim() || null }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Registration failed (${response.status}); test the key before retrying`);
+      if (!response.ok) throw new Error(apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, `Registration failed (${response.status}); test the key before retrying`));
       setCredentialProfile(profile, values[profile]);
       setResults(prev => ({ ...prev, [profile]: 'Registered centrally and applied. Backend outbound keys must also be updated after rotation.' }));
       window.dispatchEvent(new Event('depo:credentials-changed'));
@@ -169,7 +170,7 @@ export default function CredentialSettings() {
       delete headers.Authorization;
       const response = await fetch(url, { method: 'DELETE', headers, signal: controller.signal, credentials: 'omit', redirect: 'error' });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Revocation failed (${response.status})`);
+      if (!response.ok) throw new Error(apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, `Revocation failed (${response.status})`));
       setCredentialProfile(profile, '');
       setValues(prev => ({ ...prev, [profile]: '' }));
       setResults(prev => ({ ...prev, [profile]: 'Revoked centrally' }));

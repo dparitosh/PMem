@@ -114,7 +114,7 @@ export default function AppShell({
 
   return (
     <>
-      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <a href="#main-content" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to main content</a>
       <IxApplication theme="classic" colorSchema={colorSchema}>
         <IxApplicationHeader name="DEPO | Digital Thread">
           <div className="depo-app-mark" aria-label="DEPO">D</div>
@@ -174,7 +174,7 @@ export default function AppShell({
           ))}
         </IxMenu>
 
-        <IxContent id="main-content" className="depo-ix-content">
+        <IxContent id="main-content" tabIndex={-1} className="depo-ix-content">
 
           <div className="depo-ix-page">
             {accessMessage && <div aria-live="polite" className="depo-alert">{accessMessage}</div>}

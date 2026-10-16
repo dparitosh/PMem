@@ -56,15 +56,22 @@ def normalize_openapi(document: dict) -> dict:
     return result
 
 
-def credential_profiles(endpoint, dependency_calls, *, method, path):
+def _authorization_details(endpoint, dependency_calls, *, method, path):
     """Describe credential names from authorization code, never environment values.
 
     Unknown/dynamic expressions stay unresolved rather than guessing a write key.
     """
     profiles = set()
+    approval = False
     visited = set()
     def inspect_call(function):
+        nonlocal approval
         name = getattr(function, '__name__', '')
+        # These are terminal authorization primitives, not route helpers.
+        # Following their implementations would mix Entra fallback branches
+        # into operations that require only a service header.
+        if name in {'approval_identity', 'service_write_identity', 'verify_key'}:
+            return
         if name == 'graph_read_identity':
             profiles.add('GRAPH_READ_TOKEN')
             return
@@ -98,6 +105,7 @@ def credential_profiles(endpoint, dependency_calls, *, method, path):
             if node.func.id == 'verify_key' and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                 profiles.add(node.args[0].value)
             if node.func.id in {'approval_identity', 'service_write_identity'}:
+                approval = approval or node.func.id == 'approval_identity'
                 for keyword in node.keywords:
                     if keyword.arg == 'token_env' and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
                         profiles.add(keyword.value.value)
@@ -107,7 +115,11 @@ def credential_profiles(endpoint, dependency_calls, *, method, path):
     inspect_call(endpoint)
     for function in dependency_calls:
         inspect_call(function)
-    return sorted(profiles)
+    return sorted(profiles), approval
+
+
+def credential_profiles(endpoint, dependency_calls, *, method, path):
+    return _authorization_details(endpoint, dependency_calls, method=method, path=path)[0]
 
 
 def describe_security(document, routes):
@@ -131,12 +143,12 @@ def describe_security(document, routes):
                 visit(dependency)
         visit(getattr(route, 'dependant', None))
         header_required = bool(dependency_names & {'graph_read_identity', '_qif_identity', '_ingestion_identity', '_modeling_identity', '_metadata_registry_identity'})
-        approval = 'approval_identity(' in source
         header_required = header_required or 'graph_read_identity(' in source or 'service_write_identity(' in source
         for method in getattr(route, 'methods', []):
             operation = document['paths'][path].get(method.lower())
             if operation is None:
                 continue
+            profiles, approval = _authorization_details(route.endpoint, dependency_calls, method=method, path=path)
             # Public QIF/ingestion reads remain public; modeling reads require
             # graph-read identity. Body approval is a separate documented path.
             public_read = method in {'GET', 'HEAD'} and dependency_names and dependency_names <= {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity', '_modeling_identity'}
@@ -147,11 +159,11 @@ def describe_security(document, routes):
                 operation['security'] = [{'BearerKey': []}, {'ApiKey': []}]
             elif approval:
                 operation['security'] = [{'BearerKey': []}, {'ApiKey': []}, {}]
-            profiles = credential_profiles(route.endpoint, dependency_calls, method=method, path=path)
             if profiles and 'security' not in operation:
                 operation['security'] = [{'ApiKey': []}] if profiles == ['ADMIN_API_KEY'] else [{'BearerKey': []}, {'ApiKey': []}]
             if profiles or approval or (header_required and not public_read):
                 operation['x-depo-authorization'] = {'credential_profiles': profiles, 'resolution': 'explicit' if profiles else 'unresolved', 'approval_fields': ['approved_by', 'approval_token'] if approval else [],
+                    'required_fields_in_token_mode': ['approved_by'] if approval else [],
                     'note': 'Runtime authorization remains enforced. Approval requires the configured operation token or trusted gateway role; the global read key does not grant write permission.'}
                 operation.setdefault('responses', {}).setdefault('403', {'description': 'Required identity, API key or approval is absent or invalid'})
     return document

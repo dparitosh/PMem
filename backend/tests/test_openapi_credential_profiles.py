@@ -61,6 +61,13 @@ class CredentialProfiles(unittest.TestCase):
         self.assertEqual(metadata["resolution"], "explicit")
         self.assertEqual(metadata["approval_fields"], ["approved_by", "approval_token"])
 
+    def test_service_header_check_does_not_advertise_body_approval(self):
+        route = SimpleNamespace(path_format='/write', endpoint=write_endpoint, methods={'POST'}, dependant=SimpleNamespace(dependencies=[]))
+        document = describe_security({'paths': {'/write': {'post': {}}}}, [route])
+        operation = document['paths']['/write']['post']
+        self.assertEqual(operation['x-depo-authorization']['approval_fields'], [])
+        self.assertNotIn({}, operation['security'])
+
     def test_metadata_migration_and_normal_routes_advertise_distinct_credentials(self):
         def _metadata_registry_identity(): pass
         for method,path,expected in [('POST','/metadata-registry/migrations/postgres','ADMIN_API_KEY'),

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import App from './App';
+import { platformAPI } from './services/apiClient';
 import { useState } from 'react';
 
 vi.mock('./SchemaContext', () => ({
@@ -15,8 +16,9 @@ vi.mock('./contexts/OntologyContext', () => ({
 }));
 
 vi.mock('./app/AppShell', () => ({
-  default: ({ activePage, children, onPageChange, onServiceAuthChange }) => (
+  default: ({ activePage, children, onPageChange, onServiceAuthChange, serviceStatus }) => (
     <div>
+      <span data-testid="service-status">{serviceStatus}</span>
       <nav aria-label="Application navigation">
         {[
           'Home', 'Import', 'Ontology Junction', 'Metadata Registry', 'Graph Explorer',
@@ -47,9 +49,11 @@ vi.mock('./pages/ModelWorkbenchPage', () => ({ default: () => <div data-testid="
 vi.mock('./pages/RecommendationsPage', () => ({ default: () => <div data-testid="page-quality">Recommendations page</div> }));
 vi.mock('./pages/ReportsPage', () => ({ default: () => <div data-testid="page-reports">Reports page</div> }));
 vi.mock('./pages/AdminPage', () => ({ default: () => <div data-testid="page-admin">Admin page</div> }));
+vi.mock('./pages/DataProductsPage', () => ({ default: () => <div data-testid="page-products">Data products page</div> }));
 vi.mock('./pages/WhereUsedPage', () => ({ default: () => <div data-testid="page-whereused">Where Used page</div> }));
 vi.mock('./pages/RequirementsPage', () => ({ default: () => <div data-testid="page-requirements">ReqIF page</div> }));
 vi.mock('./services/apiClient', () => ({
+  platformAPI: { coreHealth: vi.fn(() => Promise.resolve({ ontology: true })) },
   API_METHODS: {
     health: {
       ready: vi.fn(() => Promise.resolve({ data: { status: 'ok' } })),
@@ -59,9 +63,32 @@ vi.mock('./services/apiClient', () => ({
   ontology: { listRegistered: vi.fn(() => Promise.resolve({ data: { ontologies: [] } })) },
 }));
 
+test('product evidence query opens the product page and preserves the run ID', async () => {
+  window.history.replaceState({}, '', '/#/data-products?run_id=run-1');
+  render(<App />);
+  expect(await screen.findByTestId('page-products')).toBeInTheDocument();
+  expect(window.location.hash).toBe('#/data-products?run_id=run-1');
+});
+
+test('an anchor hash does not replace the active workspace', async () => {
+  window.history.replaceState({}, '', '/#/graph');
+  render(<App />);
+  await screen.findByTestId('page-graph');
+  act(() => { window.history.replaceState({}, '', '/#main-content'); window.dispatchEvent(new Event('hashchange')); });
+  expect(screen.getByTestId('page-graph')).toBeInTheDocument();
+});
+
 beforeEach(() => {
+  platformAPI.coreHealth.mockReset();
+  platformAPI.coreHealth.mockResolvedValue({ ontology: true });
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
+});
+
+test('the first all-service health failure clears the online indicator', async () => {
+  platformAPI.coreHealth.mockResolvedValue({ ontology: false, graph: false });
+  render(<App />);
+  expect(await screen.findByText('offline')).toBeInTheDocument();
 });
 
 test('renders the landing-page boundary when home is persisted', () => {

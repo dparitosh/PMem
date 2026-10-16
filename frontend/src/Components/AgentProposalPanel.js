@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { agenticClient } from '../services/agenticApi';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
+import { operationForUrl } from '../services/serviceContractRegistry';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { Bot, ListChecks, MessageSquare, ShieldCheck } from 'lucide-react';
 
 const contextIdentity = value => JSON.stringify(value, (key, item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -19,6 +21,8 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
   const [savedId, setSavedId] = useState(() => { try { return sessionStorage.getItem('depo:agent-recommendation') || ''; } catch { return ''; } });
   const [execution, setExecution] = useState(null);
   const [attachment, setAttachment] = useState(null);
+  const runOperation = operationForUrl(buildSemanticServiceUrl('agentic', '/api/v1/runs'), 'post');
+  const needsApprover = proposal?.requires_approval || runOperation?.requiredApprovalFields?.includes('approved_by');
   const request = useRef(null);
   const reset = () => { request.current?.abort(); setProposal(null); setReviewed(false); setMessage(''); setBusy(false); setExecution(null); };
   const contextKey = JSON.stringify([agentIds || null, context]);
@@ -68,6 +72,7 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
       } else {
         if (!proposal || proposal.status === 'failed' || !reviewed) throw new Error('Review the proposal first.');
         const token = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
+        if (needsApprover && !actor.trim()) throw new Error('Enter the approver required for this execution.');
         if (proposal.requires_approval && (!actor.trim() || !token)) throw new Error('Enter the steward and connect governed access in Admin.');
         const command = proposal.command;
         setProposal(null); setReviewed(false);
@@ -87,7 +92,7 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
           setSavedId(detail.recommendation_id);
           try { sessionStorage.setItem('depo:agent-recommendation', detail.recommendation_id); } catch { /* optional bookmark */ }
         }
-        setMessage((typeof detail === 'string' ? detail : typeof detail?.message === 'string' ? detail.message : error.message) +
+        setMessage(apiErrorMessage(error) +
           (runId ? ` Agent run: ${runId}. Inspect telemetry before retrying a write.` : ''));
       }
     }
@@ -122,9 +127,9 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
     </details>
     {proposal && <div>{proposal.status === 'failed' ? <p role="alert">Recommendation failed ({proposal.failure_status}). Review the retained prompt below; no action can be executed.</p> : <><strong>Proposed tool: {proposal.command.tool_id}</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({ ...proposal.command.inputs, ...(proposal.command.inputs?.file ? { file: { filename: proposal.command.inputs.file.filename, content_type: proposal.command.inputs.file.content_type, content: 'User-supplied attachment; binary content hidden' } } : {}) }, null, 2)}</pre></>}
       <details><summary>Prompt details</summary>{proposal.prompt_details ? <><p>Model: {proposal.prompt_details.model} · Prompt version: {proposal.prompt_details.prompt_version}</p><h4>User request</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.user_request}</pre><h4>System instructions</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.system_prompt}</pre><details><summary>Full model user prompt and tool context</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{proposal.prompt_details.user_prompt}</pre></details></> : <p>This older recommendation has no retained prompt snapshot.</p>}</details>
-      {proposal.status !== 'failed' && <><label>Approver <input aria-label="Recommendation steward" value={actor} disabled={busy} onChange={event => { setActor(event.target.value); setReviewed(false); }} /></label>
+      {proposal.status !== 'failed' && <>{needsApprover && <p>An approver is required for this execution. Connect the required service access in Admin.</p>}<label>Approver <input aria-label="Recommendation steward" value={actor} disabled={busy} required={!!needsApprover} onChange={event => { setActor(event.target.value); setReviewed(false); }} /></label>
       <label><input type="checkbox" checked={reviewed} disabled={busy} onChange={event => setReviewed(event.target.checked)} />I reviewed the proposed action and inputs</label>
-      <button disabled={busy || !reviewed || (proposal.requires_approval && !actor.trim())} onClick={() => operate('execute')}>Execute reviewed recommendation</button></>}
+      <button disabled={busy || !reviewed || (needsApprover && !actor.trim())} onClick={() => operate('execute')}>Execute reviewed recommendation</button></>}
     </div>}
     {busy && <><button onClick={reset}>Stop waiting</button><p>Stopping the wait does not undo an execution. Inspect agent telemetry before retrying a write.</p></>}
     {message && <p role="status">{message}</p>}

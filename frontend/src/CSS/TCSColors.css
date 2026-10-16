@@ -10,7 +10,7 @@
 }
 
 /* Override Bootstrap primary color with !important */
-.depo-shell .btn-primary {
+ix-application .btn-primary {
   --bs-btn-color: #fff !important;
   --bs-btn-bg: var(--tcs-blue) !important;
   --bs-btn-border-color: var(--tcs-blue) !important;
@@ -27,7 +27,7 @@
   --bs-btn-disabled-border-color: var(--tcs-blue) !important;
 }
 
-.depo-shell .btn-outline-primary {
+ix-application .btn-outline-primary {
   --bs-btn-color: var(--tcs-blue) !important;
   --bs-btn-border-color: var(--tcs-blue) !important;
   --bs-btn-hover-color: #fff !important;
@@ -44,30 +44,30 @@
   border-color: var(--tcs-blue) !important;
 }
 
-.depo-shell .text-primary {
+ix-application .text-primary {
   --bs-text-opacity: 1 !important;
   color: var(--tcs-blue) !important;
 }
 
-.depo-shell .nav-tabs .nav-link:hover {
+ix-application .nav-tabs .nav-link:hover {
   border-color: var(--tcs-blue) var(--tcs-blue) #dee2e6 !important;
   color: var(--tcs-blue) !important;
 }
 
 /* Specific overrides for main app navigation - higher specificity */
-.depo-shell .nav-tabs button.nav-link {
+ix-application .nav-tabs button.nav-link {
   background-color: transparent !important;
   color: var(--tcs-blue) !important;
   border: 1px solid var(--tcs-blue) !important;
 }
 
-.depo-shell .nav-tabs button.nav-link.active {
+ix-application .nav-tabs button.nav-link.active {
   background-color: var(--tcs-blue) !important;
   color: white !important;
   border: 1px solid var(--tcs-blue) !important;
 }
 
-.depo-shell .nav-tabs button.nav-link:hover {
+ix-application .nav-tabs button.nav-link:hover {
   background-color: var(--tcs-blue) !important;
   color: white !important;
   border: 1px solid var(--tcs-blue) !important;

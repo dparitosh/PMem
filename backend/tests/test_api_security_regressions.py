@@ -47,6 +47,7 @@ async def test_admin_key_is_required_for_destructive_routes(monkeypatch):
     assert exc_info.value.status_code == 503
 
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "true")
     await require_admin_api_key(_request())
 
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")

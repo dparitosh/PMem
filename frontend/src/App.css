@@ -7,11 +7,11 @@ html {
   50% { opacity: 0.35; }
 }
 
-.depo-shell .MuiTreeItem-label {
+ix-application .MuiTreeItem-label {
   margin-top: 8px;
 }
 
-.depo-shell .table-striped > tbody {
+ix-application .table-striped > tbody {
   margin-top: 8px;
 }
 
@@ -20,7 +20,7 @@ body {
 }
 
 /* ===== LAYOUT ===== */
-.depo-shell #cloud-container {
+ix-application #cloud-container {
   position: relative;
   width: 100%;
   margin-left: 0;
@@ -31,7 +31,7 @@ body {
   overflow: hidden;
 }
 
-.depo-shell .cloud-main {
+ix-application .cloud-main {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -40,14 +40,14 @@ body {
 }
 
 /* ===== RESIZABLE GRAPH/TABS SECTIONS ===== */
-.depo-shell .graph-section-container {
+ix-application .graph-section-container {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   background: #fff;
 }
 
-.depo-shell .tabs-section-container {
+ix-application .tabs-section-container {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -58,7 +58,7 @@ body {
 }
 
 /* Splitter styling */
-.depo-shell .resizable-splitter {
+ix-application .resizable-splitter {
   cursor: row-resize;
   background-color: #d0d5db;
   transition: background-color 0.15s ease;
@@ -73,15 +73,15 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 
-.depo-shell .resizable-splitter:hover {
+ix-application .resizable-splitter:hover {
   background-color: #004B87;
 }
 
-.depo-shell .resizable-splitter:active {
+ix-application .resizable-splitter:active {
   background-color: #004B87;
 }
 
-.depo-shell .graph-wrapper, .depo-shell .table-wrapper, .depo-shell .reports-wrapper {
+ix-application .graph-wrapper, ix-application .table-wrapper, ix-application .reports-wrapper {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -103,22 +103,22 @@ body {
 
 
 /* width */
-.depo-shell ::-webkit-scrollbar {
+ix-application ::-webkit-scrollbar {
   width: 5px;
 }
 
 /* Track */
-.depo-shell ::-webkit-scrollbar-track {
+ix-application ::-webkit-scrollbar-track {
   background: #f1f1f1;
 }
 
 /* Handle */
-.depo-shell ::-webkit-scrollbar-thumb {
+ix-application ::-webkit-scrollbar-thumb {
   background: #888;
 }
 
 /* Handle on hover */
-.depo-shell ::-webkit-scrollbar-thumb:hover {
+ix-application ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
 
@@ -130,12 +130,12 @@ body {
 }
 
 /* Custom tab styles */
-.depo-shell .nav-tabs {
+ix-application .nav-tabs {
   border-bottom: 2px solid var(--ui-primary, #005a9c);
   margin-bottom: 0;
 }
 
-.depo-shell .nav-tabs .nav-link {
+ix-application .nav-tabs .nav-link {
   border: none;
   border-radius: 8px 8px 0 0;
   margin-right: 5px;
@@ -143,54 +143,54 @@ body {
   transition: all 0.3s ease;
 }
 
-.depo-shell .nav-tabs .nav-link:hover {
+ix-application .nav-tabs .nav-link:hover {
   background-color: rgba(0, 90, 156, 0.1);
   border-color: transparent;
 }
 
-.depo-shell .nav-tabs .nav-link.active {
+ix-application .nav-tabs .nav-link.active {
   background-color: var(--ui-primary, #005a9c) !important;
   color: white !important;
   border-color: var(--ui-primary, #005a9c) !important;
 }
 
 /* Report table styles */
-.depo-shell .table-hover tbody tr:hover {
+ix-application .table-hover tbody tr:hover {
   background-color: rgba(0, 90, 156, 0.05);
 }
 
-.depo-shell .table th {
+ix-application .table th {
   background-color: #f8f9fa;
   font-weight: 600;
   color: var(--ui-primary, #005a9c);
   border-bottom: 2px solid var(--ui-primary, #005a9c);
 }
 
-.depo-shell .btn-group .btn {
+ix-application .btn-group .btn {
   margin-right: 5px;
 }
 
-.depo-shell .btn-outline-primary {
+ix-application .btn-outline-primary {
   border-color: var(--ui-primary, #005a9c);
   color: var(--ui-primary, #005a9c);
 }
 
-.depo-shell .btn-outline-primary:hover {
+ix-application .btn-outline-primary:hover {
   background-color: var(--ui-primary, #005a9c);
   border-color: var(--ui-primary, #005a9c);
 }
 
-.depo-shell .btn-primary {
+ix-application .btn-primary {
   background-color: var(--ui-primary, #005a9c);
   border-color: var(--ui-primary, #005a9c);
 }
 
 /* Pagination styles */
-.depo-shell .pagination {
+ix-application .pagination {
   gap: 2px;
 }
 
-.depo-shell .pagination .page-link {
+ix-application .pagination .page-link {
   color: var(--ui-primary, #005a9c);
   border: 1px solid #dee2e6;
   padding: 0.375rem 0.75rem;
@@ -199,19 +199,19 @@ body {
   transition: all 0.15s ease-in-out;
 }
 
-.depo-shell .pagination .page-link:hover {
+ix-application .pagination .page-link:hover {
   background-color: var(--ui-primary, #005a9c);
   border-color: var(--ui-primary, #005a9c);
   color: white;
 }
 
-.depo-shell .pagination .page-item.active .page-link {
+ix-application .pagination .page-item.active .page-link {
   background-color: var(--ui-primary, #005a9c);
   border-color: var(--ui-primary, #005a9c);
   color: white;
 }
 
-.depo-shell .pagination .page-item.disabled .page-link {
+ix-application .pagination .page-item.disabled .page-link {
   color: #6c757d;
   background-color: #fff;
   border-color: #dee2e6;
@@ -219,17 +219,17 @@ body {
 }
 
 /* Table pagination info */
-.depo-shell .table-pagination-info {
+ix-application .table-pagination-info {
   font-size: 0.875rem;
   color: #6c757d;
 }
 
 /* Export buttons */
-.depo-shell .export-buttons {
+ix-application .export-buttons {
   gap: 10px;
 }
 
-.depo-shell .export-buttons .btn {
+ix-application .export-buttons .btn {
   font-size: 0.875rem;
 }
 
@@ -249,44 +249,44 @@ body {
 
 /* Challenge 3: Responsive Navigation */
 @media screen and (max-width: 768px) {
-  .depo-shell #cloud-container {
+  ix-application #cloud-container {
     height: auto;
   }
   
-  .depo-shell .nav-tabs {
+  ix-application .nav-tabs {
     overflow-x: auto;
     flex-wrap: nowrap;
     -webkit-overflow-scrolling: touch;
   }
 
-  .depo-shell .nav-tabs .nav-link {
+  ix-application .nav-tabs .nav-link {
     margin-right: 2px;
     font-size: 12px;
     padding: 8px 10px;
     white-space: nowrap;
   }
 
-  .depo-shell .graph-wrapper,
-  .depo-shell .table-wrapper,
-  .depo-shell .reports-wrapper {
+  ix-application .graph-wrapper,
+  ix-application .table-wrapper,
+  ix-application .reports-wrapper {
     min-height: 400px;
   }
 }
 
 @media screen and (max-width: 576px) {
-  .depo-shell .nav-tabs .nav-link {
+  ix-application .nav-tabs .nav-link {
     font-size: 10px;
     padding: 6px 8px;
   }
   
-  .depo-shell .nav-tabs {
+  ix-application .nav-tabs {
     gap: 2px;
   }
 }
 
 /* Ensure chat sidebar doesn't hide tooltips */
 @media screen and (min-width: 992px) {
-  .depo-shell .graph-wrapper.col-md-8 {
+  ix-application .graph-wrapper.col-md-8 {
     /* Recalculate width accounting for potential chat sidebar */
     max-width: calc(100% - 4px);
   }
@@ -309,25 +309,25 @@ html {
 }
 
 /* Optimize graph rendering performance */
-.depo-shell .graph-wrapper svg {
+ix-application .graph-wrapper svg {
   backface-visibility: hidden;
   -webkit-font-smoothing: antialiased;
   will-change: transform;
 }
 
 
-.depo-shell .owl-browser-layout {
+ix-application .owl-browser-layout {
   width: 100%;
 }
 
 @media (max-width: 1480px) {
-  .depo-shell .owl-browser-layout {
+  ix-application .owl-browser-layout {
     grid-template-columns: minmax(260px, 0.9fr) minmax(420px, 1.6fr) minmax(280px, 0.95fr) !important;
   }
 }
 
 @media (max-width: 1180px) {
-  .depo-shell .owl-browser-layout {
+  ix-application .owl-browser-layout {
     grid-template-columns: 1fr !important;
   }
 }

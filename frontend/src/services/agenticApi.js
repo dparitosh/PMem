@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { openApiPreview } from './openApiPreview';
 import { reportRunRecovery } from './runRecovery';
+import { apiRequestId, apiErrorMessage } from '../utils/apiErrorMessage';
 import { config, API, buildSemanticServiceUrl } from '../config';
 import { serviceAuthHeaders, handleSessionRejection, requireServiceReadAccess } from './serviceAuth';
 
@@ -24,6 +25,8 @@ export function applyAgenticAuth(requestConfig) {
 
 agenticClient.interceptors.request.use(applyAgenticAuth);
 agenticClient.interceptors.response.use(response => response, error => {
+  error.apiError = { status: error.response?.status, requestId: apiRequestId(error),
+    message: apiErrorMessage(error) };
   const authorization = error.config?.headers?.get?.('Authorization') || error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
   handleSessionRejection(error.response?.status, authorization, error.response?.data?.detail);
   reportRunRecovery(error); return Promise.reject(error);

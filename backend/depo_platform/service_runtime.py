@@ -9,6 +9,7 @@ from backend.depo_platform.request_bodies import BrowserSessionBody, RotateCrede
 
 import os
 import uuid
+import logging
 from contextlib import asynccontextmanager
 from collections.abc import Collection
 from typing import AsyncIterator, Callable
@@ -25,7 +26,14 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            logging.getLogger(__name__).exception('Unhandled API failure; request_id=%s', request_id)
+            response = JSONResponse(status_code=500, content={
+                'detail': 'Internal service error; inspect service logs using the request ID',
+                'request_id': request_id,
+            })
         response.headers["X-Request-ID"] = request_id
         return response
 
@@ -132,7 +140,7 @@ def create_service_app(
         from .credentials import PROFILES
         check = app.openapi_schema.get('paths', {}).get('/auth/credential-check', {}).get('get')
         if check is not None:
-            check['x-depo-credential-check'] = {'profile_parameter': 'profile', 'supported_profiles': sorted(PROFILES - {'GRAPH_READ_TOKEN'}), 'mutates': False}
+            check['x-depo-credential-check'] = {'profile_parameter': 'profile', 'supported_profiles': sorted(PROFILES - {'GRAPH_READ_TOKEN', 'ADMIN_API_KEY'}), 'mutates': False}
             check['security'] = [{'BearerKey': []}, {'ApiKey': []}]
         for path, method in [('/auth/browser-session', 'post'), ('/auth/credentials', 'get'), ('/auth/admin-access', 'get'), ('/auth/credentials/{profile}', 'post'), ('/auth/credentials/{profile}', 'delete')]:
             operation = app.openapi_schema.get('paths', {}).get(path, {}).get(method)

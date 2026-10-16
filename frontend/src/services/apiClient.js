@@ -1,4 +1,5 @@
 import { applyRequestDeadline, abortableDelay, retryFitsDeadline } from './requestPolicy';
+import { apiRequestId, apiErrorMessage } from '../utils/apiErrorMessage';
 /**
  * Centralized API Client
  * Uses axios with configuration from environment variables
@@ -217,7 +218,7 @@ apiClient.interceptors.response.use(
     const requestConfig = error?.config || {};
     releaseRequest(requestConfig);
     if (staleRequest(requestConfig)) throw new axios.CanceledError('Credentials changed; previous request discarded');
-    if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
+    if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|pipeline|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
     const method = String(requestConfig.method || 'get').toLowerCase();
     const retryCount = requestConfig.__retryCount || 0;
     const canRetry = method === 'get' && !error?.response && isTransientNetworkError(error) && retryCount < MAX_GET_RETRIES && retryFitsDeadline(requestConfig, RETRY_BASE_DELAY_MS * (retryCount + 1));
@@ -249,8 +250,9 @@ apiClient.interceptors.response.use(
     error.apiError = {
       status: errorInfo.status,
       code: errorInfo.errorCode,
-      message: errorInfo.detail || errorInfo.message,
+      message: apiErrorMessage(error),
       path: error.response?.data?.path,
+      requestId: apiRequestId(error),
     };
 
     if (config.debug) {
@@ -286,22 +288,9 @@ apiClient.interceptors.response.use(
  * API Methods organized by category
  */
 
-// ========== HEALTH & STATUS ==========
-export const healthAPI = {
-  check: (options = {}) => apiClient.get(buildUrl(API.health.health), options),
-  ready: (options = {}) => apiClient.get(buildUrl(API.health.ready), options),
-  graphMetrics: () => apiClient.get(buildUrl(API.health.graphMetrics)),
-  ontologiesAvailable: () => apiClient.get(buildUrl(API.health.ontologiesAvailable)),
-};
-
 // ========== SCHEMA ENDPOINTS ==========
 export const schemaAPI = {
   getSchema: () => apiClient.get(buildUrl(API.schema.schema)),
-  getAP242RotorPmi: () => apiClient.get(buildUrl(API.schema.ap242RotorPmi)),
-  searchAP242: (query) => 
-    apiClient.post(buildUrl(API.schema.ap242Search), { query }),
-  getReports: (type, page = 1, pageSize = 10) =>
-    apiClient.post(buildUrl(API.schema.reports), { type, page, page_size: pageSize }),
 };
 
 // ========== CHAT ENDPOINTS ==========
@@ -375,10 +364,6 @@ export const ontologyAPI = {
     })), options),
   mapEntity: (ontologyId, mappingData) => 
     apiClient.post(buildUrl(replaceParams(API.ontology.mapEntity, { ontology: ontologyId })), mappingData),
-  getAlignmentOptions: (fileType = '') => {
-    const suffix = fileType ? `?file_type=${encodeURIComponent(fileType)}` : '';
-    return apiClient.get(buildUrl(`${API.ontology.alignmentOptions}${suffix}`));
-  },
   merge: (fromOntologyId, toOntologyId, options = {}, requestOptions = {}) =>
     apiClient.post(buildUrl(API.ontology.merge), {
       from_ontology_id: fromOntologyId,
@@ -724,7 +709,6 @@ export const recommendationsAPI = {
  * Export unified API object for convenience
  */
 export const API_METHODS = {
-  health: healthAPI,
   schema: schemaAPI,
   chat: chatAPI,
   ontology: ontologyAPI,

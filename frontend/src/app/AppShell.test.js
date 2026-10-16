@@ -40,6 +40,14 @@ test('opens central Admin credentials instead of a duplicate key dialog', () => 
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
+test('skip navigation focuses content without changing the workspace URL', () => {
+  window.history.replaceState({}, '', '/#/ontology');
+  render(<AppShell activePage="ontology" onPageChange={vi.fn()} onHome={vi.fn()} showChat={false} onToggleChat={vi.fn()}><div>Page content</div></AppShell>);
+  fireEvent.click(screen.getByText('Skip to main content'));
+  expect(document.activeElement).toBe(screen.getByRole('main'));
+  expect(window.location.hash).toBe('#/ontology');
+});
+
 test('exposes active navigation, backend status, chat drawer state, and persistent theme control', () => {
   const onToggleChat = jest.fn();
   render(

@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
-import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { apiErrorMessage, withApiRequestId } from '../utils/apiErrorMessage';
 import { pipelineRunLink } from '../workflows/runTracking';
 
 const RECOVERY_KEY = 'depo-xml-analytics-recovery';
@@ -96,9 +96,9 @@ export default function XmlAnalyticsLoader() {
         const retainedId = failure.response?.headers?.['x-depo-run-id'];
         if (submitted && retainedId) {
           remember({ run_id: retainedId });
-          setError('The server retained this run. Refresh its status before submitting again.');
+          setError(withApiRequestId('The server retained this run. Refresh its status before submitting again.', failure));
         } else if (submitted && !confirmedSubmissionRejection(failure)) {
-          setError('Submission outcome is unknown. Find the run in Data Flow history and enter its ID before retrying.');
+          setError(withApiRequestId('Submission outcome is unknown. Find the run in Data Flow history and enter its ID before retrying.', failure));
         } else {
           if (submitted) remember(null);
           setError(apiErrorMessage(failure, failure.message || 'XML analytics request failed.'));

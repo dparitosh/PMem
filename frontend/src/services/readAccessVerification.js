@@ -1,4 +1,5 @@
 import { buildSemanticServiceUrl, config } from '../config';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { getCredentialProfile, handleSessionRejection, serviceAuthHeaders } from './serviceAuth';
 
 export async function verifyStoredAccess(options = {}) {
@@ -16,7 +17,7 @@ export async function verifyStoredAccess(options = {}) {
       if (response.ok && body.status === 'authorized') return { authorized: true };
       const detail = typeof body.detail === 'string' ? body.detail : 'Maintenance access was not authorized';
       if (!options.signal?.aborted && getCredentialProfile('ADMIN_API_KEY') === key) handleSessionRejection(response.status, key, detail);
-      return { rejected: [401, 403].includes(response.status), message: `${service}: HTTP ${response.status}; ${detail}` };
+      return { rejected: [401, 403].includes(response.status), message: `${service}: HTTP ${response.status}; ${apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, detail)}` };
     } catch (error) {
       return { message: `${service}: ${error.name === 'AbortError' ? 'Verification timed out' : 'Service could not be reached'}` };
     }
@@ -45,7 +46,7 @@ export async function verifyStoredReadAccess({ signal, subscription } = {}) {
       if (response.ok && body?.status === 'authorized') return { service, authorized: true };
       const detail = typeof body?.detail === 'string' ? body.detail : 'Read access was not authorized';
       if (!signal?.aborted && getCredentialProfile('GRAPH_READ_TOKEN') === token) handleSessionRejection(response.status, `Bearer ${token}`, detail);
-      return { service, rejected: [401, 403].includes(response.status), message: `${service}: HTTP ${response.status}; ${detail}` };
+      return { service, rejected: [401, 403].includes(response.status), message: `${service}: HTTP ${response.status}; ${apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, detail)}` };
     } catch (error) {
       return { service, message: `${service}: ${error.name === 'AbortError' ? 'Verification timed out' : 'Service could not be reached'}` };
     }

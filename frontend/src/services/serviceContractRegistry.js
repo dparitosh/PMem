@@ -15,7 +15,9 @@ export function registerServiceContract(service, base, document) {
       if (!methods.has(method) || !operation || typeof operation !== 'object') continue;
       const metadata = operation['x-depo-authorization'];
       const profiles = Array.isArray(metadata?.credential_profiles) ? metadata.credential_profiles.filter(name => /^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(name)) : [];
-      operations.push({ service, base: base.replace(/\/$/, ''), path, method, pattern, profiles, secured: Boolean((operation.security ?? document.security)?.some(requirement => Object.keys(requirement).length)) });
+      const approvalFields = Array.isArray(metadata?.approval_fields) ? metadata.approval_fields.filter(name => ['approved_by', 'approval_token'].includes(name)) : [];
+      const requiredApprovalFields = Array.isArray(metadata?.required_fields_in_token_mode) ? metadata.required_fields_in_token_mode.filter(name => approvalFields.includes(name)) : [];
+      operations.push({ service, base: base.replace(/\/$/, ''), path, method, pattern, profiles, approvalFields, requiredApprovalFields, secured: Boolean((operation.security ?? document.security)?.some(requirement => Object.keys(requirement).length)) });
     }
   }
   operations.sort((a, b) => (a.path.includes('{') - b.path.includes('{')) || b.path.length - a.path.length);

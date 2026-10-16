@@ -39,4 +39,4 @@ def test_graph_read_token_uses_bearer_header(monkeypatch) -> None:
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-token")
     request = Request({"type": "http", "method": "POST", "path": "/", "headers": [(b"authorization", b"Bearer read-token")], "client": ("10.0.0.2", 1)})
-    assert graph_read_identity(request) == "token-reader"
+    assert graph_read_identity(request) == "service-token-reader"

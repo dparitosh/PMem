@@ -509,21 +509,21 @@ def replay_job_run(run_id: str, request: Request, authorization: ApprovalBody | 
 def reconcile_analytics_evidence(run_id: str, request: Request, payload: ApprovalBody) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env='DATA_JOB_EXECUTION_TOKEN')
     from .analytics_evidence import build_analytics_evidence
-    with run_records.store.advisory_lock('analytics-evidence:' + run_id) as acquired:
-        if not acquired:
-            raise HTTPException(409, 'Analytics evidence reconciliation is already active')
-        record = run_records.get(run_id)
-        if not record:
-            raise HTTPException(404, 'Data job run was not found')
-        output = record.get('output_manifest') or {}
-        if record.get('job_type') != 'xml-analytics-materialize' or record.get('status') != 'completed':
-            raise HTTPException(409, 'Only a committed analytics run can rebuild evidence')
-        if output.get('evidence_status') == 'available':
-            return {'status': 'completed', 'evidence_status': 'available', 'run_manifest': record}
-        receipt = output.get('ods_receipt')
-        if output.get('evidence_status') != 'pending' or not receipt:
-            raise HTTPException(409, 'No retained analytics receipt is available for reconciliation')
-        try:
+    try:
+        with run_records.store.advisory_lock('analytics-evidence:' + run_id) as acquired:
+            if not acquired:
+                raise HTTPException(409, 'Analytics evidence reconciliation is already active')
+            record = run_records.get(run_id)
+            if not record:
+                raise HTTPException(404, 'Data job run was not found')
+            output = record.get('output_manifest') or {}
+            if record.get('job_type') != 'xml-analytics-materialize' or record.get('status') != 'completed':
+                raise HTTPException(409, 'Only a committed analytics run can rebuild evidence')
+            if output.get('evidence_status') == 'available':
+                return {'status': 'completed', 'evidence_status': 'available', 'run_manifest': record}
+            receipt = output.get('ods_receipt')
+            if output.get('evidence_status') != 'pending' or not receipt:
+                raise HTTPException(409, 'No retained analytics receipt is available for reconciliation')
             inputs = run_records.replay_payload(record)
             result = build_analytics_evidence(inputs, receipt)
             # This run is terminal: no worker can own it during evidence recovery.
@@ -531,5 +531,5 @@ def reconcile_analytics_evidence(run_id: str, request: Request, payload: Approva
             persisted = run_records.complete(updated, result)
             from .analytics_evidence import run_result
             return run_result(result, persisted)
-        except (ValueError, OSError, RuntimeError) as exc:
-            raise HTTPException(503, 'Analytics evidence remains pending; retry reconciliation after storage recovers', headers={'X-DEPO-Run-ID': run_id, 'X-DEPO-Run-Kind': 'pipeline'}) from exc
+    except (ValueError, OSError, RuntimeError) as exc:
+        raise HTTPException(503, 'Analytics evidence recovery unavailable; inspect the retained run before retrying', headers={'X-DEPO-Run-ID': run_id, 'X-DEPO-Run-Kind': 'pipeline'}) from exc

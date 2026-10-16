@@ -20,6 +20,14 @@ const enter = (profile, value) => {
 };
 const response = (status, body) => ({ ok: status === 200, status, json: async () => body });
 
+test('credential validation errors include the server request ID', async () => {
+  fetch.mockResolvedValue({...response(403,{detail:'Wrong scope'}),headers:new Headers({'X-Request-ID':'credential-check-1'})});
+  render(<CredentialSettings />);
+  const row = enter('ADMIN_API_KEY', 'fixture-admin');
+  fireEvent.click(row.getByText('Test and apply'));
+  await screen.findByText(/Wrong scope Request ID: credential-check-1/);
+});
+
 test('restored central session is checked without displaying individual keys', async () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_restored');
   setBrowserSessionExpiry('depo_session_restored', new Date(Date.now() + 600000).toISOString());

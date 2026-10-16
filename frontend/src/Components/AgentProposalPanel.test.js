@@ -3,9 +3,31 @@ import { vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AgentProposalPanel from './AgentProposalPanel';
 import { agenticClient } from '../services/agenticApi';
+import { registerServiceContract, clearServiceContracts } from '../services/serviceContractRegistry';
+import { config } from '../config';
 vi.mock('../services/agenticApi', () => ({ agenticClient: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'supervisor' }));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); clearServiceContracts(); });
+afterEach(() => clearServiceContracts());
+
+test('discovered approver requirement is enforced before execution', async () => {
+  registerServiceContract('agentic', config.semanticServiceUrls.agentic, {openapi:'3.0.3',paths:{'/api/v1/runs':{post:{'x-depo-authorization':{approval_fields:['approved_by','approval_token'],required_fields_in_token_mode:['approved_by'],credential_profiles:['AGENTIC_APPROVAL_TOKEN']}}}}});
+  agenticClient.get.mockResolvedValue({data:{command:{agent_id:'ontology-governor',tool_id:'ontology.register',inputs:{}},requires_approval:false}});
+  render(<AgentProposalPanel />);
+  fireEvent.change(screen.getByLabelText('Saved recommendation ID'), {target:{value:'saved-contract'}});
+  fireEvent.click(screen.getByText('Load saved recommendation'));
+  await screen.findByText('Proposed tool: ontology.register');
+  fireEvent.click(screen.getByRole('checkbox'));
+  expect(screen.getByText('Execute reviewed recommendation')).toBeDisabled();
+  expect(screen.getByLabelText('Recommendation steward')).toBeRequired();
+  expect(agenticClient.post).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Recommendation steward'), {target:{value:'reviewer'}});
+  fireEvent.click(screen.getByRole('checkbox'));
+  agenticClient.post.mockResolvedValue({data:{run_id:'contract-run',status:'completed'}});
+  fireEvent.click(screen.getByText('Execute reviewed recommendation'));
+  await screen.findByText('Execution completed. Agent run: contract-run');
+  expect(agenticClient.post.mock.calls[0][1].approved_by).toBe('reviewer');
+});
 
 test('running execution is not called completed and inspection navigates with a minimal bookmark', async () => {
   agenticClient.get.mockResolvedValue({data:{command:{agent_id:'ontology-governor',tool_id:'ontology.register',inputs:{}},requires_approval:false}});

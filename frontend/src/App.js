@@ -34,9 +34,10 @@ function getLocationPage() {
   const hash = String(window.location.hash || '');
   if (hash === '#/' || hash === '#') return 'home';
   if (hash.startsWith('#/')) {
-    const hashPage = hash.slice(2).split('/')[0];
+    const hashPage = hash.slice(2).split(/[/?]/)[0];
     return hashPage ? normalizePage(hashPage) : 'home';
   }
+  if (hash && !hash.startsWith('#/')) return null;
   const pathname = String(window.location.pathname || '/');
   if (pathname === '/') return 'home';
   const pathPage = pathname.split('/').filter(Boolean)[0];
@@ -116,7 +117,6 @@ function App() {
     let currentController = null;
     let retryDelayMs = 30000;
     let retryTimer = null;
-    let consecutiveFailures = 0;
     const checkHealth = async () => {
       if (!active || inFlight) return;
       inFlight = true;
@@ -133,14 +133,10 @@ function App() {
         if (active) {
           setServiceStatus(onlineCount === Object.keys(health).length ? 'online' : 'degraded');
           retryDelayMs = 30000;
-          consecutiveFailures = 0;
         }
       } catch (error) {
         if (active && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
-          consecutiveFailures += 1;
-          if (consecutiveFailures >= 3) {
-            setServiceStatus('offline');
-          }
+          setServiceStatus('offline');
           retryDelayMs = Math.min(retryDelayMs * 2, 300000);
         }
       } finally {

@@ -4727,3 +4727,35 @@ The XML loader retains the submission identity in browser session storage. After
 network failure, find the retained run in Data Flow history and refresh it before
 submitting again. If history confirms no matching run exists, explicitly acknowledge
 that check to prepare another task. No XML write is automatically retried.
+
+### API authorization and diagnostics
+
+With environment-based credential storage, admin routes require `ADMIN_API_KEY`.
+Keyless development access requires both `DEPO_ALLOW_INSECURE_LOCAL_AUTH=true`
+and a loopback client address. Any production or staging marker in `DEPO_ENV`,
+`APP_ENV`, `ENVIRONMENT` or `DEPLOYMENT_ENV` disables that bypass. PostgreSQL
+credential storage continues to require a verified registered key or authorized
+maintenance session.
+
+Unexpected API errors return a generic JSON error and `X-Request-ID`; use that
+ID to inspect server logs. Allowed browser origins retain CORS headers on these
+errors. Credential discovery uses `/auth/admin-access` for the administrator key,
+`/auth/access` for read access, and `/auth/credential-check` for workflow profiles.
+Regenerate service OpenAPI documents and reimport them into APIM after this update
+so helper-based approval requirements and supported credential checks are current.
+
+`scripts/frontend_api_contract.py` checks static frontend calls against the owning
+service and HTTP method. Run it in the installed backend environment with all
+service dependencies available. The report lists unresolved dynamic expressions
+for separate runtime testing; it cannot certify those calls. Empty inventories
+fail validation. Unowned routes are reported instead of being silently accepted
+through another service's matching route. Unused aggregate-only health, AP242
+search/report and alignment-option client wrappers have been removed; use the
+service-specific APIs already consumed by the current pages.
+
+The UI includes safe server request IDs in shared API error messages and service
+credential diagnostics. Quote that ID when locating the corresponding backend log.
+Retained pipeline runs open through the pipeline status API; agent/workflow runs
+continue through their own status APIs. Recommendation forms consume discovered
+approval metadata to mark required approver fields before execution. The backend
+still validates the actual credential scope and approval for every operation.

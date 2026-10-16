@@ -48,18 +48,13 @@ def _reconcile_reset():
 
 
 def _is_production_environment() -> bool:
-    """Keep destructive admin routes open only for local/non-production runs."""
-    environment = (
-        os.getenv("APP_ENV")
-        or os.getenv("ENVIRONMENT")
-        or os.getenv("DEPLOYMENT_ENV")
-        or "development"
-    ).strip().lower()
-    return environment in {"prod", "production", "stage", "staging"}
+    """Any production marker disables the explicit local-development bypass."""
+    return any(os.getenv(name, '').strip().lower() in {"prod", "production", "stage", "staging"}
+               for name in ('DEPO_ENV', 'APP_ENV', 'ENVIRONMENT', 'DEPLOYMENT_ENV'))
 
 
 async def require_admin_api_key(request: Request) -> None:
-    """Require a key in production; allow local development without one."""
+    """Require an admin key except for explicitly enabled loopback development."""
     from backend.depo_platform.credentials import uses_postgres, verify_key
     if uses_postgres():
         supplied = request.headers.get('X-API-Key', '')
@@ -71,7 +66,9 @@ async def require_admin_api_key(request: Request) -> None:
         return
     expected = os.getenv("ADMIN_API_KEY", "").strip()
     if not _is_production_environment() and not expected:
-        return
+        if (os.getenv('DEPO_ALLOW_INSECURE_LOCAL_AUTH', '').lower() == 'true'
+                and request.client and request.client.host in {'127.0.0.1', '::1'}):
+            return
     if not expected:
         raise HTTPException(status_code=503, detail="Admin API key is not configured")
     supplied = request.headers.get("X-API-Key", "")

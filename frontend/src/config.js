@@ -183,26 +183,12 @@ const config = {
 };
 
 /**
- * Health & Status Endpoints
- */
-const HEALTH_ENDPOINTS = {
-  health: setting('API_HEALTH') || '/health',
-  ready: setting('API_READY') || '/ready',
-  graphMetrics: setting('API_GRAPH_METRICS') || '/graph-metrics',
-  ontologiesAvailable: setting('API_ONTOLOGIES_AVAILABLE') || '/ontologies/available',
-  neo4jHealth: setting('API_NEO4J_HEALTH') || '/health/neo4j',
-};
-
-/**
  * Schema & Metadata Endpoints
  */
 const SCHEMA_ENDPOINTS = {
   // The retired aggregate backend owned /schema. Standalone deployments have
   // no equivalent route, so fetch it only when an operator explicitly maps it.
   schema: setting('API_SCHEMA'),
-  ap242RotorPmi: setting('API_AP242_ROTOR_PMI') || '/ap242/rotor-shaft-pmi',
-  ap242Search: setting('API_AP242_SEARCH') || '/ap242/search',
-  reports: setting('API_REPORTS') || '/reports',
 };
 
 /**
@@ -257,7 +243,6 @@ const ONTOLOGY_ENDPOINTS = {
   extract3dxml: setting('API_ONTOLOGY_EXTRACT_3DXML') || '/api/v1/ontology/extract-3dxml',
   threeDxmlStatus: setting('API_ONTOLOGY_3DXML_STATUS') || '/api/v1/ontology/3dxml/status/{task_id}',
   threeDxmlFormats: setting('API_ONTOLOGY_3DXML_FORMATS') || '/api/v1/ontology/3dxml/formats',
-  alignmentOptions: setting('API_ONTOLOGY_ALIGNMENT_OPTIONS') || '/ontology-mappings',
   merge: setting('API_ONTOLOGY_MERGE') || '/api/v1/ontology/merge',
   governedMergePreview: setting('API_ONTOLOGY_GOVERNED_MERGE_PREVIEW') || '/api/v1/ontologies/merges/preview',
   governedMergeApply: setting('API_ONTOLOGY_GOVERNED_MERGE_APPLY') || '/api/v1/ontologies/merges/{preview_id}/apply',
@@ -474,7 +459,6 @@ export const replaceParams = (endpoint, params, options = {}) => {
  * Export all API endpoints organized by category
  */
 export const API = {
-  health: HEALTH_ENDPOINTS,
   schema: SCHEMA_ENDPOINTS,
   chat: CHAT_ENDPOINTS,
   ontology: ONTOLOGY_ENDPOINTS,
