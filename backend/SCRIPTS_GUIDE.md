@@ -80,13 +80,7 @@ python backend/Services/owl_xmi_engine.py <xmi_file> <output_file> [--base-uri <
 
 ### `backend/Services/step_0_generate_ontology.py`
 
-Legacy ontology generation helper for PLMXML-oriented input.
-
-Typical form:
-
-```powershell
-python backend/Services/step_0_generate_ontology.py <plmxml_file>
-```
+Retired compatibility entry point. It exits without connecting to Neo4j or writing data. Use `POST /api/v1/engineering-workflows` for conversion and registration, then review and publish the retained ontology through the Ontology Service. See [installation](../INSTALLATION.md).
 
 ### `backend/Services/graph_embeddings.py`
 
@@ -146,3 +140,5 @@ In other words: **some scripts are ready to use; the whole Python surface is not
 - Keep Neo4j, backend, and frontend versions aligned before testing workflows.
 - For destructive cleanup or schema reset, take a backup first.
 
+
+The separate `python -m backend.qif.worker` entry point is also retired. Schema-set recovery runs inside `backend.qif.app`, started by the deployment manifest.

@@ -2,6 +2,7 @@ import React from 'react';
 import { UI_COLORS as C } from '../../styles/uiTokens';
 
 const INFERENCE_RULES = [
+  ['inverse_properties', 'Inverse properties', 'Preview reverse instance links from declared inverse properties.'],
   ['transitive_subclass', 'Transitive subclass hierarchy', 'Find indirect superclass paths for taxonomy and classification.'],
   ['domain_range_typing', 'Domain/range typing', 'Use property domain and range to explain expected source and target classes.'],
   ['equivalence', 'Equivalent terms', 'Preview same-as, equivalent class/property, and exact-match mappings.'],

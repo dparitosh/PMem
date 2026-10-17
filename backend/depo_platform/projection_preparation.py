@@ -1,7 +1,8 @@
 """Build deterministic Neo4j rows inside the terminable RDF preparation worker."""
 from typing import Any
 import json
-from rdflib import Literal, URIRef
+from rdflib import Literal, URIRef, BNode
+from .ontology_semantics import kind
 from rdflib.namespace import OWL, RDF, RDFS
 
 
@@ -15,10 +16,7 @@ def build_projection(rdf_graph):
     labels = {}
     for subject, label in label_rows:
         labels.setdefault(str(subject), str(label))
-    class_iris = {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.Class)}
-    property_iris = {
-        str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.ObjectProperty)
-    } | {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.DatatypeProperty)}
+    terms_by_id = {str(n): n for triple in rdf_graph for n in (triple[0], triple[2]) if not isinstance(n, Literal)}
     resource_iris = {str(value) for triple in rdf_graph for value in (triple[0], triple[2]) if not isinstance(value, Literal)}
     literal_properties: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for subject, predicate, value in rdf_graph:
@@ -35,7 +33,8 @@ def build_projection(rdf_graph):
          "requirement": (URIRef(iri), RDF.type, URIRef('https://depo.example.org/ceim/0.1/Requirement')) in rdf_graph,
          "source": min((str(value) for value in rdf_graph.objects(URIRef(iri), URIRef('https://depo.example.org/ceim/0.1/sourceStandard'))), default=None),
          "description": min((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), default=None),
-         "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource",
+         "kind": kind(rdf_graph, terms_by_id[iri]),
+         "rdf_types": sorted(str(t) for t in rdf_graph.objects(terms_by_id[iri], RDF.type)),
          "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
         for iri in sorted(resource_iris)
     ]

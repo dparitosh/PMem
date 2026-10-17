@@ -78,7 +78,7 @@ class Neo4jPublisher:
         resource_query = """
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
-        SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind,
+        SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind, node.rdf_types = row.rdf_types,
             node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
             node.source = row.source, node.description = row.description,
             node.publication_revision = $projection_revision

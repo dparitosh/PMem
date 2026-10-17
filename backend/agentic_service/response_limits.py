@@ -1,32 +1,7 @@
-"""Bound decoded downstream responses before buffering or persisting them."""
-import os
-
-def response_byte_limit():
-    limit = int(os.getenv('AGENTIC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)))
-    if limit <= 0:
-        raise ValueError('AGENTIC_MAX_RESPONSE_BYTES must be positive')
-    return limit
+"""Compatibility entry points for shared bounded response readers."""
+from backend.core.payload_limits import response_byte_limit, read_bounded_response_sync
 
 
 async def read_bounded_response(response, *, limit=None):
-    limit = response_byte_limit() if limit is None else limit
-    if type(limit) is not int or limit <= 0:
-        raise ValueError('Response byte limit must be a positive integer')
-    chunks, total = [], 0
-    async for chunk in response.aiter_bytes():
-        total += len(chunk)
-        if total > limit:
-            raise ValueError('Downstream response exceeds its configured byte limit; narrow the request')
-        chunks.append(chunk)
-    return b''.join(chunks)
-
-
-def read_bounded_response_sync(response):
-    limit = response_byte_limit()
-    chunks, total = [], 0
-    for chunk in response.iter_content(chunk_size=65536):
-        total += len(chunk)
-        if total > limit:
-            raise ValueError("Ollama response exceeds AGENTIC_MAX_RESPONSE_BYTES")
-        chunks.append(chunk)
-    return b"".join(chunks)
+    from backend.core.payload_limits import read_bounded_response as read
+    return await read(response, limit=response_byte_limit() if limit is None else limit)

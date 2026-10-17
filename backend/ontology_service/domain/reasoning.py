@@ -216,7 +216,7 @@ class OntologyReasoningService:
                     constraints.append({"property": prop_key, "property_label": prop_label, "kind": "range", "class": cls._ref_key(rng)})
 
         rdf_edges: Dict[str, List[Dict[str, str]]] = {"equivalence": [], "disjointness": []}
-        if rules.get("equivalence", True) or rules.get("disjointness", True):
+        if rules.get("equivalence", True) or rules.get("disjointness", True) or rules.get("inverse_properties", False):
             try:
                 from rdflib import Graph, URIRef
                 from rdflib.namespace import OWL
@@ -247,6 +247,14 @@ class OntologyReasoningService:
                 rdf_edges["equivalence"].extend(edge_rows(OWL.sameAs))
                 rdf_edges["equivalence"].extend(edge_rows(SKOS.exactMatch))
                 rdf_edges["disjointness"].extend(edge_rows(OWL.disjointWith))
+                if rules.get('inverse_properties', False):
+                    for left, right in sorted(rdf_graph.subject_objects(OWL.inverseOf), key=str):
+                        for forward, inverse in ((left, right), (right, left)):
+                            for subject, target in rdf_graph.subject_objects(forward):
+                                if len(inferred) >= max_results: break
+                                if isinstance(target, URIRef) and (target, inverse, subject) not in rdf_graph:
+                                    add('inverse_property', str(target), str(inverse), str(subject),
+                                        'Inverse of asserted property ' + str(forward))
             except Exception as exc:
                 warnings.append(f"Equivalent/disjoint RDF scan skipped: {type(exc).__name__}: {exc}")
 
@@ -304,6 +312,7 @@ class OntologyReasoningService:
                 "equivalence": bool(rules.get("equivalence", True)),
                 "disjointness": bool(rules.get("disjointness", True)),
                 "individual_type_closure": bool(rules.get("individual_type_closure", True)),
+                "inverse_properties": bool(rules.get("inverse_properties", False)),
             },
             "summary": {
                 "classes": len(classes),

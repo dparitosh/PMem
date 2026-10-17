@@ -2,16 +2,12 @@
 import ast
 import asyncio
 import copy
-import hashlib
 import json
 import os
 from pathlib import Path
 import threading
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from urllib.parse import urlsplit, urlunsplit
-from typing import Any
-from backend.core.ollama_auth import ollama_headers, ollama_base_url, ollama_generation_route
 import unittest
 from unittest.mock import patch
 
@@ -23,27 +19,6 @@ class WithoutImports(ast.NodeTransformer):
     def visit_ImportFrom(self, node): return None
 
 
-def load(path, scope):
-    tree = ast.parse((ROOT / path).read_text(encoding='utf-8'))
-    tree = WithoutImports().visit(tree)
-    exec(compile(ast.fix_missing_locations(tree), path, 'exec'), scope)
-    return scope
-
-
-class Literal(str):
-    def n3(self): return json.dumps(str(self))
-
-
-class Graph:
-    parsed = []
-    def __init__(self): self.triples = []
-    def parse(self, *, data, format): self.parsed.append(format)
-    def subjects(self, predicate, value):
-        return [subject for subject, p, v in self.triples if p == predicate and v == value]
-    def __iter__(self): return iter(self.triples)
-    def __len__(self): return max(1, len(self.triples))
-    def add(self, triple): self.triples.append(triple)
-    def serialize(self, format): return 'retained preview'
 
 
 class MergeTests(unittest.TestCase):
@@ -53,6 +28,14 @@ class MergeTests(unittest.TestCase):
         self.registration_calls = 0
         self.version_calls = 0
         metadata = {'ontology_name': 'Example', 'original_filename': 'example.rdf'}
+        from rdflib import Graph as RdfGraph, Literal, URIRef, RDF as RdfType, OWL as OwlType, RDFS
+        from rdflib.namespace import DC
+        graph = RdfGraph()
+        graph.add((URIRef('urn:example:Part'), RdfType.type, OwlType.Class))
+        graph.add((URIRef('urn:example:Part'), RDFS.label, Literal('Part')))
+        graph.add((URIRef('urn:example:Part'), RDFS.comment, Literal('A manufactured part')))
+        graph.add((URIRef('urn:example:Part'), DC.source, URIRef('urn:example:source')))
+        content = graph.serialize(format='xml', encoding='utf-8')
         def register(**kwargs):
             self.registration_calls += 1
             self.assertTrue(kwargs['source'].startswith('governed-merge:'))
@@ -60,29 +43,61 @@ class MergeTests(unittest.TestCase):
         def version(**kwargs):
             self.version_calls += 1
             return {'version': '1'}
-        catalog = SimpleNamespace(get=lambda _: metadata, read_artifact=lambda _: (metadata, b'xml'),
+        catalog = SimpleNamespace(get=lambda _: metadata, read_artifact=lambda _: (metadata, content),
+                                  with_publication_lock=lambda key, operation: operation(),
                                   _parse_ontology=lambda *_: {'rdf_format': 'xml'}, register=register)
-        scope = load('backend/ontology_service/merge_service.py', dict(
-            json=json, hashlib=hashlib, threading=threading, Path=Path, Any=Any,
-            Graph=Graph, Literal=Literal, uuid=__import__('uuid'),
-            datetime=__import__('datetime').datetime, timezone=__import__('datetime').timezone,
-            RDF=SimpleNamespace(type='rdf:type'), OWL=SimpleNamespace(FunctionalProperty='functional')))
-        self.merge = scope['GovernedMergeService'](catalog, SimpleNamespace(create_version=version), Path(self.directory.name))
+        from backend.ontology_service.merge_service import GovernedMergeService
+        self.merge = GovernedMergeService(catalog, SimpleNamespace(create_merge_version=version), Path(self.directory.name))
 
     def test_xml_merge_and_repeat_apply_reuse_receipt(self):
-        Graph.parsed = []
         preview = self.merge.preview({'source_ontology_ids': ['one', 'two']})
-        self.assertEqual(Graph.parsed, ['xml', 'xml'])
+        self.assertEqual(preview['triple_count'], 4)
+        self.assertEqual(preview['source_ontology_ids'], ['one', 'two'])
         first = self.merge.apply(preview['preview_id'], 'steward')
         self.assertEqual(self.merge.apply(preview['preview_id'], 'steward'), first)
         self.assertEqual((self.registration_calls, self.version_calls), (1, 1))
 
     def test_multivalued_labels_are_not_functional_conflicts(self):
+        from rdflib import Graph, Literal, URIRef, RDF, OWL, RDFS
         graph = Graph()
-        graph.triples = [('class', 'label', Literal('English')), ('class', 'label', Literal('French'))]
+        subject, property_id = URIRef('urn:example:Part'), URIRef('urn:example:serial')
+        graph.add((subject, RDFS.label, Literal('English')))
+        graph.add((subject, RDFS.label, Literal('French')))
         self.assertEqual(self.merge._literal_conflicts(graph), [])
-        graph.triples += [('property', 'rdf:type', 'functional'), ('class', 'property', Literal('1')), ('class', 'property', Literal('2'))]
+        graph.add((property_id, RDF.type, OWL.FunctionalProperty))
+        graph.add((subject, property_id, Literal('1')))
+        graph.add((subject, property_id, Literal('2')))
         self.assertEqual(len(self.merge._literal_conflicts(graph)), 1)
+
+    def test_missing_authored_label_still_blocks_merge(self):
+        from rdflib import Graph, URIRef, RDF, OWL
+        graph = Graph()
+        graph.add((URIRef('urn:example:Unlabelled'), RDF.type, OWL.Class))
+        content = graph.serialize(format='xml', encoding='utf-8')
+        metadata = {'ontology_name': 'Incomplete', 'original_filename': 'incomplete.rdf'}
+        self.merge.catalog.read_artifact = lambda _: (metadata, content)
+        preview = self.merge.preview({'source_ontology_ids': ['one', 'two']})
+        self.assertFalse(preview['semantic_checks']['shacl_conforms'])
+        with self.assertRaisesRegex(ValueError, 'unresolved'):
+            self.merge.apply(preview['preview_id'], 'steward')
+        self.assertEqual(self.registration_calls, 0)
+
+    def test_custom_shape_targets_are_preserved(self):
+        from rdflib import Graph, URIRef, RDF, OWL
+        from backend.ontology_service.merge_semantics import _validate_merge
+        graph = Graph()
+        graph.add((URIRef('urn:example:Part'), RDF.type, OWL.Class))
+        shape = Path(self.directory.name) / 'custom.ttl'
+        shape.write_text('''
+            @prefix sh: <http://www.w3.org/ns/shacl#> .
+            @prefix owl: <http://www.w3.org/2002/07/owl#> .
+            @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+            <urn:custom:shape> a sh:NodeShape; sh:targetNode owl:Thing;
+                sh:property [ sh:path rdfs:label; sh:minCount 1 ] .
+        ''', encoding='utf-8')
+        result = _validate_merge(graph, [{'shacl_file_path': str(shape)}])
+        self.assertFalse(result['shacl_conforms'])
+        self.assertIn('owl:Thing', result['report'])
 
     def test_invalid_source_shapes_rejected(self):
         for value in ['one,two', ['one', {}], ['one', 'one'], ['']]:
@@ -111,27 +126,26 @@ class MergeTests(unittest.TestCase):
 
 class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.environment = patch.dict(os.environ, {'USE_LLM': 'ollama', 'LLM_MODEL_NAME': 'offline:latest', 'OLLAMA_BASE_URL': 'http://127.0.0.1:11434/api/chat'}, clear=True)
+        import importlib.util
+        import httpx
+        self.environment = patch.dict(os.environ, {'USE_LLM':'ollama', 'LLM_MODEL_NAME':'offline:latest',
+            'OLLAMA_BASE_URL':'http://127.0.0.1:11434/api/chat', 'OLLAMA_DISCOVERY_ENABLED':'true'}, clear=True)
         self.environment.start(); self.addCleanup(self.environment.stop)
-        self.models = ['offline:latest']
-        self.fails = False
-        self.delay = 0
-        owner = self
-        class HttpError(Exception): pass
-        class Client:
-            def __init__(self, timeout, **kwargs): owner.timeout = timeout
-            async def __aenter__(self): return self
-            async def __aexit__(self, *args): pass
-            async def get(self, url, **kwargs):
-                owner.url = url
-                await asyncio.sleep(owner.delay)
-                if owner.fails: raise HttpError()
-                return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {'models': [{'name': model} for model in owner.models]})
-            async def post(self, url, **kwargs):
-                owner.request = kwargs['json']
-                return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {'message': {'content': 'Bounded summary'}})
-        self.scope = load('backend/agentic_service/local_llm.py', dict(ollama_base_url=ollama_base_url, ollama_headers=ollama_headers, ollama_generation_route=ollama_generation_route, os=os, json=json, asyncio=asyncio, urlsplit=urlsplit, urlunsplit=urlunsplit,
-                          httpx=SimpleNamespace(AsyncClient=Client, HTTPError=HttpError, HTTPStatusError=type('StatusError', (Exception,), {}))))
+        self.models=['offline:latest']; self.fails=False; self.delay=0
+        owner=self
+        async def handle(request):
+            owner.url=str(request.url)
+            await asyncio.sleep(owner.delay)
+            if owner.fails: raise httpx.ConnectError('Fixture connection unavailable')
+            return httpx.Response(200,json={'models':[{'name':model} for model in owner.models]})
+        real_client=httpx.AsyncClient
+        def client(**kwargs):
+            owner.timeout=kwargs['timeout']
+            return real_client(transport=httpx.MockTransport(handle),**kwargs)
+        spec=importlib.util.spec_from_file_location('backend.agentic_service.fixture_local_llm', ROOT/'backend/agentic_service/local_llm.py')
+        module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        module.httpx=SimpleNamespace(**{**vars(httpx),'AsyncClient':client})
+        self.scope=module.__dict__
 
     async def test_health_distinguishes_ready_missing_and_unavailable(self):
         self.assertEqual((await self.scope['health']())['status'], 'ready')
@@ -140,7 +154,7 @@ class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
         self.models = []
         self.assertEqual((await self.scope['health']())['status'], 'model_missing')
         self.fails = True
-        self.assertEqual((await self.scope['health']())['status'], 'unavailable')
+        self.assertEqual((await self.scope['health']())['status'], 'connection_failed')
 
     async def test_summary_is_bounded_and_nonstreaming(self):
         from backend.agentic_service.prompt_limits import bounded_prompt_json
@@ -162,7 +176,7 @@ class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
     async def test_slow_runtime_respects_total_diagnostic_deadline(self):
         os.environ['LLM_REQUEST_TIMEOUT_SECONDS'] = '1'
         self.delay = 2
-        self.assertEqual((await self.scope['health']())['status'], 'unavailable')
+        self.assertEqual((await self.scope['health']())['status'], 'timeout')
 
 
 class EvidenceReferenceTests(unittest.IsolatedAsyncioTestCase):
@@ -179,14 +193,13 @@ class EvidenceReferenceTests(unittest.IsolatedAsyncioTestCase):
                       'artifacts': {'source': 'sha256:source', 'structural_model': 'sha256:model'},
                       'data_product_draft': {'contract': 'schema-analytics-data-product-v2'}}
         async def offload(callback, *args, **kwargs): return callback(*args, **kwargs)
-        scope = load('backend/ingestion_service/engineering_workflow.py', dict(
-            os=os, json=json, hashlib=hashlib, Any=Any, Path=Path,
-            service_url=lambda key, fallback: fallback, EngineeringSchemaConverter=object,
-            run_in_threadpool=offload, service_bearer_headers=lambda *args, **kwargs: {},
-            httpx=SimpleNamespace(AsyncClient=lambda **kwargs: Client())))
-        workflow = scope['EngineeringWorkflow'](SimpleNamespace(convert=lambda **kwargs: conversion))
-        workflow._governance_entities = lambda _: []
-        await workflow.run(filename='example.xsd', content=b'xsd')
+        from backend.ingestion_service import engineering_workflow as module
+        with patch.object(module, 'service_bearer_headers', return_value={}), \
+                patch.object(module.httpx, 'AsyncClient', return_value=Client()), \
+                patch.object(module, 'run_in_threadpool', side_effect=offload):
+            workflow = module.EngineeringWorkflow(SimpleNamespace(convert=lambda **kwargs: conversion))
+            workflow._governance_entities = lambda _: []
+            await workflow._run(filename='example.xsd', content=b'xsd')
         metadata = json.loads(captured['extra_metadata'])
         self.assertEqual(metadata['engineering_artifacts'], conversion['artifacts'])
         self.assertEqual(metadata['data_product_draft'], conversion['data_product_draft'])

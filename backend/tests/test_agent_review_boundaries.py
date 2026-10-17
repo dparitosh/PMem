@@ -53,7 +53,7 @@ class AgentReviewBoundaries(unittest.IsolatedAsyncioTestCase):
         execute.assert_not_called()
 
     async def test_oslc_limit_validation_and_bounded_stream(self):
-        reader = load('backend/agentic_service/response_limits.py', 'read_bounded_response',
+        reader = load('backend/core/payload_limits.py', 'read_bounded_response',
                       {'response_byte_limit': lambda: 40})
         class Response:
             def raise_for_status(self): pass

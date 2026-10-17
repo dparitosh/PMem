@@ -1,6 +1,6 @@
 # Repository document index
 
-Reviewed 2026-10-09. This inventory covers repository Markdown documentation and the new audit indexes; generated logs, dependency trees, and excluded-review copies are not documentation authority. Files remain in their existing locations so links and operator procedures continue to work.
+Index status reviewed 2026-10-17; individual historical documents retain their original evidence dates. This inventory covers repository Markdown documentation and the new audit indexes; generated logs, dependency trees, and excluded-review copies are not documentation authority. Files remain in their existing locations so links and operator procedures continue to work.
 
 Start with [current audit status](audits/README.md), [installation](../INSTALLATION.md), and [test evidence guidance](TESTING_AND_EVIDENCE.md). Dated plans and historical test counts do not certify the current build.
 

@@ -4373,7 +4373,7 @@ def get_mapping_options():
 
 
 @app.get("/ontology-mapper/{mapping_type}/mappings")
-def get_ontology_mappings(mapping_type: str = Path(..., description="plmxml, step, or windchill")):
+def get_ontology_mapper_mappings(mapping_type: str = Path(..., description="plmxml, step, or windchill")):
     """Get all entity mappings for a specific mapping type (e.g., PLMXML→AP242)."""
     try:
         mappings = OntologyMapperService.get_mappings(mapping_type)
@@ -4638,7 +4638,7 @@ _STATIC_ONTOLOGY_MAPPINGS = [
 
 
 @app.get("/ontology-mappings")
-async def get_ontology_mappings(file_type: str = ""):
+async def list_legacy_ontology_mappings(file_type: str = ""):
     """List ontology mapping options sourced only from Neo4j OntologyMetadata."""
     normalized_file_type = (file_type or "").strip().lower()
 

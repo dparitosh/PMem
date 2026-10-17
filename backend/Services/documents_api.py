@@ -488,215 +488,24 @@ async def upload_documents(
     files: List[UploadFile] = File(...),
     index_name: Optional[str] = Form(None)
 ):
-    """
-    Retired: direct upload and indexing are no longer permitted.
-    
-    The endpoint automatically detects file format and processes accordingly:
-    - **PDF**: Extracts page text
-    - **Word**: Extracts document paragraphs
-    - **PowerPoint**: Extracts slide text
-    - **Text/Markdown/HTML**: Extracts textual content
-    
-    Use ``POST /documents/jobs``; it retains immutable evidence and requires
-    CEIM/Data Product/Graph Publication approval before any serving write.
-    
-    Args:
-        files: Multiple document files to upload (can be mixed formats)
-        index_name: Optional Neo4j index name (defaults to 'datasheet_index')
-    
-    Returns:
-        DocumentUploadResponse with processing status and results
-    
-    Raises:
-        HTTPException: If validation fails or processing encounters errors
-    
-    Example:
-        ```python
-        # Upload mixed format documents
-        curl -X POST http://localhost:8000/api/v1/documents/upload \\
-          -F "files=@datasheet.pdf" \\
-          -F "files=@manual.docx" \\
-          -F "files=@presentation.pptx"
-        ```
-    """
+    """Retired compatibility endpoint; submit governed document jobs instead."""
     raise HTTPException(
         status_code=410,
         detail="Direct document indexing is retired. Submit /api/v1/documents/jobs so extraction produces governed evidence before CEIM/Data Product/Graph Publication.",
     )
 
-    temp_dir = None
-    
-    try:
-        # Validate upload constraints
-        if not files:
-            raise HTTPException(status_code=400, detail="No files provided")
-        
-        if len(files) > MAX_FILES_PER_UPLOAD:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Too many files: {len(files)} (max: {MAX_FILES_PER_UPLOAD})"
-            )
-        
-        logger.info(f"📦 Processing {len(files)} document(s)...")
-        selected_index = _validated_index_name(index_name)
-        
-        # Create temporary directory
-        temp_dir = create_temp_upload_dir()
-        
-        # Save and validate uploaded files
-        saved_files = []
-        for file in files:
-            # Validate file
-            is_valid, error = validate_upload_size(file, MAX_FILE_SIZE_MB)
-            if not is_valid:
-                raise HTTPException(status_code=400, detail=error)
-            
-            # Save file
-            file_path = save_uploaded_file(file, temp_dir)
-            saved_files.append(file_path)
-            
-            logger.info(f"  ✓ Uploaded: {file.filename}")
-        
-        if not saved_files:
-            raise HTTPException(status_code=400, detail="No valid files to process")
-        
-        logger.info(f"✅ All files uploaded. Processing {len(saved_files)} document(s)...")
-        
-        # Process documents using batch processor
-        processor = _require_document_processor()
-        processing_result = await run_in_threadpool(
-            processor["process_documents_batch"],
-            saved_files,
-            index_name=selected_index,
-        )
-        counters = _summarize_document_processing(processing_result)
-        
-        # Prepare response
-        succeeded = int(processing_result['summary']['successfully_processed'])
-        failed = int(processing_result['summary']['failed_processing'])
-        response = DocumentUploadResponse(
-            status="success" if failed == 0 else ("failed" if succeeded == 0 else "partial"),
-            message=(
-                f"Successfully processed {processing_result['summary']['successfully_processed']} "
-                f"out of {processing_result['summary']['total_files']} files"
-            ),
-            summary=processing_result['summary'],
-            results=processing_result['processing_results'],
-            **counters,
-            timestamp=datetime.now(timezone.utc).isoformat()
-        )
-        
-        logger.info(f"✅ Upload and processing completed: {response.message}")
-        return response
-    
-    except HTTPException:
-        raise
-    
-    except Exception as e:
-        logger.error(f"❌ Unexpected error during document upload: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing documents: {str(e)}"
-        )
-    
-    finally:
-        # Cleanup temporary files
-        if temp_dir:
-            cleanup_temp_files(temp_dir)
-        
-        # Also cleanup document processor temp directory
-        try:
-            _document_processor_status()["cleanup_temp_directory"]()
-        except Exception:
-            pass
 
 @router.post("/upload-single", response_model=DocumentUploadResponse, deprecated=True)
 async def upload_single_document(
     file: UploadFile = File(...),
     index_name: Optional[str] = Form(None)
 ):
-    """
-    Retired: direct upload and indexing are no longer permitted.
-    
-    Convenience endpoint for uploading one document at a time.
-    
-    Args:
-        file: Document file to upload
-        index_name: Optional Neo4j index name
-    
-    Returns:
-        DocumentUploadResponse with processing status
-    """
+    """Retired compatibility endpoint; submit governed document jobs instead."""
     raise HTTPException(
         status_code=410,
         detail="Direct document indexing is retired. Submit /api/v1/documents/jobs so extraction produces governed evidence before CEIM/Data Product/Graph Publication.",
     )
 
-    temp_dir = None
-    
-    try:
-        if not file:
-            raise HTTPException(status_code=400, detail="No file provided")
-        
-        # Validate file
-        is_valid, error = validate_upload_size(file, MAX_FILE_SIZE_MB)
-        if not is_valid:
-            raise HTTPException(status_code=400, detail=error)
-        
-        logger.info(f"📄 Processing single document: {file.filename}")
-        selected_index = _validated_index_name(index_name)
-        
-        # Create temporary directory
-        temp_dir = create_temp_upload_dir()
-        
-        # Save file
-        file_path = save_uploaded_file(file, temp_dir)
-        
-        # Process document
-        processor = _require_document_processor()
-        processing_result = await run_in_threadpool(
-            processor["process_documents_batch"],
-            [file_path],
-            index_name=selected_index,
-        )
-        counters = _summarize_document_processing(processing_result)
-        
-        # Prepare response
-        response = DocumentUploadResponse(
-            status="success" if processing_result['summary']['failed_processing'] == 0 else "failed",
-            message=(
-                f"Successfully processed {file.filename}"
-                if processing_result['summary']['successfully_processed'] == 1
-                else f"Failed to process {file.filename}"
-            ),
-            summary=processing_result['summary'],
-            results=processing_result['processing_results'],
-            **counters,
-            timestamp=datetime.now(timezone.utc).isoformat()
-        )
-        
-        logger.info(f"✅ Single document processing completed")
-        return response
-    
-    except HTTPException:
-        raise
-    
-    except Exception as e:
-        logger.error(f"❌ Error processing single document: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing document: {str(e)}"
-        )
-    
-    finally:
-        # Cleanup temporary files
-        if temp_dir:
-            cleanup_temp_files(temp_dir)
-        
-        try:
-            _document_processor_status()["cleanup_temp_directory"]()
-        except Exception:
-            pass
 
 @router.get("/health")
 async def health_check():

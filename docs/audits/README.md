@@ -1,5 +1,53 @@
 # Current validation and audit status
 
+Updated 2026-10-18. Committed baseline: `3892cab` on `codex/ontology-bridge-stability`. This change set adds obsolete-code cleanup, shared LLM execution, and semantic alignment. Deployment to customer environments remains pending. This index distinguishes current cleanup checks from dated evidence; it is not a release certificate.
+
+## Current cleanup
+
+- Removed unreachable document-upload processing while retaining HTTP 410 compatibility responses.
+- Retired direct-write ontology and standalone QIF worker entry points with migration guidance.
+- Removed the unused duplicate XMI parser and session helper; active XMI ingestion remains covered by regressions.
+- Retired estimated enrichment, Neo4j load, and post-load health results. Read-only RDF/SHACL validation is maintained in `backend/Services/ontology_validation_service.py`.
+- Preserved meaningful mapping/quality regressions and compatibility routes still used by the UI. Compatibility routing remains hosted by the owning standalone service, rather than the aggregate server.
+- Original retired material is preserved locally under the Git-ignored `external/excluded-review/2026-10-17-code-cleanup/` folder and in Git history.
+
+Focused cleanup validation: **55 tests passed** across retirement behavior, real RDF validation, mapping integrity, document jobs, XMI parsing, service inventory, and standalone contract boundaries. These are local tests with isolated/mocked service boundaries. The broad metadata/taxonomy suite did not complete collection within the local 45-second attempt and is not counted as passing. No historical full-suite count below represents a new run of this working tree.
+
+## LLM consolidation
+
+Active agentic inference now uses one bounded LangChain Runnable for Companion summaries, tool proposals, ontology evidence review and capability probes. Prompt pairs use ChatPromptTemplate with literal policy/evidence values. Existing GraphRAG LangChain clients and service-owned authorization, persistence, receipts and MCP controls remain in place. The pinned agentic profiles already contain langchain-core; no new dependencies or package reductions were introduced.
+
+Focused LLM/agent validation: **83 tests passed**, including exact APIM URLs/headers, structured/tool payload preservation, response limits, operation deadlines, split Unicode streams, citation buffering, prompt isolation and asynchronous model initialization. Tests use mocked upstream HTTP, not customer APIM. The previously failing merge/engineering fixtures now import real service implementations and use valid RDF/XML inputs instead of stripped imports and obsolete service doubles.
+
+## Merge validation correction
+
+Real-service regression testing exposed default SHACL checks targeting built-in vocabulary introduced by OWL-RL (for example owl:Thing), which incorrectly held valid merges for missing editorial metadata. Default targetClass rules now target submitted declarations before inference; custom/embedded SHACL targets and inferred OWL conflict checks remain unchanged. Missing labels on submitted classes still block application. Validation: **92 tests passed** (91 in the combined LLM/service regression run, plus the newly added custom-SHACL regression). This includes real subprocess merge preparation/validation, receipt reuse, concurrent preview retention, selective registry writes, authored-label rejection, retained conversion references, and custom-SHACL enforcement. PostgreSQL/HTTP boundaries remain isolated; this is not a full repository or live customer acceptance run.
+
+## Semantic enrichment alignment (2026-10-18)
+
+Shared read-only semantic inventory now aligns catalog statistics and graph kinds for OWL/RDFS classes, property categories, datatypes and explicitly/domain-typed individuals. Catalog statistics are stored in the existing PostgreSQL ontology_catalog JSONB registry with semantic_inventory_version=1; no relational DDL migration is required. The existing analytics-backfill API refreshes older inventories without approval/publication changes. Existing graph projections acquire updated kinds/rdf_types only after governed republication.
+
+Taxonomy includes individual assertions and disconnected blank-node/axiom/rule structures; datatype ranges are distinct from class declarations. Cypher mapping accepts rdfs:Class and constrains RDF type targets to the same ontology. Public projection/search/traversal reads expose rdf_types; staged activation uses the same resource query.
+
+SWRL-style rules retain all supporting fact IDs, accept full RDF type predicates and explicit namespaces, parse quoted separators, and enforce fact/atom/join/time/result limits. API inference runs off the event loop. Inverse-property previews are included in the request schema and UI. This remains a bounded application subset, not a complete SWRL/OWL-DL reasoner. Enrichment does not fabricate labels or axioms, or automatically execute imported RDF rules.
+
+Validation: **78 backend tests passed in the latest combined run (36.05 seconds)**. The 3 UI tests passed in the preceding run; the follow-up changes affect backend parsing, fact conversion and backfill tests. Coverage includes real merge preparation/SHACL validation, an isolated authoritative registry persistence test, catalog analytics, scoped Cypher contracts, publication batching/staging, inverse API request validation, namespaces, quoted literal round trips and bounded SWRL joins. No live PostgreSQL or Neo4j server was contacted; database execution/customer acceptance remains required.
+
+Follow-up verification: rule separators now ignore quoted arrows and reject multiple top-level separators. Rule HTTP APIs preserve zero-valued facts. A focused backfill regression verifies that existing approved records retain approval/provenance, receive the current semantic inventory, and produce no further changes on a second call. The registry is isolated in this test; maintenance-lock acquisition and live database behavior are not certified by it.
+
+## Customer acceptance still required
+
+Verify installation/update and PostgreSQL migration against existing customer data; large Neo4j publication and receipt reconciliation; Semantic Bridge merge and instance linking; real APIM/Ollama generation, streaming and tools; browser sessions and workflows; and shared-storage QIF failover before enabling replicas. Live customer services were unavailable to this local cleanup.
+
+Use [installation](../../INSTALLATION.md) and [customer acceptance](../../infra/deployment/CUSTOMER_RELEASE.md) as operational authorities. See [test evidence guidance](../TESTING_AND_EVIDENCE.md) for provenance and [the document index](../DOCUMENT_INDEX.md) for references.
+
+## Historical status retained below
+
+<details>
+<summary>October 9 baseline, findings and reported test counts — historical evidence</summary>
+
+# Current validation and audit status
+
 Updated 2026-10-09. Baseline: `cea9484` on `codex/semantic-bridge-release`. The working tree contains subsequent code and documentation fixes; they are not yet committed, pushed or deployed. This page is the status index. Other audits retain their dated findings and evidence.
 
 ## Verified locally
@@ -45,3 +93,5 @@ Dependency locking exists at `backend/requirements-lock.txt`. Platform compatibi
 ## Documentation ownership
 
 Use [INSTALLATION.md](../../INSTALLATION.md) for installation and [CUSTOMER_RELEASE.md](../../infra/deployment/CUSTOMER_RELEASE.md) for acceptance. The [document index](../DOCUMENT_INDEX.md) locates architecture references, demo scripts and dated audits. Historical logs/navigation reports remain preserved; mocked services and incomplete revision provenance prevent treating them as current live acceptance.
+
+</details>

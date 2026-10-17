@@ -70,6 +70,13 @@ def _validate_merge(graph, source_metadata, entity_mappings=None):
     if not shape_sources:
         default_shapes = ShaclValidationService().create_default_shapes()
         shapes.parse(data=default_shapes, format='turtle')
+        # Default editorial rules describe submitted declarations. OWL-RL adds
+        # built-in vocabulary without labels; it must not become an editorial
+        # target. Custom/embedded SHACL targets retain their original semantics.
+        for shape, kind in list(shapes.subject_objects(SH.targetClass)):
+            shapes.remove((shape, SH.targetClass, kind))
+            for subject in graph.subjects(RDF.type, kind):
+                shapes.add((shape, SH.targetNode, subject))
         shape_digests.append(hashlib.sha256(default_shapes.encode('utf-8')).hexdigest())
         shape_sources.append('default ontology checks')
     conforms, _, report = validate(checked, shacl_graph=shapes, inference='owlrl', inplace=True,

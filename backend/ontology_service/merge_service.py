@@ -111,8 +111,11 @@ class GovernedMergeService:
             source, target = URIRef(item['source_iri']), URIRef(item['target_iri'])
             if len(source_ids) != 2 or not any(candidate_graphs[0].triples((source, RDF.type, None))) or not any(candidate_graphs[-1].triples((target, RDF.type, None))):
                 raise ValueError('Reviewed mappings must link declared entities from the first source to the second source')
+            from backend.depo_platform.ontology_semantics import is_individual
             source_types = set(merged.objects(source, RDF.type)) & kinds
             target_types = set(merged.objects(target, RDF.type)) & kinds
+            if is_individual(candidate_graphs[0], source): source_types.add(OWL.NamedIndividual)
+            if is_individual(candidate_graphs[-1], target): target_types.add(OWL.NamedIndividual)
             source_types = {OWL.Class if value == RDFS.Class else value for value in source_types}
             target_types = {OWL.Class if value == RDFS.Class else value for value in target_types}
             if source == target or not source_types or source_types != target_types or source in replacements:

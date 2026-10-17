@@ -6,7 +6,7 @@ async def async_peer_response(method, endpoint, *, headers, budget, response_lim
     import httpx
     from .operations import current_operation
     from .network import http_timeout, operation_headers
-    from backend.agentic_service.response_limits import read_bounded_response
+    from backend.core.payload_limits import read_bounded_response
     operation = current_operation()
     if operation:
         budget = operation.timeout(budget)

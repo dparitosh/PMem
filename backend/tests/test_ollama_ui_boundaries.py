@@ -43,8 +43,8 @@ class OllamaUiBoundaryTests(unittest.TestCase):
         function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_llm_suggestion')
         scope={'os':os,'Any':object,'__name__':'backend.agentic_service.ontology_orchestrator','__package__':'backend.agentic_service'}
         exec(compile(ast.Module(body=[function],type_ignores=[]),'suggestion','exec'),scope)
-        local=types.ModuleType('backend.agentic_service.local_llm'); local.summarize=AsyncMock(side_effect=TimeoutError())
+        local=types.ModuleType('backend.agentic_service.local_llm'); local.review_ontology_evidence=AsyncMock(side_effect=TimeoutError())
         with patch.dict(sys.modules,{'backend.agentic_service.local_llm':local}), patch.dict(os.environ,{'ONTOLOGY_AGENT_LLM_ENABLED':'true'}):
             result=scope['_llm_suggestion']({'matched':1},{'source':'parts'})
         self.assertEqual(result['status'],'unavailable')
-        local.summarize.assert_awaited_once()
+        local.review_ontology_evidence.assert_awaited_once()

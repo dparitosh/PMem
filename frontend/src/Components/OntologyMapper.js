@@ -1577,6 +1577,7 @@ export default function OntologyMapper() {
     equivalence: true,
     disjointness: true,
     individual_type_closure: true,
+    inverse_properties: true,
   });
   const [inferenceLimit, setInferenceLimit] = useState(250);
   const [inferenceResult, setInferenceResult] = useState(null);

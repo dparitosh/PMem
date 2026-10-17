@@ -40,6 +40,8 @@ def test_documented_services_match_deployment_inventory():
 def test_retired_modules_have_no_source_imports():
     retired = {
         "backend.Services.ontology_reasoning_service",
+        "backend.parsers.xmi_parser",
+        "backend.agent.sessions",
         "backend.Services.ontology_taxonomy_service",
         "backend.ingestion_service.ontology_browser_router",
     }

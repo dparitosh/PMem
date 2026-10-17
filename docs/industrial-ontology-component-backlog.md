@@ -1,5 +1,7 @@
 # Industrial Ontology Component Backlog
 
+> Historical planning reference. Module lists and completion statements are not current deployment or test evidence. See [current audit status](audits/README.md) and [installation](../INSTALLATION.md). The estimated stage 4-7 pipeline is retired; read-only validation now lives in `backend/Services/ontology_validation_service.py`.
+
 This backlog turns the current codebase into a componentized industrial ontology platform.
 
 It is intentionally scoped to the existing repo and avoids external platform assumptions.

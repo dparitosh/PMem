@@ -17,7 +17,7 @@ class MergeValidationTests(unittest.TestCase):
     def test_explicit_impossibility(self):
         self.assertEqual(explicit_conflicts([('a',RDF+'type',OWL+'Nothing')])[0]['kind'],'instance_of_nothing')
         self.assertEqual(explicit_conflicts([('a',OWL+'differentFrom','a')])[0]['kind'],'self_difference')
-    def test_legacy_preview_cannot_publish_newly_detected_conflict(self):
+    def test_unverified_legacy_preview_cannot_publish(self):
         tree=ast.parse(Path('backend/ontology_service/merge_service.py').read_text())
         cls=next(node for node in tree.body if isinstance(node,ast.ClassDef))
         fn=next(node for node in cls.body if isinstance(node,ast.FunctionDef) and node.name=='_apply')
@@ -28,7 +28,7 @@ class MergeValidationTests(unittest.TestCase):
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<merge>','exec'),scope)
         writes=[]
         service=SimpleNamespace(registry=None,_load=lambda:{'preview':{'conflicts':[],'turtle':'retained'}},catalog=SimpleNamespace(register=lambda **kwargs:writes.append(kwargs)))
-        with self.assertRaisesRegex(ValueError,'contradictions'):
+        with self.assertRaisesRegex(ValueError,'verified sources'):
             scope['_apply'](service,'preview','steward')
         self.assertEqual(writes,[])
 

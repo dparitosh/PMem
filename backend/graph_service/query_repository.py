@@ -59,7 +59,7 @@ LEGACY_TRAVERSAL_NODES = (
 
 ONTOLOGY_PROJECTION_NODES = (
     "MATCH (n:OntologyResource {ontology_id: $ontology_id}) "
-    "RETURN n.iri AS id, elementId(n) AS graph_id, n.label AS label, n.kind AS type LIMIT $limit"
+    "RETURN n.iri AS id, elementId(n) AS graph_id, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types LIMIT $limit"
 )
 ONTOLOGY_PROJECTION_EDGES = (
     "MATCH (a:OntologyResource {ontology_id: $ontology_id})-[r]->(b:OntologyResource {ontology_id: $ontology_id}) "
@@ -72,7 +72,7 @@ ONTOLOGY_TRAVERSAL_NODES = (
     "WITH root, neighbor ORDER BY neighbor.iri "
     "WITH root, collect(DISTINCT neighbor) AS neighbors "
     "UNWIND [root] + [n IN neighbors WHERE n <> root][..($limit - 1)] AS node "
-    "RETURN DISTINCT elementId(node) AS id, node.iri AS iri, node.label AS label, node.kind AS type, node.ontology_id AS ontology_id"
+    "RETURN DISTINCT elementId(node) AS id, node.iri AS iri, node.label AS label, node.kind AS type, node.rdf_types AS rdf_types, node.ontology_id AS ontology_id"
 )
 ONTOLOGY_TRAVERSAL_EDGES = (
     "MATCH (a:OntologyResource)-[r]->(b:OntologyResource) "
@@ -86,7 +86,7 @@ ONTOLOGY_SEARCH_NODES = (
     "WHEN toLower(coalesce(n.label, '')) = term OR toLower(n.iri) ENDS WITH '/' + term OR toLower(n.iri) ENDS WITH '#' + term THEN 5 "
     "WHEN toLower(coalesce(n.label, '')) CONTAINS term OR toLower(n.iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 "
-    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id, score "
+    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, score "
     "ORDER BY score DESC, label LIMIT $limit"
 )
 
@@ -105,7 +105,7 @@ MAPPING_TERMS = """WITH EXISTS {
                 OR (kind.kind='AnnotationProperty' AND n:AnnotationProperty)
                 OR (n:OntologyResource AND EXISTS {
                     MATCH (n)-[r:SEMANTIC_RELATION]->(t:OntologyResource)
-                    WHERE r.predicate=$rdf_type AND t.iri=kind.iri }))
+                    WHERE r.predicate=$rdf_type AND t.ontology_id=n.ontology_id AND (t.iri=kind.iri OR (kind.kind='Class' AND t.iri='http://www.w3.org/2000/01/rdf-schema#Class')) }))
             OPTIONAL MATCH (n)-[domain_edge]->(domain)
             WHERE type(domain_edge)='DOMAIN' OR (type(domain_edge)='SEMANTIC_RELATION'
                 AND domain_edge.predicate='http://www.w3.org/2000/01/rdf-schema#domain')

@@ -410,6 +410,7 @@ class InferenceRules(RequestBody, total=False):
     equivalence: bool
     disjointness: bool
     individual_type_closure: bool
+    inverse_properties: bool
 
 class InferenceBody(RequestBody, total=False):
     rules: InferenceRules

@@ -9,7 +9,8 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from typing import Dict, List, Any, Optional
 import logging
 
@@ -75,9 +76,10 @@ class SwrlRuleRequest(BaseModel):
     use_case: Optional[str] = None
     body: Optional[List[Dict[str, Any]]] = None
     head: Optional[List[Dict[str, Any]]] = None
-    facts: Optional[List[Dict[str, Any]]] = None
+    facts: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=10000)
     execution_id: Optional[str] = None
     scope_id: Optional[str] = None
+    namespaces: Optional[Dict[str, str]] = None
 
     def rule_payload(self) -> Dict[str, Any]:
         if isinstance(self.rule, dict) and self.rule:
@@ -86,6 +88,7 @@ class SwrlRuleRequest(BaseModel):
             key: value
             for key, value in {
                 "expression": self.expression,
+                "namespaces": self.namespaces,
                 "rule_id": self.rule_id,
                 "name": self.name,
                 "version": self.version,
@@ -291,16 +294,16 @@ async def execute_swrl_rule_preview(request: SwrlRuleRequest):
             SemanticFact(
                 subject=str(item.get("subject") or ""),
                 predicate=str(item.get("predicate") or ""),
-                object=str(item.get("object") or ""),
+                object=str(item["object"]),
                 fact_id=str(item.get("fact_id") or item.get("id") or ""),
                 asserted=bool(item.get("asserted", True)),
                 properties=item.get("properties") or {},
             )
             for item in (request.facts or [])
-            if item.get("subject") and item.get("predicate") and item.get("object")
+            if item.get("subject") and item.get("predicate") and item.get("object") is not None
         ]
         execution_id = request.execution_id or f"preview-{rule.rule_id}-{rule.version}"
-        return ApplicationRuleExecutor.execute(rule, facts, execution_id)
+        return await run_in_threadpool(ApplicationRuleExecutor.execute, rule, facts, execution_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -317,16 +320,16 @@ async def swrl_materialization_plan(request: SwrlRuleRequest):
             SemanticFact(
                 subject=str(item.get("subject") or ""),
                 predicate=str(item.get("predicate") or ""),
-                object=str(item.get("object") or ""),
+                object=str(item["object"]),
                 fact_id=str(item.get("fact_id") or item.get("id") or ""),
                 asserted=bool(item.get("asserted", True)),
                 properties=item.get("properties") or {},
             )
             for item in (request.facts or [])
-            if item.get("subject") and item.get("predicate") and item.get("object")
+            if item.get("subject") and item.get("predicate") and item.get("object") is not None
         ]
         execution_id = request.execution_id or f"exec-{rule.rule_id}-{rule.version}"
-        result = ApplicationRuleExecutor.execute(rule, facts, execution_id)
+        result = await run_in_threadpool(ApplicationRuleExecutor.execute, rule, facts, execution_id)
         if result.get("status") != "success":
             return result
         return {

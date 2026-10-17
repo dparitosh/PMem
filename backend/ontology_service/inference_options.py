@@ -1,5 +1,5 @@
 """Strict input contract for non-mutating inference previews."""
-RULES={'transitive_subclass','domain_range_typing','equivalence','disjointness','individual_type_closure'}
+RULES={'transitive_subclass','domain_range_typing','equivalence','disjointness','individual_type_closure','inverse_properties'}
 def validate_options(options):
     if options is None: options={}
     if not isinstance(options,dict):raise ValueError('Inference options must be an object')

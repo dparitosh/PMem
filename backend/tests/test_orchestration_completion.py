@@ -60,6 +60,8 @@ def runner():
           'catalog':SimpleNamespace(item=lambda *args:workflow), 'workflow_plan':planned,
           'approval_identity':lambda *args,**kw:'actor','graph_read_identity':lambda *args:'actor',
           'sessions':SimpleNamespace(owner=lambda *args:'owner'), '_agent_io':io,
+          '_workflow_owner':lambda request,actor:'owner',
+          'workflow_error':__import__('backend.agentic_service.workflow_errors',fromlist=['workflow_error']).workflow_error,
           'telemetry':SimpleNamespace(start=lambda **kw:({'run_id':'telemetry'},0)),
           '_finish_observation':lambda *a,**kw:None,'_tool_span':lambda *a,**kw:None,
           '_preflight_tools':AsyncMock(), 'workflow_checkpoint':checkpoint,'WorkflowCancelled':WorkflowCancelled,
@@ -69,6 +71,13 @@ def runner():
 
 
 class RecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # This fixture tests persisted execution/recovery, not central credential
+        # issuance (covered by the dedicated execution-grant regressions).
+        grant = patch("backend.agentic_service.execution_grants.execution_identity",
+                      side_effect=lambda request,payload,steps:(request,None,None))
+        grant.start(); self.addCleanup(grant.stop)
+
     async def test_completed_steps_are_not_replayed(self):
         ns, store, _, workflow = runner()
         calls = []
@@ -273,15 +282,17 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
             await on_token('first ')
             await asyncio.sleep(0)
             await on_token('second')
-            return {'response':'first second','evidence':[],'sources':[],'answerable':True,'run_id':'fixture'}
+            return {'response':'first second','evidence':[],'sources':[],'answerable':True,'run_id':'fixture','retained_prompt_job_id':'fixture-prompt'}
         ns={'Any':Any,'Request':Request,'ChatRequest':ChatRequest,'StreamingResponse':StreamingResponse,
             'asyncio':asyncio,'json':json,'graph_read_identity':lambda request:'actor','_agent_io':io,
             'sessions':SimpleNamespace(open_session=lambda *args:{'session_id':'session','expires_at':'2099-01-01T00:00:00+00:00'}),
-            '_companion_chat':generate}
+            '_companion_chat':generate,
+            'stream_failure':__import__('backend.agentic_service.stream_errors',fromlist=['stream_failure']).stream_failure}
         functions('backend/agentic_service/router.py',{'companion_stream'},ns)
         result=await ns['companion_stream'](ChatRequest(message='question'),SimpleNamespace())
         events=[]
-        async for item in result.body_iterator:events.append(json.loads(item[6:].strip()))
+        async for item in result.body_iterator:
+            if item.startswith('data: '): events.append(json.loads(item[6:].strip()))
         self.assertIn('status',events[0])
         self.assertEqual(events[1],{'token':'first '})
         self.assertEqual(events[2],{'token':'second'})
@@ -310,7 +321,7 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
         real_client=httpx.AsyncClient
         transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=Body()))
         async def emit(token):chunks.append(token)
-        with patch.dict(os.environ,{'USE_LLM':'ollama','OLLAMA_API_URL':'http://fixture/api/chat','OLLAMA_BASE_URL':''}), patch.object(local_llm.httpx,'AsyncClient',lambda **kw:real_client(transport=transport,**kw)):
+        with patch.dict(os.environ,{'USE_LLM':'ollama','OLLAMA_API_URL':'http://fixture/api/chat','OLLAMA_BASE_URL':'','OLLAMA_STREAMING_ENABLED':'true'}), patch.object(local_llm.httpx,'AsyncClient',lambda **kw:real_client(transport=transport,**kw)):
             result=await local_llm.summarize('question',[{'id':'evidence'}],on_token=emit)
         self.assertEqual(result,'first second [evidence:evidence]')
         self.assertEqual(chunks,[result])
@@ -323,7 +334,7 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200,json={'message':{'content':json.dumps({'tool_id':'forbidden','inputs':{}})}})
         real_client=httpx.AsyncClient
         with patch.dict(os.environ,{'USE_LLM':'ollama','OLLAMA_API_URL':'http://fixture/api/chat','OLLAMA_BASE_URL':'','OLLAMA_CHAT_API_URL':''}),patch.object(local_llm.httpx,'AsyncClient',lambda **kw:real_client(transport=httpx.MockTransport(handler),**kw)):
-            with self.assertRaises(ValueError):await local_llm.suggest_tool({'system_prompt':'Inspect only RDF'},[{'id':'read'}],'Inspect it')
+            with self.assertRaises(ValueError):await local_llm.suggest_tool({'system_prompt':'Inspect only RDF'},[{'id':'read','input_schema':{'type':'object'}}],'Inspect it')
         self.assertIn('Inspect only RDF',sent[0]['messages'][0]['content'])
 
 

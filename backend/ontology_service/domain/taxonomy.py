@@ -309,7 +309,11 @@ class OntologyTaxonomyService:
                     property_uris.setdefault(target, 'rdf-property')
                     property_edges.append((subject, target, edge_type))
 
-        node_uris = set(class_uris) | set(property_uris)
+        from backend.depo_platform.ontology_semantics import is_individual, kind
+        individual_uris = {s for s in graph.subjects() if isinstance(s, URIRef) and is_individual(graph, s)}
+        datatype_uris = {s for s in class_uris if kind(graph, s) == 'datatype'}
+        class_uris -= datatype_uris
+        node_uris = set(class_uris) | set(property_uris) | individual_uris | datatype_uris
         base_id_counts = Counter(_term_id(prefix, uri) for uri in node_uris)
         duplicate_ids = {term_id for term_id, count in base_id_counts.items() if count > 1}
         nodes = [
@@ -319,7 +323,9 @@ class OntologyTaxonomyService:
                 "label": _label(graph, uri),
                 "definition": _definition(graph, uri),
                 "ontology_prefix": prefix,
-                "source": property_uris.get(uri, "rdf-class"),
+                "source": property_uris.get(uri, "rdf-individual" if uri in individual_uris else "rdf-datatype" if uri in datatype_uris else "rdf-class"),
+                "kind": kind(graph, uri),
+                "rdf_types": sorted(str(t) for t in graph.objects(uri, RDF.type)),
             }
             for uri in sorted(node_uris, key=lambda item: str(item))
         ]
@@ -356,6 +362,14 @@ class OntologyTaxonomyService:
                 if isinstance(subject, URIRef) and isinstance(target, BNode):
                     expression_edges.append((subject, target, relation))
                     pending.append(target)
+        # Root otherwise disconnected axioms, property chains, rule lists and
+        # anonymous domains/ranges. Traverse blank nodes with cycle protection.
+        semantic_roots = {subject for subject in graph.subjects() if kind(graph, subject) in {'axiom', 'rule', 'restriction'}}
+        for subject, predicate, target in graph:
+            if isinstance(subject, BNode) or isinstance(target, BNode) or subject in individual_uris or subject in semantic_roots:
+                expression_edges.append((subject, target, _local_name(predicate)))
+                if isinstance(subject, BNode): pending.append(subject)
+                if isinstance(target, BNode): pending.append(target)
         visited = set()
         while pending:
             expression = pending.pop()
@@ -376,14 +390,22 @@ class OntologyTaxonomyService:
                 identifier = '_:' + str(value) if isinstance(value, BNode) else key
                 label = 'OWL restriction' if (value, RDF.type, OWL.Restriction) in graph else 'OWL expression' if isinstance(value, BNode) else str(value)
                 row = {'term_id': identifier, 'uri': key, 'label': label, 'ontology_prefix': prefix,
-                       'source': 'rdf-expression', 'definition': ''}
+                       'source': 'rdf-expression', 'definition': '',
+                       'kind': 'literal' if isinstance(value, Literal) else kind(graph, value),
+                       'rdf_types': [] if isinstance(value, Literal) else sorted(str(t) for t in graph.objects(value, RDF.type)),
+                       **({'datatype': str(value.datatype) if value.datatype else None, 'language': value.language} if isinstance(value, Literal) else {})}
                 node_by_uri[key] = row
                 nodes.append(row)
             return node_by_uri[key]
+        edge_keys = {(row['source_term'], row['target_term'], row['mapping_type']) for row in edges}
         for subject, target, relation in expression_edges:
             left, right = expression_node(subject), expression_node(target)
-            edges.append({'source_term': left['term_id'], 'source_label': left['label'],
-                          'target_term': right['term_id'], 'target_label': right['label'], 'mapping_type': relation})
+            row = {'source_term': left['term_id'], 'source_label': left['label'],
+                   'target_term': right['term_id'], 'target_label': right['label'], 'mapping_type': relation}
+            key = (row['source_term'], row['target_term'], row['mapping_type'])
+            if key not in edge_keys:
+                edges.append(row)
+                edge_keys.add(key)
 
         return {
             "source": "rdf",

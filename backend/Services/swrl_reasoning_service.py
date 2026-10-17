@@ -11,6 +11,7 @@ import re
 import hashlib
 import json
 import math
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -30,6 +31,7 @@ SUPPORTED_BUILTINS = {
 class SwrlAtom:
     predicate: str
     arguments: Tuple[str, ...]
+    literal_arguments: Tuple[int, ...] = ()
 
     @property
     def is_builtin(self) -> bool:
@@ -40,7 +42,7 @@ class SwrlAtom:
         return tuple(arg for arg in self.arguments if arg.startswith("?"))
 
     def text(self) -> str:
-        return f"{self.predicate}({', '.join(self.arguments)})"
+        return f"{self.predicate}({', '.join(json.dumps(arg) if index in self.literal_arguments else arg for index, arg in enumerate(self.arguments))})"
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class SwrlRule:
     version: str = "1"
     enabled: bool = True
     use_case: str = "general"
+    namespaces: Mapping[str, str] = field(default_factory=dict)
 
     def preview(self) -> str:
         return " IF " + " AND ".join(atom.text() for atom in self.body) + " THEN " + " AND ".join(atom.text() for atom in self.head)
@@ -97,25 +100,34 @@ class SwrlRuleService:
         if not isinstance(payload.get("enabled", True), bool):
             raise ValueError("Rule enabled must be a boolean")
         expression = str(payload.get("expression") or payload.get("rule") or "").strip()
+        if len(expression) > 65536 or any(len(payload.get(key) or []) > 32 for key in ("body", "head")):
+            raise ValueError("Rule exceeds expression/atom limits")
         if expression:
-            if "->" in expression:
-                body_text, head_text = expression.split("->", 1)
-            elif "=>" in expression:
-                body_text, head_text = expression.split("=>", 1)
-            else:
-                raise ValueError("SWRL rule must contain -> or =>")
+            body_text, head_text = cls._split_rule(expression)
             body = cls.parse_atoms(body_text)
             head = cls.parse_atoms(head_text)
         else:
             body = tuple(cls._atom_from_mapping(atom) for atom in payload.get("body") or [])
             head = tuple(cls._atom_from_mapping(atom) for atom in payload.get("head") or [])
 
+        if len(body) > 32 or len(head) > 32:
+            raise ValueError("Rule exceeds atom limits")
         rule_id = str(payload.get("rule_id") or payload.get("id") or payload.get("name") or "rule").strip()
+        namespaces = payload.get('namespaces') or {}
+        if not isinstance(namespaces, dict) or len(namespaces) > 64 or any(not isinstance(k, str) or not isinstance(v, str) or not v.startswith(('http://', 'https://', 'urn:')) for k, v in namespaces.items()):
+            raise ValueError('Rule namespaces must map prefixes to absolute IRIs')
+        def expand(term):
+            prefix, separator, local = term.partition(':')
+            return namespaces[prefix] + local if separator and prefix in namespaces and not term.startswith('?') else term
+        def normalize(atom):
+            return SwrlAtom(atom.predicate if atom.is_builtin else expand(atom.predicate),
+                tuple(expand(arg) if not arg.startswith('?') and index not in atom.literal_arguments else arg for index, arg in enumerate(atom.arguments)), atom.literal_arguments)
         return SwrlRule(
             rule_id=rule_id,
             name=str(payload.get("name") or rule_id).strip(),
-            body=body,
-            head=head,
+            body=tuple(normalize(atom) for atom in body),
+            head=tuple(normalize(atom) for atom in head),
+            namespaces=dict(namespaces),
             version=str(payload.get("version") or "1").strip(),
             enabled=bool(payload.get("enabled", True)),
             use_case=str(payload.get("use_case") or payload.get("useCase") or "general").strip(),
@@ -124,22 +136,90 @@ class SwrlRuleService:
     @classmethod
     def parse_atoms(cls, text: str) -> Tuple[SwrlAtom, ...]:
         atoms: List[SwrlAtom] = []
-        for raw in re.split(r"\s*\^\s*|\s+AND\s+", text, flags=re.IGNORECASE):
+        for raw in cls._split_atoms(text):
             raw = raw.strip()
             if not raw:
                 continue
             match = cls.ATOM_RE.match(raw)
             if not match:
                 raise ValueError(f"Invalid SWRL atom: {raw}")
-            args = tuple(arg.strip().strip('"') for arg in match.group(2).split(",") if arg.strip())
-            atoms.append(SwrlAtom(match.group(1), args))
+            parts, start, quoted, escaped = [], 0, False, False
+            arguments = match.group(2)
+            for index, char in enumerate(arguments):
+                if escaped: escaped = False
+                elif char == chr(92) and quoted: escaped = True
+                elif char == '"': quoted = not quoted
+                elif char == ',' and not quoted:
+                    parts.append(arguments[start:index].strip())
+                    start = index + 1
+            parts.append(arguments[start:].strip())
+            if quoted or any(not part for part in parts): raise ValueError('Invalid rule arguments')
+            args = tuple(json.loads(part) if part.startswith('"') else part for part in parts)
+            if any(not isinstance(arg, str) for arg in args): raise ValueError('Rule arguments must be strings')
+            if any(part.startswith('"') and arg.startswith('?') for part, arg in zip(parts, args)):
+                raise ValueError('Quoted variable-like literals are not supported')
+            atoms.append(SwrlAtom(match.group(1), args, tuple(index for index, part in enumerate(parts) if part.startswith(chr(34)))))
         return tuple(atoms)
+
+    @staticmethod
+    def _split_rule(text):
+        quoted, escaped, depth, separators = False, False, 0, []
+        for index, char in enumerate(text):
+            if escaped:
+                escaped = False
+            elif char == chr(92) and quoted:
+                escaped = True
+            elif char == '"':
+                quoted = not quoted
+            elif not quoted:
+                if char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                elif depth == 0 and text[index:index + 2] in {'->', '=>'}:
+                    separators.append(index)
+                if depth < 0:
+                    raise ValueError('Unbalanced rule expression')
+        if quoted or depth != 0:
+            raise ValueError('Unbalanced rule expression')
+        if len(separators) != 1:
+            raise ValueError('SWRL rule must contain exactly one -> or => separator')
+        index = separators[0]
+        return text[:index], text[index + 2:]
+
+    @staticmethod
+    def _split_atoms(text):
+        atoms, start, quoted, escaped, depth = [], 0, False, False, 0
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if escaped:
+                escaped = False
+            elif char == chr(92) and quoted:
+                escaped = True
+            elif char == '"':
+                quoted = not quoted
+            elif not quoted:
+                if char == '(': depth += 1
+                elif char == ')': depth -= 1
+                separator = 1 if char == '^' and depth == 0 else 0
+                if depth == 0 and text[index:index+3].upper() == 'AND' and (index == 0 or text[index-1].isspace()) and (index+3 == len(text) or text[index+3].isspace()): separator = 3
+                if separator:
+                    atoms.append(text[start:index])
+                    index += separator
+                    start = index
+                    continue
+            index += 1
+        if quoted or depth != 0: raise ValueError('Unbalanced rule expression')
+        atoms.append(text[start:])
+        return atoms
 
     @staticmethod
     def _atom_from_mapping(raw: Mapping[str, Any]) -> SwrlAtom:
         return SwrlAtom(
             predicate=str(raw.get("predicate") or "").strip(),
             arguments=tuple(str(arg).strip() for arg in raw.get("arguments") or [] if str(arg or "").strip()),
+            literal_arguments=tuple(raw.get("literal_arguments") or ()),
         )
 
     @staticmethod
@@ -223,7 +303,8 @@ class SwrlRuleService:
             "version": rule.version,
             "enabled": rule.enabled,
             "use_case": rule.use_case,
-            "body": [{"predicate": atom.predicate, "arguments": list(atom.arguments)} for atom in rule.body],
+            "namespaces": dict(rule.namespaces),
+            "body": [{"predicate": atom.predicate, "arguments": list(atom.arguments), **({"literal_arguments": list(atom.literal_arguments)} if atom.literal_arguments else {})} for atom in rule.body],
             "head": [{"predicate": atom.predicate, "arguments": list(atom.arguments)} for atom in rule.head],
             "preview": rule.preview(),
         }
@@ -256,11 +337,22 @@ class ApplicationRuleExecutor:
                 "summary": {"source_facts": len(facts), "bindings": 0, "inferred_facts": 0},
             }
 
+        if len(facts) > 10000 or len(rule.body) > 32 or len(rule.head) > 32:
+            raise ValueError("Rule execution exceeds fact/atom limits")
+        def expand(term):
+            prefix, separator, local = term.partition(':')
+            return rule.namespaces[prefix] + local if separator and prefix in rule.namespaces else term
+        facts = [SemanticFact(expand(f.subject), expand(f.predicate),
+            expand(f.object) if f.predicate in {'rdf:type', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'} else f.object,
+            f.fact_id, f.asserted, f.properties) for f in facts]
+        deadline = time.monotonic() + 5
         bindings = ApplicationRuleExecutor._match_body(rule.body, facts)
         timestamp = datetime.now(timezone.utc).isoformat()
         inferred_by_key: Dict[Tuple[str, str, str, str], InferredFact] = {}
         for binding, source_fact_ids in bindings:
             for head_atom in rule.head:
+                if time.monotonic() >= deadline or len(inferred_by_key) >= 10000:
+                    raise ValueError("Rule result budget exceeded; narrow the supplied facts")
                 if len(head_atom.arguments) == 1:
                     subject = ApplicationRuleExecutor._resolve_arg(head_atom.arguments[0], binding)
                     obj = head_atom.predicate
@@ -281,6 +373,10 @@ class ApplicationRuleExecutor:
                     version=version or rule.version,
                     timestamp=timestamp,
                 )
+                previous = inferred_by_key.get(inferred.key())
+                if previous:
+                    from dataclasses import replace
+                    inferred = replace(inferred, source_facts=tuple(sorted(set(previous.source_facts) | set(inferred.source_facts))))
                 inferred_by_key[inferred.key()] = inferred
 
         return {
@@ -300,6 +396,8 @@ class ApplicationRuleExecutor:
     @staticmethod
     def _match_body(body: Sequence[SwrlAtom], facts: Sequence[SemanticFact]) -> List[Tuple[Dict[str, str], List[str]]]:
         bindings: List[Tuple[Dict[str, str], List[str]]] = [({}, [])]
+        deadline = time.monotonic() + 5
+        work = 0
         # Comparison built-ins consume bindings; conjunction order must not
         # change the result when a built-in precedes its binding fact atom.
         for atom in sorted(body, key=lambda item: item.is_builtin):
@@ -314,6 +412,9 @@ class ApplicationRuleExecutor:
             next_bindings: List[Tuple[Dict[str, str], List[str]]] = []
             for binding, fact_ids in bindings:
                 for fact in facts:
+                    work += 1
+                    if work > 1000000 or len(next_bindings) >= 10000 or time.monotonic() >= deadline:
+                        raise ValueError("Rule execution budget exceeded; narrow the supplied facts")
                     candidate = ApplicationRuleExecutor._match_atom(atom, fact, binding)
                     if candidate is not None:
                         fact_id = fact.fact_id or "|".join(fact.key())
@@ -325,7 +426,7 @@ class ApplicationRuleExecutor:
     def _match_atom(atom: SwrlAtom, fact: SemanticFact, binding: Mapping[str, str]) -> Optional[Dict[str, str]]:
         next_binding = dict(binding)
         if len(atom.arguments) == 1:
-            if fact.predicate != "rdf:type" or fact.object != atom.predicate:
+            if fact.predicate not in {"rdf:type", "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"} or fact.object != atom.predicate:
                 return None
             return ApplicationRuleExecutor._bind(atom.arguments[0], fact.subject, next_binding)
         if fact.predicate != atom.predicate:

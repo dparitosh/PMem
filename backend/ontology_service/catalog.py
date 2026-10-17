@@ -135,7 +135,8 @@ class OntologyCatalog:
                 graph.parse(data=content, format=rdf_format)
                 if not graph:
                     raise ValueError('Ontology artifact contains no RDF triples')
-                return {"rdf_format": rdf_format, "triple_count": len(graph)}
+                from backend.depo_platform.ontology_semantics import inventory
+                return {"rdf_format": rdf_format, "triple_count": len(graph), "semantic_inventory": inventory(graph)}
             except Exception as exc:  # try the other supported syntax
                 last_error = exc
         raise ValueError('Ontology RDF/OWL parsing failed; check syntax and use inline JSON-LD contexts without XML DTDs') from last_error
@@ -143,15 +144,7 @@ class OntologyCatalog:
     @classmethod
     def _analytics_from_content(cls, content: bytes, filename: str) -> dict[str, int]:
         """Derive catalog metrics from a retained RDF artifact, never a graph copy."""
-        parsed = cls._parse_ontology(content, filename)
-        graph = Graph()
-        graph.parse(data=content, format=parsed["rdf_format"])
-        return {
-            "triples": len(graph),
-            "classes": len(set(graph.subjects(predicate=None, object=OWL.Class))),
-            "object_properties": len(set(graph.subjects(predicate=None, object=OWL.ObjectProperty))),
-            "datatype_properties": len(set(graph.subjects(predicate=None, object=OWL.DatatypeProperty))),
-        }
+        return cls._parse_ontology(content, filename)["semantic_inventory"]
 
     def _validate_registration(self, *, content: bytes, filename: str, prefix: str, extra_metadata: dict[str, Any] | None = None) -> tuple[str, str, dict[str, Any]]:
         if not content:
@@ -261,10 +254,12 @@ class OntologyCatalog:
             "created_at": _now(),
             "status": "registered",
             "lifecycle_status": "draft",
-            "validation": {"status": "passed", **parse_result},
+            "validation": {"status": "passed", **{k: v for k, v in parse_result.items() if k != "semantic_inventory"}},
             "lifecycle_events": [{"at": _now(), "actor": source, "from": None, "to": "draft", "reason": "artifact registered and syntax validated"}],
         }
         metadata.update(extra_metadata or {})
+        metadata["statistics"] = parse_result["semantic_inventory"]
+        metadata["semantic_inventory_version"] = 1
         result = self._save_metadata(metadata)
         logging.getLogger(__name__).warning('Ontology registration metadata persistence completed')
         return result
@@ -467,16 +462,18 @@ class OntologyCatalog:
                     metadata = self.get(safe_id)
                     if metadata is None:
                         raise LookupError(f"Ontology artifact not found: {safe_id}")
-                    if metadata.get("statistics") and metadata.get("lifecycle_status"):
+                    if metadata.get("statistics") and metadata.get("lifecycle_status") and metadata.get("semantic_inventory_version") == 1:
                         results.append({"ontology_id": safe_id, "status": "unchanged"})
                         continue
                     _, content = self.read_artifact(safe_id)
-                    analytics = self._analytics_from_content(content, str(metadata.get("original_filename") or "ontology.ttl"))
+                    parsed = self._parse_ontology(content, str(metadata.get("original_filename") or "ontology.ttl"))
+                    analytics = parsed["semantic_inventory"]
                     prior_status = metadata.get("lifecycle_status")
                     metadata.setdefault("lifecycle_status", "draft")
                     metadata.setdefault("semantic_completeness", "unknown")
                     metadata["statistics"] = analytics
-                    metadata["validation"] = {"status": "passed", **self._parse_ontology(content, str(metadata.get("original_filename") or "ontology.ttl"))}
+                    metadata["semantic_inventory_version"] = 1
+                    metadata["validation"] = {"status": "passed", **{k: v for k, v in parsed.items() if k != "semantic_inventory"}}
                     metadata.setdefault("lifecycle_events", []).append({
                         "at": _now(), "actor": str(actor), "from": prior_status,
                         "to": metadata["lifecycle_status"],

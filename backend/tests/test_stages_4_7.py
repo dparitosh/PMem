@@ -1,5 +1,5 @@
 """Validation checks; estimated legacy load metrics are not publication evidence."""
-from backend.Services.pipeline_stages_4_7 import OntologyValidationService
+from backend.Services.ontology_validation_service import OntologyValidationService
 
 
 def test_validation_counts_actual_graph_not_supplied_estimates(monkeypatch):

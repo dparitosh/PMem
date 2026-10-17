@@ -1,20 +1,14 @@
-"""Optional standalone worker for QIF tasks.
-
-Use in a separate process when the QIF service is deployed independently:
-``python -m backend.qif.worker``.
-"""
-from __future__ import annotations
-
-import time
-
-from .task_service import task_service
+"""Retired QIF worker entry point. Recovery belongs to the schema-set service."""
+RETIRED_MESSAGE = (
+    'The separate QIF worker is retired. Start backend.qif.app through the '
+    'deployment service manifest or start-depo-services.ps1; the schema-set '
+    'service owns recovery and execution. See INSTALLATION.md.'
+)
 
 
-def run() -> None:
-    while True:
-        task_service.recover_pending()
-        time.sleep(15)
+def run():
+    raise RuntimeError(RETIRED_MESSAGE)
 
 
-if __name__ == "__main__":
-    run()
+if __name__ == '__main__':
+    raise SystemExit(RETIRED_MESSAGE)

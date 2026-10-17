@@ -27,7 +27,6 @@ _MANUAL_LIVE_TESTS = [
     "test_ontology_creation.py",
     "test_ontology_e2e.py",
     "test_ontology_upload.py",
-    "tests_comprehensive.py",
 ]
 
 
