@@ -16,6 +16,8 @@ class Store:
         self.readers = 0
         self.writer = False
         self.writer_lock = threading.Lock()
+        self.scoped_readers = {}
+        self.scoped_writers = set()
 
     def get(self, key):
         return copy.deepcopy(self.marker)
@@ -46,6 +48,7 @@ class Store:
         finally:
             if connection.owns_writer:
                 self.writer = False
+            self.scoped_writers.difference_update(connection.owns_scoped)
 
     _session_connect = _connect
 
@@ -61,6 +64,8 @@ class Connection:
         self.store = store
         self.shared = False
         self.owns_writer = False
+        self.owns_scoped = set()
+        self.shared_scoped = []
 
     @contextmanager
     def transaction(self):
@@ -70,6 +75,9 @@ class Connection:
             if self.shared:
                 self.store.readers -= 1
                 self.shared = False
+            for key in self.shared_scoped:
+                self.store.scoped_readers[key] -= 1
+            self.shared_scoped.clear()
 
     def cursor(self):
         return Cursor(self)
@@ -88,14 +96,28 @@ class Cursor:
 
     def execute(self, query, params):
         store = self.connection.store
-        if 'pg_try_advisory_xact_lock_shared' in query:
+        key = params[0]
+        scoped = key.startswith(access._NAMESPACE + ':ontology:')
+        if 'pg_try_advisory_xact_lock_shared' in query and (scoped or key == 'depo:ontology-maintenance'):
+            acquired = key not in store.scoped_writers
+            if acquired:
+                store.scoped_readers[key] = store.scoped_readers.get(key, 0) + 1
+                self.connection.shared_scoped.append(key)
+            self.row = (acquired,)
+        elif 'pg_try_advisory_lock' in query and scoped:
+            acquired = not store.scoped_readers.get(key) and (key not in store.scoped_writers or key in self.connection.owns_scoped)
+            if acquired:
+                store.scoped_writers.add(key)
+                self.connection.owns_scoped.add(key)
+            self.row = (acquired,)
+        elif 'pg_try_advisory_xact_lock_shared' in query:
             acquired = not store.writer
             if acquired:
                 store.readers += 1
                 self.connection.shared = True
             self.row = (acquired,)
         elif 'pg_try_advisory_lock' in query:
-            acquired = not store.writer and not store.readers
+            acquired = (not store.writer or self.connection.owns_writer) and not store.readers
             if acquired:
                 store.writer = True
                 self.connection.owns_writer = True
@@ -391,3 +413,49 @@ def test_new_marker_claim_cannot_overwrite_a_competing_owner(store):
         with access.replacement_access('ontology', 'revision'):
             pytest.fail('Competing activation was overwritten')
     assert store.marker == competing
+
+
+def test_unrelated_exact_projection_remains_readable_during_activation(store):
+    from contextvars import Context
+    def reader():
+        with access.scoped_projection_access('ontology-b'):
+            pass
+        with pytest.raises(RuntimeError):
+            with access.scoped_projection_access('ontology-a'):
+                pytest.fail('Partially replaced ontology became visible')
+        with pytest.raises(RuntimeError):
+            with access.projection_access():
+                pytest.fail('Cross-ontology query became visible')
+    with access.replacement_access('ontology-a', 'revision') as activation:
+        activation.begin_mutation()
+        Context().run(reader)
+
+
+def test_legacy_marker_remains_conservative_for_scoped_reads(store):
+    store.marker = {'ontology_id': 'ontology-a', 'phase': 'activating'}
+    with pytest.raises(RuntimeError):
+        with access.scoped_projection_access('ontology-b'):
+            pytest.fail('Legacy publication has no scoped-drain guarantee')
+
+
+def test_existing_scoped_reader_drains_before_same_ontology_mutation(store, monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(access.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(access.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + 1))
+    # Enter in a separate context/thread so nested access cannot bypass the fence.
+    entered, release = threading.Event(), threading.Event()
+    def reader():
+        with access.scoped_projection_access('ontology-a'):
+            entered.set()
+            release.wait(5)
+    thread = threading.Thread(target=reader)
+    thread.start()
+    assert entered.wait(5)
+    try:
+        with pytest.raises(TimeoutError):
+            with access.replacement_access('ontology-a', 'revision', timeout=.5):
+                pytest.fail('Mutation started while its scoped reader was active')
+        assert not store.marker
+    finally:
+        release.set()
+        thread.join(5)

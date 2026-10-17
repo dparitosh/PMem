@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -8,10 +9,11 @@ from contextlib import asynccontextmanager
 
 
 def actual(names, scope):
+    scope.update(datetime=datetime, timedelta=timedelta, timezone=timezone)
     tree = ast.parse(Path('backend/data_product_service/router.py').read_text(encoding='utf-8'))
     nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
     for node in nodes: node.decorator_list = []
-    exec(compile(ast.Module(body=nodes, type_ignores=[]), '<service functions>', 'exec'), scope)
+    exec(compile(ast.fix_missing_locations(ast.Module(body=[ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0), *nodes], type_ignores=[])), '<service functions>', 'exec'), scope)
     return scope
 
 
@@ -42,7 +44,7 @@ class ServiceFailureTests(unittest.TestCase):
         scope = actual({'reconcile_pending'}, dict(asyncio=asyncio, _product_io=asyncio.to_thread, store=store, _product_lock=lock,
             _register_catalog=AsyncMock(return_value={**record, 'status': 'revoked'})))
         result = asyncio.run(scope['reconcile_pending']())
-        self.assertEqual(result, {'examined': 1, 'published': 0, 'revoked': 1, 'pending': 0})
+        self.assertEqual(result, {'examined': 1, 'published': 0, 'revoked': 1, 'pending': 0, 'deferred': 0})
 
     def test_cancelled_thread_work_finishes_before_operation_can_release_lock(self):
         import threading

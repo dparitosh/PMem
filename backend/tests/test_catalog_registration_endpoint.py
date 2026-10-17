@@ -13,20 +13,17 @@ class CatalogEndpointTests(unittest.TestCase):
         function = next(node for node in ast.parse(source).body if isinstance(node, ast.AsyncFunctionDef) and node.name == '_register_catalog')
         module = ast.Module(body=[function], type_ignores=[])
         seen = []
-        class Client:
-            def __init__(self, **kwargs): pass
-            async def __aenter__(self): return self
-            async def __aexit__(self, *args): pass
-            async def put(self, url, **kwargs):
-                seen.append(url)
-                return SimpleNamespace(raise_for_status=lambda: None)
-        fake_network = SimpleNamespace(gateway_subscription_headers=lambda endpoint: {})
+        async def send(method, url, **kwargs):
+            self.assertEqual(method, 'PUT')
+            self.assertEqual(kwargs['headers']['X-DEPO-Service-Token'], 'test-token')
+            seen.append(url)
+            return SimpleNamespace(raise_for_status=lambda: None)
         namespace = dict(os=os, datetime=datetime, timezone=timezone, timedelta=timedelta,
                          _now=lambda: datetime.now(timezone.utc).isoformat(),
                          _catalog_payload=lambda record: {},
-                         httpx=SimpleNamespace(AsyncClient=Client, HTTPError=RuntimeError))
+                         httpx=__import__("httpx"))
         exec(compile(module, '<catalog registration>', 'exec'), namespace)
-        with patch.dict('sys.modules', {'backend.depo_platform.network': fake_network}):
+        with patch('backend.depo_platform.peer_http.async_peer_response', send):
             for root in ('http://catalog:8016', 'http://catalog:8016/api/v1/'):
                 with self.subTest(root=root), patch.dict(os.environ, {'DATA_CATALOG_URL': root, 'CATALOG_SERVICE_TOKEN': 'test-token'}):
                     result = asyncio.run(namespace['_register_catalog']({'product_id': 'sample', 'version': '1.0.0'}))

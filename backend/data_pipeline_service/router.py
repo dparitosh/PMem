@@ -144,25 +144,15 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
             error.depo_run_id = run["run_id"]
             raise error
     try:
-        result = handler_registry.get(definition["job_type"]).execute(
-            runner, payload, correlation_id=correlation_id,
-        )
+        from .execution import execute_immediate_job
+        result, persisted = execute_immediate_job(definition, payload, run)
     except Exception as exc:
-        exc.depo_run_id = run["run_id"]
+        exc.depo_run_id = run['run_id']
         try:
+            # Record the failure after leaving the expired execution context.
             run_records.failed(run, str(exc))
         except Exception as persistence_error:
-            persistence_error.depo_run_id = run["run_id"]
-            raise
-        raise
-    try:
-        persisted = run_records.complete(run, result)
-    except Exception as exc:
-        exc.depo_run_id = run["run_id"]
-        try:
-            run_records.failed(run, 'Handler finished but result persistence failed; inspect external effects before replay: ' + str(exc))
-        except Exception as persistence_error:
-            persistence_error.depo_run_id = run["run_id"]
+            persistence_error.depo_run_id = run['run_id']
             raise
         raise
     from .analytics_evidence import run_result

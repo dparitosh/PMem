@@ -50,6 +50,51 @@ def projection_access():
 
 
 @contextmanager
+def scoped_projection_access(ontology_id):
+    """For repository queries proven to read only one exact ontology identity.
+
+    Never derive this boundary from an untrusted HTTP header or prefix alias.
+    Cross-ontology queries must continue to use projection_access().
+    """
+    if not isinstance(ontology_id, str) or not ontology_id.strip() or len(ontology_id) > 256:
+        raise ValueError('An exact ontology identity is required')
+    if _inside.get() or not _configured():
+        yield
+        return
+    from backend.depo_platform.postgres_pool import pool_scope
+    store = _store()
+    with pool_scope('graph-projection'), store._connect() as db, db.transaction(), db.cursor() as cursor:
+        # Maintenance can reset every ontology, so even an isolated reader
+        # participates in the existing cleanup exclusion protocol.
+        for key in ('depo:ontology-maintenance', _scope_lock(ontology_id)):
+            cursor.execute('SELECT pg_try_advisory_xact_lock_shared(hashtextextended(%s, 0))', (key,))
+            if not cursor.fetchone()[0]:
+                raise RuntimeError('Selected ontology publication or maintenance is active; retry shortly')
+        cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND key=%s', (_NAMESPACE, _KEY))
+        row = cursor.fetchone()
+        marker = row[0] if row else None
+        if marker and (marker.get('ontology_id') == ontology_id or not marker.get('scope_isolated')):
+            raise RuntimeError('Selected ontology publication requires completion; resume its retained job')
+        token = _inside.set(True)
+        try:
+            yield
+        finally:
+            _inside.reset(token)
+
+
+def _scope_lock(ontology_id):
+    return _NAMESPACE + ':ontology:' + ontology_id
+
+
+def ontology_projection_reader(function):
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        with scoped_projection_access(kwargs.get('ontology_id')):
+            return function(*args, **kwargs)
+    return guarded
+
+
+@contextmanager
 def _deadline_scope(deadline, *, recovery=False):
     from datetime import datetime, timedelta, timezone
     from backend.depo_platform.operations import OperationContext, current_operation, operation_scope
@@ -116,7 +161,7 @@ def replacement_access(ontology_id, publication_id, *, timeout=60, deadline=None
         if prior and not _same_publication(prior, ontology_id, publication_id):
             raise RuntimeError('Complete the interrupted graph publication before activating another ontology')
         # Old markers without a phase are uncertain and must remain protected.
-        marker = {**(prior or {'ontology_id': ontology_id, 'publication_id': publication_id, 'phase': 'draining'}),
+        marker = {**(prior or {'ontology_id': ontology_id, 'publication_id': publication_id, 'phase': 'draining', 'scope_isolated': True}),
                   'owner_id': uuid4().hex}
         activation = _Activation(store, marker)
         try:
@@ -133,7 +178,9 @@ def replacement_access(ontology_id, publication_id, *, timeout=60, deadline=None
                     current_operation().timeout(remaining)
                     cursor.execute('SELECT pg_try_advisory_lock(hashtextextended(%s, 0))', (_LOCK,))
                     if cursor.fetchone()[0]:
-                        break
+                        cursor.execute('SELECT pg_try_advisory_lock(hashtextextended(%s, 0))', (_scope_lock(ontology_id),))
+                        if cursor.fetchone()[0]:
+                            break
                     time.sleep(min(.05, remaining))
                 token = _inside.set(True)
                 try:

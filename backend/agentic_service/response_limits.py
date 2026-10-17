@@ -8,13 +8,15 @@ def response_byte_limit():
     return limit
 
 
-async def read_bounded_response(response):
-    limit = response_byte_limit()
+async def read_bounded_response(response, *, limit=None):
+    limit = response_byte_limit() if limit is None else limit
+    if type(limit) is not int or limit <= 0:
+        raise ValueError('Response byte limit must be a positive integer')
     chunks, total = [], 0
     async for chunk in response.aiter_bytes():
         total += len(chunk)
         if total > limit:
-            raise ValueError('Downstream tool response exceeds AGENTIC_MAX_RESPONSE_BYTES; narrow the request')
+            raise ValueError('Downstream response exceeds its configured byte limit; narrow the request')
         chunks.append(chunk)
     return b''.join(chunks)
 

@@ -167,33 +167,60 @@ async def _register_catalog(record: dict) -> dict:
     try:
         if not catalog_token:
             return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": "CATALOG_SERVICE_TOKEN is not configured"}
-        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
-            from backend.depo_platform.network import gateway_subscription_headers
-            response = await client.put(f"{catalog_url}/catalog/products/{record['product_id']}/versions/{record['version']}", json=_catalog_payload(record), headers={**gateway_subscription_headers(catalog_url), "X-DEPO-Service-Token": catalog_token})
-            response.raise_for_status()
-    except httpx.HTTPError as exc:
+        from backend.depo_platform.peer_http import async_peer_response
+        from backend.depo_platform.network import gateway_subscription_headers
+        response = await async_peer_response('PUT',
+            f"{catalog_url}/catalog/products/{record['product_id']}/versions/{record['version']}",
+            budget=10, json=_catalog_payload(record),
+            headers={**gateway_subscription_headers(catalog_url), "X-DEPO-Service-Token": catalog_token})
+        response.raise_for_status()
+    except (httpx.HTTPError, TimeoutError) as exc:
         logger.exception('Catalog delivery failed for product %s version %s', record['product_id'], record['version'])
         return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": "Catalog delivery is unavailable; retry is scheduled. Check service logs."}
     return {**record, "status": "revoked" if record.get("lifecycle_state") == "revoked" else "published", "catalog_attempts": attempts, "catalog_error": None, "next_catalog_attempt_at": None, "catalog_registered_at": _now()}
 
 
 async def reconcile_pending(limit: int = 100) -> dict:
-    """Durably retry pending catalog registrations; safe to invoke repeatedly."""
-    pending = await _product_io(store.due_pending, limit)
-    published = revoked = 0
-    examined = 0
-    for key, record in pending:
-        async with _product_lock(key) as acquired:
-            if not acquired: continue
-            current = await _product_io(store.get, key)
-            if current != record: continue
-            updated = await _register_catalog(current)
-            examined += 1
-            if await _product_io(store.compare_and_put, key, current, updated):
-                published += int(updated.get("status") == "published")
-                revoked += int(updated.get("status") == "revoked")
-    return {"examined": examined, "published": published, "revoked": revoked, "pending": examined - published - revoked}
-
+    """Deliver independently under a bounded batch budget; retain all deferred records."""
+    from backend.depo_platform.network import bounded_timeout_seconds
+    from backend.depo_platform.operations import OperationContext, current_operation, operation_scope, remaining_seconds
+    from backend.depo_platform.qos import positive_capacity
+    budget = bounded_timeout_seconds('DATA_PRODUCT_OUTBOX_BATCH_TIMEOUT_SECONDS', default=30, maximum=300)
+    inherited = current_operation()
+    if inherited:
+        budget = inherited.timeout(budget)
+    context = OperationContext('catalog-outbox', (datetime.now(timezone.utc) + timedelta(seconds=budget)).isoformat())
+    with operation_scope(context):
+        pending = await _product_io(store.due_pending, max(1, min(int(limit), 1000)))
+        items = iter(pending)
+        counts = {'examined': 0, 'published': 0, 'revoked': 0}
+        async def deliver():
+            for key, record in items:
+                try:
+                    remaining_seconds(context.deadline_at)
+                    async with _product_lock(key) as acquired:
+                        if not acquired:
+                            continue
+                        current = await _product_io(store.get, key)
+                        if current != record:
+                            continue
+                        updated = await _register_catalog(current)
+                        if await _product_io(store.compare_and_put, key, current, updated):
+                            counts['examined'] += 1
+                            counts['published'] += int(updated.get('status') == 'published')
+                            counts['revoked'] += int(updated.get('status') == 'revoked')
+                except TimeoutError:
+                    # A timed-out idempotent delivery remains durable and pending;
+                    # do not hold other product locks while its next attempt waits.
+                    return
+        concurrency = positive_capacity('DATA_PRODUCT_OUTBOX_CONCURRENCY', 4, maximum=16)
+        try:
+            async with asyncio.timeout(remaining_seconds(context.deadline_at)):
+                await asyncio.gather(*(deliver() for _ in range(min(concurrency, len(pending)))))
+        except TimeoutError:
+            pass  # Unacknowledged rows remain pending for the next worker pass.
+        return {**counts, 'pending': counts['examined'] - counts['published'] - counts['revoked'],
+                'deferred': len(pending) - counts['examined']}
 
 
 def _preview_identity(request: Request):

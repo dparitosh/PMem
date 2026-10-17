@@ -1,12 +1,10 @@
 """OpenAPI publishing port for QIF workflow."""
 from __future__ import annotations
 
-import os
 from backend.depo_platform.service_urls import service_url
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
 
 from backend.depo_platform.network import service_bearer_headers
 
@@ -27,13 +25,11 @@ class ServicePublisher:
         self.timeout = service_request_timeout_seconds()
 
     def register(self, *, artifact: Path, ontology_name: str, prefix: str, description: str) -> dict[str, Any]:
-        with artifact.open("rb") as content, httpx.Client(timeout=self.timeout) as client:
-            response = client.post(
-                f"{self.ontology_url}/ontologies/register",
-                data={"ontology_name": ontology_name, "prefix": prefix, "description": description, "source": "qif"},
-                files={"artifact": (artifact.name, content, "text/turtle")},
-                headers=service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology registration API', endpoint=self.ontology_url),
-            )
+        from backend.depo_platform.peer_http import peer_response
+        response = peer_response('POST', f"{self.ontology_url}/ontologies/register", budget=self.timeout,
+            data={"ontology_name": ontology_name, "prefix": prefix, "description": description, "source": "qif"},
+            files={"artifact": (artifact.name, artifact.read_bytes(), "text/turtle")},
+            headers=service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology registration API', endpoint=self.ontology_url))
         response.raise_for_status()
         payload = response.json()
         return {"status": "success", "ontology_id": payload["ontology_id"], "storage_path": payload["artifact_path"], "metadata": payload}

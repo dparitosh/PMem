@@ -4,6 +4,7 @@ from __future__ import annotations
 from backend.depo_platform.ontology_maintenance import ontology_writer
 from backend.depo_platform.rdf_preparation import prepare_rdf
 from backend.depo_platform.graph_publication_lock import graph_publication
+from backend.depo_platform.graph_access import ontology_projection_reader
 
 import os
 import logging
@@ -240,6 +241,7 @@ class Neo4jPublisher:
             raise ValueError('Ontology mapping lookup exceeds 10000 terms; narrow the ontology scope.')
         return {'scope': scope, 'terms': rows}
 
+    @ontology_projection_reader
     def projection(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(

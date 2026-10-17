@@ -7,16 +7,18 @@ import shutil
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
 from backend.artifact_store import artifact_store
+from backend.depo_platform.network import bounded_timeout_seconds, graph_dispatch_timeout_seconds
+from backend.depo_platform.operations import OperationContext, operation_scope, remaining_seconds
+from backend.depo_platform.execution_guard import ensure_execution_allowed, guarded_execution
 
-from .agent_registry import registry
-from .ontology_builder import build_ontology_turtle, inspect_schema_set, validate_schema_set
+from .preparation_worker import run_stage
 from .publishing import get_publisher
 from backend.depo_platform.graph_publication_transport import PublicationUnverified
 
@@ -34,6 +36,9 @@ class QifTaskService:
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="qif-worker")
         self._running: set[str] = set()
+        from backend.depo_platform.qos import positive_capacity
+        self._slots = threading.BoundedSemaphore(positive_capacity('QIF_MAX_PENDING_TASKS', 16))
+        self._closing = threading.Event()
 
     def _task_dir(self, task_id: str) -> Path:
         if not re.fullmatch(r"[a-f0-9]{32}", task_id or ""):
@@ -50,11 +55,17 @@ class QifTaskService:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def _write(self, task_id: str, data: dict[str, Any]) -> dict[str, Any]:
-        path = self._manifest_path(task_id)
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        temp.replace(path)
-        return data
+        with self._lock:
+            path = self._manifest_path(task_id)
+            # Cancellation is terminal: stale worker snapshots cannot resurrect it.
+            if path.exists():
+                current = json.loads(path.read_text(encoding="utf-8"))
+                if current.get("status") == "cancelled":
+                    return current
+            temp = path.with_suffix(".tmp")
+            temp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            temp.replace(path)
+            return data
 
     def _event(self, task: dict[str, Any], stage: str, message: str, level: str = "info") -> None:
         task.setdefault("events", []).append({"at": _now(), "stage": stage, "level": level, "message": message})
@@ -113,17 +124,68 @@ class QifTaskService:
         with self._lock:
             if task_id in self._running:
                 return False
+            if self._closing.is_set() or not self._slots.acquire(blocking=False):
+                raise HTTPException(status_code=503, detail="Schema-set worker is busy; retained task can be resumed later", headers={"Retry-After": "5"})
             self._running.add(task_id)
+            try:
+                task = self._read(task_id)
+                field = 'preparation_deadline_at' if work == self.prepare else 'execution_deadline_at'
+                if work == self.retry_graph_sync:
+                    # Explicit receipt checks are new read operations, never new publications.
+                    field = 'verification_deadline_at' if task.get('graph_sync', {}).get('status') in {'publishing', 'unverified'} else field
+                if field not in task or field == 'verification_deadline_at':
+                    budget = 10 if field == 'verification_deadline_at' else bounded_timeout_seconds(
+                        'QIF_TASK_TIMEOUT_SECONDS', default=max(900, graph_dispatch_timeout_seconds() + 120), maximum=86400)
+                    accepted = datetime.fromisoformat(task['created_at']) if field == 'preparation_deadline_at' else datetime.now(timezone.utc)
+                    task[field] = (accepted + timedelta(seconds=budget)).isoformat()
+                    self._write(task_id, task)
+                deadline = task[field]
+            except BaseException:
+                self._running.discard(task_id)
+                self._slots.release()
+                raise
+
+        def check():
+            remaining_seconds(deadline)
+            if self._closing.is_set():
+                raise RuntimeError('Schema-set service is stopping; no further workflow stages may start')
+            if self._cancelled(task_id):
+                raise RuntimeError('Schema-set task was cancelled')
 
         def wrapped() -> None:
             try:
-                work(task_id)
+                with operation_scope(OperationContext(task_id, deadline)), guarded_execution(check):
+                    work(task_id)
+            except Exception as exc:
+                if not self._cancelled(task_id):
+                    current = self._read(task_id)
+                    uncertain = current.get('graph_sync', {}).get('status') in {'publishing', 'unverified'}
+                    self._update(task_id, status='publication_unverified' if uncertain else 'failed',
+                                 stage='recovery_review' if uncertain else 'failed', error=type(exc).__name__)
             finally:
                 with self._lock:
                     self._running.discard(task_id)
+                self._slots.release()
 
-        self._executor.submit(wrapped)
+        try:
+            future = self._executor.submit(wrapped)
+            def cancelled(pending):
+                if pending.cancelled():
+                    with self._lock:
+                        self._running.discard(task_id)
+                    self._slots.release()
+            future.add_done_callback(cancelled)
+        except BaseException:
+            with self._lock:
+                self._running.discard(task_id)
+            self._slots.release()
+            raise
         return True
+
+    def shutdown(self):
+        """Stop admission and cooperatively fence active work; retain queued manifests."""
+        self._closing.set()
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     def submit_prepare(self, task_id: str) -> bool:
         return self._submit(task_id, self.prepare)
@@ -140,6 +202,8 @@ class QifTaskService:
             task = self._read(task_id)
             if task["status"] != "awaiting_approval":
                 raise HTTPException(status_code=409, detail="QIF task is not ready for approval")
+            budget = bounded_timeout_seconds('QIF_TASK_TIMEOUT_SECONDS', default=max(900, graph_dispatch_timeout_seconds() + 120), maximum=86400)
+            task.setdefault('execution_deadline_at', (datetime.now(timezone.utc) + timedelta(seconds=budget)).isoformat())
             task.update({"status": "commit_queued", "stage": "register_queued", "progress": 82, "updated_at": _now()})
             self._event(task, "register", "Publishing approved ontology through the durable worker.")
             self._write(task_id, task)
@@ -165,12 +229,30 @@ class QifTaskService:
         recovered = 0
         attention = 0
         for task in self.list(limit=1000):
+            if task['task_id'] in self._running:
+                continue
             if task.get("status") in {"queued", "running"} and task.get("stage") in {"queued", "inspect", "validate", "generate"}:
                 task["status"] = "queued"
                 task["stage"] = "queued"
                 self._event(task, "recovery", "Recovered after a service restart; resuming preparation.", "warning")
                 self._write(task["task_id"], task)
-                self.submit_prepare(task["task_id"])
+                try:
+                    self.submit_prepare(task["task_id"])
+                except HTTPException as exc:
+                    if exc.status_code == 503:
+                        break  # Leave the rest durable for the next recovery pass.
+                    raise
+                recovered += 1
+            elif task.get('status') in {'commit_queued', 'graph_retry_queued'} and task.get('stage') in {'register_queued', 'graph_sync_queued'}:
+                try:
+                    if task['status'] == 'commit_queued':
+                        self.submit_commit(task['task_id'])
+                    else:
+                        self.submit_graph_retry(task['task_id'])
+                except HTTPException as exc:
+                    if exc.status_code == 503:
+                        break
+                    raise
                 recovered += 1
             elif task.get("status") in {"commit_queued", "running"} and task.get("stage") in {"register", "graph_sync"}:
                 task["status"] = "publication_unverified" if task.get("graph_sync", {}).get("status") == "publishing" else "requires_review"
@@ -181,29 +263,39 @@ class QifTaskService:
         return {"recovered": recovered, "requires_review": attention}
 
     def cancel(self, task_id: str) -> dict[str, Any]:
-        task = self._read(task_id)
-        if task["status"] in {"completed", "completed_with_warnings", "failed", "publication_unverified"}:
-            raise HTTPException(status_code=409, detail="A completed or failed QIF task cannot be cancelled")
-        task.update({"status": "cancelled", "stage": "cancelled", "updated_at": _now()})
-        self._event(task, "cancelled", "Cancellation requested; no additional workflow stages will run.", "warning")
-        return self._write(task_id, task)
+        with self._lock:
+            task = self._read(task_id)
+            if task.get('stage') == 'graph_sync' or task.get('graph_sync', {}).get('status') in {'publishing', 'unverified'}:
+                raise HTTPException(status_code=409, detail='Publication may already be committing; verify its receipt instead of cancelling')
+            if task["status"] in {"completed", "completed_with_warnings", "failed", "publication_unverified"}:
+                raise HTTPException(status_code=409, detail="A completed or failed QIF task cannot be cancelled")
+            task.update({"status": "cancelled", "stage": "cancelled", "updated_at": _now()})
+            self._event(task, "cancelled", "Cancellation requested; no additional workflow stages will run.", "warning")
+            return self._write(task_id, task)
 
     def prepare(self, task_id: str) -> None:
         """Run inspect → validate → generate, leaving an approval gate before persistence."""
         try:
-            task = self._update(task_id, status="running", stage="inspect", progress=10)
+            with self._lock:
+                if self._cancelled(task_id):
+                    return
+                ensure_execution_allowed()
+                task = self._update(task_id, status="running", stage="inspect", progress=10)
             task["agent"] = "SchemaSet_Ontology"
             self._event(task, "inspect", "Schema-set ontology agent is inspecting XSD declarations and documentation.")
             self._write(task_id, task)
             paths = [self._task_dir(task_id) / "source" / name for name in task["source_files"]]
-            tools = registry.resolve_tools("SchemaSet_Ontology")
-            inspection = tools["inspect_schema_set"](paths)
+            ensure_execution_allowed()
+            inspection = run_stage("inspect", paths=paths)
+            ensure_execution_allowed()
             if self._cancelled(task_id):
                 return
 
             task = self._update(task_id, stage="validate", progress=35)
             self._event(task, "validate", "Resolving schema-set references and quality checks.")
-            validation = validate_schema_set(inspection, paths)
+            ensure_execution_allowed()
+            validation = run_stage("validate", inspection=inspection, paths=paths)
+            ensure_execution_allowed()
             task["validation"] = validation
             self._write(task_id, task)
             if validation["errors"]:
@@ -216,7 +308,9 @@ class QifTaskService:
 
             task = self._update(task_id, stage="generate", progress=60)
             self._event(task, "generate", "Generating a traceable ontology preview.")
-            artifact, summary = tools["build_ontology_turtle"](inspection, task["prefix"])
+            ensure_execution_allowed()
+            artifact, summary = run_stage("generate", inspection=inspection, prefix=task["prefix"])
+            ensure_execution_allowed()
             artifact_dir = self._task_dir(task_id) / "ontology"
             artifact_dir.mkdir(exist_ok=True)
             artifact_path = artifact_dir / f"{task['prefix']}_qif_ontology.ttl"
@@ -237,6 +331,8 @@ class QifTaskService:
             self._event(task, "review", "Preview is ready. Approve persistence to register the ontology and synchronize the graph.")
             self._write(task_id, task)
         except Exception as exc:
+            if self._cancelled(task_id):
+                return
             task = self._update(task_id, status="failed", stage="failed", progress=100)
             self._event(task, "failed", f"Workflow failed: {type(exc).__name__}: {exc}", "error")
             self._write(task_id, task)
@@ -251,6 +347,7 @@ class QifTaskService:
             self._event(task, "register", "Registering ontology artifact.")
             self._write(task_id, task)
             artifact = self._task_dir(task_id) / "ontology" / f"{task['prefix']}_qif_ontology.ttl"
+            ensure_execution_allowed()
             saved = get_publisher().register(
                 artifact=artifact, ontology_name=task["ontology_name"],
                 prefix=task["prefix"], description=task["description"],
@@ -258,6 +355,8 @@ class QifTaskService:
             if saved.get("status") != "success":
                 raise RuntimeError(saved.get("error", "Unable to register ontology"))
             ontology_id = saved["ontology_id"]
+            self._update(task_id, ontology_id=ontology_id)
+            ensure_execution_allowed()
             registered_source = Path(saved["storage_path"]).parent / "qif_sources"
             shutil.copytree(self._task_dir(task_id) / "source", registered_source, dirs_exist_ok=True)
             task = self._update(task_id, stage="graph_sync", progress=92, ontology_id=ontology_id)
@@ -277,16 +376,17 @@ class QifTaskService:
         if not ontology_id:
             raise RuntimeError("Cannot synchronize a task without a registered ontology")
         attempts = int(task.get("graph_sync", {}).get("attempts", 0)) + 1
+        verify_only = task.get("graph_sync", {}).get("status") in {"unverified", "publishing"}
         try:
             artifact = self._task_dir(task_id) / "ontology" / f"{task['prefix']}_qif_ontology.ttl"
-            verify_only = task.get("graph_sync", {}).get("status") in {"unverified", "publishing"}
             if not verify_only:
                 # Persist intent before dispatch: process loss must never turn into a blind replay.
                 self._update(task_id, graph_sync={"status": "publishing", "attempts": attempts})
             publisher = get_publisher()
+            ensure_execution_allowed()
             sync_result = (publisher.verify_graph if verify_only else publisher.sync_graph)(ontology_id=ontology_id, artifact=artifact)
             success = sync_result.get("status") == "success"
-            graph_sync = {"status": "completed" if success else "failed", "attempts": attempts, "detail": sync_result}
+            graph_sync = {**task.get("graph_sync", {}), "status": "completed" if success else ("unverified" if verify_only else "failed"), "attempts": attempts, "detail": sync_result}
         except PublicationUnverified as exc:
             success = False
             graph_sync = {"status": "unverified", "attempts": attempts,
@@ -294,7 +394,8 @@ class QifTaskService:
                           "detail": "Commit outcome unverified. Verify the receipt; no write was retried."}
         except Exception as exc:
             success = False
-            graph_sync = {"status": "failed", "attempts": attempts, "detail": f"{type(exc).__name__}: {exc}"}
+            graph_sync = {**task.get("graph_sync", {}), "status": "unverified" if verify_only else "failed",
+                          "attempts": attempts, "detail": f"{type(exc).__name__}: {exc}"}
         status = "completed" if success else ("publication_unverified" if graph_sync["status"] == "unverified" else "completed_with_warnings")
         task = self._update(task_id, status=status, stage="completed", progress=100, graph_sync=graph_sync)
         self._event(task, "completed", "Ontology registration and graph synchronization completed." if success else ("Ontology registered; publication outcome unverified. Check the receipt before retrying." if graph_sync["status"] == "unverified" else "Ontology registered; graph synchronization failed and can be retried."), "info" if success else "warning")

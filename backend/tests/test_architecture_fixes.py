@@ -46,15 +46,21 @@ class ArchitectureTests(TestCase):
         self.assertFalse(store.compare_and_put('x',original,{'status':'published'}))
         self.assertEqual(store.get('x')['status'],'revoked')
     def test_lost_lease_cannot_complete_and_readiness_distinguishes_executor(self):
-        tree=ast.parse(Path('backend/data_pipeline_service/execution.py').read_text())
-        node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='execute_claimed_job')
-        lost=threading.Event(); completed=[]
-        run={'run_id':'r','status':'running','worker_id':'w','attempt':1,'lease':{'expires_at':(datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat()}}
-        def handler(*a,**k): lost.set(); return {'status':'completed'}
-        scope={'Any':object,'datetime':datetime,'timezone':timezone,'guarded_execution':guarded_execution,'ensure_execution_allowed':ensure_execution_allowed,'run_records':SimpleNamespace(get=lambda _:run,complete=lambda *a:completed.append(a)), 'runner':object(),'handler_registry':SimpleNamespace(get=lambda _:SimpleNamespace(execute=handler))}
-        exec(compile(ast.Module(body=[node],type_ignores=[]),'execution','exec'),scope)
-        with self.assertRaises(RuntimeError): scope['execute_claimed_job']({'job_type':'test'}, {}, run, lease_lost=lost)
-        self.assertEqual(completed,[])
+        from backend.data_pipeline_service import execution
+        from contextlib import nullcontext
+        lost = threading.Event()
+        completed = []
+        run = {'run_id':'r', 'status':'running', 'worker_id':'w', 'attempt':1,
+               'started_at': datetime.now(timezone.utc).isoformat(),
+               'lease': {'expires_at': (datetime.now(timezone.utc)+timedelta(minutes=5)).isoformat()}}
+        def handler(*args, **kwargs):
+            lost.set()
+            return {'status':'completed'}
+        fake_runner = SimpleNamespace(execution_scope=lambda *args: nullcontext())
+        with patch.object(execution, 'runner', fake_runner), patch.object(execution.run_records, 'get', lambda _: run), patch.object(execution.run_records, 'complete', lambda *args: completed.append(args)), patch.object(execution.handler_registry, 'get', lambda _: SimpleNamespace(execute=handler)):
+            with self.assertRaises(RuntimeError):
+                execution.execute_claimed_job({'job_type':'test'}, {}, run, lease_lost=lost)
+        self.assertEqual(completed, [])
         tree=ast.parse(Path('backend/data_pipeline_service/worker_status.py').read_text())
         node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='execution_readiness')
         scope={'Any':object,'os':os,'summary':lambda:{'worker_count':0}}
@@ -69,7 +75,7 @@ class ArchitectureTests(TestCase):
         async def io(function,*args,**kwargs): return function(*args,**kwargs)
         @asynccontextmanager
         async def lock(key): yield True
-        scope={'store':store,'_register_catalog':register,'_product_io':io,'_product_lock':lock}
+        scope={'store':store,'_register_catalog':register,'_product_io':io,'_product_lock':lock, 'asyncio':asyncio, 'datetime':datetime, 'timedelta':timedelta, 'timezone':timezone}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'outbox','exec'),scope)
         result=asyncio.run(scope['reconcile_pending']())
         self.assertEqual(result['published'],0)

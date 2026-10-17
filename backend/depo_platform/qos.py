@@ -130,6 +130,9 @@ class QoSMiddleware:
             else:
                 await failure(status, 'Service capacity is busy; retry later.' if status == 503 else
                               'Operation deadline exceeded. Verify any retained write outcome before retrying.')
+        except Exception:
+            status = 500
+            raise
         finally:
             route = getattr(scope.get('route'), 'path', '<unmatched>')
             self.state.finish(lane, scope.get('method', '') + ' ' + route, status, time.monotonic()-started)

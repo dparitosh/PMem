@@ -25,6 +25,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def execution_deadline(record):
+    """Queueing and retries consume the original run budget; leases cannot extend it."""
+    from backend.depo_platform.network import bounded_timeout_seconds
+    started = datetime.fromisoformat(record['started_at'])
+    if started.tzinfo is None:
+        raise ValueError('Pipeline start time must include timezone')
+    return record.get('deadline_at') or (started + timedelta(seconds=bounded_timeout_seconds(
+        'DEPO_PIPELINE_JOB_TIMEOUT_SECONDS', default=900, maximum=86400))).isoformat()
+
+
 def _digest(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
@@ -97,6 +107,7 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
         "checkpoint": checkpoint,
         "output_manifest": None,
     }
+    record["deadline_at"] = execution_deadline(record)
     return store.put(run_id, record)
 
 
@@ -135,6 +146,8 @@ def claim_next(*, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | 
 def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 300) -> dict[str, Any]:
     if record.get("worker_id") != worker_id or record.get("status") != "running":
         raise ValueError("Worker no longer owns this run lease")
+    from backend.depo_platform.operations import remaining_seconds
+    remaining_seconds(execution_deadline(record))
     now = datetime.now(timezone.utc)
     lease = {**(record.get("lease") or {}), "heartbeat_at": now.isoformat(),
              "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}

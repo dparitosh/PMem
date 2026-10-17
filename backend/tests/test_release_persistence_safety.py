@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.network import bounded_timeout_seconds
 
 class PersistenceSafety(unittest.TestCase):
     def test_concurrent_same_artifact_is_complete(self):
@@ -85,7 +86,7 @@ class ServiceRecovery(unittest.TestCase):
         fake_threading.Event.return_value = event
         event.wait = lambda seconds: event.is_set()
         namespace = dict(os=os, logging=logging, threading=fake_threading, signal=MagicMock(),
-                         run_records=records, worker_status=status, runner=runner, job_definitions=MagicMock())
+                         run_records=records, worker_status=status, runner=runner, job_definitions=MagicMock(), bounded_timeout_seconds=bounded_timeout_seconds)
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'worker.py','exec'), namespace)
         namespace['run']()
         self.assertEqual(calls[0],2)
@@ -116,8 +117,9 @@ class ServiceRecovery(unittest.TestCase):
     def test_graph_no_auth_and_aliases(self):
         source = ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text())
         cls = next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Neo4jPublisher')
+        cls.body = [node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name in {'__init__', '_driver', 'health'}]
         factory = MagicMock()
-        namespace = {'os':os,'GraphDatabase':factory, 'Query':lambda text,timeout:(text,timeout), 'Any':object}
+        namespace = {'os':os,'GraphDatabase':factory, 'Query':lambda text,timeout:(text,timeout), 'Any':object, 'threading':threading}
         # Postpone annotations: only configuration/health methods execute here.
         module = ast.Module(body=[ast.ImportFrom(module='__future__',names=[ast.alias(name='annotations')],level=0),cls],type_ignores=[])
         exec(compile(ast.fix_missing_locations(module),'publisher.py','exec'),namespace)

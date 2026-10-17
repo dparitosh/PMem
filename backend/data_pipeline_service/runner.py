@@ -9,6 +9,8 @@ import sys
 import threading
 import time
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,9 @@ from typing import Any
 
 from backend.artifact_store import ArtifactStore
 from backend.data_pipeline_service import postgres_jdbc
+
+
+_execution = ContextVar('pipeline_spark_execution', default=None)
 
 
 class SparkUnavailable(RuntimeError):
@@ -38,6 +43,89 @@ class SparkJobRunner:
         self._runs: deque[dict[str, Any]] = deque(maxlen=50)
         self._application_id: str | None = None
         self._started_at: str | None = None
+
+    @contextmanager
+    def execution_scope(self, context, lease_lost=None):
+        """Cancel only this leased attempt's Spark group, without taking its work lock."""
+        from backend.depo_platform.operations import remaining_seconds
+        remaining_seconds(context.deadline_at)
+        state = {'group': context.operation_id + ':' + uuid.uuid4().hex, 'spark_context': None, 'cancelled': False, 'deadline_at': context.deadline_at}
+        token = _execution.set(state)
+        done = threading.Event()
+        def monitor():
+            while not done.wait(.05):
+                expired = False
+                try:
+                    remaining_seconds(context.deadline_at)
+                except TimeoutError:
+                    expired = True
+                if expired or (lease_lost is not None and lease_lost.is_set()):
+                    state['cancelled'] = True
+                    spark_context = state['spark_context']
+                    if spark_context is not None:
+                        try:
+                            spark_context.cancelJobGroup(state['group'])
+                        except Exception:
+                            pass  # The execution fence still prevents subsequent persistence.
+                    return
+        monitor_thread = threading.Thread(target=monitor, name='pipeline-deadline', daemon=True)
+        monitor_thread.start()
+        try:
+            yield
+            remaining_seconds(context.deadline_at)
+        except Exception as exc:
+            # Spark cancellation commonly surfaces as a JVM exception. Preserve
+            # deadline classification so an expired run is not auto-requeued.
+            try:
+                remaining_seconds(context.deadline_at)
+            except TimeoutError as timeout:
+                raise timeout from exc
+            raise
+        finally:
+            done.set()
+            monitor_thread.join(timeout=1)
+            spark_context = state['spark_context']
+            try:
+                if spark_context is not None:
+                    for key in ('spark.jobGroup.id', 'spark.job.description', 'spark.job.interruptOnCancel'):
+                        try:
+                            spark_context.setLocalProperty(key, None)
+                        except Exception:
+                            pass  # A terminated JVM must not hide the original failure.
+            finally:
+                _execution.reset(token)
+
+    @contextmanager
+    def _work(self):
+        from backend.depo_platform.execution_guard import ensure_execution_allowed
+        from backend.depo_platform.operations import current_operation
+        while True:
+            ensure_execution_allowed()
+            operation = current_operation()
+            wait = operation.timeout(.1) if operation else .1
+            if self._lock.acquire(timeout=wait):
+                break
+        try:
+            ensure_execution_allowed()
+            yield
+            ensure_execution_allowed()
+        finally:
+            self._lock.release()
+
+    def _configure_group(self, spark):
+        from backend.depo_platform.execution_guard import ensure_execution_allowed
+        ensure_execution_allowed()
+        state = _execution.get()
+        if state is not None:
+            context = spark.sparkContext
+            context.setJobGroup(state['group'], 'DEPO leased data job', interruptOnCancel=True)
+            state['spark_context'] = context
+            from backend.depo_platform.operations import remaining_seconds
+            remaining_seconds(state['deadline_at'])
+            if state['cancelled']:
+                context.cancelJobGroup(state['group'])
+                raise RuntimeError('Pipeline execution was cancelled before Spark dispatch')
+        return spark
 
     @staticmethod
     def _now() -> str:
@@ -181,7 +269,7 @@ class SparkJobRunner:
         if not self._enabled():
             raise SparkUnavailable("Spark data jobs are disabled; set DEPO_SPARK_ENABLED=true in the service environment")
         if self._spark is not None:
-            return self._spark
+            return self._configure_group(self._spark)
         spark_home, java_home = self._runtime_paths()
         if not spark_home.is_dir() or not java_home.is_dir():
             raise SparkUnavailable("Configured Spark or Java runtime is unavailable")
@@ -222,7 +310,7 @@ class SparkJobRunner:
         self._spark.sparkContext.setLogLevel(os.getenv("DEPO_SPARK_LOG_LEVEL", "WARN"))
         self._application_id = str(self._spark.sparkContext.applicationId)
         self._started_at = self._now()
-        return self._spark
+        return self._configure_group(self._spark)
 
     @staticmethod
     def _validate_records(records: list[Any]) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
@@ -266,7 +354,7 @@ class SparkJobRunner:
 
         started = time.perf_counter()
         job_id = str(uuid.uuid4())
-        with self._lock:
+        with self._work():
             spark = self._spark_session()
             frame = spark.createDataFrame(accepted)
             rows = [row.asDict() for row in frame.groupBy("source_standard", "canonical_concept", "validation_status").count().orderBy("source_standard", "canonical_concept", "validation_status").collect()]
@@ -365,7 +453,7 @@ class SparkJobRunner:
         started = time.perf_counter()
         rows = []
         if accepted:
-            with self._lock:
+            with self._work():
                 spark = self._spark_session()
                 summary_records = [{key: record[key] for key in ('source_standard', 'canonical_concept', 'validation_status')} for record in accepted]
                 rows = [row.asDict() for row in spark.createDataFrame(summary_records).groupBy('source_standard', 'canonical_concept', 'validation_status').count().orderBy('source_standard', 'canonical_concept', 'validation_status').collect()]
@@ -494,7 +582,7 @@ class SparkJobRunner:
             normalized_relationships = [contract.normalize_relationship(standard=standard, record=dict(record)) for record in relationships]
         else:
             raise ValueError("representation must be source-records-v1 or normalized-ceim-v1")
-        with self._lock:
+        with self._work():
             spark = self._spark_session()
             summary_rows = [row.asDict() for row in spark.createDataFrame(
                 [{"ceim_type": item["ceim_type"]} for item in normalized_entities] or [{"ceim_type": "relationship-only"}]
@@ -593,7 +681,7 @@ class SparkJobRunner:
         if not accepted:
             raise ValueError("No documents passed unstructured evidence quality gates")
         started = time.perf_counter()
-        with self._lock:
+        with self._work():
             spark = self._spark_session()
             series = [row.asDict() for row in spark.createDataFrame(rows).groupBy("media_type").sum("chunk_count", "proposal_count").orderBy("media_type").collect()]
         accepted_manifest = [
@@ -710,7 +798,7 @@ class SparkJobRunner:
             raise ValueError("No documents passed document enrichment quality gates")
 
         started = time.perf_counter()
-        with self._lock:
+        with self._work():
             spark = self._spark_session()
             series = [row.asDict() for row in spark.createDataFrame(rows).groupBy("media_type").sum("chunk_count", "token_count").orderBy("media_type").collect()]
         graph_nodes = []
@@ -821,7 +909,7 @@ class SparkJobRunner:
             raise ValueError("rdf-quality-statistics currently accepts N-Triples (.nt) artifacts only")
         pattern = re.compile(r"^\s*(?:<[^>]+>|_:[A-Za-z][\w.-]*)\s+<([^>]+)>\s+(?:<[^>]+>|_:[A-Za-z][\w.-]*|\"(?:[^\"\\]|\\.)*\"(?:@[A-Za-z-]+|\^\^<[^>]+>)?)\s*\.\s*$")
         started = time.perf_counter()
-        with self._lock:
+        with self._work():
             spark = self._spark_session()
             lines = spark.sparkContext.textFile(artifact_path.as_uri()).map(lambda line: line.strip()).filter(lambda line: bool(line) and not line.startswith("#"))
             total = lines.count()
@@ -860,7 +948,7 @@ class SparkJobRunner:
             raise ValueError("rdf-deduplicate-serialize accepts N-Triples (.nt) artifacts only")
         pattern = re.compile(r'^\s*(?:<[^>]+>|_:[A-Za-z][\w.-]*)\s+<[^>]+>\s+(?:<[^>]+>|_:[A-Za-z][\w.-]*|"(?:[^"\\]|\\.)*"(?:@[A-Za-z-]+|\^\^<[^>]+>)?)\s*\.\s*$')
         started = time.perf_counter()
-        with self._lock:
+        with self._work():
             spark = self._spark_session()
             lines = spark.sparkContext.textFile(artifact_path.as_uri()).map(lambda line: line.strip()).filter(lambda line: bool(line) and not line.startswith("#"))
             total = lines.count()

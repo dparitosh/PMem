@@ -57,6 +57,9 @@ class QifTaskResponse(BaseModel):
     progress: int = Field(ge=0, le=100)
     created_at: str
     updated_at: str
+    preparation_deadline_at: str | None = None
+    execution_deadline_at: str | None = None
+    verification_deadline_at: str | None = None
     source_files: list[str]
     events: list[QifTaskEvent]
     validation: dict[str, Any] | None = None

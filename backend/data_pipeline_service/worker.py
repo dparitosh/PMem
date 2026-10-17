@@ -81,7 +81,7 @@ def run() -> None:
                     and current_record.get("worker_id") == worker_id
                     and current_record.get("attempt") == record.get("attempt")):
                 retry = (definition if 'definition' in locals() and definition else {}).get("retry_policy") or {"max_attempts": 1, "backoff_seconds": 30}
-                if int(current_record.get("attempt") or 1) < int(retry.get("max_attempts") or 1):
+                if not isinstance(exc, TimeoutError) and int(current_record.get("attempt") or 1) < int(retry.get("max_attempts") or 1):
                     try:
                         run_records.requeue(current_record, message=str(exc), backoff_seconds=int(retry.get("backoff_seconds") or 30))
                     except Exception as recovery_error:

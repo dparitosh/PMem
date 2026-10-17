@@ -5,8 +5,34 @@ Run with: ``python -m uvicorn backend.qif.app:app --port 8010``.
 from backend.depo_platform.service_runtime import create_service_app
 from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from .router import router
+from .task_service import task_service
+from contextlib import asynccontextmanager
 
-app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0", dependencies=())
+
+@asynccontextmanager
+async def lifespan():
+    import asyncio
+    import logging
+    async def recover():
+        while True:
+            try:
+                await asyncio.to_thread(task_service.recover_pending)
+            except Exception:
+                logging.getLogger(__name__).exception('Schema-set recovery deferred')
+            await asyncio.sleep(5)
+    recovery = asyncio.create_task(recover())
+    try:
+        yield
+    finally:
+        task_service.shutdown()
+        recovery.cancel()
+        try:
+            await recovery
+        except asyncio.CancelledError:
+            pass
+
+
+app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0", dependencies=(), lifespan_hook=lifespan)
 app.include_router(
     create_odata_catalog_router(
         service_name="DEPOEngineeringSchemaSets",
