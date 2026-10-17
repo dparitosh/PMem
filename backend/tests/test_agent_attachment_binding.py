@@ -39,7 +39,7 @@ class AttachmentBindingTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse(Path('backend/agentic_service/router.py').read_text(encoding='utf-8'))
         nodes = [node for node in tree.body if getattr(node,'name','') in {'_multipart','suggest_agent_tool'}]
         for node in nodes: node.decorator_list = []
-        exec(compile(ast.Module(body=nodes,type_ignores=[]),'<attachment>','exec'),scope)
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),'<attachment>','exec', flags=__import__('__future__').annotations.compiler_flag),scope)
         model = ModuleType('backend.agentic_service.local_llm'); model.suggest_tool = suggest
         model.failure_status = lambda exc: 'unavailable'
         with patch.dict(sys.modules, {'backend.agentic_service.local_llm':model}):

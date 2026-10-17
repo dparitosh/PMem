@@ -35,13 +35,21 @@ def test_chat_memory_prunes_expired_sessions(monkeypatch):
 
 
 def test_conversation_history_is_loaded_before_current_turn(monkeypatch):
-    from backend.agent import chat as chat_module
+    import ast
+    import logging
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / 'agent' / 'chat.py'
+    tree = ast.parse(path.read_text(encoding='utf-8-sig'))
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_conversation_messages')
 
     class History:
         def get_messages(self):
             return [HumanMessage(content="earlier question")]
 
-    monkeypatch.setattr(chat_module, "get_memory", lambda _session_id: History())
-    messages = chat_module._conversation_messages("session-1", "current question")
+    scope = {'get_memory': lambda _session_id: History(), 'HumanMessage': HumanMessage,
+             'logger': logging.getLogger(__name__)}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec',
+                 flags=__import__('__future__').annotations.compiler_flag), scope)
+    messages = scope['_conversation_messages']('session-1', 'current question')
 
     assert [message.content for message in messages] == ["earlier question", "current question"]

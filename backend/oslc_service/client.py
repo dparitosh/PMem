@@ -35,16 +35,11 @@ class OSLCClient:
         headers.update(gateway_subscription_headers(endpoint))
         limit = int(os.getenv('OSLC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)))
         if limit <= 0: raise RuntimeError('OSLC_MAX_RESPONSE_BYTES must be positive')
-        with httpx.Client(timeout=self.timeout, follow_redirects=False, trust_env=False) as client:
-            with client.stream('GET', endpoint, params=params, headers=headers) as response:
-                response.raise_for_status()
-                chunks, total = [], 0
-                for chunk in response.iter_bytes():
-                    total += len(chunk)
-                    if total > limit: raise ValueError('Remote OSLC response exceeds OSLC_MAX_RESPONSE_BYTES')
-                    chunks.append(chunk)
-        import json
-        result = json.loads(b''.join(chunks))
+        from backend.depo_platform.peer_http import peer_response
+        response = peer_response('GET', endpoint, params=params, headers=headers, budget=self.timeout,
+                                 response_limit=limit)
+        response.raise_for_status()
+        result = response.json()
         if not isinstance(result, dict): raise ValueError('Remote OSLC response must be an object')
         return result
 

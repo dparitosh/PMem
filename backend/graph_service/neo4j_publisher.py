@@ -10,6 +10,7 @@ import logging
 import time
 import uuid
 import json
+import hashlib
 from datetime import datetime, timezone
 import re
 import threading
@@ -155,10 +156,13 @@ class Neo4jPublisher:
                 if staged:
                     result = staged(session, ontology_id=ontology_id, publication_id=publication_id,
                         prefix=prefix, resources=resources, relationships=relationships,
-                        relation_queries=relation_queries, resource_query=resource_query)
+                        relation_queries=relation_queries, resource_query=resource_query,
+                        artifact_sha256=hashlib.sha256(content).hexdigest())
                     if result is not None:
                         return result
-                session.execute_write(publish_transaction)
+                from backend.depo_platform.graph_access import projection_access
+                with projection_access():
+                    session.execute_write(publish_transaction)
         logger.warning('Ontology publication phase=completed ontology_id=%s elapsed_seconds=%.3f', ontology_id, time.monotonic() - started)
         return {
             "status": "success", "ontology_id": ontology_id, "resources": len(resources),
@@ -168,14 +172,20 @@ class Neo4jPublisher:
         }
 
     def _publish_staged_initial(self, session, **kwargs):
-        schema = session.run(Query("SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties "
-            "WHERE name='uq_ontologystagedresource_identity' RETURN type, entityType, labelsOrTypes, properties", timeout=10)).single()
-        if not schema:
-            raise RuntimeError('Staged publication schema is missing. Run Neo4j schema provisioning before publishing; atomic fallback is disabled.')
-        if (schema['type'] not in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'}
-                or schema['entityType'] != 'NODE' or schema['labelsOrTypes'] != ['StagedOntologyResource']
-                or schema['properties'] != ['ontology_id', 'publication_id', 'iri']):
-            raise RuntimeError('Staged publication constraint is incompatible')
+        from backend.depo_platform.neo4j_setup import CONSTRAINT_DEFINITIONS
+        from backend.depo_platform.operations import current_operation
+        for name in ('uq_ontologystagedresource_identity', 'uq_ontologypublication_identity', 'uq_ontologyresource_identity'):
+            label, properties = CONSTRAINT_DEFINITIONS[name]
+            operation = current_operation()
+            schema = session.run(Query('SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties '
+                f"WHERE name='{name}' RETURN type, entityType, labelsOrTypes, properties",
+                timeout=operation.timeout(10) if operation else 10)).single()
+            if not schema:
+                raise RuntimeError(f'Publication schema is missing: {name}. Run Neo4j schema provisioning before publishing; atomic fallback is disabled.')
+            if (schema['type'] not in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'}
+                    or schema['entityType'] != 'NODE' or schema['labelsOrTypes'] != [label]
+                    or schema['properties'] != properties):
+                raise RuntimeError(f'Publication constraint is incompatible: {name}')
         from .staged_publication import publish_initial
         from backend.depo_platform.network import graph_write_timeout_seconds, graph_activation_timeout_seconds
         return publish_initial(session, **kwargs,
@@ -188,9 +198,10 @@ class Neo4jPublisher:
             MATCH (receipt:OntologyPublication {ontology_id: $ontology_id, publication_id: $publication_id})
             RETURN receipt { .ontology_id, .publication_id, .prefix, .resources, .relationships,
                              .hierarchy_edges, .status, .published_at, .current,
-                             .resource_offset, .resources_expected, .relationships_expected } AS receipt
+                             .resource_offset, .resources_expected, .relationships_expected,
+                             .activation_resource_offset, .activation_relationship_offsets } AS receipt
             """,
-            ontology_id=ontology_id, publication_id=publication_id,
+            ontology_id=ontology_id, publication_id=publication_id, _publication_receipt=True,
         )
         return dict(rows[0]["receipt"]) if rows else None
 
@@ -200,14 +211,17 @@ class Neo4jPublisher:
                 self._read_driver.close()
                 self._read_driver = None
 
-    def _session_rows(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
+    def _session_rows(self, query: str, *, _publication_receipt=False, **parameters: Any) -> list[dict[str, Any]]:
         if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
         with self._driver_lock:
             if self._read_driver is None:
                 self._read_driver = self._driver()
             driver = self._read_driver
-        with driver.session(database=self.database) as session:
+        from contextlib import nullcontext
+        from backend.depo_platform.graph_access import projection_access
+        # Receipt polling must remain available while activation is hidden.
+        with (nullcontext() if _publication_receipt else projection_access()), driver.session(database=self.database) as session:
             from backend.depo_platform.network import bounded_timeout_seconds
             timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
             return session.run(Query(query, timeout=timeout), parameters).data()
@@ -349,13 +363,16 @@ class Neo4jPublisher:
         # OntologyResource projection exists; this is intentionally read-only
         # and avoids forcing a destructive graph migration merely to browse an
         # already-ingested ontology.
-        if not nodes:
-            return self._legacy_overview(limit=safe_limit)
-        edges = self._read_edges([node["id"] for node in nodes], limit=safe_limit * 4)
+        legacy = self._session_rows(cypher.LEGACY_OVERVIEW, limit=safe_limit)
+        combined = sorted(nodes + legacy, key=lambda node: (str(node.get('ontology_id') or ''), str(node.get('label') or ''), node['id']))
+        selected = combined[:safe_limit]
+        selected_ids = {node['id'] for node in selected}
+        edges = self._read_edges([node['id'] for node in nodes if node['id'] in selected_ids], limit=safe_limit * 4)
+        edges += self._read_edges([node['id'] for node in legacy if node['id'] in selected_ids], limit=safe_limit * 4, existing=True)
         return self._explorer_payload(
-            nodes=nodes,
-            edges=edges,
-            view={"type": "overview", "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
+            nodes=selected,
+            edges=edges[:safe_limit * 4],
+            view={"type": "overview", "source": "published_and_existing_ontology", "limit": safe_limit, "truncated": len(combined) >= safe_limit},
         )
 
     def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict[str, Any]:

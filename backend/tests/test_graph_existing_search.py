@@ -12,7 +12,7 @@ class ExistingSearchTests(unittest.TestCase):
         path = Path(__file__).resolve().parents[1] / 'graph_service/neo4j_publisher.py'
         tree = ast.parse(path.read_text(encoding='utf-8'))
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-        methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in ('search', '_explorer_payload', '_read_edges', '_legacy_traversal', '_bounded_walk')]
+        methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in ('overview', 'search', '_explorer_payload', '_read_edges', '_legacy_traversal', '_bounded_walk')]
         cls.body = methods
         scope = {'re': re, 'Any': Any, 'cypher': cypher}
         exec(compile(ast.Module(body=[cls], type_ignores=[]), str(path), 'exec'), scope)
@@ -38,6 +38,15 @@ class ExistingSearchTests(unittest.TestCase):
         self.assertEqual(params['ontology_prefix'], 'qif')
         self.assertNotIn("customer's-id", query)
         self.assertIn('NOT n:OntologyResource', query)
+
+    def test_overview_includes_both_published_and_legacy_ontologies(self):
+        published = {'id': 'published-1', 'label': 'Part', 'ontology_id': 'ap242'}
+        self.publisher._session_rows = lambda query, **params: (
+            self.legacy if query == cypher.LEGACY_OVERVIEW else
+            [published] if query.startswith('MATCH (n:OntologyResource) RETURN') else [])
+        result = self.publisher.overview(limit=10)
+        self.assertEqual({n['elementId'] for n in result['nodes']}, {'published-1', 'neo4j-node-1'})
+        self.assertEqual(len(self.publisher.overview(limit=1)['nodes']), 1)
 
     def test_mixed_results_obey_total_limit_and_ranking(self):
         self.canonical = [{'id': 'urn:product', 'label': 'Product annotation', 'type': 'resource', 'score': 1}]

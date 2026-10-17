@@ -8,7 +8,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from backend.agentic_service.response_limits import read_bounded_response
 from backend.agentic_service.configuration import configuration_status, SERVICE_KEYS
-from backend.tests.test_run_id_fixes import RunIds, HTTPException
+from backend.tests import test_run_id_fixes as run_ids
+HTTPException = run_ids.HTTPException
 
 class AgentAudit(unittest.TestCase):
     def test_response_limit_counts_chunked_decoded_bytes(self):
@@ -45,7 +46,7 @@ class AgentAudit(unittest.TestCase):
         asyncio.run(check())
 
     def test_dt_cancellation_persists_uncertain_state(self):
-        helper = RunIds()
+        helper = run_ids.RunIds()
         namespace = helper.namespace()
         writes = []
         namespace.update(approval_identity=lambda *a, **kw: 'actor', dt_run_store=SimpleNamespace(put=lambda key, value: writes.append(dict(value))))
@@ -64,10 +65,13 @@ class AgentAudit(unittest.TestCase):
         tree = ast.parse(Path('backend/agentic_service/router.py').read_text(encoding='utf-8'))
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'workflow_run')
         fn.decorator_list = []
-        record = {'run_id': 'run-one', 'status': 'completed', 'owner': 'owner'}
+        record = {'run_id': 'run-one', 'status': 'completed', 'owner': 'owner', 'deadline_at': '2099-01-01T00:00:00+00:00', 'updated_at':'2026-01-01T00:00:00+00:00'}
         def denied(*a, **kw): raise HTTPException(403, 'Denied')
-        namespace = RunIds().namespace()
+        namespace = run_ids.RunIds().namespace()
+        namespace.update(__name__='backend.agentic_service.router', __package__='backend.agentic_service')
+        namespace['workflow_controls'] = SimpleNamespace(get=lambda key: None)
         namespace['workflow_store'] = SimpleNamespace(get=lambda key: record)
+        namespace['graph_read_identity'] = lambda request: 'reader'
         namespace['sessions'] = SimpleNamespace(owner=lambda *a: 'other')
         exec(compile(ast.Module(body=[fn], type_ignores=[]), '<actual workflow read>', 'exec'), namespace)
         module = SimpleNamespace(service_write_identity=denied)

@@ -16,7 +16,9 @@ def test_deadline_connection_is_reset_and_reused():
         closed = False
         info = SimpleNamespace(transaction_status='idle')
         def __init__(self): self.calls = []
-        def execute(self, sql): self.calls.append(sql)
+        def execute(self, sql, *args): self.calls.append(sql)
+        @contextmanager
+        def cursor(self): yield self
         def close(self): self.closed = True
     def connect(*args, **kwargs):
         db = Database(); created.append(db); return db
@@ -26,7 +28,7 @@ def test_deadline_connection_is_reset_and_reused():
             for _ in range(2):
                 with postgres_pool.connection('performance-reset-test', autocommit=True): pass
         assert len(created) == 1
-        assert created[0].calls == ['RESET statement_timeout', 'RESET lock_timeout'] * 2
+        assert [sql for sql in created[0].calls if sql.startswith('RESET')] == ['RESET ALL'] * 2
     postgres_pool.close_idle()
 
 
@@ -48,9 +50,9 @@ def test_registry_bulk_uses_bounded_statements_and_one_transaction(monkeypatch):
 
 
 def test_failed_timeout_reset_discards_connection():
-    from unittest.mock import Mock
-    database = Mock(closed=False, info=SimpleNamespace(transaction_status='idle'))
-    database.execute.side_effect = RuntimeError('reset failed')
+    from unittest.mock import MagicMock
+    database = MagicMock(closed=False, info=SimpleNamespace(transaction_status='idle'))
+    database.cursor.return_value.__enter__.return_value.execute.side_effect = RuntimeError('reset failed')
     modules = {'psycopg': SimpleNamespace(connect=lambda *a, **k: database),
                'psycopg.pq': SimpleNamespace(TransactionStatus=SimpleNamespace(IDLE='idle'))}
     with patch.dict(sys.modules, modules), operation_scope(SimpleNamespace(timeout=lambda value: value)):

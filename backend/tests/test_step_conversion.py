@@ -1,23 +1,15 @@
 import pytest
 
-from neo4j.exceptions import ServiceUnavailable, AuthError
 #!/usr/bin/env python3
 """
 Test script for STEP file conversion via /api/import/convert-schema endpoint
 """
 
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-# Verify imports work
-try:
-    from backend.Services.owl_generation_service import OWLGenerationService
-    print("✓ OWLGenerationService imported successfully")
-except Exception as e:
-    print(f"✗ Failed to import OWLGenerationService: {e}")
-    sys.exit(1)
+from backend.Services.owl_generation_service import OWLGenerationService
 
 # Test with a mock STEP file
 def test_step_parsing():
@@ -112,7 +104,8 @@ END_SCHEMA;
         print(f"     - Schema name: {metadata.get('schema_name')}")
         print(f"     - Entity count: {metadata['entity_count']}")
         assert metadata.get("owlready2", {}).get("engine") == "owlready2"
-        assert True
+        assert metadata["entity_count"] == 1
+        assert "TestEntity" in owl_ttl
     except Exception as e:
         print(f"   ✗ EXPRESS parsing failed: {e}")
         pytest.fail(f"EXPRESS parsing failed: {e}")
@@ -226,8 +219,8 @@ END-ISO-10303-21;
     assert dimensional_size.upper_tolerance == 0.05
 
 
-def test_step_parser_does_not_count_product_definition_rows_as_products(tmp_path):
-    """Product/version/view STEP rows should not all inflate the product semantic bucket."""
+def test_step_parser_preserves_distinct_product_version_and_view_identities(tmp_path):
+    """CAD business objects retain Part, PartVersion and PartView as distinct records."""
     from backend.Services.step_parser import parse_step_with_pmi
 
     step = """ISO-10303-21;
@@ -250,8 +243,12 @@ END-ISO-10303-21;
     doc = parse_step_with_pmi(step_path)
 
     assert len(doc.entities) == 5
-    assert len(doc.cad_products) == 1
-    assert doc.cad_products[0].entity_type == "PRODUCT"
+    by_type = {item.entity_type: item for item in doc.cad_products}
+    assert set(by_type) == {"PRODUCT", "PRODUCT_DEFINITION_FORMATION", "PRODUCT_DEFINITION"}
+    assert len({item.id for item in doc.cad_products}) == 3
+    assert by_type["PRODUCT"].external_id == "P-100"
+    assert by_type["PRODUCT_DEFINITION_FORMATION"].ref_ids == [1]
+    assert by_type["PRODUCT_DEFINITION"].ref_ids == [2, 4]
 
 
 def test_step_to_ttl_emits_ap242_semantic_graph(tmp_path):
@@ -541,40 +538,6 @@ ex:revision a owl:DatatypeProperty ; rdfs:domain ex:Part ; rdfs:range xsd:string
     assert "SUBCLASS_OF" in submitted_cypher
     assert "DOMAIN" in submitted_cypher
     assert "RANGE" in submitted_cypher
-
-if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("OWL Generation Service Tests")
-    print("="*60)
-    
-    results = []
-    
-    # Test STEP support
-    results.append(("STEP format support", test_step_parsing()))
-    
-    # Test EXPRESS still works
-    results.append(("EXPRESS format compatibility", test_express_still_works()))
-    
-    # Print summary
-    print("\n" + "="*60)
-    print("Test Summary")
-    print("="*60)
-    
-    passed = sum(1 for _, result in results if result)
-    total = len(results)
-    
-    for name, result in results:
-        status = "✓ PASS" if result else "✗ FAIL"
-        print(f"{status}: {name}")
-    
-    print(f"\nTotal: {passed}/{total} tests passed")
-    
-    if passed == total:
-        print("\n✓ All tests passed! STEP format support is working.")
-        sys.exit(0)
-    else:
-        print(f"\n✗ {total - passed} test(s) failed.")
-        sys.exit(1)
 
 
 def test_step_parser_preserves_ap242_compound_entity_types(tmp_path):

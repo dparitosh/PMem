@@ -16,8 +16,6 @@ from unittest.mock import patch, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Add backend to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +25,7 @@ def configured_local_neo4j(monkeypatch):
     monkeypatch.setenv("NEO4J_USER", "neo4j")
     monkeypatch.setenv("NEO4J_PASS", "test-only")
     monkeypatch.setenv("NEO4J_DATABASE", "neo4j")
-    from core.db_config import get_config
+    from backend.core.db_config import get_config
     get_config.cache_clear()
     yield
     get_config.cache_clear()
@@ -35,7 +33,7 @@ def configured_local_neo4j(monkeypatch):
 # Test 1: Database Configuration Loading
 def test_db_config_loads_successfully():
     """Test that db_config module loads without encryption errors"""
-    from core.db_config import get_config
+    from backend.core.db_config import get_config
     
     config = get_config()
     
@@ -50,7 +48,7 @@ def test_db_config_loads_successfully():
 
 def test_deployment_type_detection():
     """Test that deployment type is correctly detected from URI"""
-    from core.db_config import get_config, Neo4jDeploymentType
+    from backend.core.db_config import get_config, Neo4jDeploymentType
     
     config = get_config()
     
@@ -73,7 +71,7 @@ def test_deployment_type_detection():
 
 def test_detect_deployment_type_for_supported_uri_schemes():
     """Plain neo4j:// is routed on-prem/non-TLS, not Aura."""
-    from core.db_config import Neo4jDeploymentType, _detect_deployment_type
+    from backend.core.db_config import Neo4jDeploymentType, _detect_deployment_type
 
     assert _detect_deployment_type("neo4j+s://example.databases.neo4j.io") == Neo4jDeploymentType.AURA
     assert _detect_deployment_type("neo4j://127.0.0.1:7687") == Neo4jDeploymentType.ON_PREMISES
@@ -83,7 +81,7 @@ def test_detect_deployment_type_for_supported_uri_schemes():
 
 def test_placeholder_process_env_does_not_override_backend_env(monkeypatch):
     """A template Neo4j URI inherited from the shell is rejected."""
-    import core.db_config as db_config
+    import backend.core.db_config as db_config
 
     monkeypatch.setenv("NEO4J_URI", "neo4j+ssc://your-neo4j-instance")
     db_config.get_config.cache_clear()
@@ -97,7 +95,7 @@ def test_placeholder_process_env_does_not_override_backend_env(monkeypatch):
 # Test 2: Ontology Metadata Clearing
 def test_clear_all_metadata_removes_files():
     """Test that clear_all_metadata() removes all metadata files"""
-    from Services.ontology_upload_manager import OntologyUploadManager
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
     
     # Create temporary directory structure
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,7 +135,7 @@ def test_clear_all_metadata_removes_files():
 
 def test_clear_all_metadata_handles_empty_directory():
     """Test that clear_all_metadata() handles empty storage directory"""
-    from Services.ontology_upload_manager import OntologyUploadManager
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
     
     with tempfile.TemporaryDirectory() as tmpdir:
         storage_dir = Path(tmpdir)
@@ -154,7 +152,7 @@ def test_clear_all_metadata_handles_empty_directory():
 # Test 3: Encryption Settings Conditional Logic
 def test_driver_kwargs_conditional_encryption():
     """Test that driver kwargs are built correctly based on deployment type"""
-    from core.db_config import Neo4jDeploymentType, get_config
+    from backend.core.db_config import Neo4jDeploymentType, get_config
     
     config = get_config()
     
@@ -180,16 +178,16 @@ def test_driver_kwargs_conditional_encryption():
 @pytest.mark.asyncio
 async def test_clean_schema_endpoint_includes_metadata_clear():
     """Test that /admin/clean-schema endpoint clears metadata"""
-    from routes.admin_routes import (
+    from backend.routes.admin_routes import (
         CLEAN_SCHEMA_CONFIRM_TOKEN,
         CleanSchemaRequest,
         clean_neo4j_schema,
     )
     
     # Mock dependencies
-    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+    with patch('backend.routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
         # Ensure the module-level availability flag is True for the duration of this test
-        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+        with patch('backend.routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
             with patch('backend.Services.ontology_upload_manager.OntologyUploadManager') as mock_upload_manager:
                 # Setup mocks
                 mock_cleaner = MagicMock()
@@ -221,10 +219,10 @@ async def test_clean_schema_endpoint_includes_metadata_clear():
 @pytest.mark.asyncio
 async def test_schema_stats_counts_custom_indexes_separately():
     """Neo4j lookup indexes should not make a clean schema look dirty."""
-    from routes.admin_routes import get_schema_stats
+    from backend.routes.admin_routes import get_schema_stats
 
-    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
-        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+    with patch('backend.routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('backend.routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
             mock_cleaner = MagicMock()
             mock_cleaner.get_schema_stats.return_value = SimpleNamespace(
                 total_nodes=0,
@@ -247,7 +245,7 @@ async def test_schema_stats_counts_custom_indexes_separately():
 
 def test_admin_registry_returns_required_catalogs():
     """Admin registry should be read-only and complete enough for the UI shell."""
-    from routes.admin_routes import router
+    from backend.routes.admin_routes import router
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
@@ -270,7 +268,7 @@ def test_admin_registry_returns_required_catalogs():
 
 def test_admin_registry_masks_datasource_secrets():
     """Registry output must not expose Neo4j passwords or raw remote hosts."""
-    from routes.admin_routes import router
+    from backend.routes.admin_routes import router
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
@@ -296,7 +294,7 @@ def test_admin_registry_masks_datasource_secrets():
 
 def test_batched_delete_by_label_property_uses_transaction_chunks():
     """Large admin deletes should use CALL ... IN TRANSACTIONS and parameterized values."""
-    from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
+    from backend.Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
 
     class FakeRecord(dict):
         pass
@@ -361,7 +359,7 @@ def test_batched_delete_by_label_property_uses_transaction_chunks():
 
 def test_batched_delete_rejects_unsafe_identifiers():
     """Labels/properties are interpolated into Cypher only after strict validation."""
-    from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
+    from backend.Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
 
     cleaner = Neo4jSchemaCleaner.__new__(Neo4jSchemaCleaner)
     cleaner.driver = MagicMock()
@@ -377,7 +375,7 @@ def test_batched_delete_rejects_unsafe_identifiers():
 
 def test_relationship_delete_rejects_unsafe_type_identifiers():
     """Relationship delete must validate interpolated relationship types too."""
-    from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
+    from backend.Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
 
     cleaner = Neo4jSchemaCleaner.__new__(Neo4jSchemaCleaner)
     cleaner.driver = MagicMock()
@@ -391,7 +389,7 @@ def test_relationship_delete_rejects_unsafe_type_identifiers():
 
 def test_batched_delete_by_prefix_uses_coalesced_prefix_filter():
     """Prefix deletes should remove ontology/import families in transaction chunks."""
-    from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
+    from backend.Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
 
     class FakeRecord(dict):
         pass
@@ -450,7 +448,7 @@ def test_batched_delete_by_prefix_uses_coalesced_prefix_filter():
 
 def test_prefix_delete_preview_only_counts_matches():
     """Prefix preview must not execute DETACH DELETE."""
-    from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
+    from backend.Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
 
     class FakeRecord(dict):
         pass
@@ -500,10 +498,10 @@ def test_prefix_delete_preview_only_counts_matches():
 @pytest.mark.asyncio
 async def test_admin_delete_data_accepts_prefix_mode():
     """Admin route should dispatch prefix deletes without requiring a label."""
-    from routes.admin_routes import DeleteDataRequest, delete_data_by_label
+    from backend.routes.admin_routes import DeleteDataRequest, delete_data_by_label
 
-    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
-        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+    with patch('backend.routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('backend.routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
             mock_cleaner = MagicMock()
             mock_cleaner.delete_nodes_by_prefix.return_value = {
                 "status": "SUCCESS",
@@ -531,10 +529,10 @@ async def test_admin_delete_data_accepts_prefix_mode():
 @pytest.mark.asyncio
 async def test_admin_delete_data_accepts_prefix_property_filters():
     """Admin route should allow scoped prefix deletes with property filters."""
-    from routes.admin_routes import DeleteDataRequest, delete_data_by_label
+    from backend.routes.admin_routes import DeleteDataRequest, delete_data_by_label
 
-    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
-        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+    with patch('backend.routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('backend.routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
             mock_cleaner = MagicMock()
             mock_cleaner.delete_nodes_by_prefix.return_value = {
                 "status": "SUCCESS",
@@ -568,10 +566,10 @@ async def test_admin_delete_data_accepts_prefix_property_filters():
 @pytest.mark.asyncio
 async def test_admin_delete_data_prefix_dry_run_accepts_property_filters():
     """Admin dry-run should preview the same scoped prefix query used by delete."""
-    from routes.admin_routes import DeleteDataRequest, delete_data_by_label
+    from backend.routes.admin_routes import DeleteDataRequest, delete_data_by_label
 
-    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
-        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+    with patch('backend.routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('backend.routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
             mock_cleaner = MagicMock()
             mock_cleaner.count_nodes_by_prefix.return_value = {
                 "status": "SUCCESS",
@@ -604,10 +602,10 @@ async def test_admin_delete_data_prefix_dry_run_accepts_property_filters():
 @pytest.mark.asyncio
 async def test_admin_delete_data_dry_run_does_not_delete():
     """Admin dry-run should call preview count and skip the destructive delete method."""
-    from routes.admin_routes import DeleteDataRequest, delete_data_by_label
+    from backend.routes.admin_routes import DeleteDataRequest, delete_data_by_label
 
-    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
-        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+    with patch('backend.routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('backend.routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
             mock_cleaner = MagicMock()
             mock_cleaner.count_nodes_by_prefix.return_value = {
                 "status": "SUCCESS",

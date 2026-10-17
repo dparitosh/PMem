@@ -18,6 +18,7 @@ from backend.artifact_store import artifact_store
 from .agent_registry import registry
 from .ontology_builder import build_ontology_turtle, inspect_schema_set, validate_schema_set
 from .publishing import get_publisher
+from backend.depo_platform.graph_publication_transport import PublicationUnverified
 
 
 def _now() -> str:
@@ -150,7 +151,7 @@ class QifTaskService:
         """Atomically enqueue one retry for a registered ontology with a failed graph sync."""
         with self._lock:
             task = self._read(task_id)
-            if task.get("graph_sync", {}).get("status") != "failed" or not task.get("ontology_id"):
+            if task.get("graph_sync", {}).get("status") not in {"failed", "unverified", "publishing"} or not task.get("ontology_id"):
                 raise HTTPException(status_code=409, detail="Graph synchronization is not eligible for retry")
             task.update({"status": "graph_retry_queued", "stage": "graph_sync_queued", "progress": 92, "updated_at": _now()})
             self._event(task, "graph_sync", "Graph synchronization retry queued.")
@@ -172,7 +173,7 @@ class QifTaskService:
                 self.submit_prepare(task["task_id"])
                 recovered += 1
             elif task.get("status") in {"commit_queued", "running"} and task.get("stage") in {"register", "graph_sync"}:
-                task["status"] = "requires_review"
+                task["status"] = "publication_unverified" if task.get("graph_sync", {}).get("status") == "publishing" else "requires_review"
                 task["stage"] = "recovery_review"
                 self._event(task, "recovery", "Service stopped during publishing. Review the task before retrying graph synchronization.", "warning")
                 self._write(task["task_id"], task)
@@ -181,7 +182,7 @@ class QifTaskService:
 
     def cancel(self, task_id: str) -> dict[str, Any]:
         task = self._read(task_id)
-        if task["status"] in {"completed", "completed_with_warnings", "failed"}:
+        if task["status"] in {"completed", "completed_with_warnings", "failed", "publication_unverified"}:
             raise HTTPException(status_code=409, detail="A completed or failed QIF task cannot be cancelled")
         task.update({"status": "cancelled", "stage": "cancelled", "updated_at": _now()})
         self._event(task, "cancelled", "Cancellation requested; no additional workflow stages will run.", "warning")
@@ -278,15 +279,25 @@ class QifTaskService:
         attempts = int(task.get("graph_sync", {}).get("attempts", 0)) + 1
         try:
             artifact = self._task_dir(task_id) / "ontology" / f"{task['prefix']}_qif_ontology.ttl"
-            sync_result = get_publisher().sync_graph(ontology_id=ontology_id, artifact=artifact)
+            verify_only = task.get("graph_sync", {}).get("status") in {"unverified", "publishing"}
+            if not verify_only:
+                # Persist intent before dispatch: process loss must never turn into a blind replay.
+                self._update(task_id, graph_sync={"status": "publishing", "attempts": attempts})
+            publisher = get_publisher()
+            sync_result = (publisher.verify_graph if verify_only else publisher.sync_graph)(ontology_id=ontology_id, artifact=artifact)
             success = sync_result.get("status") == "success"
             graph_sync = {"status": "completed" if success else "failed", "attempts": attempts, "detail": sync_result}
+        except PublicationUnverified as exc:
+            success = False
+            graph_sync = {"status": "unverified", "attempts": attempts,
+                          "publication_id": exc.publication_id, "receipt_url": exc.receipt_url,
+                          "detail": "Commit outcome unverified. Verify the receipt; no write was retried."}
         except Exception as exc:
             success = False
             graph_sync = {"status": "failed", "attempts": attempts, "detail": f"{type(exc).__name__}: {exc}"}
-        status = "completed" if success else "completed_with_warnings"
+        status = "completed" if success else ("publication_unverified" if graph_sync["status"] == "unverified" else "completed_with_warnings")
         task = self._update(task_id, status=status, stage="completed", progress=100, graph_sync=graph_sync)
-        self._event(task, "completed", "Ontology registration and graph synchronization completed." if success else "Ontology registered; graph synchronization failed and can be retried.", "info" if success else "warning")
+        self._event(task, "completed", "Ontology registration and graph synchronization completed." if success else ("Ontology registered; publication outcome unverified. Check the receipt before retrying." if graph_sync["status"] == "unverified" else "Ontology registered; graph synchronization failed and can be retried."), "info" if success else "warning")
         self._write(task_id, task)
 
     def retry_graph_sync(self, task_id: str) -> None:

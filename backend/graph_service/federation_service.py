@@ -51,7 +51,9 @@ async def query(peer_id: str, payload: dict[str, Any], actor: str) -> dict[str, 
     token = os.getenv(f"SPARQL_PEER_{peer_id.upper().replace('-', '_')}_TOKEN", "")
     headers = {"x-depo-principal-id": actor}
     if token: headers["authorization"] = f"Bearer {token}"
-    async with httpx.AsyncClient(timeout=float(peer["timeout_seconds"])) as client:
-        response = await client.post(f"{peer['endpoint']}/api/v1/sparql", json={"ontology_id": ontology_id, "query": document, "limit": min(int(payload.get("limit") or 200), 200)}, headers=headers)
+    from backend.depo_platform.peer_http import async_peer_response
+    response = await async_peer_response('POST', f"{peer['endpoint']}/api/v1/sparql", headers=headers,
+        budget=float(peer['timeout_seconds']), json={'ontology_id':ontology_id, 'query':document,
+                                                 'limit':min(int(payload.get('limit') or 200),200)})
     if response.is_error: raise RuntimeError(f"Federation peer returned HTTP {response.status_code}")
     return {"peer_id": peer_id, "ontology_id": ontology_id, "executed_by": actor, "result": response.json()}

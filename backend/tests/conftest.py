@@ -4,11 +4,15 @@ Some historical files in this folder are manual live-environment scripts. They
 perform HTTP calls, wait for services, or mutate Neo4j at module import time.
 Keeping them out of default collection makes `pytest backend/tests` reliable
 while preserving the scripts for explicit acceptance runs.
+
+The maintained Neo4j connectivity/schema diagnostic is
+infra/windows/test-depo-neo4j.ps1; superseded one-off diagnostics were removed.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
@@ -19,8 +23,6 @@ _MANUAL_LIVE_TESTS = [
     "test_api_smoke.py",
     "test_e2e_ontology.py",
     "test_end_to_end_integration.py",
-    "test_neo4j_connection.py",
-    "test_neo4j_diagnostic.py",
     "test_ontology_corrected.py",
     "test_ontology_creation.py",
     "test_ontology_e2e.py",
@@ -60,8 +62,10 @@ def pytest_sessionfinish(session, exitstatus):
     production shutdown remains owned by the data-pipeline service lifespan.
     """
     try:
-        from backend.data_pipeline_service.runner import runner
-        runner.shutdown()
+        module = sys.modules.get("backend.data_pipeline_service.runner")
+        runner = getattr(module, "runner", None)
+        if runner is not None:
+            runner.shutdown()
     except Exception:
         # A Spark import/runtime may be intentionally absent from a unit-test
         # environment. Never turn test cleanup into a false failure.

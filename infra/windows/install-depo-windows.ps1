@@ -65,6 +65,10 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 Write-Host "Deployment environment file: $envPath"
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
+Invoke-DepoStage 'Stopped backend verification (before installation or migrations)' {
+  Assert-DepoDeploymentStopped -Root $root
+}
 Invoke-DepoStage 'Deployment configuration preflight (before dependency installation)' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
   if (-not $SkipFrontend) {

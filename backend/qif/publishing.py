@@ -14,6 +14,7 @@ from backend.depo_platform.network import service_bearer_headers
 class QifPublisher(Protocol):
     def register(self, *, artifact: Path, ontology_name: str, prefix: str, description: str) -> dict[str, Any]: ...
     def sync_graph(self, *, ontology_id: str, artifact: Path) -> dict[str, Any]: ...
+    def verify_graph(self, *, ontology_id: str, artifact: Path) -> dict[str, Any]: ...
 
 
 class ServicePublisher:
@@ -22,7 +23,8 @@ class ServicePublisher:
     def __init__(self) -> None:
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
-        self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "30"))
+        from backend.depo_platform.network import service_request_timeout_seconds
+        self.timeout = service_request_timeout_seconds()
 
     def register(self, *, artifact: Path, ontology_name: str, prefix: str, description: str) -> dict[str, Any]:
         with artifact.open("rb") as content, httpx.Client(timeout=self.timeout) as client:
@@ -37,15 +39,17 @@ class ServicePublisher:
         return {"status": "success", "ontology_id": payload["ontology_id"], "storage_path": payload["artifact_path"], "metadata": payload}
 
     def sync_graph(self, *, ontology_id: str, artifact: Path) -> dict[str, Any]:
-        with artifact.open("rb") as content, httpx.Client(timeout=self.timeout) as client:
-            response = client.post(
-                f"{self.graph_url}/graph/ontologies/publish",
-                data={"ontology_id": ontology_id, "prefix": ontology_id.split("_", 1)[0]},
-                files={"artifact": (artifact.name, content, "text/turtle")},
-                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
-            )
-        response.raise_for_status()
-        return response.json()
+        from backend.core.sync_async import call_async
+        from backend.depo_platform.graph_publication_transport import publish_graph
+        return call_async(lambda: publish_graph(self.graph_url, content=artifact.read_bytes(),
+                          ontology_id=ontology_id, prefix=ontology_id.split('_', 1)[0]))
+
+    def verify_graph(self, *, ontology_id: str, artifact: Path) -> dict[str, Any]:
+        import hashlib
+        from backend.core.sync_async import call_async
+        from backend.depo_platform.graph_publication_transport import verify_publication
+        identity = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        return call_async(lambda: verify_publication(self.graph_url, ontology_id, identity))
 
 
 def get_publisher() -> QifPublisher:

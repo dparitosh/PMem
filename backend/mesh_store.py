@@ -37,13 +37,24 @@ class PostgresRegistry:
             yield connection
 
     @contextmanager
-    def _session_connect(self):
+    def _session_connect(self, *, bounded=False):
         """Dedicated sessions for advisory locks; never return locks to a pool."""
         import psycopg
-        with psycopg.connect(self.database_url, autocommit=True, connect_timeout=connect_timeout_seconds(),
+        from backend.depo_platform.operations import current_operation
+        operation = current_operation() if bounded else None
+        connect_timeout = connect_timeout_seconds()
+        if operation:
+            import math
+            remaining = operation.timeout(connect_timeout)
+            if remaining < 2:
+                raise TimeoutError('Insufficient operation budget to open a PostgreSQL lock session')
+            connect_timeout = max(2, math.floor(remaining))
+        with psycopg.connect(self.database_url, autocommit=True, connect_timeout=connect_timeout,
                 application_name='depo-control-plane-lock', options=statement_options()) as connection:
-            with connection.cursor() as cursor: select_schema(cursor)
-            yield connection
+            from backend.depo_platform.postgres_pool import _DeadlineConnection
+            selected = _DeadlineConnection(connection) if operation else connection
+            with selected.cursor() as cursor: select_schema(cursor)
+            yield selected
 
     def all(self) -> dict[str, Any]:
         with self._connect() as connection, connection.cursor() as cursor:
@@ -153,6 +164,9 @@ class PostgresRegistry:
                 SELECT r.value FROM depo_registry r
                 LEFT JOIN depo_registry h ON h.namespace=%s AND h.key=r.key || ':' || COALESCE(r.value->>'execution_id','')
                 WHERE r.namespace=%s AND r.value->>'execution_mode'='worker'
+                  AND (r.value->>'authorization_retry_at' IS NULL
+                       OR (r.value->>'authorization_retry_at')::timestamptz <= now()
+                       OR (r.value->>'deadline_at')::timestamptz <= now())
                   AND COALESCE(r.value->'pending_step'->>'mutates','false') <> 'true'
                   AND COALESCE(r.value->>'reconciliation_required','false') <> 'true'
                   AND COALESCE(r.value->'compensations', '{}'::jsonb) IN ('{}'::jsonb, 'null'::jsonb)
@@ -268,16 +282,18 @@ class PostgresRegistry:
             return row[0] if row else None
 
     @contextmanager
-    def advisory_lock(self, key: str):
+    def advisory_lock(self, key: str, *, bounded=False):
         """Hold a PostgreSQL session lock for one cross-process operation."""
         lock_name = f"{self.namespace}:{key}"
-        with self._session_connect() as connection, connection.cursor() as cursor:
+        with self._session_connect(bounded=bounded) as connection, connection.cursor() as cursor:
             cursor.execute("SELECT pg_try_advisory_lock(hashtextextended(%s, 0))", (lock_name,))
             acquired = bool(cursor.fetchone()[0])
             try:
                 yield acquired
             finally:
-                if acquired:
+                # Dedicated connection close releases bounded session locks;
+                # no unlock SQL may run after the operation deadline.
+                if acquired and not bounded:
                     cursor.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (lock_name,))
 
 

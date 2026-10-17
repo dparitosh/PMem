@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from neo4j import Query
+from backend.depo_platform.graph_access import graph_operation
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ _graph_last_failed_at: float = 0.0
 _GRAPH_RETRY_COOLDOWN = 60.0  # seconds between reconnect attempts
 
 
+@graph_operation
 def get_graph():
     """Get or create the Neo4j graph connection (lazy initialization).
 
@@ -123,6 +125,8 @@ def get_graph():
             )
             logger.info("Neo4j graph connection established (legacy configuration)")
         
+        from backend.depo_platform.graph_access import guard_driver
+        _graph._driver = guard_driver(_graph._driver)
         _graph_last_failed_at = 0.0
     except Exception as exc:
         _graph = None

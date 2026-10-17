@@ -21,7 +21,7 @@ class RunIds(unittest.TestCase):
             self.observations.append(record)
             return record, time.perf_counter()
         return {'Any': object, 'Request': object, '_agent_io': lambda fn, *a, **kw: asyncio.to_thread(fn, *a, **kw), 'sessions': SimpleNamespace(owner=lambda *a: 'owner'), 'asyncio': asyncio, 'time': time, 'os': __import__('os'), 'datetime': datetime, 'timezone': timezone, 'timedelta': timedelta, 'uuid4': uuid4,
-            'plan': lambda value: {'requires_approval': False}, 'workflow_plan': lambda value: {'steps': []}, 'graph_read_identity': lambda request: None,
+            'plan': lambda value: {'requires_approval': False, 'tool': {'mutates': False}}, 'workflow_plan': lambda value: {'steps': []}, 'graph_read_identity': lambda request: None,
             'telemetry': SimpleNamespace(start=start), '_tool_span': lambda *a, **kw: None, '_finish_observation': lambda *a, **kw: None,
             '_now': lambda: datetime.now(timezone.utc).isoformat(), 'HTTPException': HTTPException,
             'catalog': SimpleNamespace(item=lambda *a: {'id': 'workflow', 'steps': []}), 'workflow_store': SimpleNamespace(put=lambda key, record: self.records.append(dict(record))),
@@ -47,10 +47,18 @@ class RunIds(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             asyncio.run(namespace['run']({}, request))
         self.assertEqual(caught.exception.headers['X-DEPO-Run-ID'], 'agent-one')
-    def test_workflow_and_telemetry_link_both_directions(self):
+    def test_workflow_submission_uses_durable_worker(self):
+        from unittest.mock import AsyncMock, patch
+        import sys
+        payload = {'workflow_id': 'workflow'}
+        request = SimpleNamespace(state=SimpleNamespace(request_id='request'))
+        enqueue = AsyncMock(return_value={'run_id':'run-one', 'status':'queued'})
+        durable = SimpleNamespace(execution_mode=lambda: 'worker', enqueue=enqueue)
         namespace = self.namespace()
-        result = asyncio.run(self.load('run_workflow', namespace)({'workflow_id': 'workflow'}, SimpleNamespace(state=SimpleNamespace(request_id='request'))))
-        self.assertEqual(result['telemetry_run_id'], 'agent-one')
-        self.assertEqual(self.observations[0]['workflow_run_id'], result['run_id'])
+        namespace.update(__name__='backend.agentic_service.router', __package__='backend.agentic_service')
+        with patch.dict(sys.modules, {'backend.agentic_service.durable_workflows': durable}):
+            result = asyncio.run(self.load('run_workflow', namespace)(payload, request))
+        enqueue.assert_awaited_once_with(payload, request)
+        self.assertEqual(result, {'run_id':'run-one', 'status':'queued'})
 
 if __name__ == '__main__': unittest.main()

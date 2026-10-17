@@ -15,15 +15,12 @@ class GraphDataClient:
         # This is a private peer read, including when browser auth uses Entra.
         # The Graph service verifies this server-owned credential independently.
         headers = service_bearer_headers('GRAPH_PUBLICATION_TOKEN', service_name='Graph data service', endpoint=endpoint)
-        with httpx.Client(timeout=bounded_timeout_seconds('GRAPH_QUERY_TIMEOUT_SECONDS', default=30, maximum=300),
-                          trust_env=False, follow_redirects=False) as client:
-            with client.stream('GET', endpoint, params={'scope': scope}, headers=headers) as response:
-                response.raise_for_status()
-                content = bytearray()
-                for chunk in response.iter_bytes():
-                    content.extend(chunk)
-                    if len(content) > 16 * 1024 * 1024:
-                        raise RuntimeError('Graph mapping response exceeds the permitted size.')
+        from .peer_http import peer_response
+        response = peer_response('GET', endpoint, params={'scope':scope}, headers=headers,
+                                 budget=bounded_timeout_seconds('GRAPH_QUERY_TIMEOUT_SECONDS', default=30, maximum=300),
+                                 response_limit=16 * 1024 * 1024)
+        response.raise_for_status()
+        content = response.content
         payload = json.loads(content)
         terms = payload.get('terms') if isinstance(payload, dict) else None
         if not isinstance(terms, list) or len(terms) > 10000 or any(

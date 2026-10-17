@@ -20,7 +20,10 @@ TIMEOUT_RANGES = {
     'ONTOLOGY_PUBLICATION_JOB_TIMEOUT_SECONDS': (1, 86400),
     'ONTOLOGY_PUBLICATION_QUEUE_TIMEOUT_SECONDS': (1, 86400),
     'BRIDGE_SOURCE_TIMEOUT_SECONDS': (1, 900),
-    'BRIDGE_SOURCE_TIMEOUT_SECONDS': (1, 900),
+    'DEPO_REQUEST_TIMEOUT_SECONDS': (1, 86400),
+    'DEPO_CONTROL_REQUEST_TIMEOUT_SECONDS': (1, 60),
+    'DEPO_PIPELINE_JOB_TIMEOUT_SECONDS': (1, 86400),
+    'QIF_TASK_TIMEOUT_SECONDS': (1, 86400),
 }
 
 
@@ -149,4 +152,10 @@ def service_bearer_headers(token_env: str, *, service_name: str, endpoint: str =
     require_active_token(token_env)
     if not token:
         raise RuntimeError(f"{token_env} is required to call {service_name}")
-    return {**gateway_subscription_headers(endpoint), "Authorization": f"Bearer {token}"}
+    return {**gateway_subscription_headers(endpoint), **operation_headers(), "Authorization": f"Bearer {token}"}
+
+
+def operation_headers():
+    from .operations import current_operation
+    operation = current_operation()
+    return {'X-DEPO-Deadline':operation.deadline_at} if operation else {}

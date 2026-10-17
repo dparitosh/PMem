@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
-from openapi_spec_validator import validate
 
 from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from backend.depo_platform.service_runtime import create_service_app
@@ -59,6 +58,7 @@ def test_each_service_declared_catalog_has_unique_keys(module):
 
 
 def test_nullable_schema_and_security_are_valid_openapi_30():
+    from openapi_spec_validator import validate
     app = make_app()
     @app.get('/typed', response_model=QifTaskResponse, dependencies=[Depends(graph_read_identity)])
     def typed():

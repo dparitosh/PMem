@@ -10,7 +10,8 @@ import os
 import re
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
-from neo4j import GraphDatabase, Driver
+from neo4j import Driver
+from backend.depo_platform.graph_access import GraphDatabase
 from dataclasses import dataclass
 from dotenv import load_dotenv
 

@@ -10,7 +10,7 @@ from backend.depo_platform.bridge_contract import digest
 
 @contextmanager
 def session():
-    from neo4j import GraphDatabase
+    from backend.depo_platform.graph_access import GraphDatabase
     from backend.depo_platform.neo4j_setup import _auth
     uri = os.getenv('NEO4J_URI') or os.getenv('NEO4J_URL')
     if not uri:

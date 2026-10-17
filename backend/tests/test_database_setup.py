@@ -70,12 +70,18 @@ def test_check_only_never_migrates(monkeypatch, check_only):
     monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://fixture')
     initialize, migrate = MagicMock(), MagicMock()
     monkeypatch.setattr(setup, 'initialise_schema', initialize)
+    select = MagicMock()
+    monkeypatch.setattr(setup, 'select_schema', select)
     privileges = MagicMock()
     monkeypatch.setattr(setup, 'verify_migration_privileges', privileges)
     monkeypatch.setattr(setup, 'apply_migrations', migrate)
     assert setup.setup_database(check_only=check_only)['status'] == 'ok'
     assert initialize.call_count == migrate.call_count == (0 if check_only else 1)
     assert privileges.call_count == (0 if check_only else 1)
+    assert select.call_count == (1 if check_only else 0)
+    if check_only:
+        statements = [call.args[0] for call in conn.cursor.return_value.__enter__.return_value.execute.call_args_list]
+        assert statements[0] == 'SET TRANSACTION READ ONLY'
 
 
 def test_connection_only_does_not_touch_schema(monkeypatch):

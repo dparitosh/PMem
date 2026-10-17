@@ -153,6 +153,9 @@ def create_service_app(
             renewal['x-depo-authorization'] = {'credential_profiles': ['GRAPH_READ_TOKEN'], 'resolution': 'explicit', 'browser_session_only': True}
         return app.openapi_schema
     app.openapi = compatible_openapi
+    from .qos import QoSMiddleware, QoSState
+    app.state.qos = QoSState()
+    app.add_middleware(QoSMiddleware, state=app.state.qos)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -257,6 +260,11 @@ def create_service_app(
                 raise HTTPException(404, 'Credential profile not registered')
             cursor.execute('INSERT INTO depo_api_credential_events(profile,action,actor) VALUES (%s,%s,%s)', (profile, 'revoke', actor))
         return {'status': 'revoked', 'profile': profile}
+
+    @app.get('/qos/metrics', summary='Bounded request admission and latency metrics', dependencies=[Depends(graph_read_identity)])
+    def qos_metrics():
+        from .postgres_pool import pool_metrics
+        return {**app.state.qos.snapshot(), 'postgres_pools': pool_metrics()}
 
     @app.get("/auth/access", summary="Verify service read authentication without querying shared stores")
     def authenticated_access(identity: str = Depends(graph_read_identity)) -> dict[str, str]:

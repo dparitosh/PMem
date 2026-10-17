@@ -5,8 +5,8 @@ from backend.Services.unified_data_import import UnifiedDataImportService, impor
 
 
 def test_shacl_persist(tmp_path, monkeypatch):
-    # Ensure fixture is available (no-op) and initialize directories under repo
-    assert monkeypatch is not None
+    monkeypatch.setattr(UnifiedDataImportService, 'UPLOAD_DIR', tmp_path)
+    monkeypatch.setattr(UnifiedDataImportService, 'TASK_STORE_DIR', tmp_path / 'tasks')
     UnifiedDataImportService.initialize()
 
     task_id = str(uuid.uuid4())
@@ -17,7 +17,7 @@ def test_shacl_persist(tmp_path, monkeypatch):
         # Simulate a SHACL report produced by OWL generation/validation
         'shacl_report': {'conforms': False, 'results': ['warning']},
     }
-    import_tasks[task_id] = task
+    monkeypatch.setitem(import_tasks, task_id, task)
 
     # Persist the task — should write snapshot and a separate shacl_report file
     UnifiedDataImportService._persist_task(task_id)

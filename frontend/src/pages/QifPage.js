@@ -10,7 +10,7 @@ import QifAp242Mapping from './qif/QifAp242Mapping';
 
 const panelStyle = { background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderRadius: 6, padding: 16 };
 const inputStyle = { width: '100%', boxSizing: 'border-box', color: 'var(--ui-text)', background: 'var(--ui-surface)', border: '1px solid var(--ui-border)', borderRadius: 4, padding: '8px 10px', font: 'inherit' };
-const terminal = new Set(['completed', 'completed_with_warnings', 'failed', 'cancelled', 'awaiting_approval', 'requires_review']);
+const terminal = new Set(['completed', 'completed_with_warnings', 'publication_unverified', 'failed', 'cancelled', 'awaiting_approval', 'requires_review']);
 
 function detailOf(error) {
   const detail = error.response?.data?.detail;
@@ -34,6 +34,7 @@ function statusLabel(status) {
 function taskOutcome(task) {
   if (!task) return 'No task selected';
   if (task.status === 'awaiting_approval') return 'Review required before publishing';
+  if (task.status === 'publication_unverified') return 'Publication outcome unverified; verify the saved receipt before retrying';
   if (task.status === 'completed') return 'Ontology published and graph synchronized';
   if (task.status === 'completed_with_warnings') return 'Ontology published; graph synchronization needs review';
   if (task.status === 'failed') return 'Workflow failed; review validation and events';
@@ -269,7 +270,7 @@ export default function QifPage({ workflowMode = false }) {
 
       {workflowMode && validation && <section style={{ ...panelStyle, marginTop: 14, borderColor: validation.valid ? '#57a773' : '#d14343' }}><div className="depo-panel__title">3. Validation and dependency review</div><p className="depo-panel__meta">{validation.valid ? `${validation.resolved_references.length} local references resolved across ${validation.namespace_count} namespace(s).` : 'Resolve the blocking errors before continuing.'}</p>{validation.errors?.map((item, index) => <div key={`error-${index}`} className="qif-message qif-message--error">{item.file}: {item.error}</div>)}{validation.warnings?.map((item, index) => <div key={`warning-${index}`} className="qif-message qif-message--warning">{item.source ? `${item.source}: ` : ''}{item.message}</div>)}</section>}
 
-      {workflowMode && task?.summary && <section id={`qif-artifacts-${task.task_id}`} style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">4. Ontology preview and artifacts</div><p className="depo-panel__meta">{task.summary.files_processed} files · {task.summary.classes_created} classes · {task.summary.properties_created} properties · {task.summary.references_found} schema references.</p><div className="qif-artifact-list">{task.artifacts?.map((artifact) => <button type="button" key={artifact.path} onClick={() => downloadArtifact(artifact)}>{artifact.name}<small>{artifact.kind}</small></button>)}</div>{task.graph_sync?.status && <div style={{ marginTop: 10, fontSize: 12 }}>Graph synchronization: {statusLabel(task.graph_sync.status)}</div>}{task.graph_sync?.status === 'failed' && <button type="button" className="depo-action-button" disabled={actionBusy} style={{ marginTop: 10 }} onClick={retryGraph}><Workflow size={15} /> Retry graph synchronization</button>}</section>}
+      {workflowMode && task?.summary && <section id={`qif-artifacts-${task.task_id}`} style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">4. Ontology preview and artifacts</div><p className="depo-panel__meta">{task.summary.files_processed} files · {task.summary.classes_created} classes · {task.summary.properties_created} properties · {task.summary.references_found} schema references.</p><div className="qif-artifact-list">{task.artifacts?.map((artifact) => <button type="button" key={artifact.path} onClick={() => downloadArtifact(artifact)}>{artifact.name}<small>{artifact.kind}</small></button>)}</div>{task.graph_sync?.status && <div style={{ marginTop: 10, fontSize: 12 }}>Graph synchronization: {statusLabel(task.graph_sync.status)}</div>}{['failed', 'unverified', 'publishing'].includes(task.graph_sync?.status) && <button type="button" className="depo-action-button" disabled={actionBusy} style={{ marginTop: 10 }} onClick={retryGraph}><Workflow size={15} /> {['unverified', 'publishing'].includes(task.graph_sync?.status) ? 'Verify publication receipt' : 'Retry graph synchronization'}</button>}</section>}
 
       {workflowMode && task?.events?.length > 0 && <section style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">Task event trail</div>{task.events.map((event, index) => <div key={`${event.at}-${index}`} style={{ display: 'grid', gridTemplateColumns: '120px 105px 1fr', gap: 8, borderTop: index ? '1px solid #edf1f5' : 'none', padding: '7px 0', fontSize: 12 }}><span>{new Date(event.at).toLocaleTimeString()}</span><strong>{event.stage}</strong><span>{event.message}</span></div>)}</section>}
 

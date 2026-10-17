@@ -552,7 +552,8 @@ def get_driver() -> Driver:
         with driver.session() as session:
             result = session.run("MATCH (n) RETURN count(n)")
     """
-    return _pool.get_driver()
+    from backend.depo_platform.graph_access import guard_driver
+    return guard_driver(_pool.get_driver())
 
 
 def close_driver() -> None:
@@ -586,13 +587,13 @@ class Neo4jConnection:
         """Enter context - create session"""
         driver = get_driver()
         self.session = driver.session(database=self.database or get_config().database)
-        return self.session
+        return self.session.__enter__()
     
     def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         """Exit context - close session"""
         if self.session:
             try:
-                self.session.close()
+                self.session.__exit__(_exc_type, _exc_val, _exc_tb)
             except Exception as exc:
                 logger.error(f"Error closing session: {exc}")
 

@@ -6,6 +6,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
   'infra/windows/service-runtimes.ps1', 'infra/windows/install-depo-service.ps1',
+  'infra/windows/deployment-process-guards.ps1',
   'backend/depo_platform/service_smoke.py', 'backend/dependency-profiles/platform-tools.txt',
   'backend/dependency-profiles/ocr.txt', 'backend/dependency-profiles/windows-metadata.json',
   'infra/windows/native-install-command.ps1',

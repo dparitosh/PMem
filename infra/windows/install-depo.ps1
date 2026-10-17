@@ -48,6 +48,7 @@ if ($CheckPrerequisites) {
   return
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 # Import the selected deployment configuration before any service imports.
 # Python's legacy .env lookup does not load root .env.local automatically.
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
@@ -59,6 +60,7 @@ if (-not (Test-Path $venvPython)) {
   if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed." }
 }
 $requirements = if ($Development) { Join-Path $root 'backend/requirements-dev.txt' } else { $productionLock }
+Assert-DepoRuntimeIdle -Python $venvPython
 . (Join-Path $PSScriptRoot 'native-install-command.ps1')
 $installLogDir = Join-Path $root 'logs\installation'
 New-Item -ItemType Directory -Path $installLogDir -Force | Out-Null

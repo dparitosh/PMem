@@ -68,8 +68,10 @@ def publication_receipt(ontology_id: str, publication_id: str) -> dict:
                 progress = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
                 return JSONResponse(status_code=409, content={'detail': 'Publication is still active',
                     'status': 'publishing', 'ontology_id': ontology_id, 'publication_id': publication_id,
-                    'progress': {key: progress.get(key) for key in ('resource_offset', 'resources_expected', 'relationships_expected')} if progress and progress.get('status') == 'staging' else None})
+                    'progress': {key: progress.get(key) for key in ('resource_offset', 'resources_expected', 'relationships_expected', 'activation_resource_offset', 'activation_relationship_offsets')} if progress and progress.get('status') == 'staging' else None})
             receipt = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
+            from backend.depo_platform.graph_access import reconcile_activation
+            reconcile_activation(ontology_id, publication_id, receipt)
             if receipt is None or receipt.get('status') == 'staging':
                 return JSONResponse(status_code=404, content={'detail': 'Publication receipt was not found', 'publication_idle': True,
                     'resumable': bool(receipt and receipt.get('status') == 'staging')})

@@ -16,7 +16,7 @@ def extract(relative, name, scope):
     tree = ast.parse((ROOT / relative).read_text(encoding="utf-8"))
     node = next(n for n in tree.body if getattr(n, "name", None) == name)
     node.decorator_list = []
-    exec(compile(ast.Module(body=[node], type_ignores=[]), relative, "exec"), scope)
+    exec(compile(ast.Module(body=[node], type_ignores=[]), relative, "exec", flags=__import__("__future__").annotations.compiler_flag), scope)
     return scope[name]
 
 

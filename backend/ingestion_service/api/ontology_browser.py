@@ -5,7 +5,7 @@ from backend.depo_platform.request_bodies import InferenceBody
 
 from fastapi import APIRouter, HTTPException
 import os
-from neo4j import GraphDatabase
+from backend.depo_platform.graph_access import GraphDatabase
 from fastapi.responses import Response
 from rdflib import Graph
 

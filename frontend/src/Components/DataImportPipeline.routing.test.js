@@ -386,7 +386,7 @@ describe('DataImportPipeline workflow routing', () => {
       fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['<urn:a> <urn:b> <urn:c> .'], 'evidence.ttl')] } });
       await flushAsyncEffects();
     });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'RDF evidence' } });
+    fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'RDF evidence' } });
     fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'evidence' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');

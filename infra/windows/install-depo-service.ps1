@@ -12,6 +12,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 . (Join-Path $PSScriptRoot 'native-install-command.ps1')
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
 $entries = @($manifest.services) + @($manifest.workers)
@@ -29,12 +30,15 @@ foreach ($entry in $entries) {
 if ($CheckOnly) { Write-Host "Validated $($entries.Count) service lock files; no runtimes installed."; return }
 $runtimeVersion = & $Python -c 'import sys; print(sys.version_info.major, sys.version_info.minor, 64 if sys.maxsize > 2**32 else 32)'
 if ($LASTEXITCODE -ne 0 -or "$runtimeVersion".Trim() -ne '3 12 64') { throw 'Service runtimes require 64-bit CPython 3.12.' }
-$running = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+# Validate the entire selection before changing the first runtime.
+foreach ($entry in $entries) {
+  Assert-DepoRuntimeIdle -Python (Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode isolated)
+}
 $logs = Join-Path $root 'logs/installation'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 foreach ($entry in $entries) {
   $servicePython = Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode isolated
-  if ($running | Where-Object { $_.ExecutablePath -ieq $servicePython }) { throw "Stop service '$($entry.id)' before updating its runtime." }
+  Assert-DepoRuntimeIdle -Python $servicePython
   $venv = Split-Path (Split-Path $servicePython -Parent) -Parent
   if (-not (Test-Path -LiteralPath $servicePython)) {
     & $Python -m venv $venv

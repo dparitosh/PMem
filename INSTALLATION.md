@@ -237,6 +237,18 @@ For legacy `DEPO_CREDENTIAL_STORE=environment` deployments, omit the central-cre
 
 Checkpoint: schema checks return `status: ok` and credential import returns `status: ok` with created/unchanged profiles. A mismatch is a stop condition: review the selected file and centrally stored actor, expiry and revocation. Use `-ReplaceExisting` only for deliberate replacement of all supplied profiles, never as an automatic retry. These commands require the installed backend virtual environment.
 
+Normal Windows service startup verifies the installed PostgreSQL schema without applying
+migrations or requiring table ownership. Apply pending migrations through the
+installation or upgrade workflow while backend processes are stopped. The Windows
+installer rejects running shared or isolated backend runtimes, including when
+dependency installation is skipped. Use the repository-root `update-depo.ps1`
+for an existing deployment.
+
+Windows service reuse now verifies both backend code and a private configuration
+digest. After changing the environment file, bind address or Spark options, stop
+and restart the services to apply the change. Existing processes without a saved
+configuration digest also require a restart after this upgrade.
+
 Then build. The commands stop if dependency installation or compilation fails:
 
 ```powershell
@@ -642,20 +654,27 @@ uniqueness constraint; publication fails closed until Neo4j schema provisioning
 has applied it.
 
 Ontology publication from the review panel now submits a durable background job.
-After upgrading and provisioning `uq_ontologystagedresource_identity`, a first
+After upgrading and provisioning `uq_ontologystagedresource_identity`, each identified
 publication commits resources and relationships in batches of 1,000. Batches use
 the `StagedOntologyResource` label and remain outside the public RDF projection.
-One final transaction checks resource/relationship counts and exposes the
-projection with its publication receipt. The panel shows queued/running status
+Activation also commits bounded node, relationship and cleanup batches, followed
+by a small publication-receipt transaction. The panel shows queued/running status
 and committed resource progress; it can be closed while the server works.
 
 Interrupted batches are retained. Verify publication first, then explicitly
 submit the same approved artifact again to resume its checkpoints. A changed
 manifest cannot reuse those checkpoints. Cancel is available only before a
 queued job starts; it does not undo completed writes. Do not delete staging data
-manually while publication is active. Replacing a published projection, or one
-with retained external identities, continues to use the atomic replacement path
-to preserve Semantic Bridge element IDs. Missing staging schema produces a
+manually while publication is active. Replacements also commit their preparation
+batches and resume retained checkpoints. Final replacement activation reads staged
+properties on the server and updates existing identities to preserve Semantic Bridge
+and instance links. The previous projection remains readable during preparation.
+During activation, a PostgreSQL visibility barrier temporarily rejects application
+graph access instead of returning a partially updated projection. Receipt polling,
+authentication and service readiness remain available. All graph-consuming services
+must be upgraded together; older processes and external direct Neo4j clients do not
+participate in this barrier.
+Missing staging schema produces a
 clear configuration error; rerun the matching release installer to provision
 the staging constraint. Publication no longer silently falls back.
 
@@ -664,8 +683,9 @@ the staging constraint. Publication no longer silently falls back.
 each batch receives only its remaining time. Final activation has a separate
 `GRAPH_PUBLICATION_ACTIVATION_TIMEOUT_SECONDS` budget. Both optional settings
 inherit the preparation budget when omitted and accept 1–3600 seconds.
-Atomic replacements use the combined write and activation allowance, preserving
-existing graph identities and visibility until commit. Preliminary reads and
+Activation uses its activation allowance plus any unused write time. Each activation
+transaction receives at most 30 seconds from that shared remaining budget. This
+preserves graph identities while allowing checkpoint recovery. Preliminary reads and
 connection acquisition are bounded. Confirmed-idle, resumable staged jobs retry
 from retained checkpoints automatically, up to three attempts; uncertain atomic
 writes are verified rather than replayed. Increasing browser timeouts does not
@@ -675,6 +695,23 @@ Graph views, dictionaries, requirements and OSLC queries exclude staged nodes.
 Generic graph/OSLC reads also exclude internal `OntologyPublication` receipts
 before pagination and aggregation. Deploy these readers together with the
 publisher so unfinished batches cannot appear in customer results.
+
+Lock acquisition and activation share one deadline. A failure while draining readers
+or validating staging clears its own pre-write barrier. After graph writes may have
+started, the barrier remains until the same publication resumes or its exact current
+published receipt is verified. Normal receipt polling repairs a failed post-commit
+marker acknowledgement. Marker cleanup has a bounded three-second recovery allowance;
+it cannot clear another publication or write graph data. PostgreSQL transactions
+recheck execution ownership and remaining time before commit; expired pooled
+connections are discarded without reset SQL. A transport error during commit still
+requires receipt reconciliation because the commit may already have succeeded.
+
+Each activation attempt has a unique owner token. PostgreSQL ownership is checked
+before every batch, and each Neo4j mutation locks its publication receipt before
+checking the owner in the same transaction. A worker whose lock connection was lost
+cannot keep writing after another worker resumes, nor clear that worker's barrier.
+The receipt and canonical-resource uniqueness constraints must be provisioned along
+with the staging constraint before publishing.
 
 ### 1.2 Install optional Apache Spark and PySpark
 
@@ -2418,7 +2455,14 @@ Set-Location E:\App\PMem
 .\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
 ```
 
-The installer applies pending migrations before starting backend services. Backend startup also performs migration/verification, so a subsequent restart can apply pending migrations with the installed backend runtime. Applied migration versions and checksums are recorded in the configured schema's `depo_schema_migrations` table; already applied files are skipped, and changed historical files are rejected. New releases must add numbered migrations rather than edit applied files. Failed migration or final schema verification rolls back the update transaction and prevents this startup from launching services; it does not stop services that were already running.
+The Windows installer applies pending migrations while backend processes are stopped.
+Normal Windows startup verifies the installed schema in a read-only transaction;
+pending migrations require the installation or upgrade command. Applied versions
+and checksums are recorded in the configured schema's `depo_schema_migrations`
+table. Already applied files are skipped and changed historical files are rejected.
+New releases must add numbered migrations rather than edit applied files. A failed
+migration or final verification rolls back the update transaction and prevents the
+installer from launching services.
 
 With `DEPO_CREDENTIAL_STORE=postgres`, migration also inserts missing credential profiles from the selected environment. Existing rotated or revoked profiles are preserved. Reinstallation does not reset database-managed keys or make expired/revoked keys valid. Schema updates do not automatically create analytics tables from imported XSD plans.
 
@@ -4914,3 +4958,10 @@ $ontologyId = Read-Host 'Retained ontology ID to verify'
 This checks current authenticated ontology routes and the published graph receipt.
 Customer gateway access, large ontology publication and browser acceptance still
 require validation in the deployed environment.
+
+
+### Publication deadlines and uncertain outcomes
+
+QIF and CEIM graph dispatch use the shared graph publication budget: RDF preparation + staged writes + activation + 30 seconds of transport allowance (570 seconds with default settings). This is an overall caller budget, not one long Neo4j transaction; graph staging transactions are capped at 30 seconds and check the remaining operation deadline.
+
+A client timeout or disconnect cannot undo an already dispatched commit. The caller performs one bounded read-only receipt lookup using the ontology and publication IDs. A verified receipt confirms completion; an unavailable, active, or missing receipt leaves the outcome unverified. Do not automatically repeat the publication. QIF retains this state across restart and its verification action reads the receipt without issuing another publication. CEIM returns the publication identity and receipt URL in its structured unavailable response.

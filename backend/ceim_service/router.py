@@ -211,22 +211,9 @@ async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str, publi
     # standard API root.  Normalize it once to avoid the subtle `/api/v1/api/v1`
     # route that otherwise turns a governed publication into a false 404.
     graph_api_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
-    # Large ontology projections can exceed the default request window while
-    # Neo4j commits. Keep the boundary configurable for customer deployments.
-    publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
-    async with httpx.AsyncClient(timeout=publication_timeout) as client:
-        response = await client.post(
-            f"{graph_api_root}/graph/ontologies/publish",
-            data={"ontology_id": ontology_id, "prefix": prefix, "publication_id": publication_id or ""},
-            files={"artifact": (f"{ontology_id}.ttl", turtle.encode("utf-8"), "text/turtle")},
-            headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=graph_api_root),
-        )
-    if response.is_error:
-        raise httpx.HTTPStatusError(
-            f"Graph service returned {response.status_code}", request=response.request, response=response,
-        )
-    return dict(response.json())
-
+    from backend.depo_platform.graph_publication_transport import publish_graph
+    return await publish_graph(graph_api_root, content=turtle.encode('utf-8'), ontology_id=ontology_id,
+                               prefix=prefix, publication_id=publication_id)
 
 @router.post("/publications/graph", summary="Validate and explicitly publish a CEIM RDF projection through the graph service")
 async def publish_graph(payload: CeimBatchBody, request: Request) -> dict[str, Any]:
@@ -273,7 +260,7 @@ async def publish_graph(payload: CeimBatchBody, request: Request) -> dict[str, A
             "prefix": prefix,
             "approved_by": approved_by,
             "semantic_release": semantic_release,
-            "publication_id": publication_id,
+            "publication_id": publication.get("publication_id", publication_id),
             "validation": {key: validation[key] for key in ("conforms", "triple_count", "ceim_version")},
             "publication": publication,
         }
@@ -282,6 +269,13 @@ async def publish_graph(payload: CeimBatchBody, request: Request) -> dict[str, A
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
+        from backend.depo_platform.graph_publication_transport import PublicationUnverified
+        if isinstance(exc, PublicationUnverified):
+            raise HTTPException(status_code=503, detail={
+                "status": "publication_unverified", "ontology_id": exc.ontology_id,
+                "publication_id": exc.publication_id, "receipt_url": exc.receipt_url,
+                "message": "Verify the publication receipt before retrying. No write was retried.",
+            }) from exc
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Graph publication is unavailable: {type(exc).__name__}") from exc

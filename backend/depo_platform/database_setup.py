@@ -6,7 +6,7 @@ import sys
 import re
 import ipaddress
 
-from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema, statement_options
+from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema, select_schema, statement_options
 from backend.depo_platform.schema_contract import verify_structure
 from backend.postgres_migrations import MIGRATIONS, apply_migrations, migration_checksum
 
@@ -268,7 +268,11 @@ def setup_database(*, check_only=False, connection_only=False, upgrade_preflight
                 from .credentials import bootstrap_environment
                 bootstrap_environment(connection)
                 return verify_schema(connection)
-        return verify_schema(connection)
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.execute('SET TRANSACTION READ ONLY')
+                select_schema(cursor)
+            return verify_schema(connection)
 
 
 def main():

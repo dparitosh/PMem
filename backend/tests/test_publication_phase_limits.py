@@ -45,3 +45,22 @@ class PhaseTests(unittest.TestCase):
             scope['main']()
         build.assert_called_once_with(graph)
         self.assertEqual(pickle.loads(output.getvalue()), projection)
+
+    def test_receipt_and_resource_constraints_are_required_before_activation(self):
+        from backend.depo_platform.neo4j_setup import CONSTRAINT_DEFINITIONS
+        tree = ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_publish_staged_initial')
+        scope = {'Query': lambda text, **kwargs: text}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), '<publisher>', 'exec'), scope)
+        for missing in ('uq_ontologypublication_identity', 'uq_ontologyresource_identity'):
+            calls = []
+            def run(query):
+                name = next(name for name in CONSTRAINT_DEFINITIONS if name in query)
+                calls.append(name)
+                label, properties = CONSTRAINT_DEFINITIONS[name]
+                row = None if name == missing else {'type': 'UNIQUENESS', 'entityType': 'NODE',
+                                                    'labelsOrTypes': [label], 'properties': properties}
+                return SimpleNamespace(single=lambda: row)
+            with self.subTest(missing=missing), self.assertRaisesRegex(RuntimeError, missing):
+                scope['_publish_staged_initial'](object(), SimpleNamespace(run=run))
+            self.assertEqual(calls[-1], missing)

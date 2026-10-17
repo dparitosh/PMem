@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
-from neo4j import GraphDatabase, Query
+from neo4j import Query
+from backend.depo_platform.graph_access import GraphDatabase
 import tiktoken
 
 # ---------------------------------------------------------------------------

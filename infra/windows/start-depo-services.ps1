@@ -28,6 +28,7 @@ Write-Host 'Backend release fingerprint verified. Loading deployment configurati
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 $configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
 $corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
@@ -69,16 +70,26 @@ try {
 
 $requestedSparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
 
+$manifestPath = Join-Path $root "infra\deployment\services.json"
+if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not found: $manifestPath" }
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=[int]$_.port } })
+$services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
+if ($services.Count -ne 13) { throw "Deployment manifest must define ten HTTP services and three workers." }
+foreach ($service in $services) {
+  $service.Python = Get-DepoServicePython -Root $root -ServiceId $service.Name
+  if (-not (Test-Path -LiteralPath $service.Python -PathType Leaf)) { throw "Missing runtime for '$($service.Name)'. Run the installer using the selected DEPO_SERVICE_RUNTIME_MODE." }
+}
+
 if (-not $SkipPostgres) {
   Write-Host 'Checking the selected PostgreSQL runtime...'
   & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $EnvFile -PostgresBinDir $PostgresBinDir -PostgresDataDir $PostgresDataDir
 }
 
-# Use the same reviewed migration entry point as schema-only upgrades. This
-# preserves the SQLSTATE-based corrective action and guarantees startup stops
-# before any service process is created when the database is incompatible.
-Write-Host 'Checking PostgreSQL migrations and schema compatibility...'
-& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
+# Installation and upgrades apply migrations while services are stopped.
+# Ordinary startup only verifies the installed schema and never requires DDL ownership.
+Write-Host 'Verifying installed PostgreSQL schema (read-only)...'
+& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile -CheckOnly
 
 # Reconcile missing profiles and reject configuration conflicts before any API is launched.
 if ($env:AUTH_MODE -eq 'token' -and $env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
@@ -108,7 +119,7 @@ if ($EnableSpark) {
   $env:JAVA_HOME = $env:DEPO_JAVA_HOME
   $env:HADOOP_HOME = $env:DEPO_HADOOP_HOME
   $env:hadoop_home = $env:DEPO_HADOOP_HOME
-  $env:PATH = (Join-Path $env:DEPO_HADOOP_HOME 'bin') + ';' + $env:PATH
+  Add-DepoRuntimePath -Directory (Join-Path $env:DEPO_HADOOP_HOME 'bin')
   $env:PYSPARK_PYTHON = $python
   if ($EnableNeo4jSparkConnector) {
     $env:DEPO_SPARK_NEO4J_ENABLED = 'true'
@@ -131,17 +142,11 @@ if ($EnablePipelineScheduler) {
 
 $stateDir = Join-Path $root "logs\windows-services"
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
-$manifestPath = Join-Path $root "infra\deployment\services.json"
-if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not found: $manifestPath" }
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=[int]$_.port } })
-$services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
-if ($services.Count -ne 13) { throw "Deployment manifest must define ten HTTP services and three workers." }
-foreach ($service in $services) {
-  $service.Python = Get-DepoServicePython -Root $root -ServiceId $service.Name
-  if (-not (Test-Path -LiteralPath $service.Python -PathType Leaf)) { throw "Missing runtime for '$($service.Name)'. Run the installer using the selected DEPO_SERVICE_RUNTIME_MODE." }
-}
 $startedServices = @()
+$configurationFingerprint = Get-DepoConfigurationFingerprint -Root $root -EnvFile $EnvFile -Overrides @{
+  BindHost=$BindHost; Spark=$EnableSpark; Neo4jSpark=$EnableNeo4jSparkConnector
+  PostgresSpark=$EnablePostgresSparkConnector; Scheduler=$EnablePipelineScheduler
+}
 Write-Host 'Schema and credential checks passed. Checking tracked processes and launching services/workers...' -ForegroundColor Cyan
 try {
 foreach ($service in $services) {
@@ -150,6 +155,7 @@ foreach ($service in $services) {
   Write-Host ("Checking startup for '{0}'{1}..." -f $service.Name, $(if ($service.Port) { " on port $($service.Port)" } else { ' worker' }))
   $pidFile = Join-Path $stateDir "$($service.Name).pid"
   $fingerprintFile = Join-Path $stateDir "$($service.Name).code.sha256"
+  $configurationFile = Join-Path $stateDir "$($service.Name).config.sha256"
   # A PID may be reused after an unplanned shutdown.  Reuse it only when the
   # expected Python executable is still alive *and* the service port is
   # listening; otherwise an old PID can silently prevent recovery.
@@ -168,6 +174,11 @@ foreach ($service in $services) {
       if (-not (Test-Path -LiteralPath $fingerprintFile) -or
           (Get-Content -LiteralPath $fingerprintFile -Raw).Trim() -ne $backendFingerprint) {
         throw "Service '$($service.Name)' was launched with older or unverified backend code. Run stop-depo-services.ps1, then start again; deploy the complete matching release first."
+      }
+      $expectedConfiguration = '{0}:{1}:{2}' -f $configurationFingerprint, $recordedPid, $existing.StartTime.ToUniversalTime().Ticks
+      if (-not (Test-Path -LiteralPath $configurationFile) -or
+          (Get-Content -LiteralPath $configurationFile -Raw).Trim() -ne $expectedConfiguration) {
+        throw "Service '$($service.Name)' has changed or unverified configuration. Stop DEPO services and start again to apply the selected environment."
       }
       Write-Host "Reusing tracked process for '$($service.Name)'; readiness validation follows."
       continue
@@ -191,6 +202,8 @@ foreach ($service in $services) {
   $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile; Module = $service.Module; Python = $python }
   Set-Content -LiteralPath $pidFile -Value $process.Id
   Set-Content -LiteralPath $fingerprintFile -Value $backendFingerprint
+  $processConfiguration = '{0}:{1}:{2}' -f $configurationFingerprint, $process.Id, $process.StartTime.ToUniversalTime().Ticks
+  Set-Content -LiteralPath $configurationFile -Value $processConfiguration
 }
 
 foreach ($service in $services | Where-Object { $_.Port }) {
@@ -286,8 +299,19 @@ if ($env:DEPO_PIPELINE_EXECUTION_MODE -eq 'worker') {
 }
 } catch {
   Write-Warning 'Startup failed. Stopping services launched by this attempt and removing their PID files; startup logs are retained. Missing listeners after this cleanup do not identify the original readiness failure.'
+  $cleanupDeadline = (Get-Date).AddSeconds(60)
+  foreach ($startedService in $startedServices) {
+    try {
+      $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($startedService.ProcessId)" -ErrorAction Stop
+      if ($process -and $process.ExecutablePath -eq $startedService.Python -and
+          $process.CommandLine -match [regex]::Escape($startedService.Module) -and
+          $process.CommandLine -match 'backend\.depo_platform\.windows_runtime') {
+        Set-Content -LiteralPath (Join-Path $stateDir "stop-$($startedService.ProcessId).request") -Value 'stop' -NoNewline
+      }
+    } catch { Write-Warning "Graceful stop request failed for $($startedService.Module). Process cleanup follows." }
+  }
   foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {
-    try { Stop-DepoProcessTree $startedService.ProcessId $startedService.Python $startedService.Module }
+    try { Stop-DepoProcessTree $startedService.ProcessId $startedService.Python $startedService.Module $cleanupDeadline }
     catch { Write-Warning "Cleanup failed for $($startedService.Module): $($_.Exception.Message)"; continue }
     if (Test-Path -LiteralPath $startedService.PidFile) {
       Remove-Item -LiteralPath $startedService.PidFile -Force -ErrorAction SilentlyContinue

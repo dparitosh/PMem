@@ -5,7 +5,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from neo4j import GraphDatabase, Query
+from neo4j import Query
+from backend.depo_platform.graph_access import GraphDatabase
 
 
 @dataclass(frozen=True)

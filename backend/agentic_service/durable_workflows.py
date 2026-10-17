@@ -146,10 +146,18 @@ async def execute_candidate(record):
         # Authority outages do not revoke an existing grant. The queue retries
         # verification; the original deadline remains authoritative.
         if getattr(exc, 'status_code', None) == 503:
+            retries = min(int(record.get('authorization_retry_count', 0)) + 1, 8)
+            now = datetime.now(timezone.utc)
+            await routes._agent_io(routes.workflow_store.compare_and_put, run_id, record, {
+                **record, 'authorization_retry_count': retries,
+                'authorization_retry_at': (now + timedelta(seconds=min(2 ** retries, 60))).isoformat(),
+                'updated_at': now.isoformat(),
+            })
             return
         await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,{**record,'status':'failed','error_type':'WorkerAuthorizationChanged'})
         return
-    claimed = {**record,'status':'running','execution_id':uuid4().hex,'updated_at':datetime.now(timezone.utc).isoformat()}
+    claimed = {**record,'status':'running','execution_id':uuid4().hex,'updated_at':datetime.now(timezone.utc).isoformat(),
+               'authorization_retry_at': None, 'authorization_retry_count': 0}
     if not await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,claimed): return
     recovery.update(_expected_record=claimed,execution_id=claimed['execution_id'])
     request = Request({'type':'http','method':'POST','path':'/api/v1/workflow-runs','headers':[(b'authorization',('Bearer '+os.environ['GRAPH_READ_TOKEN'].strip()).encode())],'client':('127.0.0.1',0)})

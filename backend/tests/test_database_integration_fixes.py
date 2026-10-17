@@ -70,7 +70,7 @@ class DatabaseIntegrationFixes(unittest.TestCase):
 
     def test_bulk_dispatch_checks_budget_between_rows(self):
         raw=Mock(rowcount=1); cursor=postgres_pool._DeadlineCursor(raw)
-        with patch.object(cursor,'_budget',side_effect=[None,TimeoutError('expired')]),self.assertRaises(TimeoutError):
+        with patch.object(cursor,'_budget',side_effect=[None,None,TimeoutError('expired')]),self.assertRaises(TimeoutError):
             cursor.executemany('INSERT',[(1,),(2,)])
         raw.execute.assert_called_once_with('INSERT',(1,))
 
@@ -99,13 +99,15 @@ class DatabaseIntegrationFixes(unittest.TestCase):
         connect.assert_not_called()
 
     def test_deadline_connection_resets_session_limits_before_reuse(self):
-        database=Mock(closed=False,info=SimpleNamespace(transaction_status='idle'))
+        database=MagicMock(closed=False,info=SimpleNamespace(transaction_status='idle'))
         connect=Mock(return_value=database)
         modules={'psycopg':SimpleNamespace(connect=connect),'psycopg.pq':SimpleNamespace(TransactionStatus=SimpleNamespace(IDLE='idle'))}
         with patch.dict(sys.modules,modules),operation_scope(self.context(3)):
             with postgres_pool.connection('operation-owned-connection',connect_timeout=10) as connection:
                 self.assertIs(connection.database,database)
-        self.assertEqual([call.args[0] for call in database.execute.call_args_list], ['RESET statement_timeout', 'RESET lock_timeout'])
+        statements = database.cursor.return_value.__enter__.return_value.execute.call_args_list
+        self.assertIn('set_config', statements[0].args[0])
+        self.assertEqual(statements[1].args, ('RESET ALL',))
         database.close.assert_not_called()
         postgres_pool.close_idle()
         self.assertGreaterEqual(connect.call_args.kwargs['connect_timeout'],2)

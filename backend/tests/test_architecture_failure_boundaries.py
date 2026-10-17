@@ -38,12 +38,16 @@ class ArchitectureFailureTests(unittest.TestCase):
                 return await asyncio.to_thread(callback, *args, **kwargs)
             routes._agent_io = io
             case.run_candidate(record, modules)
-            self.assertEqual(store.record, record)
+            self.assertEqual(store.record['status'], record['status'])
+            self.assertEqual(store.record['deadline_at'], record['deadline_at'])
+            self.assertEqual(store.record['credential_fingerprints'], record['credential_fingerprints'])
+            self.assertEqual(store.record['authorization_retry_count'], 1)
+            self.assertIn('authorization_retry_at', store.record)
             self.assertTrue(seen)
             self.assertNotEqual(seen[0], loop_thread)
             routes._execute_workflow.assert_not_awaited()
             credentials.verify_key = lambda *args: None
-            case.run_candidate(record, modules)
+            case.run_candidate(store.record, modules)
             routes._execute_workflow.assert_awaited_once()
 
     def test_candidate_query_excludes_compensation_before_limit(self):
@@ -59,6 +63,7 @@ class ArchitectureFailureTests(unittest.TestCase):
         scope['execution_candidates'](store, 4, '2026-01-01', 'heartbeats')
         query = cursor.execute.call_args.args[0]
         self.assertLess(query.index("value->'compensations'"), query.index('LIMIT'))
+        self.assertLess(query.index("value->>'authorization_retry_at'"), query.index('LIMIT'))
 
     def test_old_success_cannot_close_new_circuit_and_recovery_has_one_probe(self):
         endpoint = 'architecture-fixture'

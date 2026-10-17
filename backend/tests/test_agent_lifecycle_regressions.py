@@ -17,6 +17,11 @@ def client(monkeypatch):
     monkeypatch.setenv('AUTH_MODE', 'token')
     monkeypatch.setenv('GRAPH_READ_TOKEN', 'reader')
     monkeypatch.setenv('GRAPH_SERVICE_URL', 'http://graph/api/v1')
+    monkeypatch.setattr(router, 'companion_job_store', InMemoryRegistry('lifecycle-chat-jobs'))
+    monkeypatch.setattr(router, 'workflow_controls', InMemoryRegistry('lifecycle-controls'))
+    monkeypatch.setattr(router, 'workflow_heartbeats', InMemoryRegistry('lifecycle-heartbeats'))
+    monkeypatch.setattr(router.AgentMemoryService, 'recent_context', lambda *args: {'enabled': False, 'messages': []})
+    monkeypatch.setattr(router.AgentMemoryService, 'record_chat_turn', lambda **kwargs: None)
     return TestClient(app)
 
 
@@ -46,21 +51,30 @@ def test_whole_result_and_list_reference():
 
 
 def workflow(monkeypatch):
+    monkeypatch.setenv('AGENTIC_EXECUTION_MODE', 'process')
+    monkeypatch.setenv('GRAPH_SERVICE_URL', 'http://graph/api/v1')
+    monkeypatch.setattr(router, 'workflow_controls', InMemoryRegistry('lifecycle-controls'))
+    monkeypatch.setattr(router, 'workflow_heartbeats', InMemoryRegistry('lifecycle-heartbeats'))
+    async def preflight(*args, **kwargs):
+        pass
+    monkeypatch.setattr(router, '_preflight_tools', preflight)
     store = InMemoryRegistry('workflow-state-test')
     monkeypatch.setattr(router, 'workflow_store', store)
     monkeypatch.setattr(router.catalog, 'read', lambda: {
         'agents': [{'id': 'reader', 'tools': ['read']}],
-        'tools': [{'id': 'read', 'mutates': False}],
+        'tools': [{'id': 'read', 'mutates': False, 'method': 'GET', 'service': 'graph', 'transport': 'openapi'}],
         'workflows': [{'id': 'test', 'steps': [{'agent_id': 'reader', 'tool_id': 'read'}]}]})
     return store
 
 
-def test_unresolvable_reference_finishes_state_and_telemetry(client, monkeypatch):
+@pytest.mark.asyncio
+async def test_unresolvable_reference_finishes_state_and_telemetry(client, monkeypatch):
     store = workflow(monkeypatch)
-    result = client.post('/api/v1/workflow-runs', headers=READ,
-                         json={'workflow_id': 'test', 'inputs': {'id': '$steps.1.result.id'}})
-    assert result.status_code == 422
-    record = store.get(result.headers['X-DEPO-Run-ID'])
+    request = SimpleNamespace(headers=Headers(READ), state=SimpleNamespace())
+    with pytest.raises(HTTPException) as rejected:
+        await router._execute_workflow({'workflow_id':'test','inputs':{'id':'$steps.1.result.id'}}, request)
+    assert rejected.value.status_code == 422
+    record = store.get(rejected.value.headers['X-DEPO-Run-ID'])
     assert record['status'] == 'failed' and record['finished_at']
     assert record['traces'][0]['attempt'] == 0
     assert router.telemetry.recent()[0]['status'] == 'failed'
@@ -77,31 +91,35 @@ async def test_unexpected_failure_or_cancellation_finishes_workflow(monkeypatch,
     monkeypatch.setattr(router, '_dispatch', dispatch)
     request = SimpleNamespace(headers=Headers(READ), state=SimpleNamespace())
     with pytest.raises((HTTPException, asyncio.CancelledError)):
-        await router.run_workflow({'workflow_id': 'test'}, request)
+        await router._execute_workflow({'workflow_id': 'test'}, request)
     record = store.recent()[0]
     expected = 'interrupted' if isinstance(error, asyncio.CancelledError) else 'failed'
     assert record['status'] == expected
     assert router.telemetry.recent()[0]['status'] == expected
 
 
-def test_deadline_finishes_workflow(client, monkeypatch):
+@pytest.mark.asyncio
+async def test_deadline_finishes_workflow(client, monkeypatch):
     store = workflow(monkeypatch)
-    monkeypatch.setenv('AGENTIC_RUN_TIMEOUT_SECONDS', '0.01')
+    from backend.depo_platform import network
+    monkeypatch.setattr(network, 'agent_run_timeout_seconds', lambda: 0.01)
     async def dispatch(*args):
         await asyncio.sleep(1)
     monkeypatch.setattr(router, '_dispatch', dispatch)
-    result = client.post('/api/v1/workflow-runs', headers=READ, json={'workflow_id': 'test'})
-    assert result.status_code == 504
-    assert store.get(result.headers['X-DEPO-Run-ID'])['status'] == 'timed_out'
+    request = SimpleNamespace(headers=Headers(READ), state=SimpleNamespace())
+    with pytest.raises(HTTPException) as expired:
+        await router._execute_workflow({'workflow_id':'test'}, request)
+    assert expired.value.status_code == 504
+    assert store.get(expired.value.headers['X-DEPO-Run-ID'])['status'] == 'timed_out'
     assert router.telemetry.summary()['timed_out'] == 1
 
 
 def test_dead_process_read_projects_interrupted_without_overwriting(client, monkeypatch):
     store = workflow(monkeypatch)
-    store.put('dead', {'status': 'running', 'deadline_at': (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()})
+    store.put('dead', {'run_id':'dead', 'owner':sessions.owner(SimpleNamespace(headers=Headers(READ)), router.graph_read_identity(SimpleNamespace(headers=Headers(READ)))), 'updated_at':datetime.now(timezone.utc).isoformat(), 'started_at':datetime.now(timezone.utc).isoformat(), 'status': 'running', 'deadline_at': (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()})
     result = client.get('/api/v1/workflow-runs/dead', headers=READ)
     assert result.json()['status'] == 'interrupted'
-    assert result.json()['reconciliation_required']
+    assert result.json()['reconciliation_required'] is False
     assert store.get('dead')['status'] == 'running'
 
 
@@ -161,7 +179,7 @@ def test_jsonld_inline_context_supported_remote_context_rejected(tmp_path):
     path.write_text('{"@context":{"name":"https://example.test/name"},"@id":"https://example.test/item","name":"item"}')
     assert len(ontology_orchestrator._load(path)) == 1
     path.write_text('{"@context":"https://example.test/context"}')
-    with pytest.raises(ValueError, match='remote contexts'):
+    with pytest.raises(ValueError, match='inline JSON-LD contexts'):
         ontology_orchestrator._load(path)
 
 
