@@ -19,6 +19,7 @@ from backend.depo_platform.operations import OperationContext, operation_scope, 
 from backend.depo_platform.execution_guard import ensure_execution_allowed, guarded_execution
 
 from .preparation_worker import run_stage
+from .ownership import task_root, state_lock, execution_owner, ensure_owner
 from .publishing import get_publisher
 from backend.depo_platform.graph_publication_transport import PublicationUnverified
 
@@ -31,7 +32,7 @@ class QifTaskService:
     """Stores workflow state and artifacts under one task-owned folder."""
 
     def __init__(self, root: Path | None = None) -> None:
-        self.root = root or Path(__file__).resolve().parents[2] / "uploads" / "qif_workflows"
+        self.root = root or task_root(Path(__file__).resolve().parents[2] / "uploads" / "qif_workflows")
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="qif-worker")
@@ -55,7 +56,8 @@ class QifTaskService:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def _write(self, task_id: str, data: dict[str, Any]) -> dict[str, Any]:
-        with self._lock:
+        ensure_owner()
+        with self._lock, state_lock(task_id):
             path = self._manifest_path(task_id)
             # Cancellation is terminal: stale worker snapshots cannot resurrect it.
             if path.exists():
@@ -111,7 +113,7 @@ class QifTaskService:
         return self._read(task_id)
 
     def _update(self, task_id: str, **changes: Any) -> dict[str, Any]:
-        with self._lock:
+        with self._lock, state_lock(task_id):
             task = self._read(task_id)
             task.update(changes)
             task["updated_at"] = _now()
@@ -140,12 +142,14 @@ class QifTaskService:
                     task[field] = (accepted + timedelta(seconds=budget)).isoformat()
                     self._write(task_id, task)
                 deadline = task[field]
+                admitted_state = (task.get("status"), task.get("stage"))
             except BaseException:
                 self._running.discard(task_id)
                 self._slots.release()
                 raise
 
         def check():
+            ensure_owner()
             remaining_seconds(deadline)
             if self._closing.is_set():
                 raise RuntimeError('Schema-set service is stopping; no further workflow stages may start')
@@ -154,14 +158,28 @@ class QifTaskService:
 
         def wrapped() -> None:
             try:
-                with operation_scope(OperationContext(task_id, deadline)), guarded_execution(check):
-                    work(task_id)
-            except Exception as exc:
-                if not self._cancelled(task_id):
+                with execution_owner(task_id, self.root) as acquired:
+                    if not acquired:
+                        return
                     current = self._read(task_id)
-                    uncertain = current.get('graph_sync', {}).get('status') in {'publishing', 'unverified'}
-                    self._update(task_id, status='publication_unverified' if uncertain else 'failed',
-                                 stage='recovery_review' if uncertain else 'failed', error=type(exc).__name__)
+                    if (current.get("status"), current.get("stage")) != admitted_state:
+                        return  # Another replica already advanced this queued phase.
+                    try:
+                        with operation_scope(OperationContext(task_id, deadline)), guarded_execution(check):
+                            work(task_id)
+                    except Exception as exc:
+                        # Persist terminal state while still owning the execution
+                        # lock. Lost connections fail this check and leave intent
+                        # for a new owner to reconcile, never a stale-worker write.
+                        ensure_owner()
+                        if not self._cancelled(task_id):
+                            current = self._read(task_id)
+                            uncertain = current.get('graph_sync', {}).get('status') in {'publishing', 'unverified'}
+                            self._update(task_id, status='publication_unverified' if uncertain else 'failed',
+                                         stage='recovery_review' if uncertain else 'failed', error=type(exc).__name__)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception('QIF execution ownership unavailable; retained task requires recovery')
             finally:
                 with self._lock:
                     self._running.discard(task_id)
@@ -198,7 +216,7 @@ class QifTaskService:
 
     def queue_commit(self, task_id: str) -> dict[str, Any]:
         """Atomically mark a reviewed task for publishing and enqueue it once."""
-        with self._lock:
+        with self._lock, state_lock(task_id):
             task = self._read(task_id)
             if task["status"] != "awaiting_approval":
                 raise HTTPException(status_code=409, detail="QIF task is not ready for approval")
@@ -213,7 +231,7 @@ class QifTaskService:
 
     def queue_graph_retry(self, task_id: str) -> dict[str, Any]:
         """Atomically enqueue one retry for a registered ontology with a failed graph sync."""
-        with self._lock:
+        with self._lock, state_lock(task_id):
             task = self._read(task_id)
             if task.get("graph_sync", {}).get("status") not in {"failed", "unverified", "publishing"} or not task.get("ontology_id"):
                 raise HTTPException(status_code=409, detail="Graph synchronization is not eligible for retry")
@@ -224,46 +242,57 @@ class QifTaskService:
                 raise HTTPException(status_code=409, detail="Graph synchronization is already being retried")
             return task
 
+    def pending(self):
+        """Scan every retained manifest; completed history cannot hide pending work."""
+        for path in sorted(self.root.glob("*/manifest.json")):
+            task = self._read(path.parent.name)
+            if task.get("status") in {"queued", "running", "commit_queued", "graph_retry_queued"}:
+                yield task
+
     def recover_pending(self) -> dict[str, int]:
         """Resume interruptible preparation jobs after service startup."""
         recovered = 0
         attention = 0
-        for task in self.list(limit=1000):
-            if task['task_id'] in self._running:
-                continue
-            if task.get("status") in {"queued", "running"} and task.get("stage") in {"queued", "inspect", "validate", "generate"}:
-                task["status"] = "queued"
-                task["stage"] = "queued"
-                self._event(task, "recovery", "Recovered after a service restart; resuming preparation.", "warning")
-                self._write(task["task_id"], task)
-                try:
-                    self.submit_prepare(task["task_id"])
-                except HTTPException as exc:
-                    if exc.status_code == 503:
-                        break  # Leave the rest durable for the next recovery pass.
-                    raise
-                recovered += 1
-            elif task.get('status') in {'commit_queued', 'graph_retry_queued'} and task.get('stage') in {'register_queued', 'graph_sync_queued'}:
-                try:
-                    if task['status'] == 'commit_queued':
-                        self.submit_commit(task['task_id'])
-                    else:
-                        self.submit_graph_retry(task['task_id'])
-                except HTTPException as exc:
-                    if exc.status_code == 503:
-                        break
-                    raise
-                recovered += 1
-            elif task.get("status") in {"commit_queued", "running"} and task.get("stage") in {"register", "graph_sync"}:
-                task["status"] = "publication_unverified" if task.get("graph_sync", {}).get("status") == "publishing" else "requires_review"
-                task["stage"] = "recovery_review"
-                self._event(task, "recovery", "Service stopped during publishing. Review the task before retrying graph synchronization.", "warning")
-                self._write(task["task_id"], task)
-                attention += 1
+        for task in self.pending():
+            with execution_owner(task['task_id'], self.root) as acquired:
+                if not acquired:
+                    continue
+                task = self._read(task['task_id'])
+                if task['task_id'] in self._running:
+                    continue
+                if task.get("status") in {"queued", "running"} and task.get("stage") in {"queued", "inspect", "validate", "generate"}:
+                    task["status"] = "queued"
+                    task["stage"] = "queued"
+                    self._event(task, "recovery", "Recovered after a service restart; resuming preparation.", "warning")
+                    self._write(task["task_id"], task)
+                    try:
+                        self.submit_prepare(task["task_id"])
+                    except HTTPException as exc:
+                        if exc.status_code == 503:
+                            break  # Leave the rest durable for the next recovery pass.
+                        raise
+                    recovered += 1
+                elif task.get('status') in {'commit_queued', 'graph_retry_queued'} and task.get('stage') in {'register_queued', 'graph_sync_queued'}:
+                    try:
+                        if task['status'] == 'commit_queued':
+                            self.submit_commit(task['task_id'])
+                        else:
+                            self.submit_graph_retry(task['task_id'])
+                    except HTTPException as exc:
+                        if exc.status_code == 503:
+                            break
+                        raise
+                    recovered += 1
+                elif task.get("status") in {"commit_queued", "running"} and task.get("stage") in {"register", "graph_sync"}:
+                    task["status"] = "publication_unverified" if task.get("graph_sync", {}).get("status") == "publishing" else "requires_review"
+                    task["stage"] = "recovery_review"
+                    self._event(task, "recovery", "Service stopped during publishing. Review the task before retrying graph synchronization.", "warning")
+                    self._write(task["task_id"], task)
+                    attention += 1
         return {"recovered": recovered, "requires_review": attention}
 
     def cancel(self, task_id: str) -> dict[str, Any]:
-        with self._lock:
+        with self._lock, state_lock(task_id):
             task = self._read(task_id)
             if task.get('stage') == 'graph_sync' or task.get('graph_sync', {}).get('status') in {'publishing', 'unverified'}:
                 raise HTTPException(status_code=409, detail='Publication may already be committing; verify its receipt instead of cancelling')
@@ -357,8 +386,8 @@ class QifTaskService:
             ontology_id = saved["ontology_id"]
             self._update(task_id, ontology_id=ontology_id)
             ensure_execution_allowed()
-            registered_source = Path(saved["storage_path"]).parent / "qif_sources"
-            shutil.copytree(self._task_dir(task_id) / "source", registered_source, dirs_exist_ok=True)
+            # Sources remain in this service-owned task and are available through
+            # its artifact API; a peer filesystem path is never writable here.
             task = self._update(task_id, stage="graph_sync", progress=92, ontology_id=ontology_id)
             self._event(task, "graph_sync", "Synchronizing registered ontology with the graph.")
             self._write(task_id, task)

@@ -28,6 +28,8 @@ async def lifecycle():
                 except Exception:
                     logging.getLogger(__name__).exception('Agent maintenance failed: %s', cleanup.__name__)
             await asyncio.sleep(bounded_timeout_seconds('DEPO_AGENT_MAINTENANCE_SECONDS', default=300, maximum=3600))
+    from .mcp_transport import start_pool, close_pool
+    start_pool()
     task = asyncio.create_task(maintenance())
     try:
         yield
@@ -40,6 +42,7 @@ async def lifecycle():
                 workflow.cancel()
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
+        await close_pool()
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task

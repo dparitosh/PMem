@@ -130,3 +130,14 @@ test('downloads task artifacts through the authenticated QIF API helper', async 
   click.mockRestore(); vi.unstubAllGlobals();
   expect(qifAPI.artifactUrl).toHaveBeenCalledWith(task.task_id, 'ontology/qif_ontology.ttl');
 });
+
+
+test('publication in progress offers no misleading cancellation action', async () => {
+  const publishing = { ...task, status: 'running', stage: 'graph_sync', graph_sync: { status: 'publishing' } };
+  qifAPI.listTasks.mockResolvedValue({ data: { tasks: [publishing] } });
+  qifAPI.getTask.mockResolvedValue({ data: publishing });
+  render(<QifPage workflowMode />);
+  await screen.findByRole('button', { name: /open qif task QIF 3.0 Ontology/i });
+  await waitFor(() => expect(screen.getAllByText(/running/i).length).toBeGreaterThan(0));
+  expect(screen.queryByRole('button', { name: /cancel task/i })).not.toBeInTheDocument();
+});

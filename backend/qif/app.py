@@ -20,16 +20,18 @@ async def lifespan():
             except Exception:
                 logging.getLogger(__name__).exception('Schema-set recovery deferred')
             await asyncio.sleep(5)
-    recovery = asyncio.create_task(recover())
-    try:
-        yield
-    finally:
-        task_service.shutdown()
-        recovery.cancel()
+    from .ownership import service_owner
+    with service_owner(task_service.root):
+        recovery = asyncio.create_task(recover())
         try:
-            await recovery
-        except asyncio.CancelledError:
-            pass
+            yield
+        finally:
+            task_service.shutdown()
+            recovery.cancel()
+            try:
+                await recovery
+            except asyncio.CancelledError:
+                pass
 
 
 app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0", dependencies=(), lifespan_hook=lifespan)

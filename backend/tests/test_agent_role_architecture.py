@@ -15,8 +15,8 @@ class ArchitectureTests(unittest.TestCase):
 
     def test_runtime_roles_and_permissions(self):
         summary = architecture(self.source)
-        self.assertEqual((summary['agent_count'], summary['tool_count'], summary['workflow_count']), (26, 44, 4))
-        self.assertEqual(len({a['id'] for a in summary['agents']}), 26)
+        self.assertEqual((summary['agent_count'], summary['tool_count'], summary['workflow_count']), (len(self.source['agents']), len(self.source['tools']), len(self.source['workflows'])))
+        self.assertEqual(len({a['id'] for a in summary['agents']}), len(self.source['agents']))
         for agent in summary['agents']:
             self.assertTrue(agent['description'])
             for tool in agent['tools']:

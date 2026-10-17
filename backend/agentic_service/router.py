@@ -679,7 +679,10 @@ async def _proposal_tools(tools, request):
                 if tool.get('transport') != 'mcp': raise ValueError('Unsupported proposal tool transport')
                 from .mcp_transport import invoke
                 from .proposal_contracts import expand
-                listed = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/list')
+                server_key = ('mcp', tool['server_id'])
+                if server_key not in documents:
+                    documents[server_key] = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/list')
+                listed = documents[server_key]
                 native = next((item for item in listed.get('tools', []) if isinstance(item, dict) and item.get('name') == tool.get('name')), None)
                 if not native or not isinstance(native.get('inputSchema'), dict): raise ValueError('Configured MCP tool has no discoverable input schema')
                 if (native.get('annotations') or {}).get('readOnlyHint') is False and not tool.get('mutates'):
@@ -719,7 +722,10 @@ async def _preflight_tools(commands, request, *, deferred=False):
                     raise ValueError('MCP tool requires a configured native name')
                 from .mcp_transport import invoke
                 from .input_contracts import validate
-                listed = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/list')
+                server_key = ('mcp', tool['server_id'])
+                if server_key not in documents:
+                    documents[server_key] = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/list')
+                listed = documents[server_key]
                 if not isinstance(listed.get('tools'), list) or any(not isinstance(row, dict) for row in listed['tools']):
                     raise ValueError('Invalid MCP tool list')
                 native = next((row for row in listed['tools'] if row.get('name') == tool['name']), None)
@@ -750,7 +756,7 @@ async def discover_mcp_tools(server_id: str, cursor: str | None = None):
         if cursor is not None and len(cursor) > 1024:
             raise ValueError('MCP discovery cursor exceeds 1024 characters')
         return await invoke(catalog.item('mcp_servers', server_id), 'tools/list', {'cursor': cursor} if cursor else {})
-    except (ValueError, OSError, TimeoutError) as exc:
+    except (ValueError, OSError, TimeoutError, RuntimeError) as exc:
         raise HTTPException(503, 'MCP discovery failed; check the configured server installation') from exc
 
 
@@ -795,7 +801,7 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
             result = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/call',
                                   {'name': tool['name'], 'arguments': arguments}, timeout_seconds=tool_timeout_seconds(tool, inputs))
             return {'agent_id': plan_result['agent'], 'tool_id': tool['id'], 'result': result}
-        except (ValueError, OSError, TimeoutError) as exc:
+        except (ValueError, OSError, TimeoutError, RuntimeError) as exc:
             raise HTTPException(503, 'MCP tool failed; inspect server status before retrying') from exc
     if tool.get('transport') != 'openapi':
         raise HTTPException(422, 'Unsupported tool transport')

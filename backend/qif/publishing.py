@@ -32,7 +32,7 @@ class ServicePublisher:
             headers=service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology registration API', endpoint=self.ontology_url))
         response.raise_for_status()
         payload = response.json()
-        return {"status": "success", "ontology_id": payload["ontology_id"], "storage_path": payload["artifact_path"], "metadata": payload}
+        return {"status": "success", "ontology_id": payload["ontology_id"], "metadata": payload}
 
     def sync_graph(self, *, ontology_id: str, artifact: Path) -> dict[str, Any]:
         from backend.core.sync_async import call_async
