@@ -57,7 +57,7 @@ UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llav
 
 
 # ========== LLM CONFIGURATION ==========
-# Set to "azure" or "ollama"
+# Select ollama (offline), azure, openai, or mistral.
 USE_LLM = (_first_env("USE_LLM") or "ollama").lower()
 USE_EMBEDDER = (_first_env("USE_EMBEDDER") or USE_LLM).lower()
 
@@ -282,12 +282,18 @@ if USE_UNSTRUCTURED_LLM:
         elif UNSTRUCTURED_LLM_TYPE == "azure":
             unstructured_llm = _init_unstructured_azure_llm()
             unstructured_provider = "azure"
+        elif UNSTRUCTURED_LLM_TYPE in {"openai", "mistral"}:
+            from backend.core.llm_providers import cloud_chat
+            unstructured_llm = cloud_chat(UNSTRUCTURED_LLM_TYPE, unstructured=True)
+            unstructured_provider = UNSTRUCTURED_LLM_TYPE
         elif UNSTRUCTURED_LLM_TYPE == "ollama":
             unstructured_llm = _init_unstructured_ollama_llm()
             unstructured_provider = "ollama"
         else:
             raise ValueError(f"Unknown UNSTRUCTURED_LLM_TYPE: {UNSTRUCTURED_LLM_TYPE}")
     except Exception as exc:
+        if UNSTRUCTURED_LLM_TYPE in {'openai', 'mistral'}:
+            exc = ValueError('Check unstructured cloud model, key, and HTTPS base URL')
         unstructured_llm_error = exc
         unstructured_llm = UnavailableLLM(f"Unstructured LLM unavailable: {exc}")
 else:
@@ -311,9 +317,17 @@ elif USE_LLM == "ollama":
     if llm_ollama_error:
         LLM_AVAILABLE = False
         llm_error = llm_ollama_error
+elif USE_LLM in {"openai", "mistral"}:
+    try:
+        from backend.core.llm_providers import cloud_chat
+        llm = cloud_chat(USE_LLM)
+    except Exception:
+        LLM_AVAILABLE = False
+        llm_error = ValueError('Check selected cloud provider model, key, and HTTPS base URL')
+        llm = UnavailableLLM(str(llm_error))
 else:
     LLM_AVAILABLE = False
-    llm_error = ValueError("USE_LLM must be 'azure' or 'ollama'")
+    llm_error = ValueError("USE_LLM must be ollama, azure, openai, or mistral")
     llm = UnavailableLLM(str(llm_error))
 
 # Never bind tools to the text-generation client. A generate-only deployment
@@ -342,9 +356,17 @@ elif USE_EMBEDDER == "ollama":
     if embeddings_ollama_error:
         EMBEDDER_AVAILABLE = False
         embeddings_error = embeddings_ollama_error
+elif USE_EMBEDDER in {"openai", "mistral"}:
+    try:
+        from backend.core.llm_providers import cloud_embeddings
+        embeddings = cloud_embeddings(USE_EMBEDDER)
+    except Exception:
+        EMBEDDER_AVAILABLE = False
+        embeddings_error = ValueError('Check selected embedding provider model, key, and HTTPS base URL')
+        embeddings = UnavailableEmbeddings(str(embeddings_error))
 else:
     EMBEDDER_AVAILABLE = False
-    embeddings_error = ValueError("USE_EMBEDDER must be 'azure' or 'ollama'")
+    embeddings_error = ValueError("USE_EMBEDDER must be ollama, azure, openai, or mistral")
     embeddings = UnavailableEmbeddings(str(embeddings_error))
 
 if not LLM_AVAILABLE or not EMBEDDER_AVAILABLE:

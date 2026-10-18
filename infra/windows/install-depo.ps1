@@ -43,6 +43,8 @@ if (-not $Development) {
     if ($unhashed) { throw "Every production dependency must be exact-version and SHA-256 pinned in $lock" }
   }
 }
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
+Assert-DepoWindowsManagementAccess
 if ($CheckPrerequisites) {
   Write-Host 'Installation prerequisites passed. No dependencies were installed.'
   return

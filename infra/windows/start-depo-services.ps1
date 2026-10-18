@@ -29,6 +29,7 @@ Write-Host 'Backend release fingerprint verified. Loading deployment configurati
 . (Join-Path $PSScriptRoot 'process-control.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 . (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
+Assert-DepoWindowsManagementAccess
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 $configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
 $corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]

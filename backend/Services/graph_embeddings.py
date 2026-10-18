@@ -524,7 +524,7 @@ def run_graph_embeddings(
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
         raise ValueError('batch_size must be a positive integer')
     if not EMBEDDER_AVAILABLE:
-        raise RuntimeError('Embedding model is unavailable; check Ollama/Azure configuration')
+        raise RuntimeError('Embedding model is unavailable; check selected embedding provider configuration')
 
     try:
         if CENTRALIZED_CONFIG_AVAILABLE:
@@ -540,6 +540,8 @@ def run_graph_embeddings(
     try:
         ensure_indexes(driver, strict=True)
         import hashlib
+        from backend.core.llm_providers import embedding_identity
+        model = embedding_identity()
         batch = []
         written = 0
         def flush():
@@ -556,8 +558,7 @@ def run_graph_embeddings(
                     relationships=record['rels'], node_element_id=record['eid'])
             if not text.strip():
                 continue
-            model = ':'.join(os.getenv(key, '') for key in ('USE_EMBEDDER', 'EMBED_MODEL_NAME', 'AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT'))
-            digest = hashlib.sha256(('graphrag-v2:' + model + ':' + text).encode()).hexdigest()
+            digest = hashlib.sha256(('graphrag-v3:' + model + ':' + text).encode()).hexdigest()
             if not force_rebuild and record.get('content_hash') == digest:
                 continue
             batch.append({'node_id':record['eid'], 'labels_source':record['labels'],

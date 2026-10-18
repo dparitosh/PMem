@@ -82,6 +82,16 @@ class EmbeddingPipelineFailureTests(unittest.TestCase):
         self.scope['run_graph_embeddings']()
         self.write.assert_called_once()
 
+    def test_provider_model_switch_reembeds_unchanged_content(self):
+        with patch.dict(os.environ, {'USE_LLM': 'openai', 'OPENAI_API_KEY': 'fixture',
+                                    'OPENAI_EMBED_MODEL': 'first'}, clear=True):
+            self.scope['run_graph_embeddings']()
+            self.scope['fetch_graph_nodes'].return_value[0]['content_hash'] = self.write.call_args.args[1][0]['content_hash']
+            self.write.reset_mock()
+            os.environ['OPENAI_EMBED_MODEL'] = 'second'
+            self.scope['run_graph_embeddings']()
+            self.write.assert_called_once()
+
     def test_property_allowlist_excludes_credentials(self):
         text = self.scope['_props_sentence']({'description':'Allowed', 'api_key':'secret', 'password':'secret'})
         self.assertEqual(text, 'description: Allowed')

@@ -15,13 +15,15 @@ $stdout = Join-Path $stateDir 'frontend.out.log'
 $stderr = Join-Path $stateDir 'frontend.err.log'
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-  throw "Project Python runtime was not found: $python. Run infra/windows/install-depo.ps1 first."
+  throw "Project Python runtime was not found: $python. Complete the repository-root install-depo.ps1 first."
 }
 if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
-  throw "Built frontend was not found: $index. Run infra/windows/install-depo.ps1 or npm run build first."
+  throw "Built frontend was not found: $index. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile after dependency installation."
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
+Assert-DepoWindowsManagementAccess
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
 if (-not $BindHost) {
   $BindHost = if ($values['DEPO_FRONTEND_HOST']) { $values['DEPO_FRONTEND_HOST'] } elseif ($values['DEPO_SERVICE_HOST']) { $values['DEPO_SERVICE_HOST'] } else { '127.0.0.1' }
@@ -37,7 +39,7 @@ foreach ($key in $routing.Keys) {
   if ($key.StartsWith('VITE_')) { $browserRouting[$key] = $routing[$key] }
 }
 if ($values['DEPO_ROUTING_MODE'] -and (Get-Content -LiteralPath $index -Raw) -notmatch 'depo-runtime-config.js') {
-  throw 'This frontend predates runtime routing. Rebuild once using npm run build in frontend.'
+  throw 'This frontend predates runtime routing. Rebuild using infra/windows/build-depo-frontend.ps1 with the same -EnvFile.'
 }
 $indexFile = Get-Item -LiteralPath $index
 # Configuration, dependency and public asset changes also require a rebuild.
@@ -54,7 +56,7 @@ $buildInputs += @(Get-ChildItem -LiteralPath $frontendRoot -File | Where-Object 
 # Compare content hashes as deployment copies may preserve timestamps.
 $receiptPath = Join-Path $dist 'depo-build-receipt.json'
 if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
-  throw 'Frontend build has no build receipt. Run npm run build in frontend from the current release before starting it.'
+  throw 'Frontend build has no build receipt. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile from the current release before starting it.'
 }
 $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
 if ($receipt.version -ne 1 -or -not $receipt.inputs) { throw 'Invalid frontend build receipt; rebuild frontend.' }
@@ -70,7 +72,7 @@ foreach ($inputFile in $buildInputs) {
 }
 $indexContent = Get-Content -LiteralPath $index -Raw
 $bundleMatch = [regex]::Match($indexContent, '<script[^>]+src="(/?assets/index-[^"]+\.js)"')
-if (-not $bundleMatch.Success) { throw "Could not identify the production bundle in $index. Run npm run build in frontend." }
+if (-not $bundleMatch.Success) { throw "Could not identify the production bundle in $index. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile." }
 $bundleRelativePath = $bundleMatch.Groups[1].Value.TrimStart('/').Replace('/', [IO.Path]::DirectorySeparatorChar)
 $bundlePath = Join-Path $dist $bundleRelativePath
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) { throw "Frontend bundle referenced by index.html is missing: $bundlePath" }

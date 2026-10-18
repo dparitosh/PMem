@@ -285,7 +285,7 @@ The structured proposal probe executes no tools. The streaming probe checks comp
 
 ### USE_EMBEDDER
 
-Legacy retrieval and vector-chain provider selector. Accepts ollama or azure; when absent it follows USE_LLM. Selecting Ollama requires the embedding model to be installed. Enabling embeddings does not publish a data product.
+Legacy retrieval and vector-chain provider selector. Accepts ollama, azure, openai or mistral; when absent it follows USE_LLM. Cloud embeddings require the matching provider API key and EMBED_MODEL. Selecting Ollama requires the embedding model to be installed. Enabling embeddings does not publish a data product.
 
 Example: USE_EMBEDDER=ollama
 
@@ -293,7 +293,7 @@ Source: .env.local
 
 ### USE_LLM
 
-Provider selector, not a true or false flag. Legacy model factories accept ollama or azure. The offline agentic service uses Ollama and reports not_selected for other providers. Azure additionally requires its endpoint, deployment, version and key settings.
+Provider selector, not a true or false flag. Model factories accept ollama, azure, openai or mistral. Agent review supports ollama, openai and mistral. See INSTALLATION.md for cloud provider settings. Azure additionally requires its endpoint, deployment, version and key settings.
 
 Example: USE_LLM=ollama
 
@@ -407,7 +407,7 @@ Source: pasted installation configuration; config\deployment.env.example
 
 ### COMPANION_LLM_ENABLED
 
-Use true or false. Default false. Enables optional Ollama summaries of retrieved evidence. Evidence retrieval, service authorization and session handling remain separate. Unavailable generation must not be interpreted as missing source data.
+Use true or false. Default false. Enables optional summaries through the selected Ollama, OpenAI or Mistral provider. Evidence retrieval, service authorization and session handling remain separate. Unavailable generation must not be interpreted as missing source data.
 
 Example: COMPANION_LLM_ENABLED=false
 
@@ -2057,3 +2057,67 @@ VITE_QIF_SERVICE_URL
 VOCABULARY_APPROVAL_TOKEN
 VOCABULARY_APPROVAL_TOKEN_ACTOR
 VOCABULARY_APPROVAL_TOKEN_EXPIRES_AT
+
+## Configurable LLM providers
+
+Set these values in the server root .env.local, then restart the backend APIs and workers using the supported deployment scripts. No frontend rebuild is needed for a provider switch. Keys remain on the server; never use VITE_ variables for them.
+
+| Setting | Purpose |
+| --- | --- |
+| USE_LLM | ollama, openai, mistral, or existing azure |
+| USE_EMBEDDER | Independent embedding provider; defaults to USE_LLM when absent |
+| LLM_MODEL_NAME / EMBED_MODEL_NAME | Installed Ollama generation and embedding model names |
+| OPENAI_MODEL / OPENAI_EMBED_MODEL | Explicit OpenAI chat and embedding model IDs |
+| OPENAI_API_KEY | OpenAI project API key; separate from PMem ADMIN_API_KEY and Codex sign-in |
+| MISTRAL_MODEL / MISTRAL_EMBED_MODEL | Explicit Mistral chat and embedding model IDs |
+| MISTRAL_API_KEY | Mistral API credential |
+| OPENAI_BASE_URL / MISTRAL_BASE_URL | Optional HTTPS API roots; default to the official /v1 endpoints |
+
+Fully offline Ollama example (install or transfer both models before use):
+
+~~~dotenv
+USE_LLM=ollama
+USE_EMBEDDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+LLM_MODEL_NAME=llama3:latest
+EMBED_MODEL_NAME=nomic-embed-text:latest
+~~~
+
+A locally installed Mistral model can also run offline through Ollama: keep USE_LLM=ollama and set LLM_MODEL_NAME to its exact installed tag.
+
+OpenAI example (replace the model placeholder with an ID enabled for your API project):
+
+~~~dotenv
+USE_LLM=openai
+USE_EMBEDDER=openai
+OPENAI_MODEL=<your-enabled-chat-model-id>
+OPENAI_EMBED_MODEL=text-embedding-3-small
+OPENAI_API_KEY=<your-project-api-key>
+~~~
+
+Mistral cloud example:
+
+~~~dotenv
+USE_LLM=mistral
+USE_EMBEDDER=mistral
+MISTRAL_MODEL=<your-enabled-chat-model-id>
+MISTRAL_EMBED_MODEL=mistral-embed
+MISTRAL_API_KEY=<your-mistral-api-key>
+~~~
+
+For mixed operation, set USE_LLM=openai or mistral and USE_EMBEDDER=ollama with the installed EMBED_MODEL_NAME. This keeps embeddings local but sends selected prompts and graph evidence to the chosen cloud provider. Provider selection never automatically falls back to another provider. Cloud failures remain errors, including authentication failures and rate limits.
+
+Provider-specific cloud model settings are required deliberately: a leftover LLM_MODEL_NAME=llama3:latest will not be sent to a cloud API. Missing or invalid provider settings fail configuration readiness without returning secret values. Readiness validates configuration; it does not claim live inference succeeded. Explicit capability probes perform inference and may incur charges. Generation, structured output, native tool calling, and vision depend on the selected model's capabilities.
+
+Summaries, agent proposals, capability probes and ontology review support Ollama, OpenAI and Mistral. The shared LangChain clients also preserve the existing Azure configuration. Azure-only agent review remains outside the supported agent provider set. OpenAI shared chat uses Responses; agent review adapters and Mistral use Chat Completions. Cloud output is buffered and validated before SSE delivery; OLLAMA_STREAMING_ENABLED controls only native Ollama streaming. Existing proposal-mode settings, approval rules, tool allowlists, prompt bounds and citation validation still apply.
+
+Optional document vision: set USE_UNSTRUCTURED_LLM=true, UNSTRUCTURED_LLM_TYPE=openai or mistral, and UNSTRUCTURED_OPENAI_MODEL or UNSTRUCTURED_MISTRAL_MODEL to a vision-capable model. The selected provider's API key and base URL are reused. Without a separate unstructured provider, document processing follows the main LLM and therefore requires a model capable of the requested input.
+
+
+Provider audit notes: set EMBEDDING_VECTOR_DIMENSIONS to the actual output dimension of your embedding model before creating graph or document vector indexes. Existing 768-dimensional indexes do not accept vectors of another size. Rebuild/migrate affected indexes deliberately before re-embedding. The graph embedding cache now includes the effective provider, model, endpoint and configured dimension; its version change causes existing graph chunks to be re-embedded on the next embedding run.
+
+Cloud agent requests share the existing endpoint-scoped admission/circuit settings (OLLAMA_MAX_CONCURRENCY, OLLAMA_FAILURE_THRESHOLD, OLLAMA_CIRCUIT_COOLDOWN_SECONDS) and honor the remaining operation deadline. These legacy setting names also apply to the cloud review adapter.
+
+Changing embedding model or provider requires re-embedding existing vectors into an index compatible with the new dimension/model. Never mix vectors from different models in one index. Switching generation provider does not migrate stored embeddings.
+
+Official API references: [OpenAI text generation](https://developers.openai.com/api/docs/guides/text) and [Mistral migration and compatibility](https://docs.mistral.ai/resources/migration-guides).

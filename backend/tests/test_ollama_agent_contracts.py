@@ -17,7 +17,7 @@ from backend.core.ollama_limits import request_slot, _states
 class AgentContracts(unittest.TestCase):
     def test_capability_probe_verifies_each_operation_without_executing_a_function(self):
         tree = ast.parse(Path('backend/agentic_service/local_llm.py').read_text())
-        nodes = [item for item in tree.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in {'probe_capabilities', '_content', 'failure_status'}]
+        nodes = [item for item in tree.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in {'probe_capabilities', '_content', 'failure_status', '_tool_endpoint'}]
         @asynccontextmanager
         async def client(**kwargs): yield object()
         post = AsyncMock(side_effect=[{'done': True, 'message': {'content': 'OK'}},
@@ -83,7 +83,7 @@ class AgentContracts(unittest.TestCase):
 
     def test_structured_and_native_proposals_remain_validated_review_data(self):
         tree = ast.parse(Path('backend/agentic_service/local_llm.py').read_text())
-        nodes = [item for item in tree.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in {'suggest_tool', '_content'}]
+        nodes = [item for item in tree.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in {'suggest_tool', '_content', '_tool_endpoint'}]
         @asynccontextmanager
         async def client(**kwargs): yield object()
         post = AsyncMock()

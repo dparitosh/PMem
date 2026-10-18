@@ -107,7 +107,9 @@ def configuration_status(*, check_workers=True):
             errors.append(flag)
     # Validate the same URL and authentication rules used by the clients.
     # Invalid REST settings should fail readiness rather than the first prompt.
-    if os.getenv('USE_LLM', 'ollama').strip().lower() == 'ollama':
+    provider = os.getenv('USE_LLM', 'ollama').strip().lower()
+    embedder = os.getenv('USE_EMBEDDER', provider).strip().lower()
+    if 'ollama' in {provider, embedder}:
         from backend.core.ollama_auth import (
             ollama_base_url, ollama_headers, ollama_tool_chat_root,
         )
@@ -120,14 +122,37 @@ def configuration_status(*, check_workers=True):
                 ollama_headers(base)
             except ValueError:
                 errors.append('OLLAMA_API_KEY_HEADER/OLLAMA_REQUIRE_HTTPS')
-        if os.getenv('OLLAMA_CHAT_API_URL', '').strip():
+        if provider == 'ollama' and os.getenv('OLLAMA_CHAT_API_URL', '').strip():
             try:
                 ollama_tool_chat_root()
             except ValueError:
                 errors.append('OLLAMA_CHAT_API_URL')
-        for key in ('LLM_MODEL_NAME', 'EMBED_MODEL_NAME'):
+        local_models = (['LLM_MODEL_NAME'] if provider == 'ollama' else []) + (['EMBED_MODEL_NAME'] if embedder == 'ollama' else [])
+        for key in local_models:
             if key in os.environ and not os.environ[key].strip():
                 errors.append(key)
+    from backend.core.llm_providers import PROVIDERS, CLOUD_PROVIDERS, cloud_settings
+    provider = os.getenv('USE_LLM', 'ollama').strip().lower()
+    embedder = os.getenv('USE_EMBEDDER', provider).strip().lower()
+    if provider not in PROVIDERS:
+        errors.append('USE_LLM')
+    if embedder not in PROVIDERS:
+        errors.append('USE_EMBEDDER')
+    for selected, embedding in ((provider, False), (embedder, True)):
+        if selected in CLOUD_PROVIDERS:
+            try:
+                cloud_settings(selected, embeddings=embedding)
+            except ValueError as exc:
+                errors.append(str(exc))
+    if os.getenv('USE_UNSTRUCTURED_LLM', 'false').strip().lower() == 'true':
+        vision_provider = os.getenv('UNSTRUCTURED_LLM_TYPE', 'azure').strip().lower()
+        if vision_provider not in PROVIDERS:
+            errors.append('UNSTRUCTURED_LLM_TYPE')
+        elif vision_provider in CLOUD_PROVIDERS:
+            try:
+                cloud_settings(vision_provider, unstructured=True)
+            except ValueError as exc:
+                errors.append(str(exc))
     try:
         ontology_limit = int(os.getenv('ONTOLOGY_AGENT_MAX_BYTES', str(25 * 1024 * 1024)))
         if ontology_limit <= 0:

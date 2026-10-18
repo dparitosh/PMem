@@ -94,3 +94,19 @@ test('routes published service contracts to their owning local service', () => {
 test('uses direct service roots when an API gateway is not configured', () => {
   expect(buildUrl('/api/v1/graph/health')).toContain(':8013/api/v1/graph/health');
 });
+
+test.each([
+  ['/api/v1/ontologies?limit=200&offset=0', 'ontology', 8011],
+  ['/api/v1/ontology/registered?limit=200', 'ingestion', 8014],
+  ['/api/v1/catalog/products?offset=20', 'catalog', 8016],
+  ['/api/v1/graph?limit=10&filter=a%2Fb', 'graph', 8013],
+])('routes initial requests with query parameters: %s', (endpoint, service, port) => {
+  // Before Admin discovers OpenAPI contracts, prefix routing must still choose
+  // the owning service and preserve the complete query for the request.
+  expect(getServiceForPath(endpoint)).toBe(service);
+  expect(buildUrl(endpoint)).toContain(`:${port}${endpoint}`);
+});
+
+test('does not match similarly named namespaces when routing query parameters', () => {
+  expect(getServiceForPath('/api/v1/ontologies-extra?limit=200')).toBeNull();
+});

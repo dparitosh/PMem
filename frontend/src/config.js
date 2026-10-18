@@ -173,7 +173,8 @@ const SERVICE_PATHS = [
 
 export const getServiceForPath = (endpoint = '', method) => {
   if (typeof endpoint !== 'string' || !endpoint.startsWith('/')) return null;
-  return serviceForContractPath(endpoint.split('?')[0], method) || SERVICE_PATHS.find(([, pattern]) => pattern.test(endpoint))?.[0] || null;
+  const path = endpoint.split(/[?#]/, 1)[0];
+  return serviceForContractPath(path, method) || SERVICE_PATHS.find(([, pattern]) => pattern.test(path))?.[0] || null;
 };
 
 // Deprecated: Keep old property for backward compatibility

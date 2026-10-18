@@ -42,7 +42,7 @@ class InferenceDeadlineTests(unittest.IsolatedAsyncioTestCase):
             async def __aenter__(self): return self
             async def __aexit__(self, *args): pass
         async def post(*args): raise TimeoutError()
-        scope = functions('backend/agentic_service/local_llm.py', {'suggest_tool'}, {
+        scope = functions('backend/agentic_service/local_llm.py', {'suggest_tool', '_tool_endpoint'}, {
             '__package__': 'backend.agentic_service', 'os': os,
             'bounded_prompt_json': bounded_prompt_json,
             'settings': lambda: ('ollama', 'fixture-model', 'http://host', 30, {}),

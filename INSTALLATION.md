@@ -1,6 +1,164 @@
 # DEPO installation and release guide
 
+## Configurable LLM providers
+
+Set these values in the server root .env.local, then restart the backend APIs and workers using the supported deployment scripts. No frontend rebuild is needed for a provider switch. Keys remain on the server; never use VITE_ variables for them.
+
+| Setting | Purpose |
+| --- | --- |
+| USE_LLM | ollama, openai, mistral, or existing azure |
+| USE_EMBEDDER | Independent embedding provider; defaults to USE_LLM when absent |
+| LLM_MODEL_NAME / EMBED_MODEL_NAME | Installed Ollama generation and embedding model names |
+| OPENAI_MODEL / OPENAI_EMBED_MODEL | Explicit OpenAI chat and embedding model IDs |
+| OPENAI_API_KEY | OpenAI project API key; separate from PMem ADMIN_API_KEY and Codex sign-in |
+| MISTRAL_MODEL / MISTRAL_EMBED_MODEL | Explicit Mistral chat and embedding model IDs |
+| MISTRAL_API_KEY | Mistral API credential |
+| OPENAI_BASE_URL / MISTRAL_BASE_URL | Optional HTTPS API roots; default to the official /v1 endpoints |
+
+Fully offline Ollama example (install or transfer both models before use):
+
+~~~dotenv
+USE_LLM=ollama
+USE_EMBEDDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+LLM_MODEL_NAME=llama3:latest
+EMBED_MODEL_NAME=nomic-embed-text:latest
+~~~
+
+A locally installed Mistral model can also run offline through Ollama: keep USE_LLM=ollama and set LLM_MODEL_NAME to its exact installed tag.
+
+OpenAI example (replace the model placeholder with an ID enabled for your API project):
+
+~~~dotenv
+USE_LLM=openai
+USE_EMBEDDER=openai
+OPENAI_MODEL=<your-enabled-chat-model-id>
+OPENAI_EMBED_MODEL=text-embedding-3-small
+OPENAI_API_KEY=<your-project-api-key>
+~~~
+
+Mistral cloud example:
+
+~~~dotenv
+USE_LLM=mistral
+USE_EMBEDDER=mistral
+MISTRAL_MODEL=<your-enabled-chat-model-id>
+MISTRAL_EMBED_MODEL=mistral-embed
+MISTRAL_API_KEY=<your-mistral-api-key>
+~~~
+
+For mixed operation, set USE_LLM=openai or mistral and USE_EMBEDDER=ollama with the installed EMBED_MODEL_NAME. This keeps embeddings local but sends selected prompts and graph evidence to the chosen cloud provider. Provider selection never automatically falls back to another provider. Cloud failures remain errors, including authentication failures and rate limits.
+
+Provider-specific cloud model settings are required deliberately: a leftover LLM_MODEL_NAME=llama3:latest will not be sent to a cloud API. Missing or invalid provider settings fail configuration readiness without returning secret values. Readiness validates configuration; it does not claim live inference succeeded. Explicit capability probes perform inference and may incur charges. Generation, structured output, native tool calling, and vision depend on the selected model's capabilities.
+
+Summaries, agent proposals, capability probes and ontology review support Ollama, OpenAI and Mistral. The shared LangChain clients also preserve the existing Azure configuration. Azure-only agent review remains outside the supported agent provider set. OpenAI shared chat uses Responses; agent review adapters and Mistral use Chat Completions. Cloud output is buffered and validated before SSE delivery; OLLAMA_STREAMING_ENABLED controls only native Ollama streaming. Existing proposal-mode settings, approval rules, tool allowlists, prompt bounds and citation validation still apply.
+
+Optional document vision: set USE_UNSTRUCTURED_LLM=true, UNSTRUCTURED_LLM_TYPE=openai or mistral, and UNSTRUCTURED_OPENAI_MODEL or UNSTRUCTURED_MISTRAL_MODEL to a vision-capable model. The selected provider's API key and base URL are reused. Without a separate unstructured provider, document processing follows the main LLM and therefore requires a model capable of the requested input.
+
+
+Provider audit notes: set EMBEDDING_VECTOR_DIMENSIONS to the actual output dimension of your embedding model before creating graph or document vector indexes. Existing 768-dimensional indexes do not accept vectors of another size. Rebuild/migrate affected indexes deliberately before re-embedding. The graph embedding cache now includes the effective provider, model, endpoint and configured dimension; its version change causes existing graph chunks to be re-embedded on the next embedding run.
+
+Cloud agent requests share the existing endpoint-scoped admission/circuit settings (OLLAMA_MAX_CONCURRENCY, OLLAMA_FAILURE_THRESHOLD, OLLAMA_CIRCUIT_COOLDOWN_SECONDS) and honor the remaining operation deadline. These legacy setting names also apply to the cloud review adapter.
+
+Changing embedding model or provider requires re-embedding existing vectors into an index compatible with the new dimension/model. Never mix vectors from different models in one index. Switching generation provider does not migrate stored embeddings.
+
+Official API references: [OpenAI text generation](https://developers.openai.com/api/docs/guides/text) and [Mistral migration and compatibility](https://docs.mistral.ai/resources/migration-guides).
+
+
+## First-time Windows installation: start here
+
+Use the complete matching release, including this file and the root
+`install-depo.ps1`. Select the intended release explicitly instead of assuming
+the repository's default branch matches the customer release being tested.
+For validation of this release branch, clone it into a new directory:
+
+```powershell
+git clone --branch codex/ontology-bridge-stability --single-branch https://github.com/dparitosh/PMem.git D:\GenAI_Projects\Apps\PMem
+Set-Location D:\GenAI_Projects\Apps\PMem
+git branch --show-current
+Test-Path .\INSTALLATION.md
+```
+
+If that directory already exists, preserve its local changes, environment files
+and data before selecting the release; do not clone over it or reset it. An
+approved release ZIP is also supported when extracted with its complete folder
+structure. Customer acceptance must record the actual release commit or package
+version tested, rather than assuming a moving branch is already certified.
+
+Follow this order for a first installation. Later update and feature-specific
+sections supplement these steps; they are not additional first-run installers.
+
+1. Provision **64-bit CPython 3.12**, **Node.js 24+ / npm 10.2+**,
+   **PostgreSQL 16**, and the **Neo4j** server. PostgreSQL stores the application
+   control plane; Neo4j stores its graph. pgAdmin is an optional PostgreSQL
+   administration client. Apache AGE or another PostgreSQL graph extension is
+   not an installation requirement. Spark, OCR and an LLM provider are optional
+   capabilities with separate acceptance checks.
+   For native Windows dependency features, provision the current supported
+   [Microsoft Visual C++ x64 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+   Some wheels bundle their runtime and can import even when a dependency warns
+   that the system-wide redistributable is absent. Record the warning, verify the
+   actual native imports and required features, and do not infer feature readiness
+   solely from a successful service/OpenAPI import. Operating-system prerequisite
+   installation may require the customer's administrator.
+2. Open Windows PowerShell with the installed tools on `PATH` and run
+   `diagnose-depo.ps1 -Phase Prerequisites`. If Python is not available as `py`,
+   pass `-Python` with the full CPython 3.12 executable path to both diagnostics
+   and the installer. This check must pass before proceeding.
+3. Follow section **1.1** to start PostgreSQL and create the dedicated application
+   role, database and schema. Record the chosen identifiers and password.
+   Start Neo4j and verify its database name, username and password as well.
+4. Run `configure-depo.ps1` once, then complete **both** files described in section
+   **2**. This command generates configuration and API keys; it does not prompt
+   for database credentials or provision databases. Preserve existing generated
+   keys when correcting configuration.
+5. Run Configuration diagnostics, the complete root installer, and then the
+   separate frontend launcher. The following assumes the tools are on `PATH`;
+   replace the checkout path with your actual directory:
+
+```powershell
+Set-Location D:\GenAI_Projects\Apps\PMem
+.\diagnose-depo.ps1 -Phase Prerequisites -Python python.exe
+.\diagnose-depo.ps1 -Phase Configuration -EnvFile .env.local -Profile Production
+.\install-depo.ps1 -EnvFile .env.local -Profile Production -Python python.exe
+if (-not $?) { throw 'Installation failed; stop at the reported stage.' }
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local
+```
+
+6. Complete section **4**: verify the database schema, authenticated service
+   endpoints, browser login and representative customer workflows. Successful
+   dependency installation or a frontend build alone is not release acceptance.
+
+### Required Windows process and listener inspection
+
+The installer and lifecycle tools query `Win32_Process` through CIM/WMI and use
+`Get-NetTCPConnection` to verify executable identity, child processes and listener
+ownership. A restricted automation session or host policy can deny these APIs
+even when Python, Node.js and PostgreSQL work. The Prerequisites diagnostic now
+checks both APIs before dependency installation. Package diagnostics remain an
+offline structural check and do not prove that the host can launch services.
+
+If process or listener inspection is denied, use a permitted Windows PowerShell
+session on the deployment host and ask its administrator to check the Windows
+Management Instrumentation service and access policy. Do not disable the guards,
+ignore the failure, or treat unverified HTTP responses as proof of process
+ownership. No successful full installation can be claimed until the complete
+installer and runtime checks pass in that session.
+
+For a local portable PostgreSQL installation, start the initialized cluster
+before connectivity checks, or configure its exact binary/data paths in portable
+mode. It will not appear in `Get-Service`. Use external mode when the database is
+started and managed separately. Keep development tools and database data outside
+the application's checkout, and never add credentials to source control.
+
 ## Metadata Registry page update
+
+Paginated first-load requests now resolve the owning service from the pathname,
+without including query parameters in the fallback route match. If the browser
+previously requested `/api/v1/ontologies?limit=200&offset=0` from the frontend
+server, deploy the matching frontend fix and rebuild with
+`infra/windows/build-depo-frontend.ps1` using the selected `-EnvFile`. This routing
+fix requires no database migration or credential rotation.
 
 Deploy the matching frontend and ontology service together for registry pagination. Rebuild the frontend and restart the ontology service after replacing these files; no database migration is needed for this change. Registry reads now require `GRAPH_READ_TOKEN` or a central browser session with that scope. In Admin, connect registered services before opening Metadata Registry. Writes continue to require `ONTOLOGY_APPROVAL_TOKEN`.
 
@@ -436,7 +594,7 @@ that local frontend command.
 | Local PostgreSQL service stopped | Before the installer connectivity stage, run `Start-Service -Name 'postgresql-x64-16'` in an administrator PowerShell on the database VM, using the actual installed service name. Portable clusters must also be started before installation. |
 | Schema migration rejected | Use the structured SQLSTATE/action printed above the error; correct privileges or incompatible existing objects. Rerun `.\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local`. |
 | npm EBUSY | Close the running frontend/Node process holding this checkout, then rerun installation. The installer retries the locked `npm ci`; it does not replace the reviewed lockfile. |
-| Browser shows old URLs or blank pages | Edit `frontend/.env.local`, rebuild with `npm.cmd run build` from `frontend`, and reload the browser. Server restart alone does not rebuild browser settings. |
+| Browser shows old URLs or blank pages | With root `DEPO_ROUTING_MODE=local` or `gateway`, correct routing in root `.env.local` and restart the frontend launcher. Rebuild changed source with `infra/windows/build-depo-frontend.ps1` using the same `-EnvFile`, then refresh the browser. Without root routing, correct the browser aliases in `frontend/.env.local` before rebuilding. |
 | Port 8000 does not respond | The standalone APIs use ports 8010–8019. A gateway is configured separately; installation does not create a listener on 8000. |
 
 Exact HTTP and HTTPS browser origins are supported in both profiles, including

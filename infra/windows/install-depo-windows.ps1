@@ -67,6 +67,7 @@ Write-Host "Deployment environment file: $envPath"
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
 . (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 Invoke-DepoStage 'Stopped backend verification (before installation or migrations)' {
+  Assert-DepoWindowsManagementAccess
   Assert-DepoDeploymentStopped -Root $root
 }
 Invoke-DepoStage 'Deployment configuration preflight (before dependency installation)' {

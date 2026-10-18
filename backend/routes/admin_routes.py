@@ -329,20 +329,20 @@ def _configuration_registry(neo4j: dict, llm: dict) -> list[dict]:
         },
         {
             "component": "LLM",
-            "key": "OLLAMA_BASE_URL",
-            "configured_value": _mask_uri(ollama_base or llm.get("endpoint", "")),
+            "key": llm.get("endpoint_key", "OLLAMA_BASE_URL"),
+            "configured_value": _mask_uri(llm.get("endpoint", "")),
             "active_value": _mask_uri(llm.get("endpoint", "")),
-            "source": ollama_source,
-            "status": "configured" if ollama_base else "default",
+            "source": llm.get("endpoint_source", ollama_source),
+            "status": llm.get("status", "default"),
             "mutable": False,
         },
         {
             "component": "LLM",
-            "key": "LLM_MODEL_NAME",
-            "configured_value": llm_model or llm.get("model", ""),
+            "key": llm.get("model_key", "LLM_MODEL_NAME"),
+            "configured_value": llm.get("model", ""),
             "active_value": llm.get("model", ""),
-            "source": model_source,
-            "status": "configured" if llm_model else "default",
+            "source": llm.get("model_source", model_source),
+            "status": llm.get("status", "default"),
             "mutable": False,
         },
     ]
@@ -353,7 +353,19 @@ def _llm_settings() -> dict:
     provider, provider_source = _env_lookup("USE_LLM")
     model, model_source = _env_lookup("LLM_MODEL_NAME", "AZURE_OPENAI_DEPLOYMENT")
     endpoint, endpoint_source = _env_lookup("OLLAMA_BASE_URL", "AZURE_OPENAI_ENDPOINT")
-    provider = (provider or "ollama").lower()
+    provider = (os.getenv("USE_LLM") or provider or "ollama").strip().lower()
+    if provider in {'openai', 'mistral'}:
+        from backend.core.llm_providers import cloud_settings
+        try:
+            selected = cloud_settings(provider)
+            return {'provider': provider, 'model': selected.model, 'endpoint': selected.base_url,
+                    'status': 'configured', 'provider_source': provider_source,
+                    'model_key': provider.upper() + '_MODEL', 'endpoint_key': provider.upper() + '_BASE_URL',
+                    'model_source': 'process', 'endpoint_source': 'process' if os.getenv(provider.upper() + '_BASE_URL') else 'default'}
+        except ValueError:
+            return {'provider': provider, 'model': '', 'endpoint': '', 'status': 'degraded',
+                    'provider_source': provider_source, 'model_key': provider.upper() + '_MODEL',
+                    'endpoint_key': provider.upper() + '_BASE_URL', 'model_source': 'process', 'endpoint_source': 'process'}
     model = model or "llama3:latest"
     endpoint = endpoint or "http://localhost:11434"
     status = "configured" if endpoint and model else "degraded"
