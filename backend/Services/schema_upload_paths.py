@@ -1,5 +1,6 @@
 """Validate uploaded schema paths before conversion or artifact writes."""
 from pathlib import PurePosixPath, PureWindowsPath
+from backend.depo_platform.upload_limits import ontology_upload_limit
 import posixpath
 from defusedxml import ElementTree as ET
 from urllib.parse import urlsplit, unquote
@@ -29,8 +30,8 @@ def validate_schema_upload(filename: str, content: bytes, dependencies=None, *, 
             raise ValueError('Schema dependency must be a distinct relative XSD path')
         seen.add(path.as_posix().casefold())
         total += len(data)
-    if (dependencies or filename.lower().endswith('.xsd')) and total > 25 * 1024 * 1024:
-        raise ValueError('Schema dependency closure exceeds 25 MiB')
+    if (dependencies or filename.lower().endswith('.xsd')) and total > min(25 * 1024 * 1024, ontology_upload_limit()):
+        raise ValueError('Schema dependency closure exceeds configured ontology/schema-set limit')
     if filename.lower().endswith('.xsd'):
         uploaded = {filename, *dependencies}
         for name, data in {filename: content, **dependencies}.items():

@@ -4,7 +4,8 @@ param(
   [switch]$SkipFrontend,
   [switch]$Development,
   [switch]$EnableOcr,
-  [switch]$CheckPrerequisites
+  [switch]$CheckPrerequisites,
+  [switch]$ForceReinstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,12 +23,12 @@ if ($LASTEXITCODE -ne 0 -or ([version]$pythonVersion).Major -ne 3 -or ([version]
 }
 $pythonBits = & $pythonToCheck -c 'import sys; print(64 if sys.maxsize > 2**32 else 32)'
 if ($LASTEXITCODE -ne 0 -or "$pythonBits".Trim() -ne '64') { throw 'The customer release requires 64-bit CPython 3.12. No dependencies were installed.' }
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
 if (-not $SkipFrontend) {
-  foreach ($command in @('node', 'npm.cmd')) {
-    if (-not (Get-Command $command -ErrorAction SilentlyContinue)) { throw "Missing $command. Install Node.js 24+ and npm 10.2+." }
-  }
-  $nodeVersion = & node --version
-  if ($LASTEXITCODE -ne 0 -or [version]($nodeVersion.TrimStart('v')) -lt [version]'24.0.0') { throw 'Node.js 24 or newer is required.' }
+  $nodeSettings=Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+  $nodeRuntime=Get-DepoNodeRuntime -Root $root -NodeJsDir $nodeSettings['DEPO_NODEJS_DIR']
+  $env:Path=$nodeRuntime.Directory+';'+$env:Path
+  $nodeVersion=$nodeRuntime.Version
   $npmVersion = & npm.cmd --version
   if ($LASTEXITCODE -ne 0 -or [version]$npmVersion -lt [version]'10.2.0') { throw 'npm 10.2 or newer is required.' }
   if (-not (Test-Path -LiteralPath (Join-Path $root 'frontend/package-lock.json'))) { throw 'Missing frontend/package-lock.json.' }
@@ -72,10 +73,23 @@ if (-not $Development) { $pipArguments += '--require-hashes' }
 $pipArguments += @('-r', $requirements)
 if ($EnableOcr -and -not $Development -and -not $isolatedServices) { $pipArguments += @('-r', $ocrLock) }
 Write-Host "Installing backend dependencies. Output log: $pipLog"
-$pipExitCode = Invoke-DepoInstallCommand -Executable $venvPython -NativeArguments $pipArguments -LogPath $pipLog
-if ($pipExitCode -ne 0) { throw "Backend dependency installation failed with exit code $pipExitCode. Inspect $pipLog for the actual pip error; environment files and database were preserved." }
+. (Join-Path $PSScriptRoot 'install-checkpoints.ps1')
+$dependencyInputs = @($requirements)
+if ($EnableOcr -and -not $Development -and -not $isolatedServices) { $dependencyInputs += $ocrLock }
+$runtimeIdentity = & $venvPython -c 'import sys; print(sys.executable, sys.version)'
+$dependencyFingerprint = Get-DepoInstallFingerprint -Files $dependencyInputs -Values @($runtimeIdentity, [string]$Development, [string]$EnableOcr)
+Invoke-DepoDependencyStage -Root $root -Name 'backend' -Fingerprint $dependencyFingerprint -Force:($ForceReinstall -or $Development) -Action {
+  $pipExitCode = Invoke-DepoInstallCommand -Executable $venvPython -NativeArguments $pipArguments -LogPath $pipLog
+  if ($pipExitCode -ne 0) { throw "Backend dependency installation failed. Inspect $pipLog; rerun the same installer after correcting the error." }
+} -Probe {
+  & $venvPython -m pip check | Out-Host
+  if ($LASTEXITCODE -ne 0) { return $false }
+  $inventory = & $venvPython -m pip freeze --all
+  if ($LASTEXITCODE -ne 0) { return $false }
+  return (Get-DepoInstallFingerprint -Files @() -Values @($inventory))
+}
 if ($isolatedServices) {
-  & (Join-Path $PSScriptRoot 'install-depo-service.ps1') -ServiceId all -EnvFile $EnvFile -Python $venvPython -EnableOcr:$EnableOcr
+  & (Join-Path $PSScriptRoot 'install-depo-service.ps1') -ServiceId all -EnvFile $EnvFile -Python $venvPython -EnableOcr:$EnableOcr -ForceReinstall:$ForceReinstall
 } else {
 Push-Location $root
 try {
@@ -106,6 +120,8 @@ if (-not $SkipFrontend) {
   Push-Location $frontend
   try {
     if (-not (Test-Path (Join-Path $frontend "package-lock.json"))) { throw "Missing frontend/package-lock.json; restore the release lockfile before installation." }
+    $frontendFingerprint = Get-DepoInstallFingerprint -Files @((Join-Path $frontend 'package-lock.json'), (Join-Path $frontend 'package.json')) -Values @($nodeVersion, $npmVersion)
+    Invoke-DepoDependencyStage -Root $root -Name 'frontend' -Fingerprint $frontendFingerprint -Force:$ForceReinstall -Action {
     # Preserve the exact reviewed lockfile. An npm install fallback may select
     # a different graph after a transient Windows EBUSY and rewrite the lock.
     for ($attempt = 1; $attempt -le 3; $attempt++) {
@@ -117,6 +133,11 @@ if (-not $SkipFrontend) {
       }
     }
     if ($LASTEXITCODE -ne 0) { throw 'Frontend locked dependency installation failed after three attempts. Close Vite/Node processes, then rerun install-depo.ps1.' }
+    } -Probe {
+      if (-not (Test-Path -LiteralPath (Join-Path $frontend 'node_modules/.bin/vite.cmd'))) { return $false }
+      & npm.cmd ls --depth=0 --offline *> $null
+      return ($LASTEXITCODE -eq 0)
+    }
     & (Join-Path $PSScriptRoot 'build-depo-frontend.ps1') -EnvFile $EnvFile
   } finally { Pop-Location }
 }

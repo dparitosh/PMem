@@ -1,4 +1,31 @@
+## Guided Windows installation and repair
+
+Double-click **Setup-DEPO.cmd** in the release folder and choose Install/update/repair, Start, Stop, or Restart. Every action runs in a process-scoped PowerShell ExecutionPolicy Bypass session; no machine policy is changed. This is the customer entry point; internal per-service dependency scripts are implementation details. The redundant `install-depo-windows.ps1` wrapper has been removed.
+
+Python 3.12 x64, Node.js 24+, PostgreSQL 16 with an existing application database/role, and a running Neo4j database must be available first. Setup discovers PATH tools and the supported adjacent portable Python312/NodeJS folders. It prompts for database connections on the first run, hides passwords, generates application keys, and configures loopback browser access automatically. It does not install database engines or create database users. Remote Neo4j connections in the workstation wizard require verified TLS; gateway/cluster deployments use the advanced configuration instructions below.
+
+Existing `.env.local` and browser settings are retained. New workstation setup enables the local frontend broker with workflow access, bound to loopback; keys stay on the server. Existing manual/gateway authentication is preserved. Credential import is part of installation when `AUTH_MODE=token` and `DEPO_CREDENTIAL_STORE=postgres`; no separate apply-credentials command is required. Existing central profiles are validated rather than silently rotated.
+
+Setup stops tracked PMem processes before upgrades, installs dependencies, checks imports, migrates the database schema, applies credentials, validates Neo4j, starts backend services, and starts the frontend. PostgreSQL and Neo4j are not stopped. A stage failure stops setup with the actual error. Correct it and run **the same launcher again**.
+
+Completed backend, per-service and frontend dependency installations have receipts under `logs/installation/checkpoints`. Resume checks lock hashes, runtime identity and installed dependency health/inventory. A failed stage has no successful receipt. Changed inputs or missing dependencies trigger installation again. Import checks, configuration checks, migrations, credentials and readiness always rerun; a receipt never substitutes for those checks. Frontend source is rebuilt on each run so fixes cannot be hidden by an old receipt.
+
+Advanced repair: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -ForceReinstall`. This ignores dependency receipts but preserves environment files, credentials and data. Rotating existing central keys remains a separate explicit operation with `-ReplaceExistingCredentials` on `install-depo.ps1`.
+
 # DEPO installation and release guide
+
+## New deployment versus existing installation
+
+The single installer detects the deployment from the configured PostgreSQL schema **before** running migrations. An existing migration-history table, application registry, or retained ontology catalog means an upgrade. With none of those present, setup treats it as a new deployment. Connectivity or inspection errors stop installation rather than guessing the mode.
+
+- **New deployment:** initialize the current PostgreSQL schema, provision Neo4j indexes and constraints, apply generated application keys and start services. Skip legacy ontology conversion and republication.
+- **Existing deployment:** apply pending PostgreSQL migrations and Neo4j schema changes, then inventory registered and retained ontologies. Guided Setup stages corrected review drafts for XSD namespace/class identity changes and RDF default-prefix repairs. The advanced root installer produces a plan; add `-StageOntologyUpdates` to stage drafts as well.
+
+The review report is `logs/installation/ontology-upgrade-v2/plan.json`. Each affected source has a content fingerprint and a recovery directory containing retained source, metadata and companions. These are artifact backups, not full PostgreSQL or Neo4j database snapshots; follow your normal database-backup procedure for production upgrades. Retrying setup reuses a verified draft receipt. Changed sources or companions produce a new review version.
+
+In **Ontology Junction**, select the reported draft, compare its classes, subclasses and namespaces with the active ontology, then use the existing lifecycle review/approval and publication controls. Setup does not impersonate an approver, rewrite an active ontology in place, remove an active graph, or silently relink existing instances. Keep the old publication until the replacement has been reviewed. Missing sources, ambiguous namespaces and unavailable companions are marked `manual_review_required`; restore the source package before rerunning setup. Arbitrary OWL semantics cannot be reconstructed from a namespace alone.
+
+The obsolete `infra/windows/install-depo-windows.ps1` file is removed by the combined upgrade after backup. All current installation orchestration lives in root `install-depo.ps1`; dependency and lifecycle helpers remain internal. Old generated patch launchers are retired, not part of customer installation. `Setup-DEPO.cmd` remains the customer command.
 
 ## Configurable LLM providers
 
@@ -112,8 +139,7 @@ sections supplement these steps; they are not additional first-run installers.
    **2**. This command generates configuration and API keys; it does not prompt
    for database credentials or provision databases. Preserve existing generated
    keys when correcting configuration.
-5. Run Configuration diagnostics, the complete root installer, and then the
-   separate frontend launcher. The following assumes the tools are on `PATH`;
+5. Run Configuration diagnostics, the complete root installer, which also starts the frontend. The following assumes the tools are on `PATH`;
    replace the checkout path with your actual directory:
 
 ```powershell
@@ -122,7 +148,6 @@ Set-Location D:\GenAI_Projects\Apps\PMem
 .\diagnose-depo.ps1 -Phase Configuration -EnvFile .env.local -Profile Production
 .\install-depo.ps1 -EnvFile .env.local -Profile Production -Python python.exe
 if (-not $?) { throw 'Installation failed; stop at the reported stage.' }
-.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local
 ```
 
 6. Complete section **4**: verify the database schema, authenticated service
@@ -5146,3 +5171,20 @@ The agentic inference implementation uses the pinned LangChain-core Runnable/Pro
 ### Updating ontology semantic inventories
 
 The semantic-inventory update uses existing PostgreSQL JSONB catalog records; it requires no new tables or credentials. Newly registered ontologies receive versioned semantic statistics. For existing records, invoke the authenticated `POST /api/v1/ontologies/migrations/legacy/analytics` operation with selected `ontology_ids`. It refreshes statistics without approving or publishing artifacts. Use the existing governed publication workflow to refresh Neo4j kinds and RDF type properties. Stored RDF predicates remain authoritative; this update does not execute imported SWRL rules or invent missing axioms.
+
+
+### Windows setup and lifecycle audit logs
+
+Use `Setup-DEPO.cmd` for install/update/repair, start, stop or restart. Its PowerShell bypass applies only to the launched process and does not change the machine execution policy.
+
+Each setup, installation and lifecycle action prints its audit-log path immediately. Logs are retained after failure and retry:
+
+- Application actions: `logs/installation/runs/<action>-<timestamp>-<run-id>.log` and the matching `.jsonl` file beneath the application folder.
+- The supplied upgrade launcher also logs package validation and copy failures beneath `logs/installation/runs` beside its package folder (the directory containing `Setup-DEPO.cmd`).
+- Dependency installer output remains under `logs/installation`; service stdout and stderr remain under `logs/windows-services`.
+
+The text log captures PowerShell output, warnings, errors and failure location/stack information. JSONL records include UTC time, run ID, action and a final `succeeded` or `failed` event. Native nonzero exits fail the action. Inspect the earliest failure before any cleanup messages; an absent listener after cleanup does not identify the original cause. Retrying creates a separate run log and retains previous evidence.
+
+Known credential values from the process environment and `.env.local`, PostgreSQL URL passwords and bearer tokens are redacted in action logs. Review logs before sharing because arbitrary application output may contain other sensitive data. Parser errors, invalid launcher arguments, or failures before the logging helper loads can still appear only in the command window. These action logs supplement service logs; they do not replace application request/audit records or capture browser errors.
+
+Windows shutdown archives PID files under `logs/windows-services/stale-tracking` when the inspected PID belongs to a different module. The unrelated process is left running. Missing executable/command-line information or a matching service module using an unapproved runtime still stops setup and retains tracking for diagnosis.

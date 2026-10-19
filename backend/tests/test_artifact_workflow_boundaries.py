@@ -1,8 +1,4 @@
 import ast
-import asyncio
-import hashlib
-import json
-import os
 from datetime import datetime
 from typing import Any, Dict
 from pathlib import Path
@@ -48,18 +44,21 @@ class ArtifactWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 if url.endswith("generate"): return Response({"artifacts": {"turtle": "rdf"}})
                 calls.append(kw["data"]["source"])
                 return Response({"ontology_id": "demo_1"})
-        tree = ast.parse((ROOT / "ingestion_service/workflow.py").read_text(encoding="utf-8"))
-        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-        scope = {"Any": object, "os": os, "json": json, "hashlib": hashlib,
-                 "service_url": lambda key, fallback: fallback, "service_bearer_headers": lambda *a, **kw: {},
-                 "httpx": SimpleNamespace(AsyncClient=lambda **kw: Client())}
-        exec(compile(ast.Module(body=[cls], type_ignores=[]), "workflow", "exec"), scope)
-        runner = scope["SemanticIngestionWorkflow"]()
+        from contextlib import nullcontext
+        from unittest.mock import patch
+        from backend.ingestion_service.workflow import SemanticIngestionWorkflow
         kwargs = {"normalized": {"entities": [{"id": "1"}], "relationships": [], "records_processed": 1, "provenance": {}},
                   "name": "Demo", "prefix": "demo", "base_uri": "urn:demo:", "publish": True}
-        for _ in range(2):
-            result = await runner.run(**kwargs)
-            self.assertEqual(result["status"], "awaiting_approval")
+        # Exercise the imported implementation and its decorator while isolating
+        # the external maintenance lock and HTTP boundary in this unit test.
+        with patch('backend.depo_platform.ontology_maintenance.ontology_operation', side_effect=lambda: nullcontext()), \
+             patch('backend.ingestion_service.workflow.service_bearer_headers', return_value={}), \
+             patch('backend.ingestion_service.workflow.httpx.AsyncClient', side_effect=lambda **kw: Client()):
+            runner = SemanticIngestionWorkflow()
+            for _ in range(2):
+                result = await runner.run(**kwargs)
+                self.assertEqual(result["status"], "awaiting_approval")
+        self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0], calls[1])
         self.assertRegex(calls[0], r"^source-profile-workflow:[0-9a-f]{64}$")
 

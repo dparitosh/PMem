@@ -15,6 +15,7 @@ from .profiles import profiles
 from .workflow import workflow
 from .neo4j_writer import writer
 from .schema_conversion import converter
+from backend.depo_platform.upload_limits import ontology_upload_limit
 from .engineering_workflow import workflow as engineering_workflow, EngineeringDependencyFailure
 from .ap242_mbd import ap242_mbd
 from .ap242_reference import AP242ReferenceValidator
@@ -27,10 +28,10 @@ from defusedxml import ElementTree as ET
 from backend.depo_platform.authorization import service_write_identity
 
 
-async def _read_bounded_upload(file: UploadFile) -> bytes:
-    content = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+async def _read_bounded_upload(file: UploadFile, limit: int = MAX_UPLOAD_BYTES) -> bytes:
+    content = await file.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(413, f"Upload exceeds the configured ingestion limit ({limit} bytes)")
     return content
 
 
@@ -221,7 +222,7 @@ def import_tasks() -> dict:
 async def inspect_engineering_schema(file: UploadFile = File(...),
     dependencies: list[UploadFile] = File(default=[]),
     dependency_paths: str = Form('[]', description='JSON relative XSD paths, in the same order as dependency files')) -> dict:
-    content = await _read_bounded_upload(file)
+    content = await _read_bounded_upload(file, ontology_upload_limit())
     try:
         paths = json.loads(dependency_paths)
         if not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63:
@@ -233,10 +234,10 @@ async def inspect_engineering_schema(file: UploadFile = File(...),
         schema_files = {}
         total = len(content)
         for path, dependency in zip(paths, dependencies):
-            data = await dependency.read(max(0, 25 * 1024 * 1024 - total) + 1)
+            data = await dependency.read(max(0, min(25 * 1024 * 1024, ontology_upload_limit()) - total) + 1)
             total += len(data)
-            if total > 25 * 1024 * 1024:
-                raise HTTPException(413, 'Schema dependency closure exceeds 25 MiB')
+            if total > min(25 * 1024 * 1024, ontology_upload_limit()):
+                raise HTTPException(413, 'Schema dependency closure exceeds configured ontology/schema-set limit')
             schema_files[path] = data
         return await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content,
             **({'schema_files': schema_files} if schema_files else {}))
@@ -307,7 +308,7 @@ async def run_engineering_workflow(
     dependency_paths: str = Form('[]'),
     include_conversion: bool = Form(True),
 ) -> dict:
-    content = await _read_bounded_upload(file)
+    content = await _read_bounded_upload(file, ontology_upload_limit())
     try:
         paths = json.loads(dependency_paths)
         if (not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63
@@ -319,10 +320,10 @@ async def run_engineering_workflow(
         schema_files = {}
         total = len(content)
         for path, dependency in zip(paths, dependencies):
-            data = await dependency.read(max(0, 25 * 1024 * 1024 - total) + 1)
+            data = await dependency.read(max(0, min(25 * 1024 * 1024, ontology_upload_limit()) - total) + 1)
             total += len(data)
-            if total > 25 * 1024 * 1024:
-                raise HTTPException(413, 'Schema dependency closure exceeds 25 MiB')
+            if total > min(25 * 1024 * 1024, ontology_upload_limit()):
+                raise HTTPException(413, 'Schema dependency closure exceeds configured ontology/schema-set limit')
             schema_files[path] = data
         result = await engineering_workflow.run(
             filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
@@ -509,3 +510,9 @@ async def ingest_data(
         raise
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/ontology-upload-options', summary='Read ontology file and aggregate schema-set limits')
+def ontology_upload_options() -> dict:
+    limit = ontology_upload_limit()
+    return {'max_file_bytes': limit, 'max_schema_set_bytes': min(limit, 25 * 1024 * 1024)}

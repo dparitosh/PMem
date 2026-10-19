@@ -1,20 +1,17 @@
-
-from backend.depo_platform.request_bodies import LegacyCleanupBody, LegacyMergeBody
 """
 Unified Data Import Router
-Provides 5 endpoints for file import with progress tracking, preview, and commit capabilities.
+Compatibility ontology registration, browsing, read-only merge preview and cleanup.
+Tracked instance imports are served by ingestion_service.tracked_import.
 """
+from backend.depo_platform.request_bodies import LegacyCleanupBody, LegacyMergeBody
+
 
 import logging
 from typing import Optional
 from pathlib import Path
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
-
-# ✅ SECURITY: File size limits
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
-MAX_FILE_SIZE_DISPLAY = "500 MB"
+from pydantic import BaseModel
 
 
 async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
@@ -24,7 +21,7 @@ async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
     while chunk := await file.read(1024 * 1024):
         total += len(chunk)
         if total > max_bytes:
-            raise HTTPException(status_code=413, detail=f"File too large. Maximum size: {MAX_FILE_SIZE_DISPLAY}")
+            raise HTTPException(status_code=413, detail=f"File too large. Maximum size: {max_bytes} bytes")
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -34,7 +31,6 @@ from .unified_data_import import (
 )
 from .ontology_upload_manager import OntologyUploadManager
 from .owl_generation_service import _extract_xsd_target_namespace, _normalize_base_uri
-from .oslc_trs_service import OSLCTRSService
 
 logger = logging.getLogger(__name__)
 
@@ -49,55 +45,6 @@ ontology_router = APIRouter(prefix="/ontology", tags=["ontology"])
 
 
 # ========== Request/Response Models ==========
-
-class ImportStatusResponse(BaseModel):
-    """Response for import status"""
-    task_id: str
-    filename: str
-    file_type: str
-    current_stage: str
-    progress: int
-    message: str
-    status: str
-    error: Optional[str] = None
-    stats: Optional[dict] = None
-    schema_metadata: Optional[dict] = None
-    started_at: str
-    completed_at: Optional[str] = None
-
-
-class PreviewResponse(BaseModel):
-    """Response for data preview"""
-    task_id: str
-    row_count: int
-    columns: list
-    sample_rows: list
-    auto_schema: dict
-
-
-class ImportConfigRequest(BaseModel):
-    """Request to configure import"""
-    nodes: Optional[list] = Field(None, description="Node definitions")
-    relationships: Optional[list] = Field(None, description="Relationship definitions")
-    indexes: Optional[list] = Field(None, description="Index definitions")
-    constraints: Optional[list] = Field(None, description="Constraint definitions")
-
-
-class CommitResponse(BaseModel):
-    """Response from commit"""
-    task_id: str
-    status: str
-    message: str
-    result: dict
-
-
-class OntologyMetadataRequest(BaseModel):
-    """Request with ontology metadata for upload"""
-    ontology_name: str = Field(..., description="User-friendly ontology name")
-    prefix: str = Field(..., description="Ontology namespace prefix")
-    generation_type: str = Field(..., description="What to generate: shacl, owl, both")
-    file_type: str = Field(..., description="File type: xsd, xmi")
-    description: Optional[str] = Field(None, description="Ontology description")
 
 
 class UploadResponse(BaseModel):
@@ -114,34 +61,6 @@ class UploadResponse(BaseModel):
     supported_formats: list
     storage_path: Optional[str] = None
 
-
-class OntologyMappingRequest(BaseModel):
-    """Legacy request for source profile mapping. Prefer SemanticWorkflowService instance.link for instance-to-ontology alignment."""
-    task_id: str
-    target_ontology: str = Field(..., description="Legacy target/profile id for ontology-to-ontology mapping; not required for Semantic Bridge instance linking")
-    confidence_threshold: float = Field(0.6, ge=0.0, le=1.0, description="Minimum confidence for legacy entity-to-entity mapping suggestions")
-
-
-class OntologyMappingResponse(BaseModel):
-    """Response from ontology mapping"""
-    task_id: str
-    source_namespace: str
-    target_namespace: str
-    entity_mappings_count: int
-    unmapped_entities_count: int
-    overall_confidence: float
-    mapping_metadata: dict
-    aligned_owl_ttl: Optional[str] = None
-
-
-class OntologyMergeRequest(BaseModel):
-    """Request for ontology merge"""
-    from_ontology_id: str = Field(..., description="Source ontology ID to merge from")
-    to_ontology_id: str = Field(..., description="Target ontology ID to merge into")
-    dry_run: bool = Field(False, description="If true, preview impact without mutating data")
-
-
-# ========== Endpoints ==========
 
 # ========== Endpoints ==========
 
@@ -176,11 +95,10 @@ class OntologyMergeRequest(BaseModel):
     }
 )
 async def upload_ontology_file(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="XSD, XMI, OWL, RDF/XML, or TTL ontology file"),
+    file: UploadFile = File(..., description="XSD, XMI, EXPRESS, OWL, RDF/XML, or TTL ontology file"),
     ontology_name: str = Form(..., description="Human-readable name for the ontology"),
     prefix: str = Form("", description="Optional namespace prefix; derived from the source namespace when omitted"),
-    generation_type: str = Form(..., description="Generation type: shacl, owl, or both"),
+    generation_type: str = Form(..., description="Generation type: shacl, owl, both, or as_is"),
     description: str = Form("", description="Optional ontology description"),
     schema_type: str = Form("schema", description="File classification: schema or instance"),
     dependencies: list[UploadFile] | None = File(None, description="Original companion XSDs retained with a source-only schema registration"),
@@ -192,10 +110,10 @@ async def upload_ontology_file(
     Captures ontology metadata and stores for future reuse.
     
     Parameters:
-    - file: XSD, XMI, OWL, RDF/XML, or TTL file
+    - file: XSD, XMI, EXPRESS, OWL, RDF/XML, or TTL file
     - ontology_name: Human-readable name (e.g., "AP239 Product Model")
     - prefix: Namespace prefix (e.g., "ap239")
-    - generation_type: What to generate - 'shacl', 'owl', or 'both'
+    - generation_type: What to generate - 'shacl', 'owl', 'both', or 'as_is'
     - description: Optional ontology description
     
     Returns: task_id + ontology_id for tracking and future reuse
@@ -243,7 +161,8 @@ async def upload_ontology_file(
         base_uri = ""
         
         # Read file content
-        file_content = await _read_upload_with_limit(file, MAX_FILE_SIZE)
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        file_content = await _read_upload_with_limit(file, ontology_upload_limit())
         if not file_content:
             raise HTTPException(status_code=400, detail="File is empty")
         schema_files = {}
@@ -256,20 +175,14 @@ async def upload_ontology_file(
                 if not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63 or any(not isinstance(path, str) for path in paths) or len(set(paths)) != len(paths):
                     raise ValueError('Expected one distinct relative path per companion')
                 for path, companion in zip(paths, dependencies):
-                    remaining = 25 * 1024 * 1024 - len(file_content) - sum(len(data) for data in schema_files.values())
-                    if remaining <= 0: raise HTTPException(413, 'Schema set exceeds 25 MiB')
+                    remaining = min(25 * 1024 * 1024, ontology_upload_limit()) - len(file_content) - sum(len(data) for data in schema_files.values())
+                    if remaining <= 0: raise HTTPException(413, 'Schema set exceeds the ontology upload limit')
                     schema_files[path] = await _read_upload_with_limit(companion, remaining)
                 from .schema_upload_paths import validate_schema_upload
                 validate_schema_upload(file.filename, file_content, schema_files, require_dependencies=False)
             except (ValueError, TypeError) as exc:
                 raise HTTPException(422, str(exc)) from exc
         
-        if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large. Maximum size: {MAX_FILE_SIZE_DISPLAY}"
-            )
-
         if file_type.value == 'xsd':
             source_namespace = _extract_xsd_target_namespace(file_content)
             base_uri = _normalize_base_uri(source_namespace, f"http://depo-onto.local/xsd#{Path(file.filename).stem}/")
@@ -490,7 +403,6 @@ async def merge_ontologies(body: LegacyMergeBody):
             status_code=500,
             detail=f"Merge failed in Neo4j: {type(neo_err).__name__}: {neo_err}",
         )
-
 
 
 @ontology_router.post(

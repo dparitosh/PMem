@@ -11,20 +11,12 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
 $routing = Resolve-DepoRouting $values
-# Explicit configuration wins; support portable Node beside the Apps folder.
 if (-not $NodeJsDir) { $NodeJsDir = $values['DEPO_NODEJS_DIR'] }
-if (-not $NodeJsDir) {
-  $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
-  if ($nodeCommand) { $NodeJsDir = Split-Path $nodeCommand.Source }
-  else { $NodeJsDir = Join-Path (Split-Path (Split-Path $root)) 'NodeJS' }
-}
-$node = Join-Path $NodeJsDir 'node.exe'
-$npm = Join-Path $NodeJsDir 'npm.cmd'
-if (-not (Test-Path -LiteralPath $node -PathType Leaf) -or -not (Test-Path -LiteralPath $npm -PathType Leaf)) {
-  throw 'Node.js runtime missing. Set DEPO_NODEJS_DIR in root environment or pass -NodeJsDir containing node.exe and npm.cmd.'
-}
-$nodeVersion = & $node --version
-if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v24\.') { throw 'PMem frontend requires Node.js 24. Select its directory with -NodeJsDir or DEPO_NODEJS_DIR.' }
+$runtime = Get-DepoNodeRuntime -Root $root -NodeJsDir $NodeJsDir
+$NodeJsDir = $runtime.Directory
+$node = $runtime.Node
+$npm = $runtime.Npm
+Write-Host "Frontend build using Node.js $($runtime.Version)"
 $previous = @{}
 $previous['PATH'] = [Environment]::GetEnvironmentVariable('PATH', 'Process')
 $overrideName = 'DEPO_BROWSER_ROUTING_OVERRIDE_JSON'

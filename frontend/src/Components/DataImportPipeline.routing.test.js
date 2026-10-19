@@ -468,3 +468,32 @@ describe('DataImportPipeline workflow routing', () => {
   });
 
 });
+
+ test('ontology upload limits reject oversized sources before reading them', async () => {
+   apiClient.get.mockResolvedValue({data:{max_file_bytes:10,max_schema_set_bytes:10}});
+   mockListRegistered.mockResolvedValue({data:{ontologies:[]}});
+   mockWorkflowOptions.mockResolvedValue({data:{workflows:[]}});
+   await renderPipeline();
+   const source = new File(['more than ten bytes'], 'source.ttl');
+   fireEvent.change(document.querySelector('input[type="file"]'), {target:{files:[source]}});
+   expect(await screen.findByText(/Ontology file exceeds 10 bytes/)).toBeInTheDocument();
+   expect(mockOntologyUpload).not.toHaveBeenCalled();
+ });
+
+ test('EXPRESS Add Files reaches governed ontology publication', async () => {
+   window.localStorage.clear();
+   mockListRegistered.mockResolvedValue({data:{ontologies:[]}});
+   mockWorkflowOptions.mockResolvedValue({data:{workflows:[]}});
+   apiClient.get.mockResolvedValue({data:{max_file_bytes:26214400,max_schema_set_bytes:26214400}});
+   apiClient.post.mockResolvedValue({data:{status:'approval_required',ontology_registration:{ontology_id:'express-draft'},message:'Review draft'}});
+   await renderPipeline();
+   fireEvent.change(document.querySelector('input[type="file"]'), {target:{files:[new File(['SCHEMA demo; END_SCHEMA;'], 'demo.exp')]}});
+   await screen.findByText('Ontology Metadata');
+   fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/), {target:{value:'EXPRESS Demo'}});
+   fireEvent.click(screen.getByRole('button',{name:/Upload and Parse/i}));
+   setCredentialProfile('INGESTION_WRITE_TOKEN','fixture-write');
+   fireEvent.click(await screen.findByRole('button',{name:/^Start$/i}));
+   await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/api/v1/engineering-workflows',expect.any(FormData),expect.any(Object)));
+   expect(apiClient.post.mock.calls.at(-1)[1].get('publish')).toBe('true');
+   setCredentialProfile('INGESTION_WRITE_TOKEN','');
+ });

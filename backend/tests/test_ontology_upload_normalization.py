@@ -81,15 +81,16 @@ def test_availability_classifies_runtime_graph_state(nodes, relationships, expec
     assert OntologyUploadManager._availability(nodes, relationships) == expected
 
 
-def test_registry_index_normalizes_entries_and_skips_missing_prefixes():
+def test_registry_index_normalizes_entries_without_inventing_namespace_prefixes():
     indexed = OntologyUploadManager._registry_index([
         {"ontology_id": "demo", "neo4j_nodes_merged": 3},
         {},
     ])
 
     assert list(indexed) == ["demo"]
-    assert indexed["demo"]["prefix"] == "demo"
-    assert indexed["demo"]["ontology_prefix"] == "demo"
+    # A stable ontology ID is not evidence of a source namespace alias.
+    assert indexed["demo"]["prefix"] == ""
+    assert indexed["demo"]["ontology_prefix"] == ""
     assert indexed["demo"]["source"] == "registered"
     assert indexed["demo"]["node_count"] == 3
     assert indexed["demo"]["availability"] == "metadata_only"

@@ -42,7 +42,7 @@ def test_windows_frontend_has_documented_start_and_stop_lifecycle():
 
 
 def test_installer_provisions_neo4j_before_start_and_runs_read_only_preflight_afterward():
-    installer = (ROOT / "infra" / "windows" / "install-depo-windows.ps1").read_text(encoding="utf-8")
+    installer = (ROOT / "install-depo.ps1").read_text(encoding="utf-8")
     provision = installer.index("test-depo-neo4j.ps1') -EnvFile $envPath -Bootstrap")
     start = installer.index("Service startup and endpoint validation")
     preflight = installer.index("Release preflight")
@@ -123,8 +123,9 @@ def test_linux_spark_runbook_has_executable_lifecycle_and_safe_configuration():
 def test_customer_installer_forwards_rotation_and_rebuilds_without_installing():
     root = (ROOT / 'install-depo.ps1').read_text(encoding='utf-8')
     assert '[switch]$ReplaceExistingCredentials' in root
-    assert '@PSBoundParameters' in root
-    installer = (ROOT / 'infra/windows/install-depo-windows.ps1').read_text(encoding='utf-8')
+    assert '-ReplaceExisting:$ReplaceExistingCredentials' in root
+    assert not (ROOT / 'infra/windows/install-depo-windows.ps1').exists()
+    installer = (ROOT / 'install-depo.ps1').read_text(encoding='utf-8')
     rebuild = installer.index('if ($SkipDependencyInstall -and -not $SkipFrontend)')
     start = installer.index("Invoke-DepoStage 'Service startup and endpoint validation'")
     assert rebuild < start
@@ -132,3 +133,30 @@ def test_customer_installer_forwards_rotation_and_rebuilds_without_installing():
     assert 'build-depo-frontend.ps1' in section
     assert 'frontend/dist/index.html' in section
     assert 'npm.cmd ci' not in section
+
+
+def test_manager_orders_frontend_and_backend_and_stops_on_failure(tmp_path):
+    import shutil
+    import subprocess
+    import pytest
+    powershell = shutil.which('powershell.exe')
+    if not powershell:
+        pytest.skip('Windows PowerShell is required')
+    (tmp_path / 'infra/windows').mkdir(parents=True)
+    (tmp_path / 'infra/deployment').mkdir(parents=True)
+    shutil.copyfile(ROOT / 'manage-depo.ps1', tmp_path / 'manage-depo.ps1')
+    shutil.copyfile(ROOT / 'infra/windows/native-install-command.ps1', tmp_path / 'infra/windows/native-install-command.ps1')
+    trace = tmp_path / 'trace.txt'
+    for phase in ['start','stop']:
+        (tmp_path / f'infra/windows/{phase}-depo-frontend.ps1').write_text(f"param([string]$EnvFile)\nAdd-Content -LiteralPath '{trace}' -Value 'frontend-{phase}'\n$global:LASTEXITCODE=0\n")
+    lifecycle = tmp_path / 'infra/deployment/invoke-depo-lifecycle.ps1'
+    lifecycle.write_text(f"param([string]$Action,[string]$EnvFile,[string]$Profile)\nAdd-Content -LiteralPath '{trace}' -Value ('backend-'+$Action)\n$global:LASTEXITCODE=0\n")
+    args=[powershell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(tmp_path/'manage-depo.ps1')]
+    result=subprocess.run(args+['-Action','Restart'],capture_output=True,text=True)
+    assert result.returncode == 0, result.stderr
+    assert trace.read_text().splitlines() == ['frontend-stop','backend-Stop','backend-Start','frontend-start']
+    trace.write_text('')
+    lifecycle.write_text(f"param([string]$Action,[string]$EnvFile,[string]$Profile)\nAdd-Content -LiteralPath '{trace}' -Value 'backend-failed'\n$global:LASTEXITCODE=17\n")
+    result=subprocess.run(args+['-Action','Start'],capture_output=True,text=True)
+    assert result.returncode != 0
+    assert trace.read_text().splitlines() == ['backend-failed']

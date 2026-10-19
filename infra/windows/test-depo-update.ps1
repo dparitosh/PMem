@@ -6,34 +6,38 @@ New-Item -ItemType Directory -Path (Join-Path $workspace 'backend/.dt_venv/Scrip
 New-Item -ItemType Directory -Path (Join-Path $workspace 'infra/deployment') -Force | Out-Null
 try {
   $scripts = Join-Path $workspace 'infra/windows'
-  foreach ($name in @('update-depo-windows.ps1','update-depo-runtime-timeouts.ps1','runtime-config.ps1')) {
+  foreach ($name in @('update-depo-windows.ps1','update-depo-runtime-timeouts.ps1','runtime-config.ps1','service-runtimes.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $scripts $name)
   }
+  Set-Content -LiteralPath (Join-Path $workspace 'infra/deployment/services.json') -Value '{"services":[{"id":"ontology"}],"workers":[]}'
   Set-Content -LiteralPath (Join-Path $workspace 'backend/.dt_venv/Scripts/python.exe') -Value 'stub runtime: never executed'
   $stub = @'
 param([string]$EnvFile, [string]$RootEnvFile, [string]$Profile, [int]$ServiceStartupTimeoutSeconds, [switch]$SkipFrontend, [switch]$SkipDependencyInstall, [switch]$SkipEndpointChecks, [switch]$CheckPrerequisites)
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Add-Content -LiteralPath (Join-Path $root 'order.txt') -Value ([IO.Path]::GetFileNameWithoutExtension($PSCommandPath))
-if ($PSCommandPath -like '*install-depo-windows.ps1' -and (Test-Path -LiteralPath (Join-Path $root 'fail-install'))) { throw 'simulated migration failure' }
+if ($PSCommandPath -like '*install-depo.ps1' -and (Test-Path -LiteralPath (Join-Path $root 'fail-install'))) { throw 'simulated migration failure' }
 if ($PSCommandPath -like '*test-depo-*' -and (Test-Path -LiteralPath (Join-Path $root 'fail-preflight'))) { throw 'simulated preflight failure' }
-if ([IO.Path]::GetFileName($PSCommandPath) -eq 'install-depo.ps1') {
+if ([IO.Path]::GetFileName($PSCommandPath) -eq 'install-depo.ps1' -and $PSScriptRoot -ne $env:DEPO_UPDATE_TEST_ROOT) {
   if (-not $CheckPrerequisites) { throw 'Prerequisite stage attempted installation.' }
   if (Test-Path -LiteralPath (Join-Path $root 'fail-prerequisite')) { throw 'simulated prerequisite failure' }
 }
 '@
-  foreach ($name in @('stop-depo-frontend.ps1','stop-depo-services.ps1','install-depo-windows.ps1','install-depo.ps1','build-depo-frontend.ps1','start-depo-frontend.ps1')) {
+  $env:DEPO_UPDATE_TEST_ROOT=$workspace
+  $rootStub=$stub.Replace("`$root = (Resolve-Path (Join-Path `$PSScriptRoot '../..')).Path","`$root = `$PSScriptRoot")
+  Set-Content -LiteralPath (Join-Path $workspace 'install-depo.ps1') -Value $rootStub
+  foreach ($name in @('stop-depo-frontend.ps1','stop-depo-services.ps1','initialize-depo-schema.ps1','test-depo-neo4j.ps1','install-depo.ps1','build-depo-frontend.ps1','start-depo-frontend.ps1')) {
     Set-Content -LiteralPath (Join-Path $scripts $name) -Value $stub
   }
-  foreach ($name in @('test-depo-deployment.ps1','test-depo-frontend-config.ps1')) {
+  foreach ($name in @('test-installation-package.ps1','test-depo-deployment.ps1','test-depo-frontend-config.ps1')) {
     Set-Content -LiteralPath (Join-Path $workspace "infra/deployment/$name") -Value $stub
   }
   $envFile = Join-Path $workspace '.env.local'
   Set-Content -LiteralPath $envFile -Value @('# Preserve this comment','OTHER_SETTING=kept','LLM_REQUEST_TIMEOUT_SECONDS=30','AGENTIC_TOOL_TIMEOUT_SECONDS=30','AGENTIC_RUN_TIMEOUT_SECONDS=300')
-  & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile
+  & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile -LlmTimeoutSeconds 300
   . (Join-Path $scripts 'runtime-config.ps1')
   $values = Read-DepoEnvironment -Root $workspace -EnvFile $envFile
   if ($values.LLM_REQUEST_TIMEOUT_SECONDS -ne '300' -or $values.AGENTIC_TOOL_TIMEOUT_SECONDS -ne '330' -or $values.AGENTIC_RUN_TIMEOUT_SECONDS -ne '1440' -or $values.OTHER_SETTING -ne 'kept') { throw 'Timeout or preserved setting mismatch.' }
-  if ((Get-Content -LiteralPath (Join-Path $workspace 'order.txt')) -join ',' -ne 'test-depo-deployment,test-depo-frontend-config,install-depo,stop-depo-frontend,stop-depo-services,install-depo-windows,start-depo-frontend') { throw 'Upgrade sequence mismatch.' }
+  if ((Get-Content -LiteralPath (Join-Path $workspace 'order.txt')) -join ',' -ne 'test-installation-package,test-depo-deployment,test-depo-frontend-config,install-depo,initialize-depo-schema,test-depo-neo4j,stop-depo-frontend,stop-depo-services,install-depo') { throw 'Upgrade sequence mismatch.' }
   $beforeFailure = [IO.File]::ReadAllText($envFile)
   Set-Content -LiteralPath (Join-Path $workspace 'order.txt') -Value ''
   Set-Content -LiteralPath (Join-Path $workspace 'fail-preflight') -Value 'fail'

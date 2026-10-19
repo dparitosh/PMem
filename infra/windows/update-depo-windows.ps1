@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw 'Existing environment file is missing; restore it before redeployment.' }
-if (-not (Test-Path -LiteralPath (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -PathType Leaf)) { throw 'Existing backend runtime is absent. Use install-depo-windows.ps1 for a first installation.' }
+if (-not (Test-Path -LiteralPath (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -PathType Leaf)) { throw 'Existing backend runtime is absent. Use Setup-DEPO.cmd for a first installation.' }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
@@ -62,9 +62,6 @@ Invoke-DepoUpgradeStep 'Backend shutdown' { & (Join-Path $PSScriptRoot 'stop-dep
 # Delegate migration, graph provisioning and release validation to the same
 # installer used for a new deployment; do not duplicate those lifecycle stages.
 Invoke-DepoUpgradeStep 'Migration, installation and service verification' {
-  & (Join-Path $PSScriptRoot 'install-depo-windows.ps1') -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies) -EnableOcr:$EnableOcr -SkipBaselineProvisioning
-}
-if (-not $SkipFrontend) {
-  Invoke-DepoUpgradeStep 'Frontend startup' { & (Join-Path $PSScriptRoot 'start-depo-frontend.ps1') -EnvFile $envPath }
+  & (Join-Path $root 'install-depo.ps1') -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies) -EnableOcr:$EnableOcr -SkipBaselineProvisioning
 }
 Write-Host 'DEPO redeployment completed: database schema/indexes verified and services restarted. Existing credentials and configuration were preserved except explicitly requested timeout updates.' -ForegroundColor Green

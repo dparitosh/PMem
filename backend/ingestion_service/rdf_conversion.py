@@ -2,24 +2,11 @@
 from pathlib import Path
 from rdflib import Graph, URIRef
 from rdflib.namespace import RDF, OWL
-import re
-from urllib.parse import urlsplit
+from backend.depo_platform.ontology_namespace import ontology_prefix as namespace_prefix
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from backend.artifact_store import ArtifactStore
 from backend.depo_platform.upload_limits import ontology_upload_limit
-
-
-def namespace_prefix(namespace):
-    value = namespace.rstrip('#/')
-    parsed = urlsplit(value)
-    local = parsed.fragment or parsed.path.rstrip('/').rsplit('/', 1)[-1]
-    if parsed.scheme == 'urn':
-        local = local.rsplit(':', 1)[-1]
-    token = re.sub(r'[^a-z0-9_]+', '_', local.lower()).strip('_')
-    if token and not token[0].isalpha():
-        token = 'ns_' + token
-    return token[:32] or 'ontology'
 
 
 def convert_rdf(*, filename, content):

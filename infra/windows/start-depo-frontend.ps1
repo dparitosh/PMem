@@ -25,6 +25,8 @@ if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
 . (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 Assert-DepoWindowsManagementAccess
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+$nodeRuntime = Get-DepoNodeRuntime -Root $root -NodeJsDir $values['DEPO_NODEJS_DIR']
+Write-Host "Frontend prerequisite verified: Node.js $($nodeRuntime.Version)"
 if (-not $BindHost) {
   $BindHost = if ($values['DEPO_FRONTEND_HOST']) { $values['DEPO_FRONTEND_HOST'] } elseif ($values['DEPO_SERVICE_HOST']) { $values['DEPO_SERVICE_HOST'] } else { '127.0.0.1' }
 }

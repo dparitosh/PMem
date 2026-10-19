@@ -84,20 +84,8 @@ def _normalize_base_uri(namespace: str, fallback: str) -> str:
 
 
 def _derive_prefix_from_namespace(namespace: str, fallback: str = "xsd") -> str:
-    """Derive a stable ontology prefix from a namespace URI.
-
-    Prefer a namespace-local token over the filename stem so XSD-generated
-    ontology metadata stays aligned with the XSD header and downstream import
-    stages can stamp the correct ontology_prefix.
-    """
-    text = (namespace or "").strip()
-    if not text:
-        return fallback
-    cleaned = text.rstrip("#/").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-    cleaned = "".join(ch if ch.isalnum() else "_" for ch in cleaned).strip("_").lower()
-    if cleaned:
-        return cleaned[:32]
-    return fallback
+    from backend.depo_platform.ontology_namespace import ontology_prefix
+    return ontology_prefix(namespace, fallback)
 
 
 def _inspect_with_owlready(ttl_str: str, stem: str) -> Dict[str, Any]:

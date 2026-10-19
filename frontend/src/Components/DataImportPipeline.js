@@ -1,4 +1,3 @@
-import { isAwaitingImportApproval } from '../workflows/importPresentation';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   X,
@@ -18,7 +17,7 @@ import { combineXsdFiles } from './xsdFolderBundle';
 import XsdDependencies, { appendXsdDependencies } from './XsdDependencies';
 import { fileSha256 } from '../utils/fileDigest';
 import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
-import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
+import { API_METHODS, apiClient, dataPipelineAPI, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
 import { useOntologies } from '../contexts/OntologyContext';
 import { API, buildUrl, buildSemanticServiceUrl, replaceParams } from '../config';
@@ -36,10 +35,10 @@ import {
   workflowCatalog,
 } from '../workflows/workflowEngine';
 import { requireRunManifest, governedRunStatus, pipelineRunLink } from '../workflows/runTracking';
-import { dataPipelineAPI } from '../services/apiClient';
 import useMountedRef from '../hooks/useMountedRef';
 import usePollerRegistry from '../hooks/usePollerRegistry';
 import {
+  isAwaitingImportApproval,
   getFileExtensionFromName,
   getWorkflowNote,
   isOntologySourceFile,
@@ -91,6 +90,7 @@ export default function DataImportPipeline() {
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
   const [showAdvancedWorkflows, setShowAdvancedWorkflows] = useState(false);
+  const [ontologyUploadLimits, setOntologyUploadLimits] = useState({ max_file_bytes: 25 * 1024 * 1024, max_schema_set_bytes: 25 * 1024 * 1024 });
   const [workflowOptions, setWorkflowOptions] = useState(workflowCatalog);
   const [workflowOntologyId, setWorkflowOntologyId] = useState('');
   const [workflowTargetOntologyId, setWorkflowTargetOntologyId] = useState('');
@@ -365,11 +365,27 @@ export default function DataImportPipeline() {
     return () => { fileSelectionGeneration.current += 1; };
   }, [selectedWorkflow, workflowOntologyId, workflowTargetOntologyId, workflowSourceFileId]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    apiClient.get(buildSemanticServiceUrl('ingestion', '/api/v1/ontology-upload-options'), { signal: controller.signal })
+      .then(response => {
+        const limits = response?.data;
+        if (!controller.signal.aborted && Number.isSafeInteger(limits?.max_file_bytes) && limits.max_file_bytes > 0
+          && Number.isSafeInteger(limits?.max_schema_set_bytes) && limits.max_schema_set_bytes > 0) setOntologyUploadLimits(limits);
+      }).catch(() => {});
+    return () => controller.abort();
+  }, []);
+
   const handleFileInput = async (e) => {
     const selectionGeneration = ++fileSelectionGeneration.current;
     const selected = Array.from(e.target.files || []);
     e.target.value = '';
     if (!selected.length) return;
+    const oversized = selected.find(file => isOntologySourceFile(file.name) && file.size > ontologyUploadLimits.max_file_bytes);
+    if (oversized) { setError(`Ontology file exceeds ${ontologyUploadLimits.max_file_bytes} bytes: ${oversized.name}`); return; }
+    if (selected.every(file => file.name.toLowerCase().endsWith('.xsd')) && selected.reduce((total, file) => total + file.size, 0) > ontologyUploadLimits.max_schema_set_bytes) {
+      setError(`Schema set exceeds ${ontologyUploadLimits.max_schema_set_bytes} bytes`); return;
+    }
     try {
       for (const source of selected) fileDigestsRef.current.set(source, await fileSha256(source));
       if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
@@ -458,9 +474,9 @@ export default function DataImportPipeline() {
     }
 
     const MAX_SIZE = 500 * 1024 * 1024;
-    const oversized = newFiles.filter(f => f.size > MAX_SIZE);
+    const oversized = newFiles.filter(f => f.size > (isOntologySourceFile(f.name) ? ontologyUploadLimits.max_file_bytes : MAX_SIZE));
     if (oversized.length > 0) {
-      setError(`File too large (max 500 MB): ${oversized.map(f => f.name).join(', ')}`);
+      setError(`File exceeds the supported upload limit: ${oversized.map(f => f.name).join(', ')}`);
       return;
     }
 
@@ -619,7 +635,7 @@ export default function DataImportPipeline() {
     }
 
     const sourceOnly = file.fileType === 'xsd' && file.generationType === 'as_is';
-    const shouldPublish = !sourceOnly && publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
+    const shouldPublish = !sourceOnly && publishOntology && ['xsd', 'xmi', 'exp', 'express', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
     const folderBundle = xsdFolderBundlesRef.current.get(file.fileObj);
     const selectedDependencies = folderBundle?.files || [];
     const selectedPaths = folderBundle?.paths || '';
@@ -969,7 +985,6 @@ export default function DataImportPipeline() {
         });
         const result = response.data || response;
         const run = requireRunManifest(result);
-        const runId = run.run_id;
         setPipelineStatus(prev => ({
           ...prev,
           [fileId]: {
@@ -2937,13 +2952,11 @@ export default function DataImportPipeline() {
           {dependencyTarget && <XsdDependencies key={dependencyTarget.fileId} files={xsdDependencies} paths={xsdDependencyPaths} disabled={workflowLoading}
             selectedRoot={dependencyTarget?.fileObj}
             selectedSources={dependencyTarget ? xsdFolderBundlesRef.current.get(dependencyTarget.fileObj)?.sources : null}
-            onRoot={(root, bundle) => {
-              if (dependencyTarget) {
-                const target = dependencyTarget;
-                xsdFolderBundlesRef.current.set(target.fileObj, bundle);
-                setDependencyTarget(null);
-                startOntologyRegistration(target);
-              } else { xsdFolderBundlesRef.current.set(root, bundle); handleFiles([root]); }
+            onRoot={(_root, bundle) => {
+              const target = dependencyTarget;
+              xsdFolderBundlesRef.current.set(target.fileObj, bundle);
+              setDependencyTarget(null);
+              startOntologyRegistration(target);
             }}
             onChange={(nextFiles, nextPaths) => {
               setXsdDependencies(nextFiles); setXsdDependencyPaths(nextPaths);

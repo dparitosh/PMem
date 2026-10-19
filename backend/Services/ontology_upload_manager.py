@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from backend.Services.ontology_identity import normalize_ontology_entry, normalize_ontology_entries
-    from backend.Services.import_format_helpers import derive_prefix_from_namespace
+    from backend.depo_platform.ontology_namespace import ontology_prefix as derive_prefix_from_namespace
 except Exception:  # pragma: no cover - script mode fallback
     from Services.ontology_identity import normalize_ontology_entry, normalize_ontology_entries
-    from Services.import_format_helpers import derive_prefix_from_namespace
+    from backend.depo_platform.ontology_namespace import ontology_prefix as derive_prefix_from_namespace
 
 
 class OntologyUploadManager:
@@ -315,7 +315,7 @@ class OntologyUploadManager:
                 from .schema_upload_paths import validate_schema_upload
                 validate_schema_upload(filename, file_content, schema_files, require_dependencies=generation_type != 'as_is')
 
-            user_prefix = '' if file_type == 'xsd' else str(prefix or "").strip()
+            user_prefix = str(prefix or "").strip()
             if file_type == "xsd" and file_content:
                 try:
                     root = ET.fromstring(file_content)
@@ -864,15 +864,6 @@ class OntologyUploadManager:
             cls._invalidate_list_cache()
         except Exception:
             logger.exception("Could not promote %s as latest", ontology_id)
-
-    @classmethod
-    def list_latest_ontologies(cls) -> Dict[str, Any]:
-        """Return only the latest version of each prefix+file_type combination."""
-        result = cls.list_ontologies()
-        if result['status'] != 'success':
-            return result
-        latest = [o for o in result['ontologies'] if o.get('is_latest', True)]
-        return {'status': 'success', 'ontologies': latest, 'count': len(latest)}
 
     # ──────────────────────────────────────────────────────────────
     # Neo4j push

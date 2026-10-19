@@ -48,9 +48,16 @@ foreach ($entry in $entries) {
   if (Test-Path -LiteralPath $pidPath) {
     $trackedPid = [int](Get-Content -LiteralPath $pidPath)
     $current = Get-CimInstance Win32_Process -Filter "ProcessId = $trackedPid" -ErrorAction Stop
-    if ($current) {
-      if ($current.ExecutablePath -notin $allowedRuntimes) { throw 'Tracked PID does not belong to an approved DEPO runtime; tracking retained.' }
-      # An unrelated reused PID must not be killed or silently untracked.
+    $identity = Get-DepoTrackedProcessState $current $allowedRuntimes $module
+    if ($identity -eq 'reused') {
+      $archive = Join-Path $stateDir 'stale-tracking'
+      New-Item -ItemType Directory -Path $archive -Force | Out-Null
+      $saved = Join-Path $archive ($entry.id + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N') + '.pid')
+      Move-Item -LiteralPath $pidPath -Destination $saved -ErrorAction Stop
+      Write-Warning "Archived stale tracking for $($entry.id), PID $trackedPid. Unrelated process was not stopped. Evidence: $saved"
+      continue
+    }
+    if ($identity -eq 'owned') {
       Stop-DepoProcessTree $trackedPid $current.ExecutablePath $module $batchDeadline
     }
     Remove-Item -LiteralPath $pidPath -Force

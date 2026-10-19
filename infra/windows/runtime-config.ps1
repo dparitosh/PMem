@@ -275,3 +275,25 @@ if (-not $Overrides.ContainsKey('EnablePostgresSparkConnector')) { $EnablePostgr
 if (($EnableNeo4jSparkConnector -or $EnablePostgresSparkConnector) -and -not $EnableSpark) { throw 'Spark connectors require Spark enabled.' }
   return @{ EnableSpark = [bool]$EnableSpark; EnableNeo4jSparkConnector = [bool]$EnableNeo4jSparkConnector; EnablePostgresSparkConnector = [bool]$EnablePostgresSparkConnector; EnablePipelineScheduler = [bool]$EnablePipelineScheduler }
 }
+
+# All Windows frontend entry points share the same Node.js >=24 contract.
+function Test-DepoNodeVersion([string]$Version) {
+  return ($Version.Trim() -match '^v?(\d+)\.\d+\.\d+$' -and [int]$Matches[1] -ge 24)
+}
+function Get-DepoNodeRuntime([string]$Root, [string]$NodeJsDir='') {
+  $candidates=@()
+  if ($NodeJsDir) { $candidates=@($NodeJsDir) }
+  else {
+    foreach($command in @(Get-Command node.exe -All -ErrorAction SilentlyContinue)) { $candidates += Split-Path $command.Source }
+    $candidates += Join-Path (Split-Path (Split-Path $Root)) 'NodeJS'
+  }
+  foreach($folder in @($candidates|Select-Object -Unique)) {
+    $node=Join-Path $folder 'node.exe'; $npm=Join-Path $folder 'npm.cmd'
+    if(-not(Test-Path -LiteralPath $node -PathType Leaf) -or -not(Test-Path -LiteralPath $npm -PathType Leaf)){continue}
+    $version=& $node --version
+    if($LASTEXITCODE -eq 0 -and (Test-DepoNodeVersion ([string]$version))) {
+      return @{Directory=$folder; Node=$node; Npm=$npm; Version=([string]$version).Trim()}
+    }
+  }
+  throw 'Node.js 24 or newer with npm is required. Install a supported version, or set DEPO_NODEJS_DIR to its directory. Older Node.js versions are not supported.'
+}

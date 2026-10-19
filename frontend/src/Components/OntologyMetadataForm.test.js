@@ -249,3 +249,12 @@ describe('XSD namespace and prefix capture', () => {
      expect(screen.getByLabelText(/Namespace Prefix/)).toHaveValue('chosen');
    });
  });
+
+ test('EXPRESS accepts OWL metadata in publication mode', async () => {
+  const submit = jest.fn();
+  render(<OntologyMetadataForm selectedFile={new File(['SCHEMA demo; END_SCHEMA;'], 'demo.exp')} onSubmit={submit} onCancel={() => {}} publicationMode />);
+  expect(document.getElementById('ontology-generation-select')).toHaveValue('owl');
+  fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/), {target:{value:'Demo'}});
+  fireEvent.click(screen.getByRole('button', {name:/Upload and Parse/i}));
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({fileType:'exp',generationType:'owl'}));
+ });

@@ -86,3 +86,17 @@ function Get-DepoProbeHost([string]$BindHost) {
   if ($BindHost.Contains(':') -and -not $BindHost.StartsWith('[')) { return '[' + $BindHost + ']' }
   return $BindHost
 }
+
+# A PID file is a hint, not proof of ownership. Never control an unrelated PID.
+function Get-DepoTrackedProcessState($Process, [string[]]$AllowedRuntimes, [string]$Module) {
+  if (-not $Process) { return 'exited' }
+  if (-not $Process.ExecutablePath -or -not $Process.CommandLine) {
+    throw 'Cannot inspect tracked process identity; tracking retained. Retry with sufficient process inspection permissions.'
+  }
+  $pattern = '(?<![A-Za-z0-9_.])' + [regex]::Escape($Module) + '(?![A-Za-z0-9_.])'
+  if ($Process.CommandLine -notmatch $pattern) { return 'reused' }
+  if ($Process.ExecutablePath -notin $AllowedRuntimes) {
+    throw 'Tracked service module uses an unapproved runtime; tracking retained. Inspect its executable path before retrying.'
+  }
+  return 'owned'
+}

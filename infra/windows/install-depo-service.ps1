@@ -5,13 +5,15 @@ param(
   [string]$EnvFile = '.env.local',
   [string]$Python = 'py',
   [switch]$EnableOcr,
-  [switch]$CheckOnly
+  [switch]$CheckOnly,
+  [switch]$ForceReinstall
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 . (Join-Path $PSScriptRoot 'native-install-command.ps1')
+. (Join-Path $PSScriptRoot 'install-checkpoints.ps1')
 . (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
@@ -49,10 +51,19 @@ foreach ($entry in $entries) {
   $arguments = @('-m','pip','install','--disable-pip-version-check','--require-hashes','-r',(Join-Path $profiles ($entry.id + '.txt')))
   if ($EnableOcr -and $entry.id -eq 'ingestion') { $arguments += @('-r',(Join-Path $profiles 'ocr.txt')) }
   $log = Join-Path $logs ($entry.id + '-' + [guid]::NewGuid().ToString('N') + '.log')
-  $code = Invoke-DepoInstallCommand -Executable $servicePython -NativeArguments $arguments -LogPath $log
-  if ($code -ne 0) { throw "Service dependency installation failed: $($entry.id). Inspect $log" }
-  & $servicePython -m pip check
-  if ($LASTEXITCODE -ne 0) { throw "Service dependency compatibility check failed: $($entry.id)" }
+  $inputs = @((Join-Path $profiles ($entry.id + '.txt')))
+  if ($EnableOcr -and $entry.id -eq 'ingestion') { $inputs += (Join-Path $profiles 'ocr.txt') }
+  $fingerprint = Get-DepoInstallFingerprint -Files $inputs -Values @($servicePython, $runtimeVersion)
+  Invoke-DepoDependencyStage -Root $root -Name ('service-' + $entry.id) -Fingerprint $fingerprint -Force:$ForceReinstall -Action {
+    $code = Invoke-DepoInstallCommand -Executable $servicePython -NativeArguments $arguments -LogPath $log
+    if ($code -ne 0) { throw "Service dependency installation failed: $($entry.id). Inspect $log" }
+  } -Probe {
+    & $servicePython -m pip check | Out-Host
+    if ($LASTEXITCODE -ne 0) { return $false }
+    $inventory = & $servicePython -m pip freeze --all
+    if ($LASTEXITCODE -ne 0) { return $false }
+    return (Get-DepoInstallFingerprint -Files @() -Values @($inventory))
+  }
   Push-Location $root
   try {
     & $servicePython -m backend.depo_platform.service_smoke --service $entry.id

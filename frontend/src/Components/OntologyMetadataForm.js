@@ -4,13 +4,13 @@ import { UI_COLORS as C } from '../styles/uiTokens';
 
 export function prefixFromNamespace(root, namespace) {
   if (!namespace) return '';
-  const declared = Array.from(root.attributes).find(attribute =>
-    attribute.namespaceURI === 'http://www.w3.org/2000/xmlns/' &&
-    attribute.localName !== 'xmlns' && attribute.value === namespace &&
-    /^[a-z][a-z0-9_]{0,49}$/.test(attribute.localName));
-  if (declared) return declared.localName;
-  const segments = namespace.replace(/[#/:]+$/, '').split(/[#/:]/).filter(Boolean);
-  let prefix = (segments.at(-1) || '').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  let local;
+  try {
+    const uri = new URL(namespace.trim().replace(/[#/]+$/, ''));
+    local = uri.hash.slice(1) || uri.pathname.replace(/\/+$/, '').split('/').at(-1) || uri.hostname;
+    if (uri.protocol === 'urn:') local = local.split(':').at(-1);
+  } catch (_) { local = namespace.trim().replace(/[#/]+$/, '').split(/[#/]/).at(-1); }
+  let prefix = (local || '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
   if (prefix && !/^[a-z]/.test(prefix)) prefix = 'ns_' + prefix;
   return prefix.slice(0, 50);
 }
@@ -24,6 +24,7 @@ const getGenerationOptionsForFileType = (fileType) => {
       { value: 'as_is', label: 'Register source XSD — no conversion or graph publication' }
     ];
   }
+  if (fileType === 'exp' || fileType === 'express') return [{ value: 'owl', label: 'OWL (Web Ontology Language)' }];
   if (fileType === 'xmi' || fileType === 'mdxml') {
     return [
       { value: 'owl', label: 'OWL (Web Ontology Language) - Recommended for XMI/MagicDraw' },
