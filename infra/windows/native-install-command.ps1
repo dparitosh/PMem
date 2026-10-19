@@ -71,3 +71,34 @@ function Invoke-DepoInstallCommand {
     return $LASTEXITCODE
   } finally { $ErrorActionPreference = $previousPreference }
 }
+
+# Keep native stderr out of PowerShell's terminating-error stream, while retaining
+# stdout separately for JSON consumers. Exit status remains authoritative.
+function Invoke-DepoNativeCommand {
+  param(
+    [Parameter(Mandatory=$true)][string]$Executable,
+    [string[]]$NativeArguments,
+    [Parameter(ValueFromPipeline=$true)][string]$InputText
+  )
+  begin { $inputLines=[Collections.Generic.List[string]]::new() }
+  process { if($PSBoundParameters.ContainsKey('InputText')){ $inputLines.Add($InputText) } }
+  end {
+    $savedPreference=$ErrorActionPreference
+    try {
+      $ErrorActionPreference='Continue'
+      $PSNativeCommandUseErrorActionPreference=$false
+      $consume={
+        if($_ -is [Management.Automation.ErrorRecord]) {
+          Write-Host (ConvertTo-DepoAuditMessage -Message $_.ToString() -Root $Root)
+        } else { $_ }
+      }
+      if($inputLines.Count) {
+        $inputLines | & $Executable @NativeArguments 2>&1 | ForEach-Object $consume
+      } else {
+        & $Executable @NativeArguments 2>&1 | ForEach-Object $consume
+      }
+      $exitCode=$LASTEXITCODE
+      if($exitCode -ne 0){throw "Native command failed with exit code $exitCode ($Executable)"}
+    } finally { $ErrorActionPreference=$savedPreference }
+  }
+}

@@ -36,3 +36,22 @@ def test_entrypoint_retains_errors_and_redacts_credentials(tmp_path, mode):
         assert "[REDACTED]" in retained
     if mode == "native":
         assert "native-error" in retained
+
+
+@pytest.mark.parametrize("exit_code", [0, 23])
+def test_native_python_info_stderr_preserves_json_and_checks_exit(tmp_path, exit_code):
+    import sys
+    shell = shutil.which("powershell.exe")
+    if not shell:
+        pytest.skip("Windows PowerShell required")
+    helper = ROOT / "infra/windows/native-install-command.ps1"
+    script = tmp_path / "native.ps1"
+    python_source = "import sys, json\nprint('INFO: parser imports OK', file=sys.stderr)\nprint(json.dumps({'mode':'existing'}))\nsys.exit(" + str(exit_code) + ")\n"
+    ps = "$ErrorActionPreference='Stop'\n. '" + str(helper) + "'\nInvoke-DepoLoggedAction -Root '" + str(tmp_path) + "' -Name 'native-test' -Action {\n$info = @'\n" + python_source + "'@ | Invoke-DepoNativeCommand -Executable '" + sys.executable + "' -NativeArguments @('-')\nif (($info | ConvertFrom-Json).mode -ne 'existing') {throw 'stdout corrupted'}\n}\n"
+    script.write_text(ps)
+    result = subprocess.run([shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)], capture_output=True, text=True)
+    assert (result.returncode == 0) == (exit_code == 0), result.stdout + result.stderr
+    logs = list((tmp_path / "logs/installation/runs").glob("*.jsonl"))
+    events = [json.loads(line) for line in logs[0].read_text(encoding="utf-8").splitlines()]
+    assert any("INFO: parser imports OK" in event["message"] for event in events)
+    assert events[-1]["level"] == ("succeeded" if exit_code == 0 else "failed")

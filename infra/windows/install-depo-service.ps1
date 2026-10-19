@@ -66,7 +66,7 @@ foreach ($entry in $entries) {
   }
   Push-Location $root
   try {
-    & $servicePython -m backend.depo_platform.service_smoke --service $entry.id
+    Invoke-DepoNativeCommand -Executable $servicePython -NativeArguments @('-m','backend.depo_platform.service_smoke','--service',$entry.id)
     if ($LASTEXITCODE -ne 0) { throw "Service import/OpenAPI check failed: $($entry.id)" }
   } finally { Pop-Location }
 }

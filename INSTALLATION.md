@@ -5188,3 +5188,5 @@ The text log captures PowerShell output, warnings, errors and failure location/s
 Known credential values from the process environment and `.env.local`, PostgreSQL URL passwords and bearer tokens are redacted in action logs. Review logs before sharing because arbitrary application output may contain other sensitive data. Parser errors, invalid launcher arguments, or failures before the logging helper loads can still appear only in the command window. These action logs supplement service logs; they do not replace application request/audit records or capture browser errors.
 
 Windows shutdown archives PID files under `logs/windows-services/stale-tracking` when the inspected PID belongs to a different module. The unrelated process is left running. Missing executable/command-line information or a matching service module using an unapproved runtime still stops setup and retains tracking for diagnosis.
+
+Native Python import/OpenAPI and ontology-upgrade checks retain informational stderr without treating it as a PowerShell failure. Their stdout remains separate for JSON parsing; nonzero exit codes still fail setup.

@@ -153,7 +153,7 @@ Invoke-DepoStage 'Detect first installation or existing database' {
   Import-DepoEnvironment -Root $root -EnvFile $envPath
   Push-Location $root
   try {
-    $info = & (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -m backend.depo_platform.ontology_upgrade --root $root --detect
+    $info = Invoke-DepoNativeCommand -Executable (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -NativeArguments @('-m','backend.depo_platform.ontology_upgrade','--root',$root,'--detect')
     if ($LASTEXITCODE -ne 0) { throw 'Deployment detection failed; no migrations applied.' }
     $script:depoDetectedMode = ($info | ConvertFrom-Json).mode
     if ($script:depoDetectedMode -notin @('new','existing')) { throw 'Invalid deployment detection response' }
@@ -241,7 +241,7 @@ if ($script:depoDetectedMode -eq 'existing') {
       if($StageOntologyUpdates){$arguments+='--stage'}
       . (Join-Path $windows 'service-runtimes.ps1')
       $upgradePython=Get-DepoServicePython -Root $root -ServiceId 'ingestion' -Mode $settings.DEPO_SERVICE_RUNTIME_MODE
-      & $upgradePython @arguments
+      Invoke-DepoNativeCommand -Executable $upgradePython -NativeArguments $arguments
       if($LASTEXITCODE -ne 0){throw 'Ontology upgrade review failed. Existing publications are retained; rerun setup to resume.'}
       Write-Host 'Review logs/installation/ontology-upgrade-v2/plan.json. Corrected drafts require lifecycle approval and publication through Ontology Junction. Existing publications are retained until that review.'
     } finally { Pop-Location }

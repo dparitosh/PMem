@@ -111,7 +111,7 @@ for item in manifest["services"]:
 for item in manifest.get("workers", []):
     importlib.import_module(item["module"])
     print(f"PASS: {item['id']} worker import")
-'@ | & $venvPython -
+'@ | Invoke-DepoNativeCommand -Executable $venvPython -NativeArguments @('-')
   if ($LASTEXITCODE -ne 0) { throw 'Service installation import/OpenAPI smoke check failed.' }
 } finally { Pop-Location }
 }
