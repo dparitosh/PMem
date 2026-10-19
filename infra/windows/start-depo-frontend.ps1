@@ -32,6 +32,12 @@ if (-not $PSBoundParameters.ContainsKey('Port') -and $values['DEPO_FRONTEND_PORT
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'DEPO_FRONTEND_PORT must be between 1 and 65535.' }
 if ($BindHost -notmatch '^[A-Za-z0-9.:-]+$') { throw 'Invalid frontend bind address.' }
 $probeHost = Get-DepoProbeHost $BindHost
+$frontendModule = 'backend.depo_platform.frontend_server'
+$envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+$authMode = if ($values['DEPO_BROWSER_AUTH_MODE']) { $values['DEPO_BROWSER_AUTH_MODE'] } else { 'manual' }
+if ($authMode -notin @('manual','local')) { throw 'DEPO_BROWSER_AUTH_MODE must be manual or local.' }
+if ($authMode -eq 'local' -and $BindHost -notin @('127.0.0.1','::1')) { throw 'Local browser authentication requires a loopback frontend bind.' }
+
 
 $routing = Resolve-DepoRouting $values
 $browserRouting = @{}
@@ -86,18 +92,21 @@ if (Test-Path -LiteralPath $pidFile) {
   $recordedPid = [int](Get-Content -LiteralPath $pidFile)
   $existing = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
   $details = if ($existing) { Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction SilentlyContinue } else { $null }
+  $recordedModule = if ($details -and $details.CommandLine -match 'backend\.depo_platform\.frontend_server') { $frontendModule } else { 'http.server' }
   if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $python.ToLowerInvariant() -and
-      $details.CommandLine -match 'http\.server' -and $details.CommandLine -match 'frontend[\\/]dist') {
+      $details.CommandLine -match '(?:http\.server|backend\.depo_platform\.frontend_server)' -and $details.CommandLine -match 'frontend[\\/]dist') {
     try {
       $response = Invoke-WebRequest -Uri "http://${probeHost}:$Port/" -UseBasicParsing -TimeoutSec 5
-      if ($response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
+      if ($recordedModule -eq $frontendModule -and $details.CreationDate -and
+          (Get-Item -LiteralPath $envPath).LastWriteTimeUtc -le ([datetime]$details.CreationDate).ToUniversalTime() -and
+          $details.CommandLine.Contains($envPath) -and $response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
           $response.Content.Contains($bundleMatch.Groups[1].Value) -and
-          (Test-DepoListener $recordedPid $python 'http.server' $Port $BindHost)) {
+          (Test-DepoListener $recordedPid $python $recordedModule $Port $BindHost)) {
         Write-Host "DEPO frontend is already ready at http://${probeHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
         return
       }
     } catch {}
-    Stop-DepoProcessTree $recordedPid $python 'http.server'
+    Stop-DepoProcessTree $recordedPid $python $recordedModule
   }
   Remove-Item -LiteralPath $pidFile -Force
 }
@@ -108,7 +117,7 @@ if ($listener) {
 }
 
 $process = Start-Process -FilePath $python `
-  -ArgumentList @('-m', 'http.server', $Port, '--bind', $BindHost, '--directory', 'frontend\dist') `
+  -ArgumentList @('-m', $frontendModule, $Port, '--bind', $BindHost, '--directory', 'frontend\dist', '--env-file', ('"' + $envPath + '"')) `
   -WorkingDirectory $root -WindowStyle Hidden `
   -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
 try {
@@ -123,7 +132,7 @@ do {
     $response = Invoke-WebRequest -Uri "http://${probeHost}:$Port/" -UseBasicParsing -TimeoutSec 3
     if ($response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
         $response.Content.Contains($bundleMatch.Groups[1].Value) -and
-        (Test-DepoListener $process.Id $python 'http.server' $Port $BindHost)) {
+        (Test-DepoListener $process.Id $python $frontendModule $Port $BindHost)) {
       Write-Host "DEPO frontend is ready at http://${probeHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
       return
     }
@@ -135,7 +144,7 @@ throw "DEPO frontend did not become ready within 30 seconds. Check $stderr."
 
 } catch {
   $startupFailure = $_
-  try { Stop-DepoProcessTree $process.Id $python 'http.server' }
+  try { Stop-DepoProcessTree $process.Id $python $frontendModule }
   catch { throw "Frontend startup failed: $($startupFailure.Exception.Message). Cleanup failed: $($_.Exception.Message). PID tracking is retained." }
   Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
   throw $startupFailure

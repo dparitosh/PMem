@@ -58,7 +58,11 @@ def main():
     # canonicalization overhead unless blank nodes actually need stable IDs.
     if canonical:
         has_blank_nodes = any(isinstance(value, BNode) for triple in graph for value in triple)
-        canonical_graph = to_canonical_graph(graph) if has_blank_nodes else graph
+        if canonical == 'projection' and has_blank_nodes:
+            from backend.depo_platform.projection_canonicalization import canonicalize_projection_graph
+            canonical_graph = canonicalize_projection_graph(graph)
+        else:
+            canonical_graph = to_canonical_graph(graph) if has_blank_nodes else graph
         if canonical == 'projection':
             from backend.depo_platform.projection_preparation import build_projection
             value = build_projection(canonical_graph)

@@ -18,7 +18,7 @@ export function isTerminalPipelineStatus(status = {}) {
   return Boolean(
     status.error
     || status.status === 'failed'
-    || status.status === 'ready_for_commit'
+    || (status.status === 'ready_for_commit' && !status.committing)
     || status.committed
     || status.status === 'completed'
     || status.commitPhase === 'complete'
@@ -69,4 +69,9 @@ export function getWorkflowNote({
   if (selectedWorkflow === 'instance.import' && ['ontology', 'xsd', 'xmi', 'express'].includes(mappingFileTypeContext)) return 'Use Create ontology for OWL, RDF, TTL, XSD, XMI, MDXML, or EXPRESS files.';
   if (selectedWorkflow === 'instance.import' && !mappingFileTypeContext) return 'Select files to continue.';
   return 'Ready.';
+}
+
+
+export function isAwaitingImportApproval(status = {}) {
+  return status.status === 'ready_for_commit' && !status.committing && !status.error && !status.commitError;
 }

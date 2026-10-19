@@ -41,7 +41,7 @@ describe('OntologyMetadataForm Component', () => {
       renderForm();
 
       expect(screen.getByLabelText(/Ontology Name/i)).toBeInTheDocument();
-      expect(screen.queryByLabelText(/Namespace Prefix/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/Namespace Prefix/i)).toBeInTheDocument();
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
 
@@ -115,7 +115,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
-      expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/e.g., myprefix/i)).toBeInTheDocument();
 
       const selectElement = screen.getByRole('combobox');
       await userEvent.selectOptions(selectElement, 'shacl');
@@ -170,7 +170,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
-      expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/e.g., myprefix/i)).toBeInTheDocument();
 
       const descriptionInput = screen.getByPlaceholderText(/Optional description/i);
       await userEvent.type(descriptionInput, 'Test description');
@@ -204,3 +204,48 @@ describe('OntologyMetadataForm Component', () => {
     });
   });
 });
+
+
+describe('XSD namespace and prefix capture', () => {
+  const schema = new File(['<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.plmxml.org/Schemas/PLMXMLSchema"/>'], 'teamcenter.xsd', {type: 'application/xml'});
+  it('shows the authoritative source namespace and submits the requested alias', async () => {
+    const submit = vi.fn();
+    render(<OntologyMetadataForm selectedFile={schema} onSubmit={submit} onCancel={() => {}} publicationMode />);
+    const namespace = await screen.findByLabelText('Source namespace (from XSD)');
+    await waitFor(() => expect(namespace).toHaveValue('http://www.plmxml.org/Schemas/PLMXMLSchema'));
+    expect(namespace).toHaveAttribute('readonly');
+    await userEvent.type(screen.getByLabelText(/Ontology Name/), 'Teamcenter PLM Ontology');
+    await userEvent.clear(screen.getByLabelText(/Namespace Prefix/));
+    await userEvent.type(screen.getByLabelText(/Namespace Prefix/), 'custom');
+    await userEvent.click(screen.getByRole('button', {name: 'Upload and Parse'}));
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({prefix: 'custom', fileType: 'xsd', generationType: 'owl'}));
+    expect(await new Promise(resolve => {const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(schema);})).toContain('targetNamespace="http://www.plmxml.org/Schemas/PLMXMLSchema"');
+  });
+  it('rejects invalid XSD aliases before submission', async () => {
+    const submit = vi.fn();
+    render(<OntologyMetadataForm selectedFile={schema} onSubmit={submit} onCancel={() => {}} />);
+    await userEvent.type(screen.getByLabelText(/Ontology Name/), 'Teamcenter');
+    await userEvent.type(screen.getByLabelText(/Namespace Prefix/), 'bad-prefix');
+    await userEvent.click(screen.getByRole('button', {name: 'Upload and Parse'}));
+    expect(screen.getByText(/Prefix must start/)).toBeVisible();
+    expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+ describe('automatic namespace aliases', () => {
+   it.each([
+     ['https://example.org/Product#', 'xmlns:product="https://example.org/Product#"', 'product'],
+     ['http://www.plmxml.org/Schemas/PLMXMLSchema', '', 'plmxmlschema'],
+     ['urn:example:2026-model', '', 'ns_2026_model'],
+   ])('derives the alias for %s', async (namespace, binding, expected) => {
+     const source = new File([`<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" ${binding} targetNamespace="${namespace}"/>`], 'source.xsd');
+     render(<OntologyMetadataForm selectedFile={source} onSubmit={() => {}} onCancel={() => {}} />);
+     await waitFor(() => expect(screen.getByLabelText(/Namespace Prefix/)).toHaveValue(expected));
+   });
+   it('preserves an initial user override', async () => {
+     const source = new File(['<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:example:product"/>'], 'source.xsd');
+     render(<OntologyMetadataForm selectedFile={source} initialValues={{prefix:'chosen'}} onSubmit={() => {}} onCancel={() => {}} />);
+     await waitFor(() => expect(screen.getByLabelText('Source namespace (from XSD)')).toHaveValue('urn:example:product'));
+     expect(screen.getByLabelText(/Namespace Prefix/)).toHaveValue('chosen');
+   });
+ });

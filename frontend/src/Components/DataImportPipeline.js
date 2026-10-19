@@ -1,3 +1,4 @@
+import { isAwaitingImportApproval } from '../workflows/importPresentation';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   X,
@@ -75,8 +76,9 @@ export default function DataImportPipeline() {
   const [error, setError] = useState(null);
   const [startedFiles, setStartedFiles] = useState(new Set());
   const [selectedStage, setSelectedStage] = useState('upload');
-  const [previewData, setPreviewData] = useState(null);
+  const [previewsByTask, setPreviewsByTask] = useState({});
   const [confirmingImport, setConfirmingImport] = useState(null);
+  const previewData = confirmingImport ? previewsByTask[confirmingImport] : null;
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
   const ingestionWriteToken = '';
   const executionToken = '';
@@ -1113,11 +1115,13 @@ export default function DataImportPipeline() {
         // F-NEW-8: normalize stats — backend parsers use different key names for entity/rel counts.
         const rawStats = data.stats || {};
         const entities_found =
+          data.result?.nodes_created ??
           rawStats.entities_found ??
           rawStats.row_count ??
           rawStats.total_items ??
           rawStats.element_count;
         const relationships_found =
+          data.result?.relationships_created ??
           rawStats.relationships_found ??
           rawStats.relationship_count;
         const normalizedStats = {
@@ -1137,7 +1141,7 @@ export default function DataImportPipeline() {
             stage: mappedStage,
             backendStage: data.current_stage,
             progress: data.progress,
-            message: data.message,
+            message: isAwaitingImportApproval(data) ? 'Parsing complete. Review the preview, then choose Load to Neo4j and enter an approver.' : data.message,
             stats: normalizedStats,
             status: data.status,
             committing: typeof data.committing === 'boolean'
@@ -1180,7 +1184,7 @@ export default function DataImportPipeline() {
             sample_rows: [],
             auto_schema: data.auto_schema || {},
           };
-          setPreviewData(statusPreview);
+          setPreviewsByTask(prev => ({ ...prev, [taskId]: statusPreview }));
           // Fetch actual preview rows from the preview endpoint
           try {
             const previewUrl = buildUrl(replaceParams(API.import.preview, { task_id: taskId }));
@@ -1192,20 +1196,20 @@ export default function DataImportPipeline() {
               // F2 FIX: spread preview endpoint fields directly onto previewData so the
               // modal can read row_count / columns / sample_rows / auto_schema at the top level.
               // Previously they were nested under .preview which the modal never read.
-              setPreviewData(prev => ({
-                ...prev,
-                row_count:   previewRes.data.row_count   ?? prev?.row_count   ?? 0,
-                columns:     previewRes.data.columns     || prev?.columns     || [],
-                sample_rows: previewRes.data.sample_rows || prev?.sample_rows || [],
-                auto_schema: previewRes.data.auto_schema || prev?.auto_schema || {},
-              }));
+              setPreviewsByTask(previews => ({ ...previews, [taskId]: {
+                ...previews[taskId],
+                row_count:   previewRes.data.row_count   ?? previews[taskId]?.row_count   ?? 0,
+                columns:     previewRes.data.columns     || previews[taskId]?.columns     || [],
+                sample_rows: previewRes.data.sample_rows || previews[taskId]?.sample_rows || [],
+                auto_schema: previewRes.data.auto_schema || previews[taskId]?.auto_schema || {},
+              }}));
             }
           } catch (_) { /* preview is optional — continue without it */ }
         }
 
         // Preview is a stable user decision point. Stop polling until the
         // user explicitly starts the Neo4j commit, which starts a new poller.
-        if (data.status === 'ready_for_commit' || data.status === 'completed' || data.status === 'failed') {
+        if ((data.status === 'ready_for_commit' && !data.committing && data.current_stage !== 'ingest') || data.status === 'completed' || data.status === 'failed') {
           clearPoller(pollerKey);
           return;
         }
@@ -1255,15 +1259,17 @@ export default function DataImportPipeline() {
   }, [activePollersRef, clearPoller, isMountedRef, schedulePoller]);
 
   useEffect(() => {
-    if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current) return;
+    if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current || !files.length) return;
     const resumableJobs = [];
     const staleFileIds = [];
 
     files.forEach((file) => {
       const status = pipelineStatus[file.fileId];
-      if (!file?.taskId || !startedFiles.has(file.fileId) || !status) return;
-      if (isResumablePersistedJob(file, status)) {
-        resumableJobs.push(file);
+      const taskId = status?.taskId || file?.taskId;
+      if (!taskId || !startedFiles.has(file.fileId) || !status) return;
+      const retainedFile = { ...file, taskId };
+      if (isResumablePersistedJob(retainedFile, status)) {
+        resumableJobs.push(retainedFile);
         return;
       }
       if (!isTerminalPipelineStatus(status)) {
@@ -1410,6 +1416,10 @@ export default function DataImportPipeline() {
     window.location.hash = `/ontology?target=${encodeURIComponent(workflowTargetOntologyId)}&merge_source=${encodeURIComponent(workflowOntologyId)}&view=alignment&mode=merge`;
   };
   const commitImport = async (taskId) => {
+    if (getCredentialProfile('INGESTION_WRITE_TOKEN') && !commitApprover.trim()) {
+      setError('Enter an approver before loading to Neo4j.');
+      return;
+    }
     // ── Pre-commit check ────────────────────────────────────────────────────
     // Show a quick checking state in the modal before closing it
     try {
@@ -1633,7 +1643,7 @@ export default function DataImportPipeline() {
       return { text: 'Attention Needed', bg: '#FFEBEE', color: C.red };
     }
     if (backendStage === 'preview' || backendStage === 'verify' || stage === 'validate' || stage === 'verify') {
-      return { text: 'Ready to Load', bg: '#E8F5E9', color: C.green };
+      return { text: 'Awaiting load approval', bg: '#E8F5E9', color: C.green };
     }
     if (progress === 100) {
       return { text: 'Complete', bg: '#E8F5E9', color: C.green };
@@ -1762,8 +1772,10 @@ export default function DataImportPipeline() {
     [activeWorkflow, selectedWorkflow]
   );
   const activePipelineStages = useMemo(
-    () => buildWorkflowStages(fallbackWorkflow),
-    [fallbackWorkflow]
+    () => buildWorkflowStages(fallbackWorkflow).map((stage, index) =>
+      selectedWorkflow === 'instance.import' && index === 2
+        ? { ...stage, title: 'Review and approve load', label: 'Review and approve load', description: 'Review the parsed graph and supply an approver before loading to Neo4j.' } : stage),
+    [fallbackWorkflow, selectedWorkflow]
   );
   const fileStatusIndex = useMemo(() => {
     const index = new Map();
@@ -1878,6 +1890,7 @@ export default function DataImportPipeline() {
       if (!startedFiles.has(file.fileId)) return count;
       if (status.error || status.commitError || status.resumeExpired) return count;
       if (status.committed || status.status === 'completed' || status.progress === 100) return count;
+      if (isAwaitingImportApproval(status)) return count;
       return count + 1;
     }, 0),
     [files, startedFiles, fileStatusIndex]
@@ -1897,14 +1910,15 @@ export default function DataImportPipeline() {
         summary.completed += 1;
         return summary;
       }
+      if (isAwaitingImportApproval(status)) { summary.awaitingReview += 1; return summary; }
       summary.active += 1;
       return summary;
-    }, { active: 0, completed: 0, failed: 0, pending: 0 });
+    }, { active: 0, completed: 0, failed: 0, pending: 0, awaitingReview: 0 });
   }, [files, startedFiles, fileStatusIndex]);
   const activeJobs = useMemo(
     () => files
       .map((file) => ({ file, status: fileStatusIndex.get(file.fileId) || {} }))
-      .filter(({ file, status }) => startedFiles.has(file.fileId) && status.status !== 'completed' && status.status !== 'failed'),
+      .filter(({ file, status }) => startedFiles.has(file.fileId) && !isAwaitingImportApproval(status) && status.status !== 'completed' && status.status !== 'failed'),
     [files, fileStatusIndex, startedFiles]
   );
   const stageFileCounts = useMemo(() => {
@@ -2533,12 +2547,13 @@ export default function DataImportPipeline() {
       }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
           gap: '8px',
           marginBottom: activeJobs.length > 0 ? '10px' : 0,
         }}>
           {[
             { label: 'Active jobs', value: jobSummary.active, color: C.primaryText },
+            { label: 'Awaiting load approval', value: jobSummary.awaitingReview, color: C.orange },
             { label: 'Completed', value: jobSummary.completed, color: C.green },
             { label: 'Needs attention', value: jobSummary.failed, color: C.red },
             { label: 'Queued', value: jobSummary.pending, color: C.orange },
@@ -2559,6 +2574,7 @@ export default function DataImportPipeline() {
           ))}
         </div>
 
+        {jobSummary.awaitingReview > 0 && <p role="status">{jobSummary.awaitingReview} parsed imports are waiting for your review, not processing. Open Import instance graph, review each preview with Load to Neo4j, and enter an approver to start loading. No automatic load is performed.</p>}
         {activeJobs.length > 0 && (
           <div style={{
             display: 'grid',
@@ -3475,6 +3491,10 @@ export default function DataImportPipeline() {
                       <button
                         onClick={() => {
                           setConfirmingImport(status.taskId);
+                          setPreviewsByTask(prev => ({ ...prev, [status.taskId]: null }));
+                          apiClient.get(buildUrl(replaceParams(API.import.preview, { task_id: status.taskId })), { timeout: 30000 })
+                            .then(r => setPreviewsByTask(prev => ({ ...prev, [status.taskId]: r.data })))
+                            .catch(() => { setConfirmingImport(null); setError('Could not load the selected task preview. Retry before approving.'); });
                           // Run pre-commit check immediately when modal opens
                           setPreCheck({ loading: true });
                           apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: status.taskId })), { timeout: 300000 })
@@ -3892,7 +3912,7 @@ export default function DataImportPipeline() {
               </button>
               <button
                 onClick={() => commitImport(confirmingImport)}
-                disabled={preCheck?.loading || preCheck?.ready === false}
+                disabled={preCheck?.loading || preCheck?.ready !== true || (getCredentialProfile('INGESTION_WRITE_TOKEN') && !commitApprover.trim())}
                 style={{
                   padding: '8px 16px',
                   background: (preCheck?.loading || preCheck?.ready === false) ? C.textMuted : C.green,

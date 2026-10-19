@@ -67,6 +67,8 @@ def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
             raise ValueError('Publication was superseded; use a new publication identity')
         from backend.depo_platform.graph_access import reconcile_activation
         reconcile_activation(ontology_id, publication_id, {**receipt, **params})
+        from .publication_cleanup import try_cleanup_completed_staging
+        try_cleanup_completed_staging(session, **params, query_factory=query_factory)
         return {'status': 'success', **params, 'resources': len(resources),
                 'relationships': total_relationships,
                 'hierarchy_edges': receipt['hierarchy_edges']}
@@ -135,6 +137,8 @@ def publish_initial(session, *, ontology_id, publication_id, prefix, resources,
              relationships=relationships, relation_queries=relation_queries,
              resource_query=resource_query, batch_size=batch_size,
              timeout=activation_budget, unit_of_work=unit_of_work)
+    from .publication_cleanup import try_cleanup_completed_staging
+    try_cleanup_completed_staging(session, **params, query_factory=query_factory)
     logging.getLogger(__name__).warning('Ontology publication phase=completed ontology_id=%s resources=%s relationships=%s',
         ontology_id, len(resources), total_relationships)
     return {'status': 'success', **params, 'resources': len(resources),

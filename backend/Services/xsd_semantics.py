@@ -64,6 +64,11 @@ def qualify_schema_types(roots, contexts, namespaces):
     import hashlib
     declarations = {}
     for path, root in roots.items():
+        for declaration in root:
+            if declaration.tag in {X+'complexType', X+'simpleType', X+'element'} and declaration.get('name'):
+                declaration.set('{urn:pmem:conversion}sourceNamespace', namespaces[path])
+                declaration.set('{urn:pmem:conversion}sourceName', declaration.get('name'))
+    for path, root in roots.items():
         for node in root:
             if node.tag in {X+'complexType', X+'simpleType'} and node.get('name'):
                 declarations.setdefault(node.get('name'), set()).add(namespaces[path])

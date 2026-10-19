@@ -1589,12 +1589,16 @@ class FileParser:
                     continue
                 append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
 
+            from .import_identity import attach_plmxml_identities
+            source_identity_records = attach_plmxml_identities(file_content, rows)
             _ns_uri = str(doc.parse_stats.get('namespace') or '')
             _ns_prefix = derive_prefix_from_namespace(_ns_uri)
 
             columns = list(rows[0].keys()) if rows else []
             stats = {
                 'format': 'PLMXML',
+                '_source_identity_records': source_identity_records,
+                'source_application_ref_count': len(source_identity_records),
                 'schema_version': doc.schema_version,
                 'namespace': _ns_uri,
                 'ontology_prefix': _ns_prefix,
@@ -2640,14 +2644,14 @@ class UnifiedDataImportService:
             try:
                 task = json.loads(path.read_text(encoding='utf-8'))
                 task_id = str(task.get('task_id') or '')
-                if task_id and task_id not in tasks_by_id:
+                if task_id:
                     tasks_by_id[task_id] = task
             except (OSError, ValueError, TypeError) as exc:
                 logger.warning("Skipping unreadable import task snapshot %s: %s", path, exc)
 
         fields = (
             'task_id', 'filename', 'file_type', 'current_stage', 'progress',
-            'message', 'status', 'committing', 'error', 'stats',
+            'message', 'status', 'committing', 'error', 'stats', 'result',
             'commit_phase', 'batch_progress', 'commit_metrics',
             'workflow_id', 'artifact_manifest', 'started_at', 'completed_at',
             'preview_completed_at',
@@ -2793,6 +2797,11 @@ class UnifiedDataImportService:
             # Extract relationship objects before merging stats (not JSON-serializable in bulk)
             xmi_rels = stats.pop('_xmi_relationships', [])
             step_ref_map = stats.pop('_step_ref_map', {})
+            source_identity_records = stats.pop('_source_identity_records', [])
+            if source_identity_records:
+                WorkflowArtifactService.write_json(task_id, 'source', 'source-identities.json',
+                    {'application_references': source_identity_records}, 'source_identity')
+                cls._refresh_artifact_manifest(task_id, task_info)
             if xmi_rels:
                 task_info['_xmi_relationships'] = xmi_rels
             if step_ref_map:
@@ -2936,14 +2945,22 @@ class UnifiedDataImportService:
             # Do NOT re-raise — frontend polls /status to read the real error
 
     @classmethod
+    def _read_status_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
+        """Read atomic persisted state without replacing an active writer object."""
+        try:
+            task = json.loads(cls._task_snapshot_path(task_id).read_text(encoding='utf-8'))
+            if isinstance(task, dict) and task.get('task_id') == task_id:
+                return task
+        except (OSError, ValueError, TypeError):
+            pass
+        return import_tasks.get(task_id)
+
+    @classmethod
     def get_status(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Get task status"""
-        if task_id not in import_tasks:
-            restored = cls._restore_task(task_id)
-            if not restored:
-                return None
-        
-        task = import_tasks[task_id]
+        task = cls._read_status_task(task_id)
+        if not task:
+            return None
         artifact_manifest = task.get('artifact_manifest')
         if not artifact_manifest:
             try:
@@ -2962,6 +2979,7 @@ class UnifiedDataImportService:
             'committing': task.get('committing', False),
             'error': task.get('error'),
             'stats': task.get('stats'),
+            'result': task.get('result'),
             'commit_phase': task.get('commit_phase'),
             'batch_progress': task.get('batch_progress'),
             'commit_metrics': task.get('commit_metrics'),
@@ -3058,6 +3076,7 @@ class UnifiedDataImportService:
         from .import_completeness import require_complete_archimate
         require_complete_archimate(task)
         import re as _re
+        from .import_commit_integrity import scoped_merge_keys
         commit_started_at = time.perf_counter()
         rows = task.get('parsed_rows', [])
 
@@ -3103,8 +3122,11 @@ class UnifiedDataImportService:
             f"ontology_name='{_ontology_name}', namespace='{_namespace_uri}'"
         )
         # Stamp namespace-derived metadata onto every row before writing
+        from .import_identity import stamp_instance_identity
         for _row in rows:
-            _row.setdefault('import_id', task_id)
+            if _row.get('import_row_key'):
+                stamp_instance_identity(_row, task_id)
+            _row['import_id'] = task_id
             _row.setdefault('ontology_prefix', _ontology_prefix)
             _row.setdefault('source_ontology', _namespace_uri or _ontology_name)
             _row.setdefault('source_filename', task.get('filename') or '')
@@ -3157,7 +3179,7 @@ class UnifiedDataImportService:
         seen_merge_signatures = set()
         for node_def in schema.get('nodes', []):
             label = node_def.get('label')
-            merge_keys = [str(k) for k in (node_def.get('mergeKeys') or []) if k]
+            merge_keys = scoped_merge_keys(node_def.get('mergeKeys') or [])
             if not label or not merge_keys:
                 continue
             signature = (str(label), tuple(merge_keys))
@@ -3185,6 +3207,8 @@ class UnifiedDataImportService:
                 idx_result = Neo4jImporter.execute_cypher(missing_index_queries)
                 result['queries_executed'] += idx_result.get('queries_executed', 0)
                 result['errors'].extend(idx_result.get('errors', []))
+                if idx_result.get('errors'):
+                    raise RuntimeError('Import index preparation failed; no entity batches were started')
                 result['schema_validation']['created_index_count'] = len(schema_validation['missing_indexes'])
         else:
             result['schema_validation']['created_index_count'] = 0
@@ -3193,7 +3217,7 @@ class UnifiedDataImportService:
         _sync_metrics('nodes', 84, 'Writing entity batches to Neo4j...')
         for node_def in schema.get('nodes', []):
             label = node_def.get('label', 'ImportedRecord')
-            merge_keys = node_def.get('mergeKeys', [])
+            merge_keys = scoped_merge_keys(node_def.get('mergeKeys') or [])
             filter_key = node_def.get('_filter_key')
             filter_val = node_def.get('_filter_val')
             if filter_key and filter_val:
@@ -3239,12 +3263,8 @@ class UnifiedDataImportService:
             result['queries_executed'] += node_result.get('queries_executed', 0)
             result['errors'].extend(node_result.get('errors', []))
             if node_result.get('errors'):
-                result['skipped_node_rows'] += len(node_rows)
-                result['warnings'].append(
-                    f"Neo4j rejected {len(node_rows)} '{label}' rows; see errors for details."
-                )
-            else:
-                result['nodes_created'] += len(node_rows)
+                raise RuntimeError(f"Entity batch failed for {label}; partial graph may exist: {node_result['errors'][0]}")
+            result['nodes_created'] += len(node_rows)
 
         # ── XMI relationship edges ───────────────────────────────────────────
         # ReqIF relation objects are edge records, not business-object nodes.
@@ -3312,6 +3332,13 @@ class UnifiedDataImportService:
         _label_hint = f":`{schema_labels[0]}`" if len(schema_labels) == 1 else ''
         row_id_set = {str(r.get('id')) for r in rows if r.get('id') is not None}
         if xmi_rels:
+            id_labels = {}
+            for definition in schema.get('nodes', []):
+                label = definition.get('label')
+                key, value = definition.get('_filter_key'), definition.get('_filter_val')
+                for row in rows:
+                    if label and row.get('id') is not None and (not key or not value or str(row.get(key, '')).replace(' ', '_').replace(':', '_') == value):
+                        id_labels[str(row['id'])] = ':' + '`' + label.replace('`', '``') + '`'
             rel_by_type: Dict[str, List[Dict[str, Any]]] = {}
             for rel in xmi_rels:
                 from_id = str((rel.get('from_props') or {}).get('id', '') or '')
@@ -3320,7 +3347,7 @@ class UnifiedDataImportService:
                 safe_type = _re.sub(r'[^A-Z0-9_]', '_', raw_type.upper()).strip('_') or 'RELATED_TO'
                 if from_id and to_id:
                     if from_id in row_id_set and to_id in row_id_set:
-                        rel_by_type.setdefault(safe_type, []).append({
+                        rel_by_type.setdefault((safe_type, id_labels.get(from_id, _label_hint), id_labels.get(to_id, _label_hint)), []).append({
                             'from_id': from_id,
                             'to_id': to_id,
                             'properties': rel.get('properties') or {},
@@ -3328,11 +3355,11 @@ class UnifiedDataImportService:
                     else:
                         result['relationships_skipped'] += 1
             _sync_metrics('relationships', 92, 'Creating relationship batches...')
-            for rel_type, rel_rows in rel_by_type.items():
+            for (rel_type, from_label, to_label), rel_rows in rel_by_type.items():
                 rel_cypher = f"""
                 UNWIND $rows AS row
-                MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
-                MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
+                MATCH (a{from_label} {{id: row.from_id, import_id: row.import_id}})
+                MATCH (b{to_label} {{id: row.to_id, import_id: row.import_id}})
                 MERGE (a)-[rel:`{rel_type}`]->(b)
                 SET rel += coalesce(row.properties, {{}})
                 RETURN count(*) AS matched_rows
@@ -3358,23 +3385,11 @@ class UnifiedDataImportService:
                             },
                         ),
                     )
-                    if rel_result.get('errors'):
-                        logger.warning(f"Relationship write errors for type {rel_type}: {rel_result['errors']}")
-                    else:
-                        matched_rows = int(rel_result.get('matched_rows') or 0)
-                        skipped_rows = max(0, len(rel_rows) - matched_rows)
-                        result['relationships_created'] += matched_rows
-                        result['relationships_skipped'] += skipped_rows
-                        if skipped_rows:
-                            logger.warning(
-                                "Task %s: relationship type %s resolved %s/%s rows",
-                                task_id,
-                                rel_type,
-                                matched_rows,
-                                len(rel_rows),
-                            )
+                    from .import_commit_integrity import require_relationship_batch
+                    require_relationship_batch(rel_result, len(rel_rows), rel_type)
+                    result['relationships_created'] += rel_result['matched_rows']
                 except Exception as rel_err:
-                    logger.warning(f"Relationship write skipped for type {rel_type}: {rel_err}")
+                    raise RuntimeError(f"Relationship write did not complete for {rel_type}: {rel_err}") from rel_err
 
         # ── STEP reference edges ────────────────────────────────────────────
         step_ref_map = task.get('_step_ref_map', {})
@@ -3709,13 +3724,18 @@ class UnifiedDataImportService:
         schema = config or task.get('auto_schema', {})
         task['current_stage'] = ImportStage.INGEST.value
         task['progress'] = 80
+        task['status'] = ImportStatus.PROCESSING.value
         task['message'] = 'Queued for Neo4j commit...'
         task['committing'] = True
         cls._persist_task(task_id)
 
         async def _run_commit_background() -> None:
             try:
-                result = await asyncio.to_thread(cls._commit_sync, task_id, task, schema)
+                from .import_commit_integrity import commit_operation
+                def run_owned_commit():
+                    with commit_operation(task_id):
+                        return cls._commit_sync(task_id, task, schema)
+                result = await asyncio.to_thread(run_owned_commit)
                 # Fire OWL generation in background — does NOT block the HTTP response.
                 asyncio.get_running_loop().run_in_executor(
                     None, cls._generate_owl_background, task_id, task

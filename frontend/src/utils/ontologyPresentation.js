@@ -56,3 +56,9 @@ export function normalizeOntologyBrowserNode(node = {}, prefixHint = '') {
     ontology_prefix: cleanOntologyPrefix(node.ontology_prefix || node.prefix, prefixHint),
   };
 }
+
+export function isOntologyClassNode(node = {}) {
+  if (node.kind) return node.kind === 'class';
+  const source = String(node.source || '');
+  return source.includes('class') && !source.includes('property');
+}

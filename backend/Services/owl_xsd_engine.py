@@ -126,6 +126,7 @@ class OntologyConfig:
 
     # ── Provenance (all optional) ─────────────────────────────────────────────
     creator:          str  = "IAE — Industrial Autonomy and Engineering"
+    class_iris:       dict = field(default_factory=dict)
     source_ns:        str  = ""   # Original schema namespace (info only)
     source_standard:  str  = ""   # e.g. "ANSI/ISA-95.00.02-2010"
     version_info:     str  = ""
@@ -165,7 +166,7 @@ class OntologyConfig:
         return Namespace(self.base_uri)
 
     def class_uri(self, name: str) -> URIRef:
-        return self.ns[_safe_uri_name(name)]
+        return URIRef(self.class_iris[name]) if name in self.class_iris else self.ns[_safe_uri_name(name)]
 
     def prop_uri(self, domain: str, prop_name: str) -> URIRef:
         canonical = self.canonical_property_key(prop_name)
@@ -1417,6 +1418,8 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
         raise ValueError('Missing conversion targets: ' + ', '.join(missing or ['no XSD files']))
     conversion_diagnostics = inspect_conversion_schemas(xsd_paths, XSD_TYPE_MAP)
     expanded_schemas = expand_model_groups(xsd_paths)
+    from .xsd_identity import class_iri_map
+    cfg.class_iris = class_iri_map(expanded_schemas)
     for message in conversion_diagnostics:
         g.add((URIRef(cfg.base_uri), DCTERMS.description, Literal('Conversion limitation: ' + message)))
 

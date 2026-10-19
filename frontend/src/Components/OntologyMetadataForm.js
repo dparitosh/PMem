@@ -1,6 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Database, Network, RefreshCw } from 'lucide-react';
 import { UI_COLORS as C } from '../styles/uiTokens';
+
+export function prefixFromNamespace(root, namespace) {
+  if (!namespace) return '';
+  const declared = Array.from(root.attributes).find(attribute =>
+    attribute.namespaceURI === 'http://www.w3.org/2000/xmlns/' &&
+    attribute.localName !== 'xmlns' && attribute.value === namespace &&
+    /^[a-z][a-z0-9_]{0,49}$/.test(attribute.localName));
+  if (declared) return declared.localName;
+  const segments = namespace.replace(/[#/:]+$/, '').split(/[#/:]/).filter(Boolean);
+  let prefix = (segments.at(-1) || '').toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  if (prefix && !/^[a-z]/.test(prefix)) prefix = 'ns_' + prefix;
+  return prefix.slice(0, 50);
+}
 
 const getGenerationOptionsForFileType = (fileType) => {
   if (fileType === 'xsd') {
@@ -56,6 +69,29 @@ export default function OntologyMetadataForm({
   });
 
   const [validationErrors, setValidationErrors] = useState({});
+  const [sourceNamespace, setSourceNamespace] = useState('');
+  const prefixEdited = useRef(Boolean(initialValues?.prefix));
+  useEffect(() => {
+    let active = true;
+    setSourceNamespace('');
+    if (!selectedFile || !selectedFile.name.toLowerCase().endsWith('.xsd')) return undefined;
+    const text = typeof selectedFile.text === 'function' ? selectedFile.text() : new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Cannot read source schema'));
+      reader.readAsText(selectedFile);
+    });
+    text.then(value => {
+      const document = new DOMParser().parseFromString(value, 'application/xml');
+      const root = document.documentElement;
+      if (active && !document.querySelector('parsererror') && root.namespaceURI === 'http://www.w3.org/2001/XMLSchema' && root.localName === 'schema') {
+        const namespace = root.getAttribute('targetNamespace') || '';
+        setSourceNamespace(namespace);
+        if (!prefixEdited.current) setFormData(previous => ({ ...previous, prefix: prefixFromNamespace(root, namespace) }));
+      }
+    }).catch(() => { if (active) setSourceNamespace(''); });
+    return () => { active = false; };
+  }, [selectedFile]);
 
   // Determine file type from selected file
   const getFileType = () => {
@@ -88,7 +124,7 @@ export default function OntologyMetadataForm({
       errors.ontologyName = 'Ontology name is required';
     }
     
-    if (fileType !== 'xsd' && formData.prefix.trim() && !/^[a-z][a-z0-9_]{0,49}$/.test(formData.prefix.trim())) {
+    if (formData.prefix.trim() && !/^[a-z][a-z0-9_]{0,49}$/.test(formData.prefix.trim())) {
       errors.prefix = 'Prefix must start with a lowercase letter and contain only lowercase letters, numbers, or underscores';
     }
     
@@ -112,7 +148,7 @@ export default function OntologyMetadataForm({
     
     onSubmit({
       ...formData,
-      prefix: normalizedFileType === 'xsd' ? '' : formData.prefix.trim(),
+      prefix: formData.prefix.trim(),
       fileType: normalizedFileType,
       selectedFile: selectedFile,
       schemaType: formData.schemaType || 'schema'
@@ -214,7 +250,7 @@ export default function OntologyMetadataForm({
           </div>
 
           {/* Prefix */}
-          {fileType !== 'xsd' && <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '20px' }}>
             <label htmlFor="ontology-prefix-input" style={{
               display: 'block',
               marginBottom: '6px',
@@ -227,10 +263,9 @@ export default function OntologyMetadataForm({
             <input
               id="ontology-prefix-input"
               type="text"
-              readOnly={fileType === 'xsd'}
               placeholder={prefixPlaceholder}
               value={formData.prefix}
-              onChange={(e) => setFormData({ ...formData, prefix: e.target.value.toLowerCase() })}
+              onChange={(e) => { prefixEdited.current = true; setFormData({ ...formData, prefix: e.target.value.toLowerCase() }); }}
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -253,8 +288,13 @@ export default function OntologyMetadataForm({
             }}>
               {formData.prefix ? `Used in URIs: ${formData.prefix}:Entity` : 'Leave blank to derive a prefix from the source namespace.'}
             </div>
+          </div>
+          {fileType === 'xsd' && <div style={{ marginBottom: '20px' }}>
+            <label htmlFor="ontology-namespace-input">Source namespace (from XSD)</label>
+            <input id="ontology-namespace-input" type="text" readOnly value={sourceNamespace}
+              placeholder="No targetNamespace declared" style={{ width: '100%', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+            <p>The prefix is a display alias. Source namespace IRIs and imported extension namespaces are preserved.</p>
           </div>}
-          {fileType === 'xsd' && <p>The namespace prefix is generated automatically from the schema namespace.</p>}
 
           {/* Generation Type */}
           <div style={{ marginBottom: '20px' }}>

@@ -30,6 +30,18 @@ def request_budget(path):
         return engineering_workflow_timeout_seconds() + 30
     if path.endswith('/publish') and '/ontologies/' in path:
         return ontology_publication_timeout_seconds() + 30
+    # Merge preparation performs bounded RDF parsing and SHACL/OWL-RL work.
+    # Its outer HTTP deadline must not truncate that worker at the generic
+    # 90-second request limit. Keep unrelated ontology reads on that limit.
+    merge_path = path.rstrip('/')
+    merge_root = '/api/v1/ontologies/merges/'
+    if merge_path.startswith(merge_root):
+        operation = merge_path[len(merge_root):].split('/')
+        validation = bounded_timeout_seconds('MERGE_VALIDATION_TIMEOUT_SECONDS', default=180, maximum=900)
+        if operation == ['preview']:
+            return validation + 30
+        if len(operation) == 2 and operation[0] and operation[1] in {'apply', 'apply-automatic'}:
+            return validation + ontology_publication_timeout_seconds() + 30
     if '/workflow-runs' in path or '/runs' in path or '/chat' in path or '/suggest' in path:
         return agent_run_timeout_seconds() + 30
     if '/pipeline/' in path and path.endswith('/run'):

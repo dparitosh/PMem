@@ -245,3 +245,14 @@ test('unavailable session storage still submits and retains the workflow in memo
     expect(api.automate).toHaveBeenCalledTimes(1);
   } finally { storage.mockRestore(); }
 });
+
+
+test('mapping guidance remains visible when manual approval controls are collapsed', async () => {
+ const view=mount();await create();
+ const manual=screen.getByText('Advanced: manual review, approval and saved-preview recovery').closest('details');
+ manual.open=false;
+ expect(screen.getByRole('region',{name:'Mapping guidance'})).toBeVisible();
+ expect(screen.getByText('Understand the proposed mappings')).toBeVisible();
+ expect(screen.getAllByText(/No supporting rationale was recorded/)[0]).toBeVisible();
+ expect(api.publish).not.toHaveBeenCalled();
+});

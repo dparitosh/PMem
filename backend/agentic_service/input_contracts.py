@@ -170,9 +170,26 @@ def validate_operation(document, tool, inputs, *, deferred=False):
         values = dict(inputs.get('form', {})) if media == 'multipart/form-data' else dict(inputs)
         if media == 'multipart/form-data':
             values['artifact' if tool['id'] == 'ontology.register' else 'file'] = 'validated-upload'
-        # These values are injected from verified service credentials during dispatch.
+        # Approval is verified on the agent envelope. Only model a downstream
+        # approval body when that endpoint actually declares those fields.
+        # Bridge previews retain artifacts but their strict input model contains
+        # source/mapping inputs only, not the governor's approval envelope.
+        schema = content[media].get('schema', {})
+        def declared_fields(node, depth=0):
+            if depth > 40:
+                raise ValueError('Input schema nesting exceeds 40 levels')
+            if isinstance(node, bool):
+                return set()
+            node = resolve(node, document)
+            fields = set(node.get('properties', {}))
+            for branch in node.get('allOf', []):
+                fields.update(declared_fields(branch, depth+1))
+            return fields
         if tool.get('mutates'):
-            values.update(approved_by='verified-actor', approval_token='verified-token')
+            fields = declared_fields(schema)
+            values.update({key: value for key, value in
+                {'approved_by': 'verified-actor', 'approval_token': 'verified-token'}.items()
+                if key in fields})
         for parameter in parameters:
             if parameter.get('in') == 'path':
                 values.pop(parameter['name'], None)

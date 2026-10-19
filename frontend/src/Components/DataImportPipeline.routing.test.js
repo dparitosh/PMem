@@ -82,6 +82,44 @@ vi.mock('../services/apiClient', () => ({
 }));
 
 describe('DataImportPipeline workflow routing', () => {
+  it('committing preview state keeps polling until completion and exposes the bridge artifact', async () => {
+    localStorage.setItem('depo.import.jobs.v2',JSON.stringify({files:[{fileId:'source',createdAt:new Date().toISOString(),name:'requirements.xml',persisted:true,workflowId:'instance.import'}],
+      pipelineStatus:{source:{taskId:'running',status:'ready_for_commit',stage:'load',committing:true,progress:83}},startedFiles:['source']}));
+    let reads=0;
+    apiClient.get.mockImplementation(url=>Promise.resolve({data:url.endsWith('/preview')?{row_count:22,columns:['name'],sample_rows:[]}:
+      (++reads===1 ? {status:'ready_for_commit',committing:true,current_stage:'ingest',progress:83,stats:{row_count:22}} :
+      {status:'completed',committing:false,current_stage:'ingest',progress:100,commit_phase:'complete',stats:{row_count:22},result:{nodes_created:22,relationships_created:39},artifact_manifest:{task_id:'running',artifacts:[{kind:'parsed_rows'}]}})}));
+    await renderPipeline();
+    await waitFor(()=>expect(reads).toBeGreaterThan(1),{timeout:5000});
+    await waitFor(()=>expect(screen.getAllByText('39').length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole('button',{name:/Instance-to-Ontology Bridge|Link instances to ontology/}));
+    expect(screen.queryByText('No completed import artifacts available')).not.toBeInTheDocument();
+  });
+
+  it('task-scoped load review shows the selected preview and requires an approver', async () => {
+    setCredentialProfile('INGESTION_WRITE_TOKEN','test-write-token');
+    localStorage.setItem('depo.import.jobs.v2',JSON.stringify({files:[
+      {fileId:'first',name:'requirements.xml',persisted:true,workflowId:'instance.import'},
+      {fileId:'last',name:'bop.xml',persisted:true,workflowId:'instance.import'}],
+      pipelineStatus:{first:{taskId:'task-first',status:'ready_for_commit',stage:'validate',progress:75},
+                      last:{taskId:'task-last',status:'ready_for_commit',stage:'validate',progress:75}},startedFiles:['first','last']}));
+    apiClient.get.mockImplementation(url=>Promise.resolve({data:
+      url.endsWith('/pre-commit') ? {ready:true,checks:{task:{ok:true,rows:22},neo4j:{ok:true}}} :
+      url.endsWith('/preview') ? {row_count:url.includes('task-first')?22:3136,columns:['name'],sample_rows:[{name:url.includes('task-first')?'SELECTED_REQUIREMENT':'OTHER_BOP'}]} :
+      {task_id:url.includes('task-first')?'task-first':'task-last',status:'ready_for_commit',current_stage:'preview',progress:75,stats:{row_count:22}}}));
+    await renderPipeline();
+    expect(await screen.findByText(/2 parsed imports are waiting for your review/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button',{name:'Load to Neo4j'})[0]);
+    await screen.findByText('SELECTED_REQUIREMENT');
+    expect(screen.queryByText('OTHER_BOP')).not.toBeInTheDocument();
+    const loads=screen.getAllByRole('button',{name:'Load to Neo4j'});
+    expect(loads[loads.length-1]).toBeDisabled();
+    fireEvent.click(screen.getByText('Approval credentials (required by token authentication for loading)'));
+    fireEvent.change(screen.getByLabelText('Import approver'),{target:{value:'pmem-ui-test'}});
+    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Load to Neo4j'}).at(-1)).toBeEnabled());
+    setCredentialProfile('INGESTION_WRITE_TOKEN','');
+  });
+
   it('restored ontology source can be reattached without losing its saved metadata', async () => {
     localStorage.setItem('depo.import.jobs.v2', JSON.stringify({files:[{fileId:'restored', name:'schema.xsd', size:6, sourceDigest:await fileSha256(new File(['schema'],'schema.xsd')), persisted:true, workflowId:'ontology.create', ontologyName:'Saved ontology', fileType:'xsd', generationType:'owl', pendingMetadata:false}], pipelineStatus:{restored:{status:'pending',stage:'upload',progress:0}}, startedFiles:[]}));
     await renderPipeline();

@@ -116,7 +116,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
         {publication?.phase === 'queued' && publication?.job_id && <button disabled={busy || verifying || !!error || !actor.trim()} onClick={() => act('cancel')}>Cancel queued publication</button>}
         <button disabled={busy || verifying} onClick={() => setRevision(value => value + 1)}>Verify publication</button>
       </div>
-      {publication && <p role="status">Graph status: {busy && activeAction === 'publish' ? 'publishing (request in progress)' : publication.status}. {publication.receipt ? `${publication.receipt.resources} resources; ${publication.receipt.relationships} relationships.` : 'No verified graph receipt is available.'}</p>}
+      {publication && <p role="status">Graph status: {busy && activeAction === 'publish' ? 'publishing (request in progress)' : publication.status}. {publication.receipt ? `${publication.receipt.resources} published ontology resources; ${publication.receipt.relationships} published ontology relationships. Counts exclude publication receipts and temporary staging data.` : 'No verified graph receipt is available.'}</p>}
     </div>
   </section>;
 }

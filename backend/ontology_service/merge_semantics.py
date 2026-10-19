@@ -53,14 +53,24 @@ def _validate_merge(graph, source_metadata, entity_mappings=None):
         shape_sources.append('embedded')
     for metadata in source_metadata:
         path = metadata.get('shacl_file_path')
+        shape_filename = Path(path).name if path else None
         identifier = (metadata.get('engineering_artifacts') or {}).get('shacl')
         if identifier:
             from backend.artifact_store import ArtifactStore
-            _, path = ArtifactStore().resolve(identifier)
+            artifact, path = ArtifactStore().resolve(identifier)
+            # Content-addressed storage deliberately names every payload
+            # "content". Its physical suffix is not the RDF serialization.
+            shape_filename = artifact.get('filename')
+            if not shape_filename or Path(shape_filename).suffix.lower() not in {'.ttl', '.rdf', '.xml', '.owl', '.jsonld', '.json'}:
+                media_type = str(artifact.get('media_type') or '').split(';', 1)[0].strip().lower()
+                shape_filename = {'text/turtle': 'shapes.ttl', 'application/rdf+xml': 'shapes.rdf',
+                                  'application/ld+json': 'shapes.jsonld'}.get(media_type)
+            if not shape_filename:
+                raise ValueError('Retained merge SHACL artifact has no supported RDF format metadata')
         if not path: continue
         with Path(path).open('rb') as stream: content = stream.read(ontology_upload_limit() + 1)
         if len(content) > ontology_upload_limit(): raise ValueError('Merge SHACL source exceeds upload limit')
-        parsed = OntologyCatalog._parse_ontology(content, Path(path).name)
+        parsed = OntologyCatalog._parse_ontology(content, shape_filename)
         shape_digests.append(hashlib.sha256(content).hexdigest())
         temporary = Graph().parse(data=content, format=parsed['rdf_format'])
         # Each shape document has its own blank-node scope.

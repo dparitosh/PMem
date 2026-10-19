@@ -3,6 +3,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import './CSS/TCSColors.css';
 import ErrorBoundary from './Components/ErrorBoundary';
+import BrowserAccessBoundary from './Components/BrowserAccessBoundary';
 import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
@@ -211,6 +212,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <BrowserAccessBoundary>
       <OntologyProvider>
         <SchemaProvider key={`schema-${serviceAuthRevision}`}>
           <div style={{ minHeight: '100dvh' }}>
@@ -258,6 +260,7 @@ function App() {
           </div>
         </SchemaProvider>
       </OntologyProvider>
+      </BrowserAccessBoundary>
     </ErrorBoundary>
   );
 }

@@ -1,3 +1,4 @@
+import MappingExplanation, { explainHoldReason, matchScore } from './MappingExplanation';
 import { getCredentialProfile, publicationRecoveryScope } from '../../services/serviceAuth';
 import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
@@ -208,8 +209,14 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
     {automationStage !== 'idle' && <p role="status">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
     {policyReport && <div role="status"><strong>Steward decision:</strong> {policyReport.accepted_ids?.length || 0} policy-approved; {policyReport.held_count} held. <small>Workflow: {automationRun?.run_id}</small>
-      <details><summary>Why mappings were held</summary>{policyReport.decisions.filter(item => item.decision === 'hold').map(item => <p key={item.candidate_id}>{preview?.candidates.find(row => row.candidate_id === item.candidate_id)?.source_term || item.candidate_id}: {item.reasons.join(', ')}</p>)}</details>
+      <details><summary>Why mappings were held</summary>{policyReport.decisions.filter(item => item.decision === 'hold').map(item => <p key={item.candidate_id}>{preview?.candidates.find(row => row.candidate_id === item.candidate_id)?.source_term || item.candidate_id}: {item.reasons.map(explainHoldReason).join(' ')}</p>)}</details>
     </div>}
+    {preview && <section aria-label="Mapping guidance">
+      <h4>Understand the proposed mappings</h4>
+      <p>The Governor coordinates the saved preview; the Steward checks publication policy. These explanations use recorded evidence and do not establish semantic equivalence. A high match score can still be held.</p>
+      {preview.candidates.map(candidate => <MappingExplanation key={candidate.candidate_id} candidate={candidate} candidates={preview.candidates} decisions={policyReport?.decisions || []} />)}
+      <p>To select mappings yourself, open Advanced: manual review below. Leave uncertain mappings unselected.</p>
+    </section>}
     <details><summary>Advanced: manual review, approval and saved-preview recovery</summary>
     <details><summary>Who approves publication?</summary>
       <p>The approver is the person authorised to accept these mappings. The Ontology Governor prepares and checks the operation; it cannot approve on your behalf. Connect governed credentials in Admin.</p>
@@ -268,13 +275,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       <p>Approvals are bound to this source and ontology snapshot. Source or manual mapping changes require a new preview.</p>
       {preview.agent_run_id && <p>Preview agent run: {preview.agent_run_id}</p>}
       {preview.recommendation_summary && <p role="status">{preview.recommendation_summary.total} mapping recommendations; {preview.recommendation_summary.eligible} eligible for review. Recommendations do not grant publication approval.</p>}
-      {preview.candidates.map(candidate => <details key={`evidence:${candidate.candidate_id}`}><summary>{candidate.source_term} → {candidate.ontology_term}: recommendation evidence</summary>
-        <p>{(candidate.evidence || []).join(', ') || 'No supporting evidence recorded.'}</p>
-        <p>{candidate.eligible ? 'Eligible for review' : 'Not eligible for publication'}. {(candidate.validation_errors || []).join('; ')}</p>
-        {(candidate.validation_warnings || []).length > 0 && <p>Review required: {candidate.validation_warnings.join('; ')}</p>}
-      </details>)}
       <div style={{ maxHeight: 360, overflow: 'auto' }}><table style={{ width: '100%', textAlign: 'left' }}>
-        <thead><tr><th>Approve</th><th>Source</th><th>Ontology target</th><th>Validation</th><th>Confidence</th></tr></thead>
+        <thead><tr><th>Approve</th><th>Source</th><th>Ontology target</th><th>Validation</th><th>Match score</th></tr></thead>
         <tbody>{preview.candidates.map(candidate => <tr key={candidate.candidate_id}>
           <td><input type="checkbox" aria-label={`Approve ${candidate.source_label || candidate.source_term || candidate.import_row_key} to ${candidate.ontology_term}`} disabled={busy || fixedSelection || !candidate.eligible}
             checked={selected.includes(candidate.candidate_id)} onChange={e => {
@@ -284,7 +286,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
           <td>{candidate.source_label || candidate.source_term || candidate.import_row_key}</td>
           <td>{candidate.ontology_term} ({candidate.target_ontology_type})</td>
           <td>{candidate.eligible ? 'Reviewable' : 'Invalid'}{[...(candidate.validation_errors || []), ...(candidate.validation_warnings || [])].map((text, index) => <div key={index}>{text}</div>)}</td>
-          <td>{Math.round((candidate.confidence || 0) * 100)}%</td>
+          <td>{matchScore(candidate)}</td>
         </tr>)}</tbody>
       </table></div>
       {!preview.candidates.length && <p>No candidates found. Check the imported data and ontology before creating another preview.</p>}

@@ -1,10 +1,25 @@
 """Normalize uploaded RDF syntax without publishing or asserting new facts."""
 from pathlib import Path
-from rdflib import Graph
+from rdflib import Graph, URIRef
+from rdflib.namespace import RDF, OWL
+import re
+from urllib.parse import urlsplit
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from backend.artifact_store import ArtifactStore
 from backend.depo_platform.upload_limits import ontology_upload_limit
+
+
+def namespace_prefix(namespace):
+    value = namespace.rstrip('#/')
+    parsed = urlsplit(value)
+    local = parsed.fragment or parsed.path.rstrip('/').rsplit('/', 1)[-1]
+    if parsed.scheme == 'urn':
+        local = local.rsplit(':', 1)[-1]
+    token = re.sub(r'[^a-z0-9_]+', '_', local.lower()).strip('_')
+    if token and not token[0].isalpha():
+        token = 'ns_' + token
+    return token[:32] or 'ontology'
 
 
 def convert_rdf(*, filename, content):
@@ -32,13 +47,16 @@ def convert_rdf(*, filename, content):
         raise ValueError('Ontology RDF syntax is invalid') from failure
     if not graph:
         raise ValueError('Ontology contains no RDF triples')
+    declared = sorted({str(subject) for subject in graph.subjects(RDF.type, OWL.Ontology) if isinstance(subject, URIRef)})
+    namespace = declared[0] if len(declared) == 1 else ''
+    prefix = namespace_prefix(namespace) if namespace else 'ontology'
     turtle = graph.serialize(format='turtle')
     store = ArtifactStore()
     source = store.ingest_bytes(content, filename=Path(filename).name, kind='ontology-source')
     serialized = store.ingest_bytes(turtle.encode('utf-8'), filename=Path(filename).stem + '.ttl', kind='serialized-ontology',
                                     media_type='text/turtle', provenance={'source_artifact_id': source['artifact_id']})
     return {'format': 'RDF', 'source_kind': 'schema', 'statistics': {'triples': len(graph)},
-            'ontology': {'name': Path(filename).stem, 'prefix': 'ontology', 'turtle': turtle},
+            'ontology': {'name': Path(filename).stem, 'prefix': prefix, 'base_uri': namespace, 'namespace_status': 'declared' if namespace else 'missing_or_ambiguous', 'turtle': turtle},
             'artifacts': {'source': source['artifact_id'], 'serialization': serialized['artifact_id']},
             'data_product_draft': {
                 'contract': 'ontology-evidence-data-product-v1',
