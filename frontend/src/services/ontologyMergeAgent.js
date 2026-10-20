@@ -3,7 +3,9 @@ import { getCredentialProfile } from './serviceAuth';
 
 export function governorResult(response, tool) {
   const run = response.data;
-  if (!run?.result || typeof run.result !== 'object' || run.agent_id !== 'ontology-governor' || run.tool_id !== tool) {
+  if (!run?.result || typeof run.result !== 'object' || Array.isArray(run.result) ||
+      typeof run.run_id !== 'string' || !run.run_id || (run.status && run.status !== 'completed') ||
+      run.agent_id !== 'ontology-governor' || run.tool_id !== tool) {
     throw new Error('Agent returned an incompatible result. Inspect agent telemetry before retrying.');
   }
   return { result: run.result, runId: run.run_id };

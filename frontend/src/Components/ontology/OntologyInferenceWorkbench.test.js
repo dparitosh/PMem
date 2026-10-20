@@ -13,3 +13,11 @@ test('inference evidence distinguishes declarations and rule support from confid
   expect(screen.getByText('Supported syntax — not executed')).toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('preview is incomplete');
 });
+
+test('idle preview does not claim zero results and disabled rules cannot run',()=>{
+ render(<OntologyInferenceWorkbench selectedOntologyApi="ontology" inferenceRules={{}} swrlExpression="" inferenceLimit={25} />);
+ expect(screen.getByText('Candidates: Not run')).toBeVisible();
+ expect(screen.getByText('Classes: Unavailable')).toBeVisible();
+ expect(screen.getByRole('button',{name:'Run preview'})).toBeDisabled();
+ expect(screen.getByLabelText('Inference preview limit')).toHaveValue(25);
+});

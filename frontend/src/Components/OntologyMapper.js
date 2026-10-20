@@ -1407,7 +1407,7 @@ function uniqueBridgeOptions(options = []) {
     if (!option || typeof option !== 'object') return;
     const value = normalizeBridgeLabel(option.value);
     if (!value) return;
-    const key = value.toLowerCase();
+    const key = value;
     if (seen.has(key)) return;
     seen.add(key);
     result.push({
@@ -1510,7 +1510,7 @@ function collectBridgeSourceOptions(preview = {}, kind = 'Entity') {
   return uniqueBridgeOptions(options).slice(0, 120);
 }
 
-function collectBridgeTargetOptions(reasoning = {}, kind = 'Class') {
+export function collectBridgeTargetOptions(reasoning = {}, kind = 'Class') {
   const byKind = {
     Class: reasoning?.classes || [],
     ObjectProperty: reasoning?.object_properties || [],
@@ -1523,7 +1523,7 @@ function collectBridgeTargetOptions(reasoning = {}, kind = 'Class') {
     const domain = Array.isArray(row?.domain) ? row.domain.map((item) => item?.label || item?.iri || '').filter(Boolean).slice(0, 2).join(', ') : '';
     const range = Array.isArray(row?.range) ? row.range.map((item) => item?.label || item?.iri || '').filter(Boolean).slice(0, 2).join(', ') : '';
     const subtitle = kind === 'Class' ? 'Ontology class' : [domain ? `domain ${domain}` : '', range ? `range ${range}` : ''].filter(Boolean).join(' | ');
-    return { value: label, label, subtitle, kind, origin: 'reasoning' };
+    return { value: row?.iri || row?.uri || row?.term_id || label, label, subtitle, kind, origin: 'reasoning' };
   })).slice(0, 160);
 }
 
@@ -1533,12 +1533,13 @@ function normalizeMappingTypeLabel(value) {
   return raw;
 }
 
-function normalizeBridgeMappingRow(row = {}) {
+export function normalizeBridgeMappingRow(row = {}) {
   const sourceTerm = normalizeBridgeLabel(row.source_term || row.sourceField || row.import_row_key || row.source_label || row.source_instance_id || 'instance');
   const targetTerm = normalizeBridgeLabel(row.target_term || row.targetOntologyIRI || row.ontology_class_element_id || row.ontology_term || 'ontology');
   const validationStatus = normalizeBridgeLabel(row.validation_status || row.validationStatus || (row.selected_for_apply || row.approvedByUser ? 'approved' : 'needs_review'));
   const mappingType = normalizeMappingTypeLabel(row.mapping_type || row.mappingType || (row.selected_for_apply ? 'autoMap' : 'suggested'));
-  const confidence = Number.isFinite(Number(row.confidenceScore ?? row.confidence)) ? Number(row.confidenceScore ?? row.confidence) : 0;
+  const rawConfidence = row.confidenceScore ?? row.confidence;
+  const confidence = typeof rawConfidence === "number" && Number.isFinite(rawConfidence) && rawConfidence >= 0 && rawConfidence <= 1 ? rawConfidence : null;
   return {
     source_instance_id: row.source_instance_id || row.sourceInstanceId || 'instance',
     source_instance_label: row.source_instance_label || row.sourceInstanceLabel || 'Imported instance',
@@ -1589,6 +1590,7 @@ export default function OntologyMapper() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [mappingTruncated, setMappingTruncated] = useState(false);
+  const [vocabularyRevision, setVocabularyRevision] = useState(0);
   const [selectedMapping, setSelectedMapping] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('target') || '');
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
@@ -1616,6 +1618,8 @@ export default function OntologyMapper() {
   const [bridgeTargetTerm, setBridgeTargetTerm] = useState('');
   const [bridgeComment, setBridgeComment] = useState('');
   const [bridgeApproved, setBridgeApproved] = useState(false);
+  useEffect(() => { setBridgeApproved(false); setBridgeComment(''); setMapMessage(null); },
+    [selectedImportTaskId, selectedOntologyApi, bridgeSourceTerm, bridgeTargetTerm, bridgeSourceKind, bridgeTargetKind]);
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_source') || '');
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeAutomationActive, setMergeAutomationActive] = useState(false);
@@ -1694,7 +1698,7 @@ export default function OntologyMapper() {
   );
   const visibleMappingEdges = useMemo(() => {
     const baseEdges = (mappingEdges || [])
-      .filter((edge) => String(edge.mapping_type || '').toLowerCase() !== 'property_of')
+      .filter((edge) => (!edge.source_instance_id || edge.source_instance_id === selectedImportTaskId) && String(edge.mapping_type || '').toLowerCase() !== 'property_of')
       .map((edge) => normalizeBridgeMappingRow(edge));
     if (baseEdges.length > 0) return baseEdges;
     return (bridgeCandidates || [])
@@ -1745,9 +1749,9 @@ export default function OntologyMapper() {
     const fromReasoning = targetOptionsByKind[bridgeTargetKind] || [];
     if (fromReasoning.length > 0) return fromReasoning;
     const fallbackDictionary = {
-      Class: Object.keys(targetOntologyDictionary.entities || {}).sort().map((value) => ({ value, label: value, subtitle: 'Ontology class', kind: 'Class', origin: 'dictionary' })),
-      ObjectProperty: Object.keys(targetOntologyDictionary.relationships || {}).sort().map((value) => ({ value, label: value, subtitle: 'Ontology object property', kind: 'ObjectProperty', origin: 'dictionary' })),
-      DatatypeProperty: Object.keys(targetOntologyDictionary.properties || {}).sort().map((value) => ({ value, label: value, subtitle: 'Ontology datatype property', kind: 'DatatypeProperty', origin: 'dictionary' })),
+      Class: Object.entries(targetOntologyDictionary.entities || {}).sort(([a],[b]) => a.localeCompare(b)).map(([label,term]) => ({ value: term?.iri || term?.uri || term?.term_id || label, label, subtitle: 'Ontology class', kind: 'Class', origin: 'dictionary' })),
+      ObjectProperty: Object.entries(targetOntologyDictionary.relationships || {}).sort(([a],[b]) => a.localeCompare(b)).map(([label,term]) => ({ value: term?.iri || term?.uri || term?.term_id || label, label, subtitle: 'Ontology object property', kind: 'ObjectProperty', origin: 'dictionary' })),
+      DatatypeProperty: Object.entries(targetOntologyDictionary.properties || {}).sort(([a],[b]) => a.localeCompare(b)).map(([label,term]) => ({ value: term?.iri || term?.uri || term?.term_id || label, label, subtitle: 'Ontology datatype property', kind: 'DatatypeProperty', origin: 'dictionary' })),
       AnnotationProperty: [],
     };
     return fallbackDictionary[bridgeTargetKind] || [];
@@ -1947,7 +1951,7 @@ export default function OntologyMapper() {
   }, [selectedImportTaskId]);
 
   useEffect(() => {
-    if (!selectedOntologyApi || !selectedMappingType || !['alignment', 'vocabulary'].includes(activeView)) {
+    if (!selectedOntologyApi || !selectedMappingType || !['alignment', 'vocabulary'].includes(activeView) || (activeView === 'alignment' && bridgeMode === 'merge')) {
       setLoading(false);
       return;
     }
@@ -2082,7 +2086,7 @@ export default function OntologyMapper() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeView, selectedMapping, selectedMappingType, selectedOntologyApi]);
+  }, [activeView, bridgeMode, selectedMapping, selectedMappingType, selectedOntologyApi, vocabularyRevision]);
 
   useEffect(() => {
     if (!selectedOntologyApi) {
@@ -2329,7 +2333,7 @@ export default function OntologyMapper() {
     setMappingEdges((prev) => {
       const next = Array.isArray(prev) ? [...prev] : [];
       const exists = next.some((edge) =>
-        edge?.source_term === newRow.source_term &&
+        edge?.source_instance_id === newRow.source_instance_id && edge?.source_term === newRow.source_term &&
         String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
         edge?.target_term === newRow.target_term
       );
@@ -2339,7 +2343,7 @@ export default function OntologyMapper() {
     setData((prev) => {
       const prevEdges = Array.isArray(prev?.edges) ? prev.edges : [];
       const exists = prevEdges.some((edge) =>
-        edge?.source_term === newRow.source_term &&
+        edge?.source_instance_id === newRow.source_instance_id && edge?.source_term === newRow.source_term &&
         String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
         edge?.target_term === newRow.target_term
       );
@@ -2348,7 +2352,7 @@ export default function OntologyMapper() {
         edges: exists ? prevEdges : [...prevEdges, newRow],
       };
     });
-    setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
+    setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_instance_id === newRow.source_instance_id && edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
     setMapMessage({ kind: 'success', text: 'Semantic mapping candidate added to the mapping table.' });
   };
 
@@ -2372,12 +2376,12 @@ export default function OntologyMapper() {
       target_label: bridgeTargetTerm,
       target_ontology_type: bridgeTargetKind,
       mapping_type: `${bridgeSourceKind.toLowerCase()}-${bridgeTargetKind.toLowerCase()}`,
-      confidence: bridgeApproved ? 1 : 0.75,
+      confidence: null,
       evidence: ['user-selected bridge'],
       signal_type: bridgeSourceKind.toLowerCase(),
       ambiguous: !bridgeApproved,
       selected_for_apply: bridgeApproved,
-      validation_status: bridgeApproved ? 'approved' : 'needs_review',
+      validation_status: 'needs_validation',
       approvedByUser: bridgeApproved,
       userComment: bridgeComment,
     };
@@ -2385,7 +2389,7 @@ export default function OntologyMapper() {
     setMappingEdges((prev) => {
       const next = Array.isArray(prev) ? [...prev] : [];
       const exists = next.some((edge) =>
-        edge?.source_term === newRow.source_term &&
+        edge?.source_instance_id === newRow.source_instance_id && edge?.source_term === newRow.source_term &&
         String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
         edge?.target_term === newRow.target_term
       );
@@ -2395,7 +2399,7 @@ export default function OntologyMapper() {
     setData((prev) => {
       const prevEdges = Array.isArray(prev?.edges) ? prev.edges : [];
       const exists = prevEdges.some((edge) =>
-        edge?.source_term === newRow.source_term &&
+        edge?.source_instance_id === newRow.source_instance_id && edge?.source_term === newRow.source_term &&
         String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
         edge?.target_term === newRow.target_term
       );
@@ -2404,14 +2408,14 @@ export default function OntologyMapper() {
         edges: exists ? prevEdges : [...prevEdges, newRow],
       };
     });
-    setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
+    setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_instance_id === newRow.source_instance_id && edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
     setMapMessage({ kind: 'success', text: 'Semantic bridge mapping added to the mapping table.' });
   };
 
   const handleEditMappingEdge = (edge) => {
     if (!edge) return;
     const sourceLabel = edge.source_label || edge.source_term || '';
-    const targetLabel = edge.target_label || edge.target_term || '';
+    const targetLabel = edge.target_term || edge.target_label || '';
     const sourceKind = edge.source_type || 'Entity';
     const targetKind = edge.target_ontology_type || 'Class';
     if (BRIDGE_SOURCE_KINDS.includes(sourceKind)) {
@@ -2426,7 +2430,7 @@ export default function OntologyMapper() {
     if (targetLabel) {
       setBridgeTargetTerm(targetLabel);
     }
-    setSelectedMappingEdgeIndex(Math.max(0, visibleMappingEdges.findIndex((item) => item?.source_term === edge.source_term && item?.target_term === edge.target_term)));
+    setSelectedMappingEdgeIndex(Math.max(0, visibleMappingEdges.findIndex((item) => item?.source_instance_id === edge.source_instance_id && item?.source_term === edge.source_term && item?.target_term === edge.target_term)));
     setBridgeApproved(Boolean(edge.approvedByUser || edge.selected_for_apply));
     setBridgeComment(edge.userComment || '');
     setMapMessage({
@@ -2438,7 +2442,7 @@ export default function OntologyMapper() {
   const handleRemoveMappingEdge = (edge) => {
     if (!edge) return;
     setMappingEdges((prev) => (Array.isArray(prev) ? prev.filter((item) => !(
-      item?.source_term === edge.source_term &&
+      item?.source_instance_id === edge.source_instance_id && item?.source_term === edge.source_term &&
       String(item?.mapping_type || '').toLowerCase() === String(edge.mapping_type || '').toLowerCase() &&
       item?.target_term === edge.target_term
     )) : []));
@@ -2447,7 +2451,7 @@ export default function OntologyMapper() {
       return {
         ...(prev || { nodes: [] }),
         edges: prevEdges.filter((item) => !(
-          item?.source_term === edge.source_term &&
+          item?.source_instance_id === edge.source_instance_id && item?.source_term === edge.source_term &&
           String(item?.mapping_type || '').toLowerCase() === String(edge.mapping_type || '').toLowerCase() &&
           item?.target_term === edge.target_term
         )),
@@ -2459,6 +2463,9 @@ export default function OntologyMapper() {
 
   const runInferencePreview = async () => {
     const generation = ++inferenceGeneration.current;
+    if (!Object.values(inferenceRules).some(Boolean)) {
+      setInferenceError('Select at least one inference rule.'); return;
+    }
     if (!Number.isInteger(Number(inferenceLimit)) || Number(inferenceLimit) < 25 || Number(inferenceLimit) > 1000) {
       setInferenceError('Enter a whole-number preview limit between 25 and 1000.'); return;
     }
@@ -2476,7 +2483,8 @@ export default function OntologyMapper() {
         rules: inferenceRules,
         limit: Number(inferenceLimit),
       }, {signal:controller.signal, timeout:60000});
-      if (generation === inferenceGeneration.current) setInferenceResult(response.data || null);
+      if (response.data?.status !== "success" || response.data?.ontology_id !== selectedOntologyApi || !Array.isArray(response.data?.inferences) || !response.data?.summary) throw new Error("Inference service returned an invalid result or a different ontology identity.");
+      if (generation === inferenceGeneration.current) setInferenceResult(response.data);
     } catch (err) {
       if (generation !== inferenceGeneration.current) return;
       setInferenceError(apiErrorMessage(err, 'Inference preview failed.'));
@@ -2575,19 +2583,22 @@ export default function OntologyMapper() {
       </div>
 
       <WorkspaceTabs label="Ontology Junction views" tabs={VIEWS} value={activeView} onChange={setActiveView} />
+      <p aria-live="polite">{activeView === 'taxonomy' ? 'Inspect declared classes, properties and hierarchy for the selected ontology version.' : activeView === 'vocabulary' ? 'Inspect recorded vocabulary relations. A mapping relation is not automatically OWL identity or equivalence.' : activeView === 'alignment' ? 'Ask the governed agents for saved proposals, inspect their evidence, then review publication separately.' : 'Preview structural rules and their supporting declarations. This view does not execute arbitrary SWRL or publish conclusions.'}</p>
       <details className="depo-bridge-metadata"><summary>Ontology lifecycle and Neo4j publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>
 
-      {loading && ['alignment', 'vocabulary'].includes(activeView) ? (
+      {activeView === 'alignment' && error && <div role="alert" style={{ padding: 12 }}>Vocabulary loading failed: {error} Semantic Bridge tasks remain available. Merge previews use retained RDF; instance mapping results are shown in the governed job review below.</div>}
+      {loading && activeView === 'vocabulary' ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textSec }}>
           <div style={{ width: 32, height: 32, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
           Loading ontology dataÃ¢â‚¬Â¦
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
-      ) : error && ['alignment', 'vocabulary'].includes(activeView) ? (
+      ) : error && activeView === 'vocabulary' ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: '#d32f2f' }}>
 
           <div style={{ fontSize: '15px', fontWeight: 600 }}>Failed to load ontology</div>
           <div style={{ fontSize: '12px', marginTop: '6px' }}>{error}</div>
+          <button type="button" onClick={() => setVocabularyRevision(value => value + 1)}>Retry vocabulary loading</button>
         </div>
       ) : (
         <>
@@ -2697,6 +2708,7 @@ export default function OntologyMapper() {
           )}
           {activeView === 'vocabulary' && (
             <div>
+              <p>SKOS exact/close matches describe vocabulary alignment; OWL equivalentClass/equivalentProperty and sameAs have stronger semantics. Review the recorded predicate and identifiers before using a relation for consolidation.</p>
               {!loading && !error && !vocabEdges.length && <p>No mapping vocabulary exists for this ontology and source format. Import instance data and review Semantic Bridge mappings; ontology registration alone creates no mappings.</p>}
               <VocabularyTable edges={vocabEdges} filter={filter} truncated={mappingTruncated} />
             </div>
@@ -2906,7 +2918,7 @@ export default function OntologyMapper() {
                               <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.ontology_class_element_id || 'n/a'}</div>
                             </td>
                             <td style={TD({ textAlign: 'center' })}>
-                              {(Number(candidate.confidence || 0) * 100).toFixed(0)}%
+                              {typeof candidate.confidence === 'number' ? `${Math.round(candidate.confidence * 100)}% match score` : 'Match score unavailable'}
                             </td>
                             <td style={TD()}>
                               <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.4 }}>
@@ -3014,6 +3026,7 @@ export default function OntologyMapper() {
                   onSelect={candidate => { setMergeEntitySource(candidate?.source_iri || ''); setMergeEntityTarget(candidate?.target_iri || ''); }}
                   preview={mergeResult?.governedPreview} busy={mergeBusy}
                   error={mergeResult?.kind === 'error' ? mergeResult.text : ''} />
+                {mergeBusy && <p role="status" aria-live="polite">The Ontology Governor is processing the retained merge request. Preview work includes source parsing, scored proposals and semantic validation. Approval publishes only the reviewed preview; wait for the retained result before retrying.</p>}
                 <details open><summary>Review and approve the merge plan</summary>
                 <div className="depo-merge-fields" style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:16}}>
                   <div>
@@ -3282,7 +3295,7 @@ export default function OntologyMapper() {
                                 {edge.approvedByUser ? 'Approved' : edge.validation_status === 'needs_review' ? 'Needs review' : edge.validation_status || 'Suggested'}
                               </span>
                               <div style={{ fontSize: '10px', color: C.textSec }}>
-                                confidence {(Number(edge.confidence || 0) * 100).toFixed(0)}%
+                                {typeof edge.confidence === 'number' ? `${Math.round(edge.confidence * 100)}% match score` : 'Match score unavailable'}
                               </div>
                               {edge.userComment && (
                                 <div style={{ fontSize: '10px', color: C.textPrimary, lineHeight: 1.35 }}>{edge.userComment}</div>
@@ -3296,7 +3309,7 @@ export default function OntologyMapper() {
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setMappingEdges((prev) => (Array.isArray(prev) ? prev.map((item) => (
-                                    item?.source_term === edge.source_term && item?.target_term === edge.target_term && String(item?.mapping_type || '').toLowerCase() === String(edge.mapping_type || '').toLowerCase()
+                                    item?.source_instance_id === edge.source_instance_id && item?.source_term === edge.source_term && item?.target_term === edge.target_term && String(item?.mapping_type || '').toLowerCase() === String(edge.mapping_type || '').toLowerCase()
                                       ? { ...item, approvedByUser: !edge.approvedByUser, selected_for_apply: !edge.approvedByUser, validation_status: !edge.approvedByUser ? 'approved' : 'needs_review' }
                                       : item
                                   )) : prev));

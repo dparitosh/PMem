@@ -100,7 +100,8 @@ class GovernedMergeService:
                 if ontology_id == source_ids[-1]:
                     baseline.add(triple)
         mappings = payload.get('entity_mappings', [])
-        suggestions = self._entity_suggestions(candidate_graphs[0], candidate_graphs[-1])
+        from .merge_matching import match_entities
+        suggestions, matching_report = match_entities(candidate_graphs[0], candidate_graphs[-1])
         if not isinstance(mappings, list) or len(mappings) > 200:
             raise ValueError('entity_mappings must be a list of at most 200 reviewed mappings')
         replacements = {}
@@ -152,7 +153,7 @@ class GovernedMergeService:
                   "triple_count": len(merged), "duplicate_triple_count": sum(occurrences.values()) - len(occurrences),
                   "consolidated_triple_count": len(original) - len(merged),
                   "conflicts": conflicts, "publish_recommended": not conflicts, "changes": changes,
-                  "entity_suggestions": suggestions,
+                  "entity_suggestions": suggestions, "matching_report": matching_report,
                   'semantic_checks': semantic_checks,
                   "validation": {"scope": "RDF union, functional literal conflicts and explicit OWL declaration contradictions",
                       "formal_reasoning_performed": False, 'owl_rl_performed': True,
@@ -166,43 +167,8 @@ class GovernedMergeService:
 
     @staticmethod
     def _entity_suggestions(source_graph, target_graph):
-        """Review-only same-kind label matches; never rewrite an identity automatically."""
-        kinds = {OWL.Class, RDFS.Class, OWL.ObjectProperty, OWL.DatatypeProperty, OWL.AnnotationProperty}
-        def index(graph):
-            result = {}
-            for subject, kind in graph.subject_objects(RDF.type):
-                if kind not in kinds or not isinstance(subject, URIRef): continue
-                labels = sorted(graph.objects(subject, RDFS.label), key=lambda value: value.n3())
-                if not labels: labels = [str(subject).rsplit('#', 1)[-1].rsplit('/', 1)[-1]]
-                for label_value in labels:
-                    label = str(label_value)
-                    key = (OWL.Class if kind == RDFS.Class else kind, label.strip().casefold(), getattr(label_value, 'language', '') or '')
-                    if key[1]:
-                        bucket = result.setdefault(key, [])
-                        if not any(item[0] == subject for item in bucket): bucket.append((subject, label))
-            return result
-        source, target = index(source_graph), index(target_graph)
-        suggestions = []
-        pairs = set()
-        for key in sorted(set(source) & set(target), key=lambda item: (str(item[0]), item[1])):
-            if len(source[key]) != 1 or len(target[key]) != 1: continue
-            left, right = source[key][0], target[key][0]
-            if left[0] == right[0]: continue
-            if (left[0],right[0]) in pairs: continue
-            pairs.add((left[0],right[0]))
-            source_kinds = {OWL.Class if value == RDFS.Class else value for value in source_graph.objects(left[0], RDF.type) if value in kinds}
-            target_kinds = {OWL.Class if value == RDFS.Class else value for value in target_graph.objects(right[0], RDF.type) if value in kinds}
-            if source_kinds != target_kinds: continue
-            def evidence(graph, subject):
-                return {'definitions': sorted(str(value) for value in graph.objects(subject, RDFS.comment))[:5],
-                    'domains': sorted(str(value) for value in graph.objects(subject, RDFS.domain))[:10],
-                    'ranges': sorted(str(value) for value in graph.objects(subject, RDFS.range))[:10]}
-            suggestions.append({'source_iri': str(left[0]), 'target_iri': str(right[0]),
-                'source_label': left[1], 'target_label': right[1], 'kind': str(key[0]).rsplit('#', 1)[-1],
-                'source_evidence': evidence(source_graph,left[0]), 'target_evidence': evidence(target_graph,right[0]),
-                'reason': 'Same label and declared kind; compare definitions, domain and range. Semantic equivalence requires your review.'})
-            if len(suggestions) >= 200: break
-        return suggestions
+        from backend.ontology_service.merge_matching import match_entities
+        return match_entities(source_graph, target_graph)[0]
 
     def apply(self, preview_id: str, approved_by: str) -> dict[str, Any]:
         with self._operation_lock(preview_id) as acquired:

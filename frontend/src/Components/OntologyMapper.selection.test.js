@@ -1,14 +1,39 @@
 import React from 'react';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { vi, afterEach, test, expect } from 'vitest';
-const state = vi.hoisted(() => ({ rows:[], taxonomy:vi.fn() }));
+const state = vi.hoisted(() => ({ rows:[], taxonomy:vi.fn(), dictionary:vi.fn(), mappings:vi.fn() }));
 vi.mock('../contexts/OntologyContext', () => ({useOntologies:()=>({ontologies:state.rows,loading:false,error:null})}));
 vi.mock('../widgets/DataGridWidget', () => ({default:({title,rows=[]})=><section aria-label={title} data-count={rows.length}/> }));
 vi.mock('../services/apiClient', async () => {
   const actual = await vi.importActual('../services/apiClient');
-  return {...actual, API_METHODS:{...actual.API_METHODS,ontology:{...actual.API_METHODS.ontology,getTaxonomy:state.taxonomy}}};
+  return {...actual, API_METHODS:{...actual.API_METHODS,ontology:{...actual.API_METHODS.ontology,getTaxonomy:state.taxonomy,getDataDictionary:state.dictionary,getMappings:state.mappings}}};
 });
-import OntologyMapper, {ProtegeOntologyBrowser} from './OntologyMapper';
+import OntologyMapper, {ProtegeOntologyBrowser, collectBridgeTargetOptions, normalizeBridgeMappingRow} from './OntologyMapper';
+
+test('bridge targets preserve distinct IRIs for duplicate labels',()=>{
+ const rows=collectBridgeTargetOptions({classes:[{iri:'urn:a',label:'Part'},{iri:'urn:A',label:'Part'},{iri:'urn:b',label:'Part'}]});
+ expect(rows.map(row=>row.value)).toEqual(['urn:a','urn:A','urn:b']);
+ expect(normalizeBridgeMappingRow({confidence:null}).confidence).toBeNull();
+ expect(normalizeBridgeMappingRow({confidence:2}).confidence).toBeNull();
+ expect(normalizeBridgeMappingRow({confidence:.72}).confidence).toBe(.72);
+});
+
+test('vocabulary timeout does not hide instance agents or the ontology merge workspace', async()=>{
+ window.location.hash='#/ontology?target=target-id';
+ state.rows=[{ontology_id:'source-id',prefix:'source',label:'Source'},{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.dictionary.mockRejectedValue(new Error('Dictionary unavailable'));
+ state.mappings.mockRejectedValue(new Error('Vocabulary timed out'));
+ state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[]}});
+ render(<OntologyMapper/>);
+ await screen.findByRole('option',{name:/Target.*target-id/});
+ fireEvent.click(screen.getByRole('tab',{name:'2. Semantic Bridge'}));
+ expect(await screen.findByText(/Vocabulary loading failed/)).toBeVisible();
+ expect(screen.getByRole('heading',{name:'Automated instance mapping'})).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
+ expect(await screen.findByRole('combobox',{name:'Source ontology'})).toBeVisible();
+ expect(screen.getByRole('region',{name:'Agent mapping proposals'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'Review merge plan'})).toBeVisible();
+});
 afterEach(()=>{cleanup();window.location.hash='';vi.clearAllMocks();});
 test('active draft is retained alongside a published version with the same prefix', async()=>{
   window.location.hash='#/ontology?target=draft-id';

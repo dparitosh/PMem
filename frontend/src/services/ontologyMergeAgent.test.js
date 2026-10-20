@@ -3,7 +3,16 @@ vi.mock('./agenticApi', () => ({ default: { runAgent: vi.fn() } }));
 vi.mock('./serviceAuth', () => ({ getCredentialProfile: vi.fn(() => 'agent-approval') }));
 import agenticAPI from './agenticApi';
 import { getCredentialProfile } from './serviceAuth';
-import { ontologyMergeAgent } from './ontologyMergeAgent';
+import { ontologyMergeAgent, governorResult } from './ontologyMergeAgent';
+
+test('partial or failed agent results cannot become reviewed evidence',()=>{
+ for(const run of [
+   {status:'failed',run_id:'r',result:{}},
+   {status:'running',run_id:'r',result:{}},
+   {status:'completed',result:{}},
+   {status:'completed',run_id:'r',result:[]},
+ ]) expect(()=>governorResult({data:{agent_id:'ontology-governor',tool_id:'ontology.merge.preview',...run}},'ontology.merge.preview')).toThrow('incompatible result');
+});
 
 beforeEach(() => { vi.clearAllMocks(); getCredentialProfile.mockReturnValue('agent-approval'); });
 test('bridge preview uses the governor and unwraps its tool result and telemetry', async () => {

@@ -37,3 +37,14 @@ test('clearing selection removes consolidation, and conflicts remain visible', (
   fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
   expect(defaults.onSelect).toHaveBeenCalledWith(null);
 });
+
+test('shows scored evidence, ambiguous alternatives and incomplete search without approving them', () => {
+  const onSelect = vi.fn();
+  render(<MergeMappingReview {...defaults} onSelect={onSelect} suggestions={[{...candidate,confidence_score:.72,ambiguous:true,score_components:{label_tokens:.8,character_trigrams:.6}}]} preview={{conflicts:[], matching_report:{policy:'lexical-context-v1',minimum_score:.55,comparisons:200,truncated:true}}} />);
+  expect(screen.getByText('72% similarity')).toBeVisible();
+  expect(screen.getByText('Ambiguous alternative')).toBeVisible();
+  expect(screen.getByText(/these proposals are incomplete/)).toBeVisible();
+  expect(onSelect).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Minimum mapping similarity'),{target:{value:'80'}});
+  expect(screen.queryByRole('button',{name:'Select for consolidation'})).toBeNull();
+});

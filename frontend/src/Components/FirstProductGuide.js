@@ -3,7 +3,7 @@ import React from 'react';
 export default function FirstProductGuide({ catalog = false }) {
   return <section aria-label="First product setup" className="depo-first-product-guide">
     <h3>Create your first data product</h3>
-    <p>A fresh installation has no published products. Follow these steps using your own source data.</p>
+    <p>No governed product versions are listed. Existing imports and ontology drafts can still be present. Follow these steps to publish a reviewed product.</p>
     <ol>
       <li><a href="#/admin">Connect credentials in Admin</a> with ingestion and data-product approval scopes.</li>
       <li><a href="#/data-products">Open Data Products</a>, expand “Inspect an XSD with dependency files”, select the root schema and any dependencies, then inspect the schema set. You can also select an existing imported schema draft.</li>

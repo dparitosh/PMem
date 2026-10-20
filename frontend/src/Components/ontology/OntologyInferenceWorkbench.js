@@ -40,7 +40,7 @@ export default function OntologyInferenceWorkbench(props) {
         <button
           type="button"
           onClick={runInferencePreview}
-          disabled={inferenceBusy || !selectedOntologyApi}
+          disabled={inferenceBusy || !selectedOntologyApi || !Object.values(inferenceRules || {}).some(Boolean)}
           style={{ padding: '8px 14px', borderRadius: '6px', border: 'none', background: inferenceBusy || !selectedOntologyApi ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 800, cursor: inferenceBusy || !selectedOntologyApi ? 'not-allowed' : 'pointer' }}
         >
           {inferenceBusy ? 'Previewing' : 'Run preview'}
@@ -63,6 +63,7 @@ export default function OntologyInferenceWorkbench(props) {
             <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>SWRL-style rule editor</div>
             <p>Validation checks the supported rule syntax only. This expression is not executed by Run preview.</p>
             <textarea
+              aria-label="SWRL-style rule expression"
               value={swrlExpression}
               onChange={(e) => setSwrlExpression(e.target.value)}
               rows={4}
@@ -89,6 +90,7 @@ export default function OntologyInferenceWorkbench(props) {
           </div>
           <label style={{ display: 'block', marginTop: '10px', fontSize: '11px', fontWeight: 800, color: C.textSec }}>Preview limit</label>
           <input
+            aria-label="Inference preview limit"
             type="number"
             min="25"
             max="1000"
@@ -104,10 +106,10 @@ export default function OntologyInferenceWorkbench(props) {
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
             {[
-              ['Candidates', inferenceResult?.summary?.inferred_candidates ?? 0],
-              ['Classes', inferenceResult?.summary?.classes ?? reasoning?.summary?.classes ?? 0],
-              ['Properties', (inferenceResult?.summary?.object_properties ?? reasoning?.summary?.object_properties ?? 0) + (inferenceResult?.summary?.datatype_properties ?? reasoning?.summary?.datatype_properties ?? 0)],
-              ['Individuals', inferenceResult?.summary?.individuals ?? reasoning?.summary?.individuals ?? 0],
+              ['Candidates', inferenceResult?.summary?.inferred_candidates ?? 'Not run'],
+              ['Classes', inferenceResult?.summary?.classes ?? reasoning?.summary?.classes ?? 'Unavailable'],
+              ['Properties', (inferenceResult?.summary || reasoning?.summary) ? ((inferenceResult?.summary?.object_properties ?? reasoning?.summary?.object_properties ?? 0) + (inferenceResult?.summary?.datatype_properties ?? reasoning?.summary?.datatype_properties ?? 0)) : 'Unavailable'],
+              ['Individuals', inferenceResult?.summary?.individuals ?? reasoning?.summary?.individuals ?? 'Unavailable'],
             ].map(([label, value]) => (
               <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
             ))}

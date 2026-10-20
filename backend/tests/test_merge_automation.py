@@ -13,6 +13,18 @@ from backend.tests.test_merge_entity_changes import MergeEntityChangesTests
 class MergeAutomationTests(unittest.TestCase):
     def service(self, mappings=None):
         service = MergeEntityChangesTests().service()
+        # The shared delta fixture intentionally lacks annotations. Automatic
+        # publication must use sources conforming to the real default shapes.
+        read = service.catalog.read_artifact
+        def annotated_source(key):
+            metadata, content = read(key)
+            name = 'Part' if key == 'a' else 'Component'
+            content += (f'\n<urn:ex:{name}> <http://www.w3.org/2000/01/rdf-schema#label> "{name}" ; '
+                f'<http://www.w3.org/2000/01/rdf-schema#comment> "{name} description" ; '
+                '<http://purl.org/dc/elements/1.1/source> "fixture" .').encode()
+            return metadata, content
+        service.catalog.read_artifact = annotated_source
+        service.catalog.with_publication_lock = lambda key, operation: operation()
         values = {}
         service.lock = threading.RLock()
         service._load = lambda: copy.deepcopy(values)

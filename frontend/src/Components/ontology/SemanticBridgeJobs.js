@@ -153,6 +153,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
   const buttonStyle = { padding: '8px 12px', marginRight: 8, marginTop: 8 };
   return <section className="depo-bridge-review" aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
     <h3>Automated instance mapping</h3>
+    {(!ontologyId || !importTaskId) && <p role="status">Select both an imported instance and a target ontology to enable agent review and mapping.</p>}
     <p>Run the governor to propose mappings, the steward to check them, and the governor to publish validated results. Ambiguous or invalid matches are held with reasons.</p>
     <ol className="depo-action-steps" aria-label="Mapping automation stages">
       <li><strong>1. Governor</strong><span>Create saved mapping evidence</span></li>
@@ -207,7 +208,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       })}>Inspect retained mapping workflow</button></div>}
     {message && <p role="alert">{message}</p>}
     {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
-    {automationStage !== 'idle' && <p role="status">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
+    {automationStage !== 'idle' && <p role="status" aria-live="polite">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
     {policyReport && <div role="status"><strong>Steward decision:</strong> {policyReport.accepted_ids?.length || 0} policy-approved; {policyReport.held_count} held. <small>Workflow: {automationRun?.run_id}</small>
       <details><summary>Why mappings were held</summary>{policyReport.decisions.filter(item => item.decision === 'hold').map(item => <p key={item.candidate_id}>{preview?.candidates.find(row => row.candidate_id === item.candidate_id)?.source_term || item.candidate_id}: {item.reasons.map(explainHoldReason).join(' ')}</p>)}</details>
     </div>}
@@ -217,17 +218,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       {preview.candidates.map(candidate => <MappingExplanation key={candidate.candidate_id} candidate={candidate} candidates={preview.candidates} decisions={policyReport?.decisions || []} />)}
       <p>To select mappings yourself, open Advanced: manual review below. Leave uncertain mappings unselected.</p>
     </section>}
-    <details><summary>Advanced: manual review, approval and saved-preview recovery</summary>
-    <details><summary>Who approves publication?</summary>
-      <p>The approver is the person authorised to accept these mappings. The Ontology Governor prepares and checks the operation; it cannot approve on your behalf. Connect governed credentials in Admin.</p>
-      <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
-    </details>
-    {!hasApproval && <p>Enter an approver and connect governed agent access in Admin before preview or publication.</p>}
-    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !hasApproval} onClick={() => invoke(async current => {
-      const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings, candidateOffset);
-      if (current()) adoptPreview(result.data);
-    })}>Create preview</button>
     <WorkflowTaskPanel workflowId="ontology-review-and-bridge-plan" inputs={{ ontology_id: ontologyId, import_task_id: importTaskId }} label="Run ontology agent review" disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onResult={run => setAgentReport(bridgeReviewPayload({ steps: run.traces.map(trace => ({ result: trace.result })) }))} />
+    <p>The optional ontology agent review explains source alignment; it does not publish mappings. Its retained evidence appears below when the review completes.</p>
     {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
     {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)' }}>
       <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
@@ -253,6 +245,17 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
         <p>{agentReport.steps.at(-1).result.llm.text || (agentReport.steps.at(-1).result.llm.enabled ? 'Model unavailable; deterministic review evidence remains available.' : 'Model recommendations are disabled.')}</p>
       </div>}
     </div>}
+    <details><summary>Advanced: manual review, approval and saved-preview recovery</summary>
+    <details><summary>Who approves publication?</summary>
+      <p>The approver is the person authorised to accept these mappings. The Ontology Governor prepares and checks the operation; it cannot approve on your behalf. Connect governed credentials in Admin.</p>
+      <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
+    </details>
+    {!hasApproval && <p>Enter an approver and connect governed agent access in Admin before preview or publication.</p>}
+    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !hasApproval} onClick={() => invoke(async current => {
+      const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings, candidateOffset);
+      if (current()) adoptPreview(result.data);
+    })}>Create preview</button>
+
     <details className="depo-saved-recommendation"><summary>Resume a saved preview</summary>
     <label>Saved preview ID <input aria-label="Saved preview ID" value={resumeId} onChange={e => setResumeId(e.target.value)} /></label>
     <button type="button" style={buttonStyle} disabled={busy || !resumeId.trim() || !ontologyId || !importTaskId} onClick={() => invoke(async current => {

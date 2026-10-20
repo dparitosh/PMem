@@ -10,6 +10,8 @@ import { productDraftFromRun, productDraftFromOntology } from '../services/analy
 import SchemaProductPublisher from '../Components/SchemaProductPublisher';
 import FirstProductGuide from '../Components/FirstProductGuide';
 import XmlAnalyticsLoader from '../Components/XmlAnalyticsLoader';
+import IngestedDataInventory from '../Components/IngestedDataInventory';
+import AnalyticsSchemaReview from '../Components/AnalyticsSchemaReview';
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -146,6 +148,7 @@ export default function DataProductsPage({ mode = 'products' }) {
     {state.loading && <p role="status">Loading products…</p>}
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
+    {catalog && <IngestedDataInventory ontologies={ontologies || []} />}
     {!catalog && <section aria-label="Pipeline product evidence">
       <XmlAnalyticsLoader />
       <h3>Data Flow evidence</h3><p>Select a completed run in <a href="#/data-flow">Data Flow</a> to create a draft from its retained artifacts. Graph publication and product packaging are separate approved operations.</p>
@@ -163,7 +166,8 @@ export default function DataProductsPage({ mode = 'products' }) {
         <option value="">Select imported schema draft</option>
         {drafts.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label}</option>)}
       </select>
-      {draft && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 350, overflow: 'auto' }}>{JSON.stringify(draft.data_product_draft, null, 2)}</pre>}
+      <AnalyticsSchemaReview ontologyId={draft?.ontology_id} />
+      {draft && <details><summary>Retained draft evidence</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 350, overflow: 'auto' }}>{JSON.stringify(draft.data_product_draft, null, 2)}</pre></details>}
       <SchemaProductPublisher draft={selectedProductDraft} />
       {!ontologyLoading && !ontologyError && !ontologyWarning && !drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
     </section>}
