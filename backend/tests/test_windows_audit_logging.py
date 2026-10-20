@@ -55,3 +55,39 @@ def test_native_python_info_stderr_preserves_json_and_checks_exit(tmp_path, exit
     events = [json.loads(line) for line in logs[0].read_text(encoding="utf-8").splitlines()]
     assert any("INFO: parser imports OK" in event["message"] for event in events)
     assert events[-1]["level"] == ("succeeded" if exit_code == 0 else "failed")
+
+
+@pytest.mark.parametrize("exit_code", [0, 17])
+def test_actual_npm_retry_block_retains_warning_and_obeys_exit(tmp_path, exit_code):
+    shell = shutil.which("powershell.exe")
+    if not shell:
+        pytest.skip("Windows PowerShell required")
+    stub = tmp_path / 'npm.cmd'
+    stub.write_text('@echo off\necho npm warn deprecated fixture-warning 1>&2\nexit /b ' + str(exit_code) + '\n')
+    source = (ROOT / 'infra/windows/install-depo.ps1').read_text()
+    begin = source.index('    for ($attempt = 1;')
+    end = source.index('    } -Probe {', begin)
+    block = source[begin:end]
+    script = tmp_path / 'npm-test.ps1'
+    helper = ROOT / 'infra/windows/native-install-command.ps1'
+    script.write_text("$ErrorActionPreference='Stop'\n. '" + str(helper) + "'\nfunction Start-Sleep {}\n$installLogDir='" + str(tmp_path) + "'\n$nodeRuntime=@{Npm='" + str(stub) + "'}\nInvoke-DepoLoggedAction -Root '" + str(tmp_path) + "' -Name npm -Action {\n" + block + "\n}\n")
+    result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)], capture_output=True, text=True)
+    assert (result.returncode == 0) == (exit_code == 0), result.stdout + result.stderr
+    attempts = list(tmp_path.glob('npm-ci-*.log'))
+    assert len(attempts) == (1 if exit_code == 0 else 3)
+    assert all('fixture-warning' in log.read_text() for log in attempts)
+
+
+@pytest.mark.parametrize("exit_code", [0, 17])
+def test_npm_build_stderr_is_not_a_powershell_failure(tmp_path, exit_code):
+    shell = shutil.which('powershell.exe')
+    if not shell:
+        pytest.skip('Windows PowerShell required')
+    stub = tmp_path / 'npm.cmd'
+    stub.write_text('@echo off\necho npm warn deprecated build-fixture 1>&2\nexit /b ' + str(exit_code) + '\n')
+    script = tmp_path / 'build.ps1'
+    helper = ROOT / 'infra/windows/native-install-command.ps1'
+    script.write_text("$ErrorActionPreference='Stop'\n. '" + str(helper) + "'\nInvoke-DepoLoggedAction -Root '" + str(tmp_path) + "' -Name build -Action {Invoke-DepoNativeCommand -Executable '" + str(stub) + "' -NativeArguments @('run','build')}\n")
+    result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)], capture_output=True, text=True)
+    assert (result.returncode == 0) == (exit_code == 0), result.stdout + result.stderr
+    assert 'build-fixture' in result.stdout

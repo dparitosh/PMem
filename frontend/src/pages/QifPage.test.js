@@ -62,14 +62,15 @@ test('starts a reference task with accessible metadata controls', async () => {
   expect(screen.getByLabelText(/ontology name/i)).toHaveValue('QIF 3.0 Ontology');
   expect(screen.getByLabelText(/select qif xsd files/i)).toHaveAttribute('multiple');
 
+  expect(screen.getByLabelText(/prefix override/i)).not.toBeRequired();
   fireEvent.click(start);
-  await waitFor(() => expect(qifAPI.startReferenceTask).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'qif' }), {}));
+  await waitFor(() => expect(qifAPI.startReferenceTask).toHaveBeenCalledWith(expect.objectContaining({ prefix: '' }), {}));
   await screen.findByText(/approve and publish ontology/i);
 });
 
 test('sanitizes the ontology prefix before submitting a task', async () => {
   render(<QifPage workflowMode />);
-  const prefix = await screen.findByLabelText(/^prefix$/i);
+  const prefix = await screen.findByLabelText(/prefix override/i);
   fireEvent.change(prefix, { target: { value: 'qif invalid!' } });
   expect(prefix).toHaveValue('qifinvalid');
 });

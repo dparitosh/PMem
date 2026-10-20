@@ -21,7 +21,7 @@ const getGenerationOptionsForFileType = (fileType) => {
       { value: 'shacl', label: 'SHACL (RDF Shapes) - Recommended for XSD' },
       { value: 'owl', label: 'OWL (Web Ontology Language)' },
       { value: 'both', label: 'Both SHACL and OWL' },
-      { value: 'as_is', label: 'Register source XSD — no conversion or graph publication' }
+      { value: 'as_is', label: 'Register source XSD - no conversion or graph publication' }
     ];
   }
   if (fileType === 'exp' || fileType === 'express') return [{ value: 'owl', label: 'OWL (Web Ontology Language)' }];
@@ -59,7 +59,7 @@ export default function OntologyMetadataForm({
   publicationMode = false,
   formTitle = 'Ontology Metadata',
   ontologyNamePlaceholder = 'e.g., Product Model',
-  prefixPlaceholder = 'e.g., myprefix'
+  prefixPlaceholder = 'Automatic from source namespace'
 }) {
   const [formData, setFormData] = useState({
     ontologyName: initialValues?.ontologyName || '',
@@ -287,7 +287,7 @@ export default function OntologyMetadataForm({
               color: C.textMuted,
               marginTop: '4px'
             }}>
-              {formData.prefix ? `Used in URIs: ${formData.prefix}:Entity` : 'Leave blank to derive a prefix from the source namespace.'}
+              {formData.prefix ? `Display alias: ${formData.prefix}:Entity. Source IRIs are preserved.` : 'Automatic: resolved from the source namespace during registration. You may leave this blank.'}
             </div>
           </div>
           {fileType === 'xsd' && <div style={{ marginBottom: '20px' }}>
@@ -306,7 +306,7 @@ export default function OntologyMetadataForm({
               fontSize: '13px',
               color: C.primaryText
             }}>
-              Generate As * {fileType === 'xsd' && <span style={{ fontSize: '11px', color: C.green }}>→ SHACL recommended</span>} {fileType === 'xmi' && <span style={{ fontSize: '11px', color: C.green }}>→ OWL recommended</span>}
+              Generate As * {fileType === 'xsd' && <span style={{ fontSize: '11px', color: C.green }}>{publicationMode ? 'OWL for ontology publication' : 'SHACL for shape validation; OWL for ontology generation'}</span>} {fileType === 'xmi' && <span style={{ fontSize: '11px', color: C.green }}>OWL recommended</span>}
             </label>
             {showFileTypeError && (
               <div style={{ color: C.red, fontSize: '11px', marginBottom: '8px', padding: '8px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '4px' }}>

@@ -9,6 +9,7 @@ param([string]$EnvFile = '.env.local', [string]$NodeJsDir = '')
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+. (Join-Path $PSScriptRoot 'native-install-command.ps1')
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
 $routing = Resolve-DepoRouting $values
 if (-not $NodeJsDir) { $NodeJsDir = $values['DEPO_NODEJS_DIR'] }
@@ -41,7 +42,7 @@ try {
     if (-not (Test-Path -LiteralPath 'node_modules/.bin/vite.cmd' -PathType Leaf)) {
       throw 'Frontend dependencies are absent. Run the supported installer or npm.cmd ci before building.'
     }
-    & $npm run build
+    Invoke-DepoNativeCommand -Executable $npm -NativeArguments @('run','build')
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed. Review non-routing browser aliases and build output; services were not started.' }
     Write-DepoBrowserRouting -Root $root -EnvFile $EnvFile
   } finally { Pop-Location }

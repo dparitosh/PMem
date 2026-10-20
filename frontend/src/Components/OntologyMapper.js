@@ -20,6 +20,7 @@ import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
 import MergeMappingReview from './ontology/MergeMappingReview';
 import {
   normalizeOntologyBrowserNode,
+  isOntologyClassNode,
   ontologyDisplayName,
   ontologyTermId,
 } from '../utils/ontologyPresentation';
@@ -809,7 +810,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
   );
 }
 
-function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
+export function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   const [selectedTermId, setSelectedTermId] = useState('');
   const [tableMode, setTableMode] = useState('classes');
   const lc = filter.trim().toLowerCase();
@@ -905,8 +906,9 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
 
   const nodeById = useMemo(() => new Map(taxonomyNodes.map((node) => [node.term_id, node])), [taxonomyNodes]);
 
+  const classNodes = useMemo(() => visibleNodes.filter(isOntologyClassNode), [visibleNodes]);
   const hierarchy = useMemo(() => {
-    const visibleIds = new Set(visibleNodes.map((node) => node.term_id));
+    const visibleIds = new Set(classNodes.map((node) => node.term_id));
     const childrenByParent = new Map();
     const parentByChild = new Map();
 
@@ -925,7 +927,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       childrenByParent.set(parentId, children);
     });
 
-    const roots = visibleNodes
+    const roots = classNodes
       .filter((node) => !parentByChild.has(node.term_id))
       .map((node) => node.term_id)
       .sort((left, right) => labelOf(left).localeCompare(labelOf(right)));
@@ -952,12 +954,12 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     };
 
     roots.slice(0, 120).forEach((rootId) => pushBranch(rootId));
-    visibleNodes.forEach((node) => {
+    classNodes.forEach((node) => {
       if (!seen.has(node.term_id) && rows.length < 800) pushBranch(node.term_id);
     });
 
     return { childrenByParent, parentByChild, roots, rows };
-  }, [taxonomyEdges, visibleNodes, nodeById]);
+  }, [taxonomyEdges, classNodes, nodeById]);
 
   const selectedTerm = useMemo(() => {
     if (selectedTermId && nodeById.has(selectedTermId)) return nodeById.get(selectedTermId);
@@ -979,7 +981,6 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   }), [taxonomyEdges, nodeById]);
 
   const classRows = useMemo(() => {
-    const classNodes = visibleNodes.filter((node) => !String(node.source || '').includes('property') && node.source !== 'rdf-expression');
     const labelCounts = new Map();
     classNodes.forEach((node) => {
       const label = node.label || String(node.term_id || '').split(':').pop();
@@ -1005,7 +1006,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         node,
       };
     });
-  }, [visibleNodes, hierarchy, nodeById]);
+  }, [classNodes, hierarchy, nodeById]);
 
   const reasoningPropertyRows = useMemo(() => [
     ...(reasoning?.object_properties || []).map((prop) => ({ ...prop, property_kind: 'ObjectProperty' })),
@@ -1182,7 +1183,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       : `Classes (${classRows.length})`;
 
   const browserStats = [
-    { label: 'Classes', value: hierarchy.rows.length },
+    { label: 'Classes', value: classRows.length },
     { label: 'Properties', value: objectPropertyRows.length },
     { label: 'Axiom relationships in slice', value: edgeRows.length },
     { label: 'Terms', value: visibleNodes.length },
@@ -1306,7 +1307,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
           </div>
           <div style={{ padding: 10 }}>
             <DataGridWidget
-              title={`Class Hierarchy (${hierarchy.rows.length})`}
+              title={`Class Hierarchy (${hierarchy.rows.length} of ${classRows.length} loaded classes)`}
               subtitle="Browse ontology depth and select a focal term."
               rows={hierarchy.rows}
               columns={treeColumns}
@@ -1646,12 +1647,8 @@ export default function OntologyMapper() {
   );
   const selectedImportTaskInfo = selectedImportTaskDetails || selectedImportTask;
   const selectedOntologyOption = useMemo(
-    () => (
-      mappingOptions.find((option) => option.value === selectedMapping)
-      || mappingOptions.find((option) => option.prefix === selectedOntologyApi || option.value === selectedOntologyApi)
-      || null
-    ),
-    [mappingOptions, selectedMapping, selectedOntologyApi],
+    () => selectedMapping ? mappingOptions.find(option => option.value === selectedMapping) || null : null,
+    [mappingOptions, selectedMapping],
   );
   const applyOntologySelection = useCallback((rawValue) => {
     if (!rawValue) {
@@ -1821,7 +1818,7 @@ export default function OntologyMapper() {
   const resolveSelectedOntologyOption = useCallback((options, selectedValue) => {
     if (!Array.isArray(options) || options.length === 0) return null;
     const selected = options.find((o) => o.value === selectedValue);
-    return selected || options[0] || null;
+    return selected || null;
   }, []);
 
   // Get ontology options from centralized context (shared across all components)
@@ -1841,6 +1838,7 @@ export default function OntologyMapper() {
       ));
 
       if (options.length === 0) {
+        setSelectedOntologyApi('');
         setMappingOptionsError(registryError || (registryLoading ? 'Loading ontology registries…' : 'No ontologies are registered. Import an ontology first.'));
         setLoading(false);
         return;
@@ -1849,7 +1847,7 @@ export default function OntologyMapper() {
       // Initialize defaults only once (or if current selection no longer exists)
       const selectedOption = resolveSelectedOntologyOption(options, selectedMapping);
       if (!selectedOption) {
-        setSelectedMapping('');
+        if (selectedMapping && !registryLoading) setMappingOptionsError('The requested ontology is unavailable in the registry. Select a registered version to load its terms.');
         setSelectedOntologyApi('');
         setLoading(false);
         return;
@@ -2544,9 +2542,10 @@ export default function OntologyMapper() {
                 style={{ minWidth: '320px', padding: '6px 10px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '5px', fontWeight: 600, fontSize: '12px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
               >
                 <option value="">{mappingOptions.length === 0 ? 'No ontologies loaded' : 'Select ontology'}</option>
-                {Array.from(new Map(mappingOptions.map(o => [o.ontology_id || o.id || o.prefix, o])).values()).map((o, idx) => (
+                {selectedMapping && !mappingOptions.some(option => option.value === selectedMapping) && <option value={selectedMapping} disabled>Unavailable ontology ({selectedMapping})</option>}
+                {mappingOptions.map((o, idx) => (
                   <option key={o.value || `mapping-${idx}`} value={o.value}>
-                    {o.label}{o.usageCount ? ` (used ${o.usageCount}x)` : ''}
+                    {o.label} - {o.value}{o.usageCount ? ` (used ${o.usageCount}x)` : ''}
                   </option>
                 ))}
               </select>

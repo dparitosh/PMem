@@ -230,7 +230,7 @@ describe('DataImportPipeline workflow routing', () => {
 
     await act(async () => {
       fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
-      expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/Namespace Prefix/)).not.toBeRequired();
       fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
       fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
       await flushAsyncEffects();
@@ -291,7 +291,7 @@ describe('DataImportPipeline workflow routing', () => {
       graph_publication: { status: 'success', resources: 123, relationships: 45 },
     } });
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Published schema' } });
-    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Namespace Prefix/)).not.toBeRequired();
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
@@ -334,7 +334,7 @@ describe('DataImportPipeline workflow routing', () => {
       status: 'policy_blocked', message: 'Publication blocked by policy checks.',
     } });
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Published schema' } });
-    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Namespace Prefix/)).not.toBeRequired();
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
@@ -356,7 +356,7 @@ describe('DataImportPipeline workflow routing', () => {
       await flushAsyncEffects();
     });
     fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM bundle' } });
-    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Namespace Prefix/)).not.toBeRequired();
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     fireEvent.click(screen.getByRole('button', {name:'Resolve XSD dependencies'}));
@@ -393,7 +393,7 @@ describe('DataImportPipeline workflow routing', () => {
     const runAll = screen.queryByRole('button', {name:'Run all'});
     if (runAll) expect(runAll).toBeDisabled();
     fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Combined Ontology' } });
-    expect(screen.queryByPlaceholderText(/e.g., myprefix/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Namespace Prefix/)).not.toBeRequired();
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     apiClient.post.mockClear();
@@ -425,7 +425,7 @@ describe('DataImportPipeline workflow routing', () => {
       await flushAsyncEffects();
     });
     fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'RDF evidence' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'evidence' } });
+    fireEvent.change(screen.getByLabelText(/Namespace Prefix/), { target: { value: 'evidence' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
@@ -497,3 +497,26 @@ describe('DataImportPipeline workflow routing', () => {
    expect(apiClient.post.mock.calls.at(-1)[1].get('publish')).toBe('true');
    setCredentialProfile('INGESTION_WRITE_TOKEN','');
  });
+
+
+test('restored errors count as attention and instance jobs stay off ontology stages', async () => {
+  localStorage.setItem('depo.import.jobs.v2', JSON.stringify({
+    files: [
+      {fileId:'failed-schema',name:'failed.xsd',workflowId:'ontology.create',persisted:true},
+      {fileId:'instance',name:'instance.xml',workflowId:'instance.import',persisted:true},
+    ],
+    pipelineStatus: {
+      'failed-schema':{status:'failed',stage:'error',error:'Conversion limit exceeded',progress:0},
+      instance:{status:'ready_for_commit',stage:'validate',progress:75},
+    }, startedFiles:[],
+  }));
+  mockListRegistered.mockResolvedValue({data:{ontologies:[]}});
+  mockWorkflowOptions.mockResolvedValue({data:{workflows:[]}});
+  apiClient.get.mockResolvedValue({data:{}});
+  await renderPipeline();
+  expect(screen.getByText('Needs attention').parentElement).toHaveTextContent('1');
+  fireEvent.click(screen.getByRole('button',{name:/^Create ontology/}));
+  expect(screen.getByRole('group',{name:'Generate ontology preview: 0 files'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Import instance graph',exact:true}));
+  expect(screen.getByRole('group',{name:'Review and approve load: 1 files'})).toBeInTheDocument();
+});

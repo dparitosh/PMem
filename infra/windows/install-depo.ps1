@@ -12,6 +12,7 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $VenvPath = Join-Path $root "backend\.dt_venv"
 $venvPython = Join-Path $VenvPath "Scripts\python.exe"
+. (Join-Path $PSScriptRoot 'native-install-command.ps1')
 # Check prerequisites before creating directories or installing dependencies.
 $pythonToCheck = if (Test-Path -LiteralPath $venvPython) { $venvPython } else { $Python }
 if (-not (Get-Command $pythonToCheck -ErrorAction SilentlyContinue)) {
@@ -29,7 +30,7 @@ if (-not $SkipFrontend) {
   $nodeRuntime=Get-DepoNodeRuntime -Root $root -NodeJsDir $nodeSettings['DEPO_NODEJS_DIR']
   $env:Path=$nodeRuntime.Directory+';'+$env:Path
   $nodeVersion=$nodeRuntime.Version
-  $npmVersion = & npm.cmd --version
+  $npmVersion = Invoke-DepoNativeCommand -Executable $nodeRuntime.Npm -NativeArguments @('--version')
   if ($LASTEXITCODE -ne 0 -or [version]$npmVersion -lt [version]'10.2.0') { throw 'npm 10.2 or newer is required.' }
   if (-not (Test-Path -LiteralPath (Join-Path $root 'frontend/package-lock.json'))) { throw 'Missing frontend/package-lock.json.' }
 }
@@ -64,7 +65,6 @@ if (-not (Test-Path $venvPython)) {
 }
 $requirements = if ($Development) { Join-Path $root 'backend/requirements-dev.txt' } else { $productionLock }
 Assert-DepoRuntimeIdle -Python $venvPython
-. (Join-Path $PSScriptRoot 'native-install-command.ps1')
 $installLogDir = Join-Path $root 'logs\installation'
 New-Item -ItemType Directory -Path $installLogDir -Force | Out-Null
 $pipLog = Join-Path $installLogDir ('pip-install-' + [guid]::NewGuid().ToString('N') + '.log')
@@ -82,9 +82,9 @@ Invoke-DepoDependencyStage -Root $root -Name 'backend' -Fingerprint $dependencyF
   $pipExitCode = Invoke-DepoInstallCommand -Executable $venvPython -NativeArguments $pipArguments -LogPath $pipLog
   if ($pipExitCode -ne 0) { throw "Backend dependency installation failed. Inspect $pipLog; rerun the same installer after correcting the error." }
 } -Probe {
-  & $venvPython -m pip check | Out-Host
+  Invoke-DepoNativeCommand -Executable $venvPython -NativeArguments @('-m','pip','check') -AllowFailure | Out-Host
   if ($LASTEXITCODE -ne 0) { return $false }
-  $inventory = & $venvPython -m pip freeze --all
+  $inventory = Invoke-DepoNativeCommand -Executable $venvPython -NativeArguments @('-m','pip','freeze','--all') -AllowFailure
   if ($LASTEXITCODE -ne 0) { return $false }
   return (Get-DepoInstallFingerprint -Files @() -Values @($inventory))
 }
@@ -125,17 +125,18 @@ if (-not $SkipFrontend) {
     # Preserve the exact reviewed lockfile. An npm install fallback may select
     # a different graph after a transient Windows EBUSY and rewrite the lock.
     for ($attempt = 1; $attempt -le 3; $attempt++) {
-      npm.cmd ci --no-audit --no-fund
-      if ($LASTEXITCODE -eq 0) { break }
+      $npmLog = Join-Path $installLogDir ('npm-ci-' + [guid]::NewGuid().ToString('N') + '.log')
+      $npmExitCode = Invoke-DepoInstallCommand -Executable $nodeRuntime.Npm -NativeArguments @('ci','--no-audit','--no-fund') -LogPath $npmLog
+      if ($npmExitCode -eq 0) { break }
       if ($attempt -lt 3) {
         Write-Warning "npm ci attempt $attempt failed. Close Vite/Node processes that may hold frontend/node_modules; retrying the locked install."
         Start-Sleep -Seconds 2
       }
     }
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend locked dependency installation failed after three attempts. Close Vite/Node processes, then rerun install-depo.ps1.' }
+    if ($npmExitCode -ne 0) { throw 'Frontend locked dependency installation failed after three attempts. Close Vite/Node processes, then rerun install-depo.ps1.' }
     } -Probe {
       if (-not (Test-Path -LiteralPath (Join-Path $frontend 'node_modules/.bin/vite.cmd'))) { return $false }
-      & npm.cmd ls --depth=0 --offline *> $null
+      Invoke-DepoNativeCommand -Executable $nodeRuntime.Npm -NativeArguments @('ls','--depth=0','--offline') -AllowFailure | Out-Null
       return ($LASTEXITCODE -eq 0)
     }
     & (Join-Path $PSScriptRoot 'build-depo-frontend.ps1') -EnvFile $EnvFile

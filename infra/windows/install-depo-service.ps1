@@ -58,9 +58,9 @@ foreach ($entry in $entries) {
     $code = Invoke-DepoInstallCommand -Executable $servicePython -NativeArguments $arguments -LogPath $log
     if ($code -ne 0) { throw "Service dependency installation failed: $($entry.id). Inspect $log" }
   } -Probe {
-    & $servicePython -m pip check | Out-Host
+    Invoke-DepoNativeCommand -Executable $servicePython -NativeArguments @('-m','pip','check') -AllowFailure | Out-Host
     if ($LASTEXITCODE -ne 0) { return $false }
-    $inventory = & $servicePython -m pip freeze --all
+    $inventory = Invoke-DepoNativeCommand -Executable $servicePython -NativeArguments @('-m','pip','freeze','--all') -AllowFailure
     if ($LASTEXITCODE -ne 0) { return $false }
     return (Get-DepoInstallFingerprint -Files @() -Values @($inventory))
   }

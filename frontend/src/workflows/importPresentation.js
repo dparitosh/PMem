@@ -75,3 +75,13 @@ export function getWorkflowNote({
 export function isAwaitingImportApproval(status = {}) {
   return status.status === 'ready_for_commit' && !status.committing && !status.error && !status.commitError;
 }
+
+
+// Persisted outcome takes precedence over the in-memory started set.
+export function importJobState(status = {}, started = false) {
+  if (status.error || status.commitError || status.resumeExpired || status.outcomeUnknown
+      || status.stage === 'error' || ['failed', 'error', 'outcome_unknown'].includes(status.status)) return 'failed';
+  if (status.committed || status.status === 'completed' || status.progress === 100) return 'completed';
+  if (isAwaitingImportApproval(status)) return 'awaitingReview';
+  return started ? 'active' : 'pending';
+}

@@ -42,11 +42,33 @@ def _reference_files() -> list[Path]:
 def _validate_metadata(name: str, prefix: str) -> None:
     if not name or len(name) > 100:
         raise HTTPException(status_code=422, detail="ontology_name must be 1-100 characters")
-    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,49}", prefix or ""):
+    if prefix and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,49}", prefix):
         raise HTTPException(status_code=422, detail="prefix must start with a letter and contain only letters, numbers, and underscores")
 
 
+def _source_prefix(paths: list[Path], requested: str) -> str:
+    """Derive a display alias from the actual schema namespace, never a profile label."""
+    if requested and requested.strip():
+        return requested.strip()
+    from defusedxml import ElementTree
+    from backend.depo_platform.ontology_namespace import ontology_prefix
+    namespaces = set()
+    for path in paths:
+        try:
+            schema = ElementTree.parse(path).getroot()
+        except Exception:
+            continue  # The existing schema-validation stage reports malformed sources.
+        if schema.tag == '{http://www.w3.org/2001/XMLSchema}schema':
+            namespace = (schema.get('targetNamespace') or '').strip()
+            if namespace:
+                namespaces.add(namespace)
+    if len(namespaces) > 1:
+        raise HTTPException(422, detail='These schemas declare multiple target namespaces. Choose a prefix override for this combined ontology.')
+    return ontology_prefix(next(iter(namespaces), ''))
+
+
 def _start(paths: list[Path], name: str, prefix: str, description: str, source: str, standard_id: str = "generic-xsd") -> dict:
+    prefix = _source_prefix(paths, prefix)
     _validate_metadata(name, prefix)
     task = task_service.create(source_paths=paths, ontology_name=name, prefix=prefix, description=description, source=source, standard_id=standard_id)
     task_service.submit_prepare(task["task_id"])
@@ -82,7 +104,7 @@ def refresh_agents() -> dict:
 
 
 @router.post("/tasks/reference", response_model=QifTaskResponse, summary="Start granular QIF workflow from the bundled reference")
-def start_reference_task(ontology_name: str = Form("QIF 3.0 Ontology"), prefix: str = Form("qif"), description: str = Form("Consolidated ontology generated from the QIF 3.0 schema set.")) -> dict:
+def start_reference_task(ontology_name: str = Form("QIF 3.0 Ontology"), prefix: str = Form(""), description: str = Form("Consolidated ontology generated from the QIF 3.0 schema set.")) -> dict:
     sources = _reference_files()
     if not sources:
         raise HTTPException(status_code=404, detail="Bundled QIF reference schemas are unavailable")
@@ -99,9 +121,9 @@ async def start_schema_set(
         raise HTTPException(status_code=422, detail=f"Upload between 1 and {_MAX_FILES} XSD files")
     filenames = [Path(item.filename or "").name for item in files]
     selected = detect_standard(filenames) if standard_id == "auto" else standard_id
-    try: profile = get_standard(selected)
+    try: get_standard(selected)
     except ValueError as exc: raise HTTPException(422, detail=str(exc)) from exc
-    selected_prefix = prefix or profile["prefix"]
+    selected_prefix = prefix.strip()
     _validate_metadata(ontology_name, selected_prefix)
     with TemporaryDirectory(prefix="schema_set_") as tmp:
         root, paths, names = Path(tmp), [], set()
@@ -118,7 +140,7 @@ async def start_schema_set(
 
 
 @router.post("/tasks/upload", response_model=QifTaskResponse, summary="Start granular QIF workflow from multiple XSD files")
-async def start_uploaded_task(files: Annotated[list[UploadFile], File(description="One or more QIF XSD files")], ontology_name: Annotated[str, Form()], prefix: Annotated[str, Form()], description: Annotated[str, Form()] = "") -> dict:
+async def start_uploaded_task(files: Annotated[list[UploadFile], File(description="One or more QIF XSD files")], ontology_name: Annotated[str, Form()], prefix: Annotated[str, Form()] = "", description: Annotated[str, Form()] = "") -> dict:
     _validate_metadata(ontology_name, prefix)
     if not files or len(files) > _MAX_FILES:
         raise HTTPException(status_code=422, detail=f"Upload between 1 and {_MAX_FILES} XSD files")
@@ -185,10 +207,10 @@ def task_artifact(task_id: str, artifact_path: str):
 
 # Compatibility aliases for the first QIF UI iteration.
 @router.post("/ontology/reference", include_in_schema=False)
-def build_reference_ontology(ontology_name: str = Form("QIF 3.0 Ontology"), prefix: str = Form("qif"), description: str = Form("")) -> dict:
+def build_reference_ontology(ontology_name: str = Form("QIF 3.0 Ontology"), prefix: str = Form(""), description: str = Form("")) -> dict:
     return start_reference_task(ontology_name, prefix, description)
 
 
 @router.post("/ontology/upload", include_in_schema=False)
-async def build_uploaded_ontology(files: Annotated[list[UploadFile], File()], ontology_name: Annotated[str, Form()], prefix: Annotated[str, Form()], description: Annotated[str, Form()] = "") -> dict:
+async def build_uploaded_ontology(files: Annotated[list[UploadFile], File()], ontology_name: Annotated[str, Form()], prefix: Annotated[str, Form()] = "", description: Annotated[str, Form()] = "") -> dict:
     return await start_uploaded_task(files, ontology_name, prefix, description)

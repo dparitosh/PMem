@@ -78,6 +78,7 @@ function Invoke-DepoNativeCommand {
   param(
     [Parameter(Mandatory=$true)][string]$Executable,
     [string[]]$NativeArguments,
+    [switch]$AllowFailure,
     [Parameter(ValueFromPipeline=$true)][string]$InputText
   )
   begin { $inputLines=[Collections.Generic.List[string]]::new() }
@@ -98,7 +99,8 @@ function Invoke-DepoNativeCommand {
         & $Executable @NativeArguments 2>&1 | ForEach-Object $consume
       }
       $exitCode=$LASTEXITCODE
-      if($exitCode -ne 0){throw "Native command failed with exit code $exitCode ($Executable)"}
+      $global:LASTEXITCODE=$exitCode
+      if($exitCode -ne 0 -and -not $AllowFailure){throw "Native command failed with exit code $exitCode ($Executable)"}
     } finally { $ErrorActionPreference=$savedPreference }
   }
 }

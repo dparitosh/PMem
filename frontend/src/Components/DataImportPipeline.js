@@ -39,6 +39,7 @@ import useMountedRef from '../hooks/useMountedRef';
 import usePollerRegistry from '../hooks/usePollerRegistry';
 import {
   isAwaitingImportApproval,
+  importJobState,
   getFileExtensionFromName,
   getWorkflowNote,
   isOntologySourceFile,
@@ -614,7 +615,7 @@ export default function DataImportPipeline() {
       return;
     }
     if (!(ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'))) {
-      setError('Enter INGESTION_WRITE_TOKEN in Admin → Service credentials before starting.');
+      setError('Enter INGESTION_WRITE_TOKEN in Admin / Service credentials before starting.');
       return;
     }
     const fileId = file.fileId;
@@ -963,7 +964,7 @@ export default function DataImportPipeline() {
     const governedProfile = workflow?.id === 'instance.import' ? governedSourceProfile(file.name) : null;
     const uploadToken = (governedProfile ? executionToken : ingestionWriteToken).trim() || getCredentialProfile(governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN');
     if (!uploadToken) {
-      setError(`Enter ${governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN'} in Admin → Service credentials before starting.`);
+      setError(`Enter ${governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN'} in Admin / Service credentials before starting.`);
       return;
     }
 
@@ -979,7 +980,7 @@ export default function DataImportPipeline() {
         formData.append('profile', governedProfile.profile);
         formData.append('source_system', governedProfile.sourceSystem);
         setStartedFiles(prev => new Set([...prev, fileId]));
-        setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 5, message: 'Retaining governed source artifact…' } }));
+        setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 5, message: 'Retaining governed source artifact...' } }));
         const response = await apiClient.post(buildUrl(API.import.governed), formData, {
           headers: { Authorization: `Bearer ${uploadToken}` }, timeout: getImportTimeoutMs(),
         });
@@ -1127,7 +1128,7 @@ export default function DataImportPipeline() {
 
         const mappedStage = backendToFrontendStage[data.current_stage] || data.current_stage || 'upload';
 
-        // F-NEW-8: normalize stats — backend parsers use different key names for entity/rel counts.
+        // F-NEW-8: normalize stats - backend parsers use different key names for entity/rel counts.
         const rawStats = data.stats || {};
         const entities_found =
           data.result?.nodes_created ??
@@ -1219,7 +1220,7 @@ export default function DataImportPipeline() {
                 auto_schema: previewRes.data.auto_schema || previews[taskId]?.auto_schema || {},
               }}));
             }
-          } catch (_) { /* preview is optional — continue without it */ }
+          } catch (_) { /* preview is optional - continue without it */ }
         }
 
         // Preview is a stable user decision point. Stop polling until the
@@ -1435,7 +1436,7 @@ export default function DataImportPipeline() {
       setError('Enter an approver before loading to Neo4j.');
       return;
     }
-    // ── Pre-commit check ────────────────────────────────────────────────────
+    // â”€â”€ Pre-commit check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Show a quick checking state in the modal before closing it
     try {
       const checkRes = await apiClient.get(
@@ -1444,17 +1445,17 @@ export default function DataImportPipeline() {
       );
       const check = checkRes.data || {};
       if (!check.ready) {
-        // Don't close the modal — show the blocking reason
+        // Don't close the modal - show the blocking reason
         const reason = check.reason || 'Pre-commit check failed.';
         const neo4jOk = check.checks?.neo4j?.ok;
         const taskOk  = check.checks?.task?.ok;
         let msg = `Cannot commit: ${reason}`;
-        if (!neo4jOk) msg += '\n\nNeo4j is unreachable — check your database connection.';
+        if (!neo4jOk) msg += '\n\nNeo4j is unreachable - check your database connection.';
         if (!taskOk)  msg += `\n\nTask state: ${check.checks?.task?.status}`;
         setError(msg);
-        return; // abort — modal stays open
+        return; // abort - modal stays open
       }
-      // All checks passed — show row count in a brief toast before proceeding
+      // All checks passed - show row count in a brief toast before proceeding
       const rowCount = check.checks?.task?.rows;
       if (rowCount) setError(null); // clear any prior errors
     } catch (checkErr) {
@@ -1469,7 +1470,7 @@ export default function DataImportPipeline() {
       return;
     }
 
-    // Close the review modal immediately — don't make the user wait 2-3 min
+    // Close the review modal immediately - don't make the user wait 2-3 min
     const approvalToken = getCredentialProfile('INGESTION_WRITE_TOKEN');
     const approvedBy = commitApprover.trim();
     setConfirmingImport(null);
@@ -1493,7 +1494,7 @@ export default function DataImportPipeline() {
       return updated;
     });
 
-    // Run the actual commit in background — UI stays responsive
+    // Run the actual commit in background - UI stays responsive
     const commitUrl = buildUrl(replaceParams(API.import.commit, { task_id: taskId }));
     const commitTimeoutMs = getImportTimeoutMs();
     const fileId = Object.entries(pipelineStatus).find(([, status]) => status.taskId === taskId)?.[0] || taskId;
@@ -1649,7 +1650,7 @@ export default function DataImportPipeline() {
   const getStatusBadge = (stage, progress, error, backendStage, committing, commitError, commitPhase) => {
     if (committing || (commitPhase && commitPhase !== 'complete' && commitPhase !== 'error')) {
       const phaseLabel = getCommitPhaseLabel(commitPhase);
-      return { text: phaseLabel ? `Loading · ${phaseLabel}` : 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
+      return { text: phaseLabel ? `Loading  /  ${phaseLabel}` : 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
     }
     if (commitError || commitPhase === 'error') {
       return { text: 'Commit Retry Needed', bg: '#FFEBEE', color: C.red };
@@ -1899,46 +1900,21 @@ export default function DataImportPipeline() {
     }
   }, [importArtifactCandidates, selectedWorkflow, workflowSourceFileId]);
 
-  const activeProcessingCount = useMemo(
-    () => files.reduce((count, file) => {
-      const status = fileStatusIndex.get(file.fileId) || {};
-      if (!startedFiles.has(file.fileId)) return count;
-      if (status.error || status.commitError || status.resumeExpired) return count;
-      if (status.committed || status.status === 'completed' || status.progress === 100) return count;
-      if (isAwaitingImportApproval(status)) return count;
-      return count + 1;
-    }, 0),
-    [files, startedFiles, fileStatusIndex]
-  );
-  const jobSummary = useMemo(() => {
-    return files.reduce((summary, file) => {
-      const status = fileStatusIndex.get(file.fileId) || {};
-      if (!startedFiles.has(file.fileId)) {
-        summary.pending += 1;
-        return summary;
-      }
-      if (status.error || status.commitError || status.status === 'failed' || status.resumeExpired) {
-        summary.failed += 1;
-        return summary;
-      }
-      if (status.committed || status.status === 'completed' || status.progress === 100) {
-        summary.completed += 1;
-        return summary;
-      }
-      if (isAwaitingImportApproval(status)) { summary.awaitingReview += 1; return summary; }
-      summary.active += 1;
-      return summary;
-    }, { active: 0, completed: 0, failed: 0, pending: 0, awaitingReview: 0 });
-  }, [files, startedFiles, fileStatusIndex]);
-  const activeJobs = useMemo(
-    () => files
-      .map((file) => ({ file, status: fileStatusIndex.get(file.fileId) || {} }))
-      .filter(({ file, status }) => startedFiles.has(file.fileId) && !isAwaitingImportApproval(status) && status.status !== 'completed' && status.status !== 'failed'),
-    [files, fileStatusIndex, startedFiles]
-  );
+  const jobSummary = useMemo(() => files.reduce((summary, file) => {
+    const state = importJobState(fileStatusIndex.get(file.fileId) || {}, startedFiles.has(file.fileId));
+    summary[state] += 1;
+    return summary;
+  }, { active: 0, completed: 0, failed: 0, pending: 0, awaitingReview: 0 }), [files, startedFiles, fileStatusIndex]);
+  const activeProcessingCount = jobSummary.active;
+  const activeJobs = useMemo(() => files
+    .map(file => ({ file, status: fileStatusIndex.get(file.fileId) || {} }))
+    .filter(({ file, status }) => importJobState(status, startedFiles.has(file.fileId)) === 'active'),
+  [files, fileStatusIndex, startedFiles]);
+  const workflowFiles = useMemo(() => files.filter(file =>
+    (file.workflowId || 'instance.import') === selectedWorkflow), [files, selectedWorkflow]);
   const stageFileCounts = useMemo(() => {
     const counts = new Map(activePipelineStages.map(stage => [stage.id, 0]));
-    files.forEach((file) => {
+    workflowFiles.forEach((file) => {
       const status = fileStatusIndex.get(file.fileId) || {};
       const currentStage = status.stage || 'upload';
       const frontendStage = backendToFrontendStage[currentStage] || currentStage;
@@ -1949,17 +1925,17 @@ export default function DataImportPipeline() {
       });
     });
     return counts;
-  }, [activePipelineStages, fileStatusIndex, files]);
+  }, [activePipelineStages, fileStatusIndex, workflowFiles]);
   const selectedStageFiles = useMemo(() => {
     const stage = activePipelineStages.find(s => s.id === selectedStage);
     if (!stage) return [];
-    return files.filter((f) => {
+    return workflowFiles.filter((f) => {
       const status = fileStatusIndex.get(f.fileId) || {};
       const currentStage = status.stage || 'upload';
       const frontendStage = backendToFrontendStage[currentStage] || currentStage;
       return stage.backendIds.includes(currentStage) || stage.backendIds.includes(frontendStage);
     });
-  }, [activePipelineStages, fileStatusIndex, files, selectedStage]);
+  }, [activePipelineStages, fileStatusIndex, workflowFiles, selectedStage]);
   const activePipelineStageIds = useMemo(
     () => activePipelineStages.map(stage => stage.id).join('|'),
     [activePipelineStages]
@@ -1981,7 +1957,7 @@ export default function DataImportPipeline() {
     <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
       <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
         <legend>Workflow access</legend>
-        <p>Manage and validate keys in <a href="#/admin">Admin → Service credentials</a> before starting uploads or jobs.</p>
+        <p>Manage and validate keys in <a href="#/admin">Admin / Service credentials</a> before starting uploads or jobs.</p>
         <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register XSD/XMI or OWL/RDF/TTL and request Neo4j publication after review and approval</label>
         <p>{publishOntology ? 'Create ontology registers a draft. Expand Review, approve and publish this ontology to Neo4j beneath its imported row: Submit for review, Approve ontology, then Publish to Neo4j. Already approved ontologies can publish after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but Neo4j is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
       </fieldset>
@@ -2016,7 +1992,7 @@ export default function DataImportPipeline() {
           isLoading={isMetadataLoading}
           formTitle="Ontology Metadata"
           ontologyNamePlaceholder="e.g., Product Model"
-          prefixPlaceholder="e.g., myprefix"
+          prefixPlaceholder="Automatic from source namespace"
         />
       )}
 
@@ -2228,7 +2204,7 @@ export default function DataImportPipeline() {
             fontSize: '9px',
             color: C.textSec,
           }}>
-            {groupedWorkflows.map(group => `${group.category} ${group.items.length}`).join(' · ')}
+            {groupedWorkflows.map(group => `${group.category} ${group.items.length}`).join('  /  ')}
           </span>
         </div>
           </>
@@ -2567,7 +2543,7 @@ export default function DataImportPipeline() {
           marginBottom: activeJobs.length > 0 ? '10px' : 0,
         }}>
           {[
-            { label: 'Active jobs', value: jobSummary.active, color: C.primaryText },
+            { label: 'Active jobs (all workflows)', value: jobSummary.active, color: C.primaryText },
             { label: 'Awaiting load approval', value: jobSummary.awaitingReview, color: C.orange },
             { label: 'Completed', value: jobSummary.completed, color: C.green },
             { label: 'Needs attention', value: jobSummary.failed, color: C.red },
@@ -2599,8 +2575,8 @@ export default function DataImportPipeline() {
               const batchLabel = formatBatchProgress(status.batchProgress);
               const phaseLabel = getCommitPhaseLabel(status.commitPhase) || getStageLabel(status.stage);
               const countsLabel = status.commitMetrics
-                ? `${(status.commitMetrics.nodes_written || status.stats?.entities_found || 0).toLocaleString()} nodes · ${(status.commitMetrics.relationships_written || status.stats?.relationships_found || 0).toLocaleString()} rels`
-                : `${(status.stats?.entities_found || 0).toLocaleString()} entities · ${(status.stats?.relationships_found || 0).toLocaleString()} rels`;
+                ? `${(status.commitMetrics.nodes_written || status.stats?.entities_found || 0).toLocaleString()} nodes  /  ${(status.commitMetrics.relationships_written || status.stats?.relationships_found || 0).toLocaleString()} rels`
+                : `${(status.stats?.entities_found || 0).toLocaleString()} entities  /  ${(status.stats?.relationships_found || 0).toLocaleString()} rels`;
               return (
                 <div
                   key={`job-${file.fileId}`}
@@ -2627,7 +2603,7 @@ export default function DataImportPipeline() {
                     <div style={{ fontSize: '10px', color: C.textSec }}>Commit phase</div>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
                       {phaseLabel || getStageLabel(status.stage)}
-                      {batchLabel ? ` · ${batchLabel}` : ''}
+                      {batchLabel ? `  /  ${batchLabel}` : ''}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -2666,9 +2642,10 @@ export default function DataImportPipeline() {
 
             // Calculate max current stage index
             let maxCurrentIdx = -1;
-            const hasStartedFiles = Array.from(startedFiles).length > 0;
+            const workflowStartedIds = workflowFiles.filter(file => startedFiles.has(file.fileId)).map(file => file.fileId);
+            const hasStartedFiles = workflowStartedIds.length > 0;
             if (hasStartedFiles) {
-              const currentIndices = Array.from(startedFiles)
+              const currentIndices = workflowStartedIds
                 .map(fId => {
                   const s = pipelineStatus[fId];
                   const currentStage = s?.stage || 'upload';
@@ -2691,6 +2668,7 @@ export default function DataImportPipeline() {
               <React.Fragment key={stage.id}>
                 {/* Stage item - fixed width for alignment */}
                 <div
+                  role="group" aria-label={`${stage.label}: ${filesAtStage} files`}
                   onClick={() => setSelectedStage(stage.id)}
                   style={{
                     display: 'flex',
@@ -2867,7 +2845,7 @@ export default function DataImportPipeline() {
                       fontStyle: 'italic',
                     }}>
                       {selectedWorkflow === 'ontology.create'
-                        ? 'Upload an XSD, OWL, RDF, TTL, XMI, or EXPRESS file, then complete namespace and prefix capture to continue.'
+                        ? 'Upload an XSD, OWL, RDF, TTL, XMI, or EXPRESS file, then enter an ontology name. The namespace prefix is automatic unless you choose an override.'
                         : isImportWorkflow(selectedWorkflow)
                           ? 'No files in this stage yet'
                           : 'This workflow runs from the selected ontology or retained artifacts.'}
@@ -2913,7 +2891,7 @@ export default function DataImportPipeline() {
             }}
             title="Dismiss error"
           >
-            ×
+            Close
           </button>
         </div>
       )}
@@ -2948,7 +2926,7 @@ export default function DataImportPipeline() {
             Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
             <span style={{ color: C.primaryText, fontWeight: '700' }}> Import instance graph</span>.
           </div>
-          {!dependencyTarget && <ol><li>Choose Add Files and select your schema files. Multiple XSDs become one ontology registration.</li><li>Enter the ontology name and prefix, then save the details.</li><li>Choose Start on the upload row. If a referenced XSD is missing, the app will ask for its containing folder.</li><li>After registration, review, approve and publish using the controls on that row.</li></ol>}
+          {!dependencyTarget && <ol><li>Choose Add Files and select your schema files. Multiple XSDs become one ontology registration.</li><li>Enter the ontology name, review the automatic namespace prefix (or optionally override it), then save the details.</li><li>Choose Start on the upload row. If a referenced XSD is missing, the app will ask for its containing folder.</li><li>After registration, review, approve and publish using the controls on that row.</li></ol>}
           {dependencyTarget && <XsdDependencies key={dependencyTarget.fileId} files={xsdDependencies} paths={xsdDependencyPaths} disabled={workflowLoading}
             selectedRoot={dependencyTarget?.fileObj}
             selectedSources={dependencyTarget ? xsdFolderBundlesRef.current.get(dependencyTarget.fileObj)?.sources : null}
@@ -3237,7 +3215,7 @@ export default function DataImportPipeline() {
                       )}
                       <details style={{ fontSize: '10px', marginTop: 4 }}>
                         <summary>Processing details</summary>
-                        <div>State: {status.status || 'pending'} · Stage: {status.backendStage || status.stage || 'upload'}</div>
+                        <div>State: {status.status || 'pending'}  /  Stage: {status.backendStage || status.stage || 'upload'}</div>
                         {status.startedAt && <div>Started: {new Date(status.startedAt).toLocaleString()}</div>}
                         {status.taskId && <div style={{ overflowWrap: 'anywhere' }}>Task: {status.taskId}</div>}
                       </details>
@@ -3352,7 +3330,7 @@ export default function DataImportPipeline() {
                       </div>
                       {(status.commitPhase || status.batchProgress) && (
                         <div style={{ fontSize: '9px', color: C.textSec, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {[getCommitPhaseLabel(status.commitPhase), formatBatchProgress(status.batchProgress)].filter(Boolean).join(' · ')}
+                          {[getCommitPhaseLabel(status.commitPhase), formatBatchProgress(status.batchProgress)].filter(Boolean).join('  /  ')}
                         </div>
                       )}
                   </div>
@@ -3662,7 +3640,7 @@ export default function DataImportPipeline() {
                 fontSize: '10px',
               }}>
                 <div style={{ color: C.textMuted }}>
-                  {files.length} file{files.length !== 1 ? 's' : ''} • {activeProcessingCount} processing
+                  {files.length} file{files.length !== 1 ? 's' : ''}  /  {activeProcessingCount} processing
                 </div>
                 <button type="button" onClick={() => {
                   const removable = files.filter(file => {
@@ -3733,7 +3711,7 @@ export default function DataImportPipeline() {
                   color: C.textMuted,
                 }}
               >
-                ×
+                Close
               </button>
             </div>
 
@@ -3877,7 +3855,7 @@ export default function DataImportPipeline() {
                   {preCheck.checks?.task && (
                     <span style={{ color: preCheck.checks.task.ok ? '#067647' : '#B42318' }}>
                       {preCheck.checks.task.ok ? 'OK' : 'Failed'} Task: {preCheck.checks.task.status}
-                      {preCheck.checks.task.rows ? ` · ${preCheck.checks.task.rows.toLocaleString()} rows` : ''}
+                      {preCheck.checks.task.rows ? `  /  ${preCheck.checks.task.rows.toLocaleString()} rows` : ''}
                     </span>
                   )}
                   {!preCheck.ready && preCheck.reason && (
@@ -3892,13 +3870,13 @@ export default function DataImportPipeline() {
 
             <details style={{ marginBottom: '12px', fontSize: '12px', color: C.textSec }}>
               <summary>Approval credentials (required by token authentication for loading)</summary>
-              <p style={{ margin: '8px 0' }}>The key is managed in Admin → Service credentials. Enter the approver here; confirmation is still required.</p>
+              <p style={{ margin: '8px 0' }}>The key is managed in Admin / Service credentials. Enter the approver here; confirmation is still required.</p>
               <label style={{ display: 'block', marginBottom: '6px' }}>
                 Approver
                 <input aria-label="Import approver" value={commitApprover} onChange={(event) => setCommitApprover(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
               </label>
               <label style={{ display: 'block' }}>
-                Approval API key: configured in Admin → Service credentials
+                Approval API key: configured in Admin / Service credentials
               </label>
             </details>
 

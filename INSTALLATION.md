@@ -5190,3 +5190,19 @@ Known credential values from the process environment and `.env.local`, PostgreSQ
 Windows shutdown archives PID files under `logs/windows-services/stale-tracking` when the inspected PID belongs to a different module. The unrelated process is left running. Missing executable/command-line information or a matching service module using an unapproved runtime still stops setup and retains tracking for diagnosis.
 
 Native Python import/OpenAPI and ontology-upgrade checks retain informational stderr without treating it as a PowerShell failure. Their stdout remains separate for JSON parsing; nonzero exit codes still fail setup.
+
+
+### Automatic ontology prefixes
+
+In Add Files, only the ontology name is required metadata. The prefix is an optional display-alias override; changing it does not rewrite source namespace IRIs. XSD imports preview the alias from `targetNamespace`. Other supported formats can leave the field blank for server-side namespace discovery during registration. If no namespace can be discovered, registration uses the `ontology` fallback alias.
+
+The QIF and multi-XSD workflows also accept a blank prefix and derive it from a shared declared target namespace, rather than a hardcoded standard/profile prefix. If the selected schemas declare multiple target namespaces, the API asks for an explicit alias for the combined ontology. Supply an override and retry; imported source namespaces remain unchanged. A saved explicit prefix remains an override when resuming an import.
+
+
+Windows npm dependency installation and frontend builds retain stderr warnings (including deprecation notices) without failing a successful command. `npm ci` retries only after a nonzero exit, up to three attempts. Each attempt retains stdout and stderr in `logs/installation/npm-ci-<run-id>.log`; the setup action log also retains that output. Exhausted install attempts or a nonzero build exit still fail setup. Dependency health probes inspect exit codes, rather than treating warning output as proof of failure.
+
+Import job summary totals cover all workflows and retain restored failures even when a job is no longer active. Stage counts and progress arrows cover only the selected workflow. Five parsed instances awaiting load approval are not active jobs; they require explicit review and an approver before loading. XSD publication offers OWL; SHACL guidance applies to shape validation in register-only mode.
+
+Ontology Junction retains each registered version by immutable ontology ID, including versions sharing a prefix. Open a draft using its exact target link and verify the selected version. With no active selection, taxonomy is not loaded automatically. Missing target IDs show an unavailable selection rather than silently opening another ontology. The OWL Browser class inventory excludes datatypes, restrictions, expressions, properties and individuals; the hierarchy explicitly labels its limited preview count separately from the loaded class count.
+
+For a repair package, validate frontend dependency completeness against an installed-tree copy with only the package overlay applied, then run its production build and targeted tests. A successful source-checkout build alone does not establish that the repair contains every required helper/export. The ontology selector repair includes `frontend/src/utils/ontologyPresentation.js`, which exports the shared class predicate used by the OWL browser.

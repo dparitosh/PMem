@@ -89,7 +89,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Test Ontology');
 
-      const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
+      const prefixInput = screen.getByPlaceholderText(/Automatic from source namespace/i);
       await userEvent.type(prefixInput, 'Test-Prefix'); // Invalid: contains hyphen
 
       const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
@@ -115,7 +115,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
-      expect(screen.getByPlaceholderText(/e.g., myprefix/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Automatic from source namespace/i)).toBeInTheDocument();
 
       const selectElement = screen.getByRole('combobox');
       await userEvent.selectOptions(selectElement, 'shacl');
@@ -139,7 +139,7 @@ describe('OntologyMetadataForm Component', () => {
     it('should convert prefix to lowercase automatically', async () => {
       renderForm({ selectedFile: new File([''], 'model.xmi') });
 
-      const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
+      const prefixInput = screen.getByPlaceholderText(/Automatic from source namespace/i);
       await userEvent.type(prefixInput, 'TestPrefix');
 
       expect(prefixInput.value).toBe('testprefix');
@@ -170,7 +170,7 @@ describe('OntologyMetadataForm Component', () => {
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
-      expect(screen.getByPlaceholderText(/e.g., myprefix/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Automatic from source namespace/i)).toBeInTheDocument();
 
       const descriptionInput = screen.getByPlaceholderText(/Optional description/i);
       await userEvent.type(descriptionInput, 'Test description');
