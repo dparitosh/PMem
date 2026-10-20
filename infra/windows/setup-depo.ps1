@@ -38,6 +38,15 @@ function Read-SetupSecret([string]$Label) {
   try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
   finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 }
+function ConvertTo-SetupEnvironmentValue([string]$Value) {
+  if ($Value -match '[\r\n]') { throw 'Configuration values must be one line; the value is hidden.' }
+  if ($Value -match '^\s|\s$|\s+#|^["'']') {
+    if (-not $Value.Contains("'")) { return "'"+$Value+"'" }
+    if (-not $Value.Contains('"')) { return '"'+$Value+'"' }
+    throw 'A configuration value needs manual quoting; no configuration was created. The value is hidden.'
+  }
+  return $Value
+}
 $nodeSettings=@{}
 if(Test-Path -LiteralPath (Join-Path $root '.env.local')){$nodeSettings=Read-DepoEnvironment -Root $root -EnvFile '.env.local'}
 $nodeRuntime=Get-DepoNodeRuntime -Root $root -NodeJsDir $nodeSettings['DEPO_NODEJS_DIR']
@@ -67,7 +76,6 @@ if (-not (Test-Path -LiteralPath $envPath)) {
   $sslMode=if($dbHost -in @('127.0.0.1','localhost')){'disable'}else{'require'}
   $tls=if($graphParsed.Scheme.EndsWith('+s')){'required'}else{'disabled'}
   if ($tls -eq 'disabled' -and -not $graphParsed.IsLoopback) { throw 'Use bolt+s or neo4j+s for a remote Neo4j server.' }
-  & (Join-Path $root 'infra/deployment/new-depo-deployment-config.ps1') -OutputPath '.env.local' -AuthMode token
   $updates=@{
     DEPO_DATABASE_URL=('postgresql://'+[Uri]::EscapeDataString($dbUser)+':'+[Uri]::EscapeDataString($dbPassword)+'@'+$dbHost+':'+$dbPort+'/'+[Uri]::EscapeDataString($dbName)+'?sslmode='+$sslMode)
     ARTIFACT_STORAGE=(Join-Path $root 'data/artifacts'); ALLOWED_ORIGINS='http://127.0.0.1:3000'; OSLC_BASE_URL='http://127.0.0.1:8015'
@@ -76,22 +84,31 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     DEPO_BROWSER_AUTH_MODE='local'; DEPO_LOCAL_BROWSER_WRITES='true'; DEPO_LOCAL_SESSION_AUTHORITY_URL='http://127.0.0.1:8011'
     DEPO_TENANT_ID='local'; DEPO_PROJECT_ID='pmem'; AGENT_MEMORY_SCOPE='local:pmem'
   }
+  foreach($key in @($updates.Keys)) { $updates[$key]=ConvertTo-SetupEnvironmentValue ([string]$updates[$key]) }
+  $finalEnvPath=$envPath
+  $stagingDir=Join-Path $root ('.setup-'+[guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $stagingDir -ErrorAction Stop | Out-Null
+  $envPath=Join-Path $stagingDir '.env.local'
+  try {
+  & (Join-Path $root 'infra/deployment/new-depo-deployment-config.ps1') -OutputPath $envPath -AuthMode token
   $lines=[Collections.Generic.List[string]]::new()
   foreach($line in [IO.File]::ReadAllLines($envPath)) {
     if($line -match '^([A-Z0-9_]+)=') {
       $key=$Matches[1]
       if($updates.ContainsKey($key)) { $value=[string]$updates[$key]
-        if ($value -match '^\s|\s$|\s+#|^["'']') {
-          if (-not $value.Contains("'")) { $value="'"+$value+"'" }
-          elseif (-not $value.Contains('"')) { $value='"'+$value+'"' }
-          else { throw "Setting $key requires manual .env quoting; generated keys were preserved." }
-        }
         $lines.Add($key+'='+$value); $updates.Remove($key); continue }
     }
     $lines.Add($line)
   }
   foreach($key in $updates.Keys) { $lines.Add($key+'='+$updates[$key]) }
   [IO.File]::WriteAllLines($envPath,$lines,[Text.UTF8Encoding]::new($false))
+  $null=Read-DepoEnvironment -Root $root -EnvFile $envPath
+  Move-Item -LiteralPath $envPath -Destination $finalEnvPath -ErrorAction Stop
+  } finally {
+    if(Test-Path -LiteralPath $envPath -PathType Leaf){Remove-Item -LiteralPath $envPath -Force}
+    Remove-Item -LiteralPath $stagingDir -ErrorAction Stop
+    $envPath=$finalEnvPath
+  }
   $dbPassword=$null; $graphPassword=$null; $updates=$null
 } else { Write-Host 'Existing configuration and application keys retained.' }
 $browser=Join-Path $root 'frontend/.env.local'

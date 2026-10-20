@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Installs and starts the backend and frontend through the supported root launcher.
+Advanced complete installation of backend and frontend; guided users run Setup-DEPO.cmd.
 
 .DESCRIPTION
 This is the supported Windows release entry point. It does not generate secrets

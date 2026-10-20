@@ -195,11 +195,11 @@ The assets API accepts `offset` and `limit` and returns `has_more`. Use **Next a
 
 | Script | Purpose | Run directly? |
 | --- | --- | --- |
-| Root `install-depo.ps1` | Supported customer entry point; forwards parameters to `infra\windows\install-depo-windows.ps1` | Recommended for a complete installation |
-| `infra\windows\install-depo-windows.ps1` | Validates deployment settings, calls the dependency installer, builds the frontend, migrates PostgreSQL, applies credential profiles, provisions Neo4j schema, starts backend services and runs readiness/release checks | Alternative to the root installer; do not run both |
+| `Setup-DEPO.cmd` | Guided install/update/repair and Start/Stop/Restart with process-scoped execution-policy handling | Recommended customer entry point |
+| Root `install-depo.ps1` | Advanced complete installation orchestrator: configuration, dependencies, migrations, credentials, Neo4j and application startup | Requires a completed root environment file |
 | `infra\windows\install-depo.ps1` | Checks prerequisites, installs application dependencies and builds the frontend | Called automatically by the complete installer; use directly only for dependency setup |
 
-The execution chain is `install-depo.ps1` (root) → `infra\windows\install-depo-windows.ps1` → `infra\windows\install-depo.ps1`. The last step is skipped with `-SkipDependencyInstall`; the complete installer still rebuilds the frontend using installed dependencies unless `-SkipFrontend` is supplied.
+The guided execution chain is `Setup-DEPO.cmd` → `infra/windows/setup-depo.ps1` → root `install-depo.ps1` → dependency helper `infra/windows/install-depo.ps1`. The last step is skipped with `-SkipDependencyInstall`; the complete installer still rebuilds the frontend using installed dependencies unless `-SkipFrontend` is supplied.
 
 Use `-ServiceStartupTimeoutSeconds 1200` on the root installer, Windows installer,
 updater, or deployment lifecycle `-Action Start` to allow a slower cold start.
@@ -218,12 +218,12 @@ if (-not $?) { throw 'Installation failed. Correct the reported stage before sta
 .\infra\windows\start-depo-frontend.ps1 -EnvFile '.env.local'
 ```
 
-The complete installer **starts backend services and builds the frontend, but does not serve the frontend**. The final command serves it separately. For customer web hosting, publish `frontend\dist` through the configured web server instead.
+The complete installer builds and starts both backend services and the frontend unless `-SkipFrontend` is supplied. A separate frontend-start command is unnecessary after successful installation. For customer web hosting, publish `frontend\dist` through the configured web server instead.
 
 If PowerShell is already in `E:\App\PMem\infra\windows`, the equivalent complete installer command is:
 
 ```powershell
-& 'E:\App\PMem\infra\windows\install-depo-windows.ps1' -EnvFile 'E:\App\PMem\.env.local' -Profile Production
+& 'E:\App\PMem\install-depo.ps1' -EnvFile 'E:\App\PMem\.env.local' -Profile Production
 ```
 
 Do not run `.\install-depo.ps1` from `infra\windows` expecting a complete installation: that resolves to the dependency-only script. It does not accept `-Profile Production`.
@@ -616,7 +616,7 @@ that local frontend command.
 | Missing server/browser configuration | Follow section 2; preserve existing secrets. Rerun `diagnose-depo.ps1 -Phase Configuration`. |
 | Missing or placeholder `ALLOWED_ORIGINS` | Set the exact address entered in the browser, without a path or trailing slash. Rerun Configuration diagnostics. |
 | PostgreSQL timeout/refused | Start PostgreSQL on the database VM and verify the application VM can reach its configured port. Run `.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .env.local` after installing backend dependencies. |
-| Local PostgreSQL service stopped | Before the installer connectivity stage, run `Start-Service -Name 'postgresql-x64-16'` in an administrator PowerShell on the database VM, using the actual installed service name. Portable clusters must also be started before installation. |
+| Local PostgreSQL service stopped | Before the installer connectivity stage, run `Start-Service -Name 'postgresql-x64-16'` in an administrator PowerShell on the database VM, using the actual installed service name. Set `DEPO_POSTGRES_MODE=service` with the actual service name, or `portable` with its bin/data directories; setup starts that selected local runtime before connectivity checks. `external` leaves server startup to the operator. |
 | Schema migration rejected | Use the structured SQLSTATE/action printed above the error; correct privileges or incompatible existing objects. Rerun `.\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local`. |
 | npm EBUSY | Close the running frontend/Node process holding this checkout, then rerun installation. The installer retries the locked `npm ci`; it does not replace the reviewed lockfile. |
 | Browser shows old URLs or blank pages | With root `DEPO_ROUTING_MODE=local` or `gateway`, correct routing in root `.env.local` and restart the frontend launcher. Rebuild changed source with `infra/windows/build-depo-frontend.ps1` using the same `-EnvFile`, then refresh the browser. Without root routing, correct the browser aliases in `frontend/.env.local` before rebuilding. |
@@ -3746,13 +3746,12 @@ supports `-CheckPrerequisites`. Preserve their original directories when copying
 a release. Never overwrite the nested file with the root launcher. The Windows
 installer now checks this contract before starting deployment stages.
 
-If root `install-depo.ps1` is missing, the direct
-`infra/windows/install-depo-windows.ps1` command below is also supported. If an
+If root `install-depo.ps1` is missing, restore the complete matching release before installation. Do not substitute an internal dependency helper. If an
 environment entry is rejected, repair the reported line in root `.env.local`:
 use one `KEY=value` per line or a `#` comment, with no shell commands or Markdown.
 Do not create another legacy `.env` file. The dependency installer loads the
 selected environment before running the import/OpenAPI checks.
-Pip's newer-version notice is informational; upgrading pip does not repair
+Pip's newer-version notice and npm deprecation warnings are informational when the native command exits successfully; upgrading pip does not repair
 application imports, migration SQL or invalid configuration.
 
 To make the selected root `.env.local` authoritative during an existing
@@ -3761,7 +3760,7 @@ the matching release files, run this from the application VM:
 
 ```powershell
 Set-Location E:\App\PMem
-.\infra\windows\install-depo-windows.ps1 `
+.\install-depo.ps1 `
   -EnvFile 'E:\App\PMem\.env.local' `
   -Profile Production `
   -SkipDependencyInstall `
@@ -3786,14 +3785,14 @@ Normal first installation or redeployment, from the application repository root:
 
 ```powershell
 Set-Location E:\App\PMem
-.\infra\windows\install-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production
+.\install-depo.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production
 ```
 
 If the reviewed file intentionally replaces the central credentials, stop running services first, then use the explicit option. This rotates all supplied application key profiles and invalidates dependent browser sessions:
 
 ```powershell
 .\infra\windows\stop-depo-services.ps1 -EnvFile 'E:\App\PMem\.env.local'
-.\infra\windows\install-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production -SkipDependencyInstall -ReplaceExistingCredentials
+.\install-depo.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production -SkipDependencyInstall -ReplaceExistingCredentials
 .\infra\windows\test-depo-browser-session.ps1 -EnvFile 'E:\App\PMem\.env.local'
 .\infra\windows\start-depo-frontend.ps1 -EnvFile 'E:\App\PMem\.env.local'
 ```
@@ -5218,3 +5217,10 @@ In Data Products, select an imported schema draft to inspect its analytics schem
 A vocabulary dictionary or mapping-list timeout is reported independently of Semantic Bridge. Instance mapping controls and ontology merge review remain available. Merge mode reads retained RDF through the governed agent and does not wait for the vocabulary-list request. Source/target term inventory errors remain visible inside each inventory.
 
 Ontology merge proposals use lexical-context-v1 scoring for terms with identical declared kinds: 50% normalized label/token and text similarity, 30% character trigrams, 10% definitions, and 10% role-aware domain/range or attached-property context. Missing context contributes zero. The proposal threshold is 55%; scores are heuristic similarity, not calibrated confidence or semantic equivalence. Ambiguous alternatives are flagged. Each source considers at most 100 candidates, common index buckets above 200 terms are omitted, total comparisons are limited to 100,000, and at most 200 proposals are returned; limited searches are identified in the review. Proposals never authorize automatic consolidation. Select a pair, generate a fresh preview, and review semantic validation before approval. Review source/target definitions, domains and ranges before selecting a consolidation. The merge preview is required before approval. Instance linking uses the Governor/Steward workflow to retain candidates, explain held decisions and publish only policy-approved mappings. The separate ontology agent review is visible beside automation and shows its retained evidence on completion. A model recommendation does not itself authorize publication.
+
+
+## Installer audit corrections — 2026-10-20
+
+First-run connection values are validated and serialized before key generation. Configuration is generated in an isolated directory inside the release, parsed, and moved into root `.env.local` only after success; failed staging is removed so a rerun can prompt again. Existing configuration is retained. Passwords are hidden and unsupported multiline or ambiguous quoting is rejected without echoing the value. Portable PostgreSQL status accepts the expected stopped-server exit code; start failures still stop installation, and informational native stderr is logged without replacing the exit-code decision.
+
+Use `Setup-DEPO.cmd` from File Explorer, or `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Setup` from the release root. For routine operation choose Start/Stop/Restart in that launcher. Stop and Restart stop tracked application processes; database servers remain running. These are process launchers, not Windows-service registration for all PMem APIs. PostgreSQL service startup may require an elevated Windows session; process ownership checks remain mandatory. Keep the exact error and `logs/installation/runs` log when requesting support.

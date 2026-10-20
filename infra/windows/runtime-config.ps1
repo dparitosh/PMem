@@ -158,7 +158,9 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $previousNames = @()
   $tracked = [Environment]::GetEnvironmentVariable('DEPO_IMPORTED_ENV_KEYS', 'Process')
   if ($tracked) {
-    try { $previousNames = @($tracked | ConvertFrom-Json) } catch { throw 'Invalid environment import bookkeeping. Open a fresh PowerShell session.' }
+    # Windows PowerShell emits a JSON array as one pipeline object. Assign it
+    # directly so foreach sees its names rather than a nested array.
+    try { $previousNames = ConvertFrom-Json -InputObject $tracked } catch { throw 'Invalid environment import bookkeeping. Open a fresh PowerShell session.' }
   }
   foreach ($limitName in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES','DEPO_SERVICE_RUNTIME_MODE')) {
     if (-not $values.ContainsKey($limitName)) { [Environment]::SetEnvironmentVariable($limitName, $null, 'Process') }
