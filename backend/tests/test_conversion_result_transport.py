@@ -1,13 +1,27 @@
 import os
+import io
 import pickle
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from backend.ingestion_service.conversion_process import convert_engineering
+from backend.ingestion_service.conversion_process import convert_engineering, BoundedResultWriter, ResultLimitExceeded
 
 
 class ConversionResultTransportTests(unittest.TestCase):
+    def test_worker_never_writes_beyond_configured_limit(self):
+        output = io.BytesIO()
+        writer = BoundedResultWriter(output, 5)
+        writer.write(b'123')
+        with self.assertRaises(ResultLimitExceeded):
+            writer.write(b'456')
+        self.assertEqual(output.getvalue(), b'123')
+
+    def test_worker_limit_exit_is_reported_with_recovery_setting(self):
+        with patch('subprocess.run', return_value=SimpleNamespace(returncode=74)):
+            with self.assertRaisesRegex(ValueError, 'ENGINEERING_CONVERSION_MAX_RESULT_BYTES='):
+                convert_engineering(filename='large.xsd', content=b'fixture')
+
     def worker(self, value):
         def run(*args, **kwargs):
             self.output = kwargs['stdout']

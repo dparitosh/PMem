@@ -23,7 +23,7 @@ def validation_child(payload, stop, timeout, module='backend.ontology_service.me
     # Files prevent large RDF input or diagnostics from blocking pipe buffers.
     limit = child_result_limit(module)
     with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
-        source.write(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)); source.seek(0)
+        pickle.dump(payload, source, protocol=pickle.HIGHEST_PROTOCOL); source.seek(0)
         process = subprocess.Popen([sys.executable, '-m', module],
             stdin=source, stdout=output, stderr=errors, cwd=str(Path(__file__).resolve().parents[2]))
         started = time.monotonic()
@@ -33,9 +33,9 @@ def validation_child(payload, stop, timeout, module='backend.ontology_service.me
                 if time.monotonic() - started >= timeout:
                     raise ValueError('Background semantic validation exceeded its deadline. Review a smaller merge or adjust MERGE_BACKGROUND_TIMEOUT_SECONDS and retry.')
             if process.returncode: raise ValueError('Semantic validation worker failed; check ontology service diagnostics and installed reasoning dependencies')
-            output.seek(0); data = output.read(limit + 1)
-            if len(data) > limit: raise ValueError('Merge worker result exceeds its configured size limit')
-            return pickle.loads(data)  # Trusted owned child output only.
+            if output.seek(0, 2) > limit: raise ValueError('Merge worker result exceeds its configured size limit')
+            output.seek(0)
+            return pickle.load(output)  # Trusted owned child output only.
         finally:
             if process.poll() is None: process.kill()
             process.wait()

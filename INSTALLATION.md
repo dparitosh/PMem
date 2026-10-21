@@ -170,6 +170,12 @@ This preserves configuration and data. Review migration history and backups afte
 
 ## 6. Resolve errors
 
+### Large ontology configuration
+
+Generated RDF can be much larger than its source. `ONTOLOGY_MAX_UPLOAD_BYTES` defaults to 25 MiB and controls downstream artifact registration/publication as well as uploads; `ENGINEERING_CONVERSION_MAX_RESULT_BYTES` defaults to 256 MiB and controls the worker's complete generated result. Raising only the latter does not raise the former. Configure root `.env.local` consistently for ingestion, ontology and graph processes, then rerun setup to restart them. A root-plus-dependency XSD bundle still has a separate 25 MiB ceiling. Merge source limits apply to the combined inputs. Do not equate these byte limits with supported server memory capacity. See the [large-ontology audit](docs/audits/extra-large-ontologies-2026-10-21.md) for measured smoke tests and unresolved scale risks.
+
+### Error recovery
+
 Setup retains timestamped `.log` and `.jsonl` files in `logs/installation/runs` and reports the exact log path. Dependency and service startup logs are retained under `logs/installation`; consult the reported paths. Installation logging redacts credentials; still review diagnostic bundles before sharing externally.
 
 | Symptom | Next action |

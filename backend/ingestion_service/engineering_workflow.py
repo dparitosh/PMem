@@ -94,6 +94,10 @@ class EngineeringWorkflow:
         if not register:
             return {"status": "converted", "conversion": conversion}
         ontology = conversion["ontology"]
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        turtle_bytes = ontology['turtle'].encode('utf-8')
+        if len(turtle_bytes) > ontology_upload_limit():
+            raise ValueError(f'Generated ontology is {len(turtle_bytes)} bytes and exceeds ONTOLOGY_MAX_UPLOAD_BYTES={ontology_upload_limit()}. Increase that setting consistently in ingestion, ontology and graph services and restart them, or narrow the schema set. No ontology registration or publication was requested.')
         with dependency_stage('ontology_credentials', request_id):
             headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
         if request_id:
@@ -137,7 +141,7 @@ class EngineeringWorkflow:
             response = await self._request(client, 'ontology_registration', request_id,
                 f"{self.ontology_url}/ontologies/register",
                 data=data,
-                files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
+                files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", turtle_bytes, "text/turtle")},
             )
             response.raise_for_status()
             registration = response.json()

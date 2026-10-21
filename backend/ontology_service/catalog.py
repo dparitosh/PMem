@@ -113,6 +113,8 @@ class OntologyCatalog:
     @staticmethod
     def _parse_ontology(content: bytes, filename: str) -> dict[str, Any]:
         """Reject malformed RDF/OWL before it becomes a governed artifact."""
+        if len(content) > ontology_upload_limit():
+            raise ValueError('Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES; increase the setting consistently across ingestion, ontology and graph services or partition the ontology')
         suffix = Path(filename).suffix.lower()
         formats = {
             ".ttl": ("turtle",),
@@ -352,7 +354,14 @@ class OntologyCatalog:
             raise ValueError('Ontology artifact path is outside its catalog directory')
         if not path.is_file():
             raise ValueError(f"Ontology artifact is missing: {ontology_id}")
-        return metadata, path.read_bytes()
+        limit = ontology_upload_limit()
+        if path.stat().st_size > limit:
+            raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES; restore a sufficient limit before reading or publishing it')
+        with path.open('rb') as stream:
+            content = stream.read(limit + 1)
+        if len(content) > limit:
+            raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+        return metadata, content
 
     def artifact_digest(self, ontology_id: str) -> str:
         """Bounded verification cache; invalidate whenever artifact stat changes."""

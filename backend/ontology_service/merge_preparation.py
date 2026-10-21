@@ -34,7 +34,6 @@ def prepare(service, payload, *, defer_semantics=False, stop=None):
             raise ValueError('Combined merge sources exceed ONTOLOGY_MAX_UPLOAD_BYTES; partition the merge')
         sources[key] = (metadata, content)
         if time.monotonic() - started >= budget: raise ValueError('Merge source preparation exceeded its deadline')
-    encoded = pickle.dumps((sources, payload, defer_semantics), protocol=pickle.HIGHEST_PROTOCOL)
     remaining = budget - (time.monotonic() - started)
     if remaining <= 0: raise ValueError('Merge preparation exceeded its deadline')
     if stop is not None:
@@ -43,6 +42,7 @@ def prepare(service, payload, *, defer_semantics=False, stop=None):
                                     'backend.ontology_service.merge_preparation')
         if 'error' in response: raise ValueError(response['error'])
         return response['record']
+    encoded = pickle.dumps((sources, payload, defer_semantics), protocol=pickle.HIGHEST_PROTOCOL)
     try:
         result = subprocess.run([sys.executable, '-m', 'backend.ontology_service.merge_preparation'],
             input=encoded, capture_output=True, timeout=remaining, cwd=str(Path(__file__).resolve().parents[2]))

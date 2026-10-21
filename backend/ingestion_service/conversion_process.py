@@ -8,6 +8,22 @@ import tempfile
 from backend.depo_platform.network import bounded_timeout_seconds
 
 
+class ResultLimitExceeded(ValueError):
+    pass
+
+
+class BoundedResultWriter:
+    def __init__(self, stream, limit):
+        self.stream, self.limit, self.written = stream, limit, 0
+
+    def write(self, content):
+        if self.written + len(content) > self.limit:
+            raise ResultLimitExceeded()
+        count = self.stream.write(content)
+        self.written += count
+        return count
+
+
 def conversion_result_limit():
     name = 'ENGINEERING_CONVERSION_MAX_RESULT_BYTES'
     try:
@@ -35,6 +51,8 @@ def convert_engineering(**inputs):
                 cwd=str(Path(__file__).resolve().parents[2]))
         except subprocess.TimeoutExpired as exc:
             raise ValueError('Engineering conversion timed out; its worker was terminated. Narrow the schema set or adjust ENGINEERING_CONVERSION_TIMEOUT_SECONDS') from exc
+        if result.returncode == 74:
+            raise ValueError(f'Engineering conversion result exceeds ENGINEERING_CONVERSION_MAX_RESULT_BYTES={limit}; narrow the schema set or increase the configured limit within available server memory. No ontology was registered.')
         if result.returncode != 0:
             raise ValueError('Engineering conversion worker failed; check installed backend dependencies')
         size = output.seek(0, 2)
@@ -58,4 +76,7 @@ if __name__ == '__main__':
             value = {'ok':True,'result':EngineeringSchemaConverter().convert(**inputs)}
     except ValueError as exc:
         value = {'ok':False,'message':str(exc)[:2000]}
-    pickle.dump(value, sys.stdout.buffer, protocol=pickle.HIGHEST_PROTOCOL)
+    try:
+        pickle.dump(value, BoundedResultWriter(sys.stdout.buffer, conversion_result_limit()), protocol=pickle.HIGHEST_PROTOCOL)
+    except ResultLimitExceeded:
+        raise SystemExit(74)
