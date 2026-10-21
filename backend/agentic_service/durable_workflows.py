@@ -180,21 +180,33 @@ async def _worker_loop(routes, logging):
     capacity = int(os.getenv('AGENTIC_WORKER_CONCURRENCY','4'))
     if not 1 <= capacity <= 16: raise ValueError('AGENTIC_WORKER_CONCURRENCY must be between 1 and 16')
     active = {}
+    prefer_goals = True
     try:
         while True:
             for run_id, task in list(active.items()):
                 if task.done():
                     active.pop(run_id)
                     if not task.cancelled() and task.exception(): logging.getLogger(__name__).warning('Workflow worker execution failed: %s',type(task.exception()).__name__)
-            try:
-                if execution_mode() == 'worker' and len(active) < capacity:
-                    stale = (datetime.now(timezone.utc)-timedelta(seconds=60)).isoformat()
-                    candidates = await routes._agent_io(routes.workflow_store.execution_candidates,capacity-len(active),stale,'agentic_workflow_heartbeats')
-                    for record in candidates:
-                        if record['run_id'] not in active:
-                            active[record['run_id']] = asyncio.create_task(execute_candidate(record))
-            except asyncio.CancelledError: raise
-            except Exception as failure: logging.getLogger(__name__).warning('Workflow worker database unavailable: %s',type(failure).__name__)
+            if execution_mode() == 'worker':
+                for family in (('goals', 'workflows') if prefer_goals else ('workflows', 'goals')):
+                    if len(active) >= capacity: break
+                    try:
+                        if family == 'goals':
+                            from .goal_routes import candidates as goal_candidates, execute_candidate as execute_goal
+                            records = await goal_candidates(min(capacity-len(active), max(1, capacity//2)))
+                            execute = execute_goal
+                        else:
+                            stale = (datetime.now(timezone.utc)-timedelta(seconds=60)).isoformat()
+                            records = await routes._agent_io(routes.workflow_store.execution_candidates,capacity-len(active),stale,'agentic_workflow_heartbeats')
+                            execute = execute_candidate
+                        for record in records:
+                            if record['run_id'] not in active:
+                                active[record['run_id']] = asyncio.create_task(execute(record))
+                                prefer_goals = family == 'workflows'
+                            if len(active) >= capacity: break
+                    except asyncio.CancelledError: raise
+                    except Exception as failure:
+                        logging.getLogger(__name__).warning('Worker queue unavailable family=%s error_type=%s',family,type(failure).__name__)
             await asyncio.sleep(2)
     finally:
         for task in active.values(): task.cancel()

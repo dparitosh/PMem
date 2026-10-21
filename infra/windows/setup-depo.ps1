@@ -2,6 +2,16 @@
 [CmdletBinding()]
 param([string]$Python='py', [switch]$ForceReinstall, [ValidateSet('Menu','Setup','Start','Stop','Restart')][string]$Action='Menu')
 $ErrorActionPreference='Stop'
+# Direct PowerShell invocation must protect nested release helpers too.
+# This changes only this process; enforced organization policy remains authoritative.
+if ((Get-ExecutionPolicy) -ne 'Bypass') {
+  try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop }
+  catch { throw 'PowerShell policy blocked setup. Run Setup-DEPO.cmd from the release root. If organization Group Policy enforces signing, use an approved signed release or contact your administrator; machine policy was not changed.' }
+  if ((Get-ExecutionPolicy) -ne 'Bypass') {
+    throw 'Process execution-policy bypass is overridden by organization policy. Use an approved signed release; machine policy was not changed.'
+  }
+}
+
 $root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'native-install-command.ps1')
 Invoke-DepoLoggedAction -Root $root -Name ('setup-'+$Action) -Action {
@@ -26,6 +36,29 @@ if($Action -ne 'Setup') {
   return
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+function Invoke-DepoSetupPreflight([string]$Root, [string]$EnvPath, [string]$Python) {
+  function Invoke-SetupCheck([string]$Path, [hashtable]$Arguments) {
+    $global:LASTEXITCODE=0
+    & (Join-Path $Root $Path) @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "Setup preflight failed: $Path (exit $LASTEXITCODE). Application processes were not stopped." }
+  }
+  if (Test-Path -LiteralPath (Join-Path $Root 'backend/.dt_venv/Scripts/python.exe')) {
+    # Reuse the same read-only upgrade checks as the advanced customer path.
+    Invoke-SetupCheck 'infra/windows/update-depo-windows.ps1' @{EnvFile=$EnvPath; Python=$Python; PreflightOnly=$true; InstallDependencies=$true}
+  } else {
+    Invoke-SetupCheck 'infra/deployment/test-installation-package.ps1' @{}
+    Invoke-SetupCheck 'infra/deployment/test-depo-deployment.ps1' @{EnvFile=$EnvPath; Profile='Production'; SkipEndpointChecks=$true}
+    Invoke-SetupCheck 'infra/deployment/test-depo-frontend-config.ps1' @{RootEnvFile=$EnvPath}
+    Invoke-SetupCheck 'infra/windows/install-depo.ps1' @{EnvFile=$EnvPath; Python=$Python; CheckPrerequisites=$true}
+  }
+  $configuration=Read-DepoEnvironment -Root $Root -EnvFile $EnvPath
+  $storage=$configuration['ARTIFACT_STORAGE']
+  if (-not $storage -or -not [IO.Path]::IsPathRooted($storage)) { throw 'ARTIFACT_STORAGE must be an absolute durable directory. Application processes were not stopped.' }
+  New-Item -ItemType Directory -Path $storage -Force | Out-Null
+  $probe=Join-Path $storage ('.depo-write-probe-'+[guid]::NewGuid().ToString('N'))
+  try { [IO.File]::WriteAllText($probe,'Setup storage probe') }
+  finally { if(Test-Path -LiteralPath $probe){Remove-Item -LiteralPath $probe -Force} }
+}
 function Read-SetupValue([string]$Label,[string]$Default) {
   $value=Read-Host "$Label [$Default]"
   if ([string]::IsNullOrWhiteSpace($value)) { return $Default }
@@ -113,7 +146,9 @@ if (-not (Test-Path -LiteralPath $envPath)) {
 } else { Write-Host 'Existing configuration and application keys retained.' }
 $browser=Join-Path $root 'frontend/.env.local'
 if(-not(Test-Path -LiteralPath $browser)){Copy-Item -LiteralPath (Join-Path $root 'frontend/.env.example') -Destination $browser}
-Write-Host 'Stopping tracked PMem processes before upgrade; database servers remain running.'
+Write-Host 'Validating release, configuration and prerequisites before stopping PMem...'
+Invoke-DepoSetupPreflight -Root $root -EnvPath $envPath -Python $Python
+Write-Host 'Preflight passed. Stopping tracked PMem processes before upgrade; database servers remain running.'
 foreach($name in @('stop-depo-frontend','stop-depo-services')) {
   $global:LASTEXITCODE=0
   & (Join-Path $PSScriptRoot ($name+'.ps1'))

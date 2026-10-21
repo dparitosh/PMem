@@ -1,4 +1,29 @@
 """SHACL and OWL-RL checks over the exact proposed graph; never claim OWL-DL proof."""
+def validation_fingerprint(source_metadata):
+    """Bind retained evidence to current validation code, dependencies and shapes."""
+    import hashlib
+    from pathlib import Path
+    from importlib.metadata import version
+    from backend.Services.shacl_service import ShaclValidationService
+    from backend.depo_platform.upload_limits import ontology_upload_limit
+    digest = hashlib.sha256()
+    for filename in ('merge_semantics.py', 'merge_validation.py', 'merge_service.py', 'merge_reasoning.py', 'merge_reporting.py'):
+        digest.update(Path(__file__).with_name(filename).read_bytes())
+    for dependency in ('pyshacl', 'owlrl', 'rdflib'): digest.update(version(dependency).encode())
+    digest.update(ShaclValidationService().create_default_shapes().encode())
+    for metadata in source_metadata:
+        path = metadata.get('shacl_file_path')
+        identifier = (metadata.get('engineering_artifacts') or {}).get('shacl')
+        if identifier:
+            from backend.artifact_store import ArtifactStore
+            artifact, path = ArtifactStore().resolve(identifier)
+            digest.update(str((identifier, artifact.get('filename'), artifact.get('media_type'))).encode())
+        if path:
+            with Path(path).open('rb') as stream: content = stream.read(ontology_upload_limit() + 1)
+            if len(content) > ontology_upload_limit(): raise ValueError('Merge SHACL source exceeds upload limit')
+            digest.update(hashlib.sha256(content).digest())
+    return digest.hexdigest()
+
 def validate_merge(graph, source_metadata, entity_mappings=None, *, declarations_only=False):
     import pickle
     import subprocess
@@ -31,10 +56,10 @@ def validate_merge(graph, source_metadata, entity_mappings=None, *, declarations
 def _validate_merge(graph, source_metadata, entity_mappings=None):
     from pathlib import Path
     import hashlib
-    from rdflib import Graph, RDF, URIRef
+    from rdflib import Graph, RDF, URIRef, RDFS, OWL
     from rdflib.namespace import SH
     try:
-        from pyshacl import validate
+        from .merge_reporting import validate_shacl
     except ImportError as exc:
         raise ValueError('Merge validation requires the installed SHACL/OWL-RL dependencies. Repair the backend installation before approval') from exc
     from backend.Services.shacl_service import ShaclValidationService
@@ -45,8 +70,22 @@ def _validate_merge(graph, source_metadata, entity_mappings=None):
     checked = Graph()
     for triple in graph: checked.add(triple)
     shapes = Graph()
+    editorial_shapes = Graph()
     shape_sources = []
     shape_digests = []
+    default_shapes = ShaclValidationService().create_default_shapes()
+    def scope_editorial_targets(rule_graph):
+        # Generated editorial rules describe submitted declarations, not the
+        # unannotated vocabulary introduced by OWL-RL (e.g. owl:Thing).
+        for shape, kind in list(rule_graph.subject_objects(SH.targetClass)):
+            rule_graph.remove((shape, SH.targetClass, kind))
+            for subject in graph.subjects(RDF.type, kind):
+                rule_graph.add((shape, SH.targetNode, subject))
+        for target, method in ((SH.targetSubjectsOf, lambda predicate: graph.subjects(predicate, None)),
+                               (SH.targetObjectsOf, lambda predicate: graph.objects(None, predicate))):
+            for shape, predicate in list(rule_graph.subject_objects(target)):
+                rule_graph.remove((shape, target, predicate))
+                for subject in method(predicate): rule_graph.add((shape, SH.targetNode, subject))
     replacements = {URIRef(item['source_iri']): URIRef(item['target_iri']) for item in (entity_mappings or [])}
     if any(graph.subjects(RDF.type, SH.NodeShape)) or any(graph.subjects(RDF.type, SH.PropertyShape)):
         for triple in graph: shapes.add(triple)
@@ -73,28 +112,57 @@ def _validate_merge(graph, source_metadata, entity_mappings=None):
         parsed = OntologyCatalog._parse_ontology(content, shape_filename)
         shape_digests.append(hashlib.sha256(content).hexdigest())
         temporary = Graph().parse(data=content, format=parsed['rdf_format'])
+        normalized_text = content.decode('utf-8-sig', errors='replace').replace('\r\n', '\n').replace('\r', '\n')
+        is_editorial = normalized_text.strip() == default_shapes.strip()
+        if is_editorial:
+            scope_editorial_targets(temporary)
         # Each shape document has its own blank-node scope.
         from backend.ontology_service.merge_service import GovernedMergeService
-        for triple in GovernedMergeService._scoped_triples(temporary): shapes.add(tuple(replacements.get(term, term) for term in triple))
+        destination = editorial_shapes if is_editorial else shapes
+        for triple in GovernedMergeService._scoped_triples(temporary): destination.add(tuple(replacements.get(term, term) for term in triple))
         shape_sources.append(str(identifier or Path(path).name))
-    if not shape_sources:
-        default_shapes = ShaclValidationService().create_default_shapes()
-        shapes.parse(data=default_shapes, format='turtle')
+    # Embedded instance constraints supplement authored-ontology metadata
+    # checks; they must not silently disable the standard metadata profile.
+    if not len(editorial_shapes):
+        editorial_shapes.parse(data=default_shapes, format='turtle')
         # Default editorial rules describe submitted declarations. OWL-RL adds
         # built-in vocabulary without labels; it must not become an editorial
         # target. Custom/embedded SHACL targets retain their original semantics.
-        for shape, kind in list(shapes.subject_objects(SH.targetClass)):
-            shapes.remove((shape, SH.targetClass, kind))
-            for subject in graph.subjects(RDF.type, kind):
-                shapes.add((shape, SH.targetNode, subject))
+        scope_editorial_targets(editorial_shapes)
         shape_digests.append(hashlib.sha256(default_shapes.encode('utf-8')).hexdigest())
         shape_sources.append('default ontology checks')
-    conforms, _, report = validate(checked, shacl_graph=shapes, inference='owlrl', inplace=True,
-        allow_infos=False, allow_warnings=False, advanced=False, do_owl_imports=False)
+    from .merge_reasoning import expand_owlrl
+    expand_owlrl(checked)
+    # The complete OWL-RL closure was computed above. Avoid running it twice.
+    parts = []
+    if len(shapes):
+        conforms, _, report, summary = validate_shacl(checked, shacl_graph=shapes)
+        parts.append(('custom_inferred', conforms, report, summary))
+    if len(editorial_shapes):
+        # Editorial completeness checks describe authored metadata. OWL-RL can
+        # derive extra domain/range restrictions and datatype disjointness;
+        # those are not additional metadata declarations needing annotations.
+        editorial_graph = Graph()
+        for triple in graph: editorial_graph.add(triple)
+        for triple in checked:
+            if triple[1] in {RDF.type, RDFS.subClassOf}: editorial_graph.add(triple)
+        # Standard class-expression typing context for the editorial sh:class
+        # checks. This does not alter the proposed graph or custom rule input.
+        editorial_graph.add((OWL.Restriction, RDFS.subClassOf, OWL.Class))
+        editorial_graph.add((RDFS.Class, RDFS.subClassOf, OWL.Class))
+        conforms, _, report, summary = validate_shacl(editorial_graph, shacl_graph=editorial_shapes)
+        parts.append(('editorial_asserted', conforms, report, summary))
+    from .merge_reporting import combine_summaries, REPORT_PROFILE_LABELS
+    if not parts or any(type(item[1]) is not bool for item in parts):
+        raise ValueError('Merge SHACL validation did not return conformance')
+    conforms = all(item[1] is True for item in parts)
+    report_summary = combine_summaries(parts)
+    report = (parts[0][2] if len(parts) == 1 else '\n'.join(f'{REPORT_PROFILE_LABELS.get(name,name)}:\n{text}' for name, _, text, _ in parts))[:20000]
     if type(conforms) is not bool: raise ValueError('Merge SHACL validation did not return conformance')
     from .merge_service import GovernedMergeService
     conflicts = explicit_conflicts(checked) + GovernedMergeService._literal_conflicts(checked)
     return {'shacl_conforms':conforms, 'shape_sources':shape_sources, 'shape_digests':shape_digests, 'report':str(report)[:20000],
+        'report_summary': report_summary,
         'inferred_conflicts':conflicts, 'owl_rl_performed':True, 'full_owl_dl_consistency_established':False}
 
 

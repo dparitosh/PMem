@@ -115,7 +115,7 @@ test('revocation requires a reviewed plan and explicit reason, then resets on ru
 test('capability verification displays independent results and clears on credential changes', async () => {
   agenticClient.post.mockResolvedValue({data:{model:'fixture-model',generation:'verified',structured_outputs:'verified',native_tool_calling:'verification_failed'}});
   render(<AgentControlPanel />);
-  fireEvent.click(screen.getByText('Verify Ollama capabilities'));
+  fireEvent.click(screen.getByText('Verify model capabilities'));
   await screen.findByText(/Native tool calling: verification_failed/);
   expect(agenticClient.post.mock.calls[0][0]).toMatch(/llm\/probe$/);
   expect(agenticClient.post.mock.calls[0][1].approval_token).toBe('supervisor-fixture');
@@ -175,4 +175,13 @@ test('completed workflow handoff stops automatic polling', async () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     expect(agenticClient.get).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
+});
+
+
+test('shows optional graph memory separately from durable workflow state', async () => {
+  agenticClient.get.mockResolvedValue({data:{enabled:false,status:'disabled'}});
+  render(<AgentControlPanel />);
+  fireEvent.click(screen.getByRole('button',{name:'Check agent memory'}));
+  await screen.findByText(/Optional graph memory: disabled/);
+  expect(screen.getByText(/scratchpads use PostgreSQL independently/)).toBeInTheDocument();
 });

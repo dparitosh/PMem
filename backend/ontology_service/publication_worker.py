@@ -46,8 +46,22 @@ async def publication_lifespan():
     if not 1 <= capacity <= 8:
         raise ValueError('ONTOLOGY_PUBLICATION_WORKER_CONCURRENCY must be between 1 and 8')
     tasks = [asyncio.create_task(poll()) for _ in range(capacity)] + [asyncio.create_task(metadata_poll())]
+    import threading
+    merge_stop = threading.Event()
+    async def merge_poll():
+        from .merge_background import background_merges
+        from .router import merges
+        while not merge_stop.is_set():
+            try:
+                await run_in_threadpool(background_merges.run_once, merges, merge_stop)
+            except Exception as exc:
+                logging.getLogger(__name__).error('Merge worker unavailable error_type=%s', type(exc).__name__)
+            await asyncio.sleep(3)
+    merge_task = asyncio.create_task(merge_poll())
     try:
         yield
     finally:
+        merge_stop.set()
         for task in tasks: task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await merge_task

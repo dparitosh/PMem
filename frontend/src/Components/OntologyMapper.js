@@ -153,7 +153,7 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
           <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>View normalized requirements from Neo4j context graph plus uploaded ReqIF 1.2 files for Semantic Bridge, GraphRAG, and traceability review.</div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <select value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setRequirementOffset(0); }} style={{ padding: '7px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.textPrimary, fontSize: '12px', fontWeight: 700 }}>
+          <select aria-label="Requirement source filter" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setRequirementOffset(0); }} style={{ padding: '7px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.textPrimary, fontSize: '12px', fontWeight: 700 }}>
             {['all', 'ReqIF', 'PLMXML', 'MBSE', 'OSLC', 'ALM', 'Unstructured', 'Graph'].map((source) => <option key={source} value={source}>{source === 'all' ? 'All graph sources' : source}</option>)}
           </select>
           <button type="button" onClick={loadGraphRequirements} disabled={graphLoading} style={{ padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.primaryDark, fontSize: '12px', fontWeight: 800, cursor: graphLoading ? 'wait' : 'pointer' }}>{graphLoading ? 'Loading graph' : 'Refresh graph'}</button>
@@ -1631,11 +1631,10 @@ export default function OntologyMapper() {
   useEffect(() => { inferenceGeneration.current += 1; inferenceRequest.current?.abort(); setInferenceResult(null); setInferenceError(null); setInferenceBusy(false); return () => inferenceRequest.current?.abort(); }, [selectedOntologyApi, inferenceRules, inferenceLimit]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
-  const [mergeEntitySource, setMergeEntitySource] = useState('');
-  const [mergeEntityTarget, setMergeEntityTarget] = useState('');
+  const [mergeEntityMappings, setMergeEntityMappings] = useState([]);
   const [mergeSuggestions, setMergeSuggestions] = useState([]);
-  useEffect(() => { setMergeSuggestions([]); setMergeEntitySource(''); setMergeEntityTarget(''); }, [mergeSourceOntologyId, selectedMapping]);
-  useEffect(() => { mergeGeneration.current += 1; setMergeResult(null); setMergeBusy(false); }, [mergeEntitySource, mergeEntityTarget]);
+  useEffect(() => { setMergeSuggestions([]); setMergeEntityMappings([]); }, [mergeSourceOntologyId, selectedMapping]);
+  useEffect(() => { mergeGeneration.current += 1; setMergeResult(null); setMergeBusy(false); }, [mergeEntityMappings]);
   useEffect(() => {
     const invalidate = () => {
       mergeGeneration.current += 1; inferenceGeneration.current += 1;
@@ -1694,7 +1693,9 @@ export default function OntologyMapper() {
   const mergePlanReady = Boolean(
     mergeResult?.report
     && mergeResult?.governedPreview?.preview_id
-    && mergeConflictCount === 0,
+    && mergeConflictCount === 0
+    && (!mergeResult?.governedPreview?.background_validation ||
+        (mergeResult.governedPreview.job_status === 'completed' && mergeResult.governedPreview.publish_recommended)),
   );
   const visibleMappingEdges = useMemo(() => {
     const baseEdges = (mappingEdges || [])
@@ -2226,6 +2227,58 @@ export default function OntologyMapper() {
     mergeGeneration.current += 1; setMergeResult(null); setMergeBusy(false);
   }, [mergeSourceOntologyId, selectedMapping]);
 
+  const [mergePollGeneration, setMergePollGeneration] = useState(0);
+  const retainedMergeId = mergeResult?.governedPreview?.preview_id;
+  const mergeResumeKey = `depo:merge-review:${mergeSourceOntologyId}:${selectedMapping}:${JSON.stringify(mergeEntityMappings.map(({source_iri, target_iri}) => ({source_iri, target_iri})))}`;
+  const resumeMergeReview = async () => {
+    const generation = ++mergeGeneration.current;
+    try {
+      const key = sessionStorage.getItem(mergeResumeKey);
+      if (!key) throw new Error('No retained review for these sources and mapping selections. Generate a new preview.');
+      const { data } = await API_METHODS.ontology.governedMergeStatus(key);
+      if (generation !== mergeGeneration.current) return;
+      setMergeSuggestions(data.entity_suggestions || []);
+      setMergePollGeneration(current => current + 1);
+      setMergeResult({ kind: data.job_status === 'failed' ? 'error' : 'success',
+        text: data.job_error || `Retained merge review: ${data.job_status}. Review mappings and validation before approval.`,
+        governedPreview: data, report: data });
+    } catch (error) {
+      if (generation === mergeGeneration.current) setMergeResult({kind:'error', text:apiErrorMessage(error)});
+    }
+  };
+  const retainedMergePending = mergeResult?.governedPreview?.background_validation &&
+    ['queued', 'preparing', 'validating'].includes(mergeResult.governedPreview.job_status);
+  useEffect(() => {
+    if (!retainedMergeId || !retainedMergePending) return undefined;
+    const generation = mergeGeneration.current;
+    const controller = new AbortController();
+    let timer;
+    const poll = async () => {
+      try {
+        const response = await API_METHODS.ontology.governedMergeStatus(retainedMergeId, { signal: controller.signal });
+        if (controller.signal.aborted || generation !== mergeGeneration.current) return;
+        const plan = response.data;
+        setMergeSuggestions(plan.entity_suggestions || []);
+        setMergeResult(previous => ({ ...previous, governedPreview: plan, report: plan,
+          kind: plan.job_status === 'failed' ? 'error' : 'success',
+          text: plan.job_status === 'failed' ? plan.job_error : plan.job_status === 'completed'
+            ? plan.publish_recommended
+              ? 'Semantic validation passed. Review mappings and changes before approval.'
+              : 'Semantic validation completed with blocking findings. Review the validation evidence; approval remains blocked.'
+            : plan.job_status === 'validating'
+              ? 'Mappings are ready for review. SHACL and OWL-RL validation is running; approval remains blocked.'
+              : 'Preparing the retained merge review. You can leave this page; the server continues working.' }));
+        if (['queued', 'preparing', 'validating'].includes(plan.job_status)) timer = setTimeout(poll, 5000);
+      } catch (error) {
+        if (controller.signal.aborted || generation !== mergeGeneration.current) return;
+        setMergeResult(previous => ({ ...previous, text: `Progress temporarily unavailable: ${apiErrorMessage(error)}. Retained validation continues; retrying.` }));
+        timer = setTimeout(poll, 10000);
+      }
+    };
+    poll();
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [retainedMergeId, retainedMergePending, mergePollGeneration]);
+
   const handlePreviewOntologyMerge = async () => {
     const generation = ++mergeGeneration.current;
     if (!mergeSourceOntologyId || !selectedMapping) {
@@ -2241,15 +2294,18 @@ export default function OntologyMapper() {
     try {
       const governed = await ontologyMergeAgent.preview(
         [mergeSourceOntologyId, selectedMapping],
-        { ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}`,
-          entity_mappings: mergeEntitySource.trim() || mergeEntityTarget.trim() ? [{ source_iri: mergeEntitySource.trim(), target_iri: mergeEntityTarget.trim() }] : [] },
+        { background: true, ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}`,
+          entity_mappings: mergeEntityMappings.map(({source_iri, target_iri}) => ({source_iri, target_iri})) },
         mergeApprover,
       );
       if (generation !== mergeGeneration.current) return;
+      if (governed.result.background_validation) {
+        try { sessionStorage.setItem(mergeResumeKey, governed.result.preview_id); } catch { /* Server retains the review even if browser storage is disabled. */ }
+      }
       setMergeSuggestions(governed.result.entity_suggestions || []);
       setMergeResult({
         kind: 'success',
-        text: 'Merge plan ready. Review overlaps, additions, conflicts, and subclass gaps before commit.',
+        text: governed.result.background_validation ? 'Merge review queued. Candidate mappings will appear before semantic validation finishes. Approval remains blocked until validation completes.' : 'Merge plan ready. Review overlaps, additions, conflicts, and subclass gaps before commit.',
         agentRunId: governed.runId,
         report: governed.result,
         artifact_manifest: null,
@@ -2791,7 +2847,7 @@ export default function OntologyMapper() {
                 <div className="depo-bridge-selection" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
                   <div>
                     <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Instance</label>
-                    <select
+                    <select aria-label="Imported instance"
                       value={selectedImportTaskId}
                       onChange={e => setSelectedImportTaskId(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
@@ -3022,11 +3078,17 @@ export default function OntologyMapper() {
                 <MergeMappingReview sourceId={mergeSourceOntologyId} targetId={selectedMapping}
                   sourceLabel={mappingOptions.find(option => option.value === mergeSourceOntologyId)?.label}
                   targetLabel={selectedOntologyOption?.label} suggestions={mergeSuggestions}
-                  sourceIri={mergeEntitySource} targetIri={mergeEntityTarget}
-                  onSelect={candidate => { setMergeEntitySource(candidate?.source_iri || ''); setMergeEntityTarget(candidate?.target_iri || ''); }}
+                  selectedMappings={mergeEntityMappings}
+                  onSelect={candidate => setMergeEntityMappings(current => {
+                    if (!candidate) return [];
+                    const chosen = current.some(row => row.source_iri === candidate.source_iri && row.target_iri === candidate.target_iri);
+                    const others = current.filter(row => row.source_iri !== candidate.source_iri);
+                    return chosen ? others : others.length < 200 ? [...others, candidate] : current;
+                  })}
                   preview={mergeResult?.governedPreview} busy={mergeBusy}
                   error={mergeResult?.kind === 'error' ? mergeResult.text : ''} />
-                {mergeBusy && <p role="status" aria-live="polite">The Ontology Governor is processing the retained merge request. Preview work includes source parsing, scored proposals and semantic validation. Approval publishes only the reviewed preview; wait for the retained result before retrying.</p>}
+                <button type="button" onClick={resumeMergeReview} disabled={mergeBusy || !mergeSourceOntologyId || !selectedMapping}>Resume retained review for these selections</button>
+                {mergeBusy && <p role="status" aria-live="polite">The Ontology Governor is queuing the retained merge request. Mappings appear after preparation; semantic validation continues in the background. Approval requires the completed validation result.</p>}
                 <details open><summary>Review and approve the merge plan</summary>
                 <div className="depo-merge-fields" style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:16}}>
                   <div>
@@ -3075,7 +3137,16 @@ export default function OntologyMapper() {
                     </details>}
                     {mergeResult.governedPreview?.conflicts?.length > 0 && <div role="alert"><strong>Conflicts block approval</strong><pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{JSON.stringify(mergeResult.governedPreview.conflicts,null,2)}</pre></div>}
                     {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements and checks SHACL with OWL-RL inference. Full OWL-DL consistency is not established; entity equivalence still requires review. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
-                    {mergeResult.governedPreview?.semantic_checks && <details><summary>Semantic validation evidence</summary><p>SHACL: {mergeResult.governedPreview.semantic_checks.shacl_conforms ? 'Conforms' : 'Does not conform'}. Shapes: {mergeResult.governedPreview.semantic_checks.shape_sources?.join(', ')}</p><pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{mergeResult.governedPreview.semantic_checks.report}</pre></details>}
+                    {mergeResult.governedPreview?.semantic_checks && <details><summary>Semantic validation evidence</summary><p>SHACL: {mergeResult.governedPreview.semantic_checks.shacl_conforms == null ? 'Pending' : mergeResult.governedPreview.semantic_checks.shacl_conforms ? 'Conforms' : 'Does not conform'}. Shapes: {mergeResult.governedPreview.semantic_checks.shape_sources?.join(', ')}</p>
+                      {Number.isInteger(mergeResult.governedPreview.semantic_checks.report_summary?.total_results) && <p>
+                        Findings: {mergeResult.governedPreview.semantic_checks.report_summary.total_results}.
+                        {' '}{Object.entries(mergeResult.governedPreview.semantic_checks.report_summary.by_severity || {}).map(([severity, count]) => `${severity.split(/[/#]/).pop()}: ${count}`).join(' · ')}.
+                        {mergeResult.governedPreview.semantic_checks.report_summary.text_truncated && ' The text below is an excerpt; the counts include every reported finding.'}
+                      </p>}
+                      {mergeResult.governedPreview.semantic_checks.report_summary?.profiles?.map(profile => <p key={profile.profile}>
+                        {profile.label || (profile.profile === 'editorial_asserted' ? 'Authored ontology metadata' : 'Custom semantic constraints')}: {profile.conforms ? 'Pass' : 'Needs review'} ({profile.total_results} findings).
+                      </p>)}
+                      <pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{mergeResult.governedPreview.semantic_checks.report}</pre></details>}
                     {mergeResult.report?.summary && (
                       <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
                         Overlaps {mergeResult.report.summary.overlap_count ?? 0} | Additions {mergeResult.report.summary.addition_count ?? 0} | Conflicts {mergeResult.report.summary.conflict_count ?? mergeResult.report.conflict_count ?? 0} | Subclass gaps {mergeResult.report.summary.subclass_gap_count ?? 0}

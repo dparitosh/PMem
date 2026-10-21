@@ -22,7 +22,7 @@ The central message is:
    before the first demo:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile .env.local -Profile Production
 ```
 
 3. Open the customer HTTPS frontend URL configured in `ALLOWED_ORIGINS`.

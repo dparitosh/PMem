@@ -20,9 +20,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from contextlib import contextmanager
 from functools import wraps
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 
 def task_writer(function):
+    @ontology_writer
     @wraps(function)
     def guarded(cls, task_id, *args, **kwargs):
         with cls._task_lock(task_id): return function(cls, task_id, *args, **kwargs)
@@ -46,6 +48,9 @@ class WorkflowArtifactService:
     @classmethod
     @contextmanager
     def _task_lock(cls, task_id):
+        from backend.depo_platform.import_cleanup import cleared
+        if cleared(task_id, cls.ARTIFACT_ROOT):
+            raise ValueError('Import workflow was cleared by an administrator')
         key = str(cls.task_dir(task_id).resolve())
         with cls._manifest_lock:
             held = getattr(cls._held_locks, 'tasks', set())
@@ -83,6 +88,7 @@ class WorkflowArtifactService:
         return cls.task_dir(task_id) / "manifest.json"
 
     @classmethod
+    @ontology_writer
     def ensure_task(cls, task_id: str, workflow_id: str = "", filename: str = "") -> Path:
         with cls._task_lock(task_id):
             root = cls.task_dir(task_id)
@@ -125,6 +131,9 @@ class WorkflowArtifactService:
 
     @classmethod
     def get_manifest(cls, task_id: str) -> Optional[Dict[str, Any]]:
+        from backend.depo_platform.import_cleanup import cleared
+        if cleared(task_id, cls.ARTIFACT_ROOT):
+            return None
         registry = cls._registry()
         retained = registry.get(task_id) if registry is not None else None
         path = cls.manifest_path(task_id)

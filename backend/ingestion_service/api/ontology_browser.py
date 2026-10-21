@@ -172,8 +172,14 @@ def data_dictionary(ontology_id: str) -> dict:
         reasoning = {}
 
     def rows(values: list[dict], kind: str) -> dict:
-        return {
-            str(item.get("label") or item.get("name") or item.get("term_id") or item.get("iri")): {
+        result = {}
+        for item in values:
+            label = str(item.get('label') or item.get('name') or item.get('term_id') or item.get('iri') or '')
+            if not label:
+                continue
+            iri = item.get('iri') or item.get('uri') or item.get('term_id') or ''
+            key = label if label not in result else f'{label} [{iri}]'
+            result[key] = {
                 "label": str(item.get("label") or item.get("name") or item.get("term_id") or item.get("iri")),
                 "iri": item.get("iri") or item.get("uri") or item.get("term_id") or "",
                 "definition": item.get("definition") or item.get("comment") or "",
@@ -182,8 +188,7 @@ def data_dictionary(ontology_id: str) -> dict:
                 "range": item.get("range") or [],
                 "source": "ontology_reasoning",
             }
-            for item in values if item.get("label") or item.get("name") or item.get("term_id") or item.get("iri")
-        }
+        return result
 
     entities = rows(reasoning.get("classes") or [], "Class")
     properties = rows((reasoning.get("datatype_properties") or []) + (reasoning.get("annotation_properties") or []), "DatatypeProperty")

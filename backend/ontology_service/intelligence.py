@@ -5,6 +5,8 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 import json
 import os
+import re
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -113,8 +115,19 @@ class SemanticIntelligence:
         }
 
     def create_version(self, *, ontology: dict[str, Any], label: str, author: str, description: str) -> dict[str, Any]:
+        principal = str(author or '').strip()
+        if not principal:
+            raise ValueError('Version author is required')
+        # Semantica's changelog accepts email-shaped authors only. DEPO also
+        # authenticates service principals; adapt their representation without
+        # changing the actual approval identity or treating it as an email.
+        is_email = re.fullmatch(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', principal) is not None
+        sdk_author = principal if is_email else 'principal-' + hashlib.sha256(principal.encode()).hexdigest()[:32] + '@principals.pmem.invalid'
         manager = self._version_manager()
-        snapshot = serialise(manager.create_snapshot(ontology, label, author, description))
+        snapshot = serialise(manager.create_snapshot(ontology, label, sdk_author, description,
+            metadata={'authenticated_author': principal, 'author_representation': 'email' if is_email else 'service-principal-alias'}))
+        snapshot['author'] = principal
+        snapshot['sdk_author'] = sdk_author
         self.registry.put(f"version:{label}", snapshot)
         return snapshot
 

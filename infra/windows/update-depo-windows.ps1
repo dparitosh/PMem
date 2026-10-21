@@ -7,6 +7,7 @@ API keys are validated and preserved; rotation remains a separate explicit actio
 [CmdletBinding()]
 param(
   [string]$EnvFile = '.env.local',
+  [string]$Python = 'py',
   [ValidateRange(1,900)][int]$LlmTimeoutSeconds = 300,
   [ValidateRange(1,3600)][int]$ServiceStartupTimeoutSeconds = 600,
   [ValidateSet('Bootstrap','Production')][string]$Profile = 'Production',
@@ -41,7 +42,7 @@ Invoke-DepoUpgradeStep 'Configuration preflight' { & (Join-Path $root 'infra/dep
 if (-not $SkipFrontend) {
   Invoke-DepoUpgradeStep 'Frontend configuration' { & (Join-Path $root 'infra/deployment/test-depo-frontend-config.ps1') -RootEnvFile $envPath }
 }
-Invoke-DepoUpgradeStep 'Runtime prerequisites' { & (Join-Path $PSScriptRoot 'install-depo.ps1') -CheckPrerequisites -SkipFrontend:$SkipFrontend -EnvFile $envPath }
+Invoke-DepoUpgradeStep 'Runtime prerequisites' { & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -CheckPrerequisites -SkipFrontend:$SkipFrontend -EnvFile $envPath }
 if ($EnableOcr -and -not $InstallDependencies) { throw '-EnableOcr requires -InstallDependencies during upgrade.' }
 if (-not $InstallDependencies) {
   $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
@@ -62,6 +63,6 @@ Invoke-DepoUpgradeStep 'Backend shutdown' { & (Join-Path $PSScriptRoot 'stop-dep
 # Delegate migration, graph provisioning and release validation to the same
 # installer used for a new deployment; do not duplicate those lifecycle stages.
 Invoke-DepoUpgradeStep 'Migration, installation and service verification' {
-  & (Join-Path $root 'install-depo.ps1') -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies) -EnableOcr:$EnableOcr -SkipBaselineProvisioning
+  & (Join-Path $root 'install-depo.ps1') -Python $Python -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies) -EnableOcr:$EnableOcr -SkipBaselineProvisioning
 }
 Write-Host 'DEPO redeployment completed: database schema/indexes verified and services restarted. Existing credentials and configuration were preserved except explicitly requested timeout updates.' -ForegroundColor Green

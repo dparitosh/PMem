@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 class MergeVersionRecoveryTests(unittest.TestCase):
     def method(self):
@@ -34,6 +35,8 @@ class MergeVersionRecoveryTests(unittest.TestCase):
         scope={'Any':object,'Graph':Graph,'hashlib':hashlib,'__package__':'backend.ontology_service'}
         exec(compile(ast.Module(body=[method],type_ignores=[]),'<merge>','exec'),scope)
         values={'p':{'conflicts':[],'turtle':'rdf','prefix':'m','ontology_name':'Merged','description':'','source_ontology_ids':['a','b'],'triple_count':1}}
+        evidence={'shacl_conforms':True,'inferred_conflicts':[],'shape_digests':[]}
+        values['p'].update(sources=[{'ontology_id':'a','artifact_sha256':hashlib.sha256(b'source').hexdigest()}],semantic_checks=evidence)
         actors=[]
         def register(**kwargs):
             actors.append(kwargs['extra_metadata']['provenance']['approved_by'])
@@ -44,9 +47,10 @@ class MergeVersionRecoveryTests(unittest.TestCase):
             if len(attempts)==1:raise OSError('version persistence unavailable')
             return {'version_id':'v'}
         service=SimpleNamespace(registry=None,_load=lambda:values,_save=lambda *args:None,
-            catalog=SimpleNamespace(register=register),intelligence=SimpleNamespace(create_merge_version=version))
-        with self.assertRaises(OSError):scope['_apply'](service,'p','first-steward')
-        result=scope['_apply'](service,'p','retry-steward')
+            catalog=SimpleNamespace(register=register,get=lambda key:{},read_artifact=lambda key:({},b'source')),intelligence=SimpleNamespace(create_merge_version=version))
+        with patch('backend.ontology_service.merge_semantics.validate_merge',return_value=evidence):
+            with self.assertRaises(OSError):scope['_apply'](service,'p','first-steward')
+            result=scope['_apply'](service,'p','retry-steward')
         self.assertEqual(result['status'],'merged')
         self.assertEqual(actors,['first-steward','first-steward'])
         self.assertEqual(attempts,['first-steward','first-steward'])

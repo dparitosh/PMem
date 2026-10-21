@@ -835,8 +835,13 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
-        raise HTTPException(status_code=status if 400 <= status < 600 else 502,
-                            detail=f'Downstream tool rejected the request (HTTP {status})') from exc
+        failure = HTTPException(status_code=status if 400 <= status < 600 else 502,
+                                detail=f'Downstream tool rejected the request (HTTP {status})')
+        failure.__cause__ = exc
+        diagnostics = workflow_error(failure, tool['id'])
+        if diagnostics['error_code'].startswith('merge_'):
+            failure.detail = {'message': diagnostics['error_message'], 'code': diagnostics['error_code']}
+        raise failure from exc
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail="Downstream tool request failed; inspect service status before retrying") from exc
 
 

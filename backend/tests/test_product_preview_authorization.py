@@ -22,6 +22,11 @@ def test_preview_does_not_report_nonexistent_release_as_valid(monkeypatch):
     app=FastAPI(); app.include_router(product.router)
     async def missing(reference): raise ValueError('Referenced semantic release does not exist')
     with patch.object(product, '_validate', return_value=([], [])), patch.object(product, 'resolve_approved_release', missing):
-        response=TestClient(app).post('/data-products/preview', json={'semantic_releases':[{'asset_id':'missing'}]}, headers={'Authorization':'Bearer test-product-token'})
+        response=TestClient(app).post('/data-products/preview', json={
+            'product_id':'fixture', 'version':'1.0', 'name':'Fixture', 'domain':'engineering',
+            'owner':'fixture-owner', 'steward':'fixture-steward', 'classification':'internal',
+            'lifecycle_state':'draft',
+            'semantic_releases':[{'asset_id':'missing', 'version':'1.0', 'lifecycle_status':'approved'}],
+        }, headers={'Authorization':'Bearer test-product-token'})
     assert response.status_code == 200
     assert response.json()['valid'] is False

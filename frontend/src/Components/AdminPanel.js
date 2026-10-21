@@ -184,10 +184,30 @@ export default function AdminPanel({ onSchemaCleaned }) {
     };
   }, [loadAdminState]);
 
+  const clearImportWorkflows = useCallback(async () => {
+    const accepted = await requestConfirmation({
+      title: 'Clear Import workflows?',
+      description: 'Delete quiescent instance-import and schema-set workflows, task-owned files and PostgreSQL artifact manifests. Active or uncertain tasks block cleanup. Graph data, published ontologies and separate agent history are retained.',
+      phrase: 'CLEAR IMPORT WORKFLOWS', confirmLabel: 'Clear workflows',
+    });
+    if (!accepted) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const response = await API_METHODS.admin.clearImportWorkflows();
+      if (response.data?.status !== 'success') throw new Error('Import cleanup is incomplete. Inspect service logs and retry; deletion fences prevent cleared tasks from being restored.');
+      window.localStorage.removeItem('depo.import.jobs.v2');
+      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      setMessage(`Import workflows cleared: ${response.data.deleted_count || 0}. Task snapshots, owned artifact folders and PostgreSQL manifests were removed. Graph data was retained.`);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Import cleanup failed';
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally { setLoading(false); }
+  }, [requestConfirmation]);
+
   const cleanSchema = useCallback(async () => {
     const accepted = await requestConfirmation({
       title: 'Clean the complete Neo4j schema?',
-      description: 'This deletes graph data, indexes, constraints, and uploaded ontology registry metadata. Run the Neo4j bootstrap script afterward before publishing again. Use Reset Graph Only to retain operational schema.',
+      description: 'This deletes graph data, indexes, constraints, uploaded ontology registry metadata and quiescent instance-import workflows with their owned files and PostgreSQL artifact manifests. Active or uncertain imports block cleanup. Governed ontology artifacts and separate agent history remain. Run the Neo4j bootstrap script before publishing again.',
       phrase: 'CLEAN NEO4J',
       confirmLabel: 'Clean schema',
     });
@@ -203,8 +223,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const res = await API_METHODS.admin.cleanSchema();
       const metadataCleared = res.data?.metadata_cleared ?? 0;
       const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
-      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
-      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
+      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Import workflows cleared: ${res.data?.import_cleanup?.deleted_count ?? 0}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
+      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || (res.data?.import_cleanup?.status === 'partial' ? 'Import workflow cleanup is incomplete. Inspect service logs and retry.' : 'Graph reset completed, but cleanup is incomplete.') : '';
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
       await fetchOntologies(true);
@@ -619,12 +639,15 @@ export default function AdminPanel({ onSchemaCleaned }) {
             Destructive Reset Actions
           </div>
           <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
-            Graph Reset clears Neo4j and invalidates publication records while retaining uploaded files. Full Schema Cleanup also removes legacy upload directories. Governed PostgreSQL catalog artifacts and audit history remain retained.
+            Graph Reset retains Import history. Full Schema Cleanup also clears quiescent instance-import tasks, their owned artifact folders and PostgreSQL manifests. Governed ontology artifacts and separate agent audit history remain retained.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button type="button" onClick={resetGraphDatabase} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
               <Trash2 size={10} />
               Reset Graph Only
+            </button>
+            <button type="button" onClick={clearImportWorkflows} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
+              <Trash2 size={10} /> Clear Import Workflows
             </button>
             <button type="button" onClick={cleanSchema} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
               <Trash2 size={10} />

@@ -536,6 +536,7 @@ def build_ontology_header(g: Graph, cfg: OntologyConfig) -> None:
         f"SKOS concept class representing controlled vocabulary terms in {cfg.title}")))
     g.add((SKOS.Concept, RDFS.isDefinedBy,
            URIRef("http://www.w3.org/2004/02/skos/core#Concept")))
+    g.add((SKOS.Concept, DC.source, URIRef(str(SKOS.Concept))))
     g.add((onto, OWL.imports, URIRef("http://open-services.net/ns/core")))
 
 
@@ -888,11 +889,17 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             association_uri = cfg.class_uri(association_name)
             g.add((association_uri, RDF.type, OWL.Class))
             g.add((association_uri, RDFS.label, Literal(association_name)))
+            g.add((association_uri, RDFS.comment, Literal(
+                f"Generated projection construct for repeated XSD particle {type_name}.{prop_name}.")))
+            g.add((association_uri, DC.source, Literal(f"{file_stem}.xsd")))
             target_prop = cfg.prop_uri(association_name, prop_name)
             g.add((target_prop, RDF.type, OWL.ObjectProperty))
             g.add((target_prop, RDFS.domain, association_uri))
             g.add((target_prop, RDFS.range, target_uri))
             g.add((target_prop, RDFS.label, Literal(f"target {prop_name}")))
+            g.add((target_prop, RDFS.comment, Literal(
+                f"Generated target edge for {type_name}.{prop_name} to XSD type {range_local}.")))
+            g.add((target_prop, DC.source, Literal(f"{file_stem}.xsd")))
             range_local = association_name
 
         # Strict mode avoids asserting property semantics with no type evidence.

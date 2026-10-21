@@ -52,7 +52,7 @@ class CleanupTests(unittest.TestCase):
             OSLCTRSService=SimpleNamespace(publish_event=lambda *a,**kw:None, base_resource_uri=lambda:'urn:test'))
         exec(compile(ast.Module(body=[fn],type_ignores=[]), '<cleanup>', 'exec'), scope)
         outcome={'status':'success','cleared':2,'failed':[], 'verification':{}}
-        with patch.dict('sys.modules', {'backend.depo_platform.maintenance': SimpleNamespace(invalidate_shared_caches=lambda: True)}), patch('backend.depo_platform.ontology_cleanup.clear_ontology_registrations', return_value=outcome) as clear:
+        with patch.dict('sys.modules', {'backend.depo_platform.maintenance': SimpleNamespace(invalidate_shared_caches=lambda: True)}), patch('backend.depo_platform.import_cleanup.clear_import_workflows', return_value={'status':'success','deleted_count':0}), patch('backend.depo_platform.ontology_cleanup.clear_ontology_registrations', return_value=outcome) as clear:
             result = scope['clean_neo4j_schema'](SimpleNamespace(confirm='confirm'))
         clear.assert_called_once()
         self.assertFalse(result['success'])

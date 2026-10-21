@@ -1,12 +1,33 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
-import MergeMappingReview from './MergeMappingReview';
+import MergeMappingReview, { dictionaryTerms } from './MergeMappingReview';
 import { API_METHODS } from '../../services/apiClient';
 
 vi.mock('../../services/apiClient', () => ({ API_METHODS: { ontology: { getDataDictionary: vi.fn() } } }));
 const candidate = { source_label: 'Diameter', source_iri: 'https://source/Diameter', target_label: 'DiameterType', target_iri: 'https://target/DiameterType', kind: 'class', reason: 'Same normalized label; requires review.' };
 const defaults = { sourceId: 'ap242', targetId: 'qif', sourceLabel: 'AP242', targetLabel: 'QIF', onSelect: vi.fn() };
+
+test('keeps duplicate human labels with their separate property identities', () => {
+  const rows = dictionaryTerms({ properties: {
+    status: { label: 'status', iri: 'urn:A:status' },
+    'status [urn:B:status]': { label: 'status', iri: 'urn:B:status' },
+  } });
+  expect(rows.map(row => row.label)).toEqual(['status', 'status']);
+  expect(rows.map(row => row.iri)).toEqual(['urn:A:status', 'urn:B:status']);
+});
+
+test('retains multiple reviewed pairs and removes one without clearing the other', () => {
+  const second = {...candidate, source_iri:'https://source/Length', target_iri:'https://target/Length'};
+  const onSelect = vi.fn();
+  render(<MergeMappingReview {...defaults} suggestions={[candidate, second]}
+    selectedMappings={[candidate, second]} onSelect={onSelect} />);
+  expect(screen.getByText('2 pairs')).toBeVisible();
+  expect(screen.getAllByRole('button', {name:'Selected — remove'})).toHaveLength(2);
+  fireEvent.click(screen.getAllByRole('button', {name:'Selected — remove'})[0]);
+  expect(onSelect).toHaveBeenCalledWith(candidate);
+  expect(screen.getByText('Selected identity changes (2/200)')).toBeVisible();
+});
 beforeEach(() => { vi.clearAllMocks(); API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Diameter: { iri: 'https://terms/Diameter' } }, properties: {}, relationships: {} } }); });
 
 test('browses both real vocabularies before agent suggestions exist', async () => {
@@ -15,6 +36,17 @@ test('browses both real vocabularies before agent suggestions exist', async () =
   expect(API_METHODS.ontology.getDataDictionary.mock.calls.map(call => call[0])).toEqual(['ap242', 'qif']);
   expect(screen.getByText('Generate an agent preview to see proposed mappings')).toBeInTheDocument();
   expect(screen.getByText('Awaiting agent preview')).toBeInTheDocument();
+  expect(API_METHODS.ontology.getDataDictionary.mock.calls.every(call => call[1].timeout === 90000 && call[1].signal)).toBe(true);
+});
+
+test('a slow vocabulary read keeps the saved proposals and offers a read-only retry', async () => {
+  API_METHODS.ontology.getDataDictionary.mockRejectedValueOnce(new Error('The request timed out. Refresh operation status before retrying a write.'));
+  render(<MergeMappingReview {...defaults} suggestions={[candidate]} />);
+  await screen.findByText('Ontology term loading timed out. Retry term loading; saved merge proposals are retained.');
+  expect(screen.getByText(candidate.source_iri)).toBeVisible();
+  expect(screen.queryByText(/retrying a write/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name:'Retry term loading'}));
+  await waitFor(() => expect(screen.queryByRole('button', {name:'Retry term loading'})).not.toBeInTheDocument());
 });
 test('shows exact source and target identifiers and passes the reviewed pair without approving it', async () => {
   render(<MergeMappingReview {...defaults} suggestions={[candidate]} preview={{ triple_count: 42, conflicts: [] }} />);

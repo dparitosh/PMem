@@ -15,6 +15,8 @@ def recovery_api(monkeypatch):
     monkeypatch.setenv('DEPO_CREDENTIAL_STORE','environment')
     monkeypatch.setenv('GRAPH_READ_TOKEN','fixture-read')
     monkeypatch.setenv('AGENTIC_APPROVAL_TOKEN','fixture-supervisor')
+    # This fixture exercises inline recovery; worker queue recovery has its own tests.
+    monkeypatch.setenv('AGENTIC_EXECUTION_MODE','process')
     workflow={'id':'fixture','steps':[{'agent_id':'fixture','tool_id':'first'},{'agent_id':'fixture','tool_id':'second'}]}
     data={'workflows':[workflow], 'agents':[{'id':'fixture','tools':['first','second']}],
           'tools':[{'id':name,'transport':'openapi','service':'graph','method':'GET','path':'/'+name,'mutates':False} for name in ('first','second')]}

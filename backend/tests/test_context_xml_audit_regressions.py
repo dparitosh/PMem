@@ -38,6 +38,12 @@ class AuditRegressions(unittest.TestCase):
         self.assertEqual(result['requirements'][0]['relationship_count'], 3)
         self.assertEqual(publisher._session_rows.call_args.kwargs['limit'], 3)
         self.assertEqual(publisher._session_rows.call_args.kwargs['offset'], 0)
+        self.assertIn('[n.source_format, n.source, n.source_ontology]', query)
+        self.assertIn("value STARTS WITH 'http://www.plmxml.org/schemas/'", query)
+        self.assertIn("value STARTS WITH 'https://www.plmxml.org/schemas/'", query)
+        self.assertIn("['sysml-v1', 'sysml-v2', 'mbse']", query)
+        self.assertIn('source_kind = $source', query)
+        self.assertIn('AS source, source_kind, count(DISTINCT r)', query)
 
     def test_loaded_reader_refreshes_and_clears_removed_state(self):
         tree = ast.parse(Path('backend/ontology_service/business_context.py').read_text())

@@ -332,7 +332,14 @@ export default function DataImportPipeline() {
       loadOntologyOptions({ forceLive: true });
     };
     window.addEventListener('dt-schema-cleaned', resetProjection);
-    return () => window.removeEventListener('dt-schema-cleaned', resetProjection);
+    const storageReset = event => {
+      if (event.key === IMPORT_JOBS_STORAGE_KEY && event.newValue === null) resetProjection();
+    };
+    window.addEventListener('storage', storageReset);
+    return () => {
+      window.removeEventListener('dt-schema-cleaned', resetProjection);
+      window.removeEventListener('storage', storageReset);
+    };
   }, [loadOntologyOptions]);
 
   useEffect(() => {
@@ -1647,7 +1654,7 @@ export default function DataImportPipeline() {
     });
   };
 
-  const getStatusBadge = (stage, progress, error, backendStage, committing, commitError, commitPhase) => {
+  const getStatusBadge = (stage, progress, error, backendStage, committing, commitError, commitPhase, status) => {
     if (committing || (commitPhase && commitPhase !== 'complete' && commitPhase !== 'error')) {
       const phaseLabel = getCommitPhaseLabel(commitPhase);
       return { text: phaseLabel ? `Loading  /  ${phaseLabel}` : 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
@@ -1661,7 +1668,7 @@ export default function DataImportPipeline() {
     if (backendStage === 'preview' || backendStage === 'verify' || stage === 'validate' || stage === 'verify') {
       return { text: 'Awaiting load approval', bg: '#E8F5E9', color: C.green };
     }
-    if (progress === 100) {
+    if (importJobState(status) === 'completed') {
       return { text: 'Complete', bg: '#E8F5E9', color: C.green };
     }
     if (progress > 0) {
@@ -1834,7 +1841,7 @@ export default function DataImportPipeline() {
         const status = fileStatusIndex.get(file.fileId) || {};
         const artifactManifest = file.artifact_manifest || file.artifactManifest || file.manifest || status.artifact_manifest || null;
         const isImportedInstance = (file.workflowId || selectedWorkflow) === 'instance.import';
-        const isCompletedArtifact = status.committed || status.status === 'completed' || status.progress === 100;
+        const isCompletedArtifact = importJobState(status) === 'completed';
         if (!artifactManifest || !isImportedInstance || !isCompletedArtifact) return null;
         return {
           fileId: file.fileId,
@@ -2292,6 +2299,7 @@ export default function DataImportPipeline() {
                   Source instance
                 </label>
                 <select
+                  aria-label="Source instance"
                   value={workflowSourceFileId || selectedImportArtifactEntry?.fileId || ''}
                   onChange={(e) => setWorkflowSourceFileId(e.target.value)}
                   style={{
@@ -2315,6 +2323,7 @@ export default function DataImportPipeline() {
               {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology:'}
             </label>
             <select
+              aria-label={selectedWorkflow === 'ontology.merge' ? 'Source ontology' : 'Workflow ontology'}
               value={workflowOntologyId}
               onChange={(e) => setWorkflowOntologyId(e.target.value)}
               style={{
@@ -2465,7 +2474,7 @@ export default function DataImportPipeline() {
                           fontWeight: '700',
                         }}
                       >
-                        {key.replace(/_/g, ' ')}: {String(value)}
+                        {key.replace(/_/g, ' ')}: {value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)}
                       </span>
                     ))}
                   </div>
@@ -3173,7 +3182,7 @@ export default function DataImportPipeline() {
               const isStarted = startedFiles.has(fileId);
               const statusBadge = file.workflowId === 'ontology.create' && status.status === 'completed' && !status.error
                 ? { text: status.approvalRequired ? 'Approval required' : status.committed && status.registered ? 'Published' : 'Registered source', bg: status.approvalRequired ? '#FFF3E0' : '#E8F5E9', color: status.approvalRequired ? '#935600' : C.green }
-                : getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError, status.commitPhase);
+                : getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError, status.commitPhase, status);
 
               return (
                 <div
@@ -3540,7 +3549,7 @@ export default function DataImportPipeline() {
                         <Loader2 size={12} /> {getCommitPhaseLabel(status.commitPhase) ? `${getCommitPhaseLabel(status.commitPhase)}...` : 'Loading to Neo4j...'}
                       </button>
                     )}
-                    {status.taskId && !status.published && (status.status === 'completed' || status.progress === 100) && !status.error && (
+                    {status.taskId && !status.published && (file.workflowId || selectedWorkflow) === 'ontology.create' && importJobState(status) === 'completed' && (
                       <select
                         defaultValue=""
                         onChange={(event) => {

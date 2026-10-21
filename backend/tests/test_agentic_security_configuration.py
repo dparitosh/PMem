@@ -22,6 +22,13 @@ def isolated_environment():
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv('ALLOWED_ORIGINS', 'http://localhost:3000')
+    monkeypatch.setenv('AGENTIC_EXECUTION_MODE', 'process')
+    monkeypatch.setattr(router.sessions, 'store', InMemoryRegistry('security-sessions'))
+    monkeypatch.setattr(router.telemetry, 'store', InMemoryRegistry('security-telemetry'))
+    monkeypatch.setattr(router, 'companion_job_store', InMemoryRegistry('security-chat-jobs'))
+    monkeypatch.setattr(router, 'workflow_store', InMemoryRegistry('security-workflows'))
+    monkeypatch.setattr(router.AgentMemoryService, 'recent_context', lambda *args: {'messages': []})
+    monkeypatch.setattr(router.AgentMemoryService, 'record_chat_turn', lambda **kwargs: None)
     app = create_service_app(title='Agentic security fixture', version='test', readiness_check=configuration_status)
     monkeypatch.setattr(router, 'workflow_controls', InMemoryRegistry('security-controls'))
     monkeypatch.setattr(router, 'workflow_heartbeats', InMemoryRegistry('security-heartbeats'))
@@ -77,6 +84,22 @@ def test_graph_dispatch_authenticates_both_hops(client, monkeypatch):
     assert not calls
     assert client.post('/api/v1/runs', json=payload, headers=READ).status_code == 200
     assert len(calls) == 1
+
+
+def test_direct_merge_timeout_explains_the_budget_without_echoing_upstream_text(client, monkeypatch):
+    monkeypatch.setenv('ONTOLOGY_SERVICE_URL', 'http://ontology/api/v1')
+    monkeypatch.setenv('ONTOLOGY_APPROVAL_TOKEN', 'ontology-test')
+    def handler(request):
+        return httpx.Response(422, json={'detail': 'Merge preparation timed out; private-fixture-path private-fixture-secret'})
+    mock_transport(monkeypatch, handler)
+    response = client.post('/api/v1/runs', headers=READ, json={
+        'agent_id':'ontology-governor', 'tool_id':'ontology.merge.preview', **APPROVAL,
+        'inputs':{'source_ontology_ids':['source-one','target-two']},
+    })
+    assert response.status_code == 422, response.text
+    assert response.json()['detail']['code'] == 'merge_validation_timeout'
+    assert 'MERGE_VALIDATION_TIMEOUT_SECONDS' in response.json()['detail']['message']
+    assert 'private-fixture' not in response.text
 
 
 def test_api_key_header_supports_read_and_approval(client, monkeypatch):
@@ -204,4 +227,4 @@ def test_unsecured_local_neo4j_does_not_require_credentials(monkeypatch):
 
 def test_disabled_optional_integrations_reject_before_work(client, monkeypatch):
     assert client.post('/api/v1/oslc/graph-rag', json={'query': 'test'}, headers=READ).status_code == 503
-    assert client.post('/api/v1/integrations/dt-requirements-design/runs', json=APPROVAL).status_code == 503
+    assert client.post('/api/v1/integrations/dt-requirements-design/runs', json={**APPROVAL, 'execution_scope':'current_plan'}).status_code == 503

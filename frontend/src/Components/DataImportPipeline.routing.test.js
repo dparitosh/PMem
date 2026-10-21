@@ -154,6 +154,8 @@ describe('DataImportPipeline workflow routing', () => {
   });
 
   beforeEach(() => {
+    apiClient.get.mockReset().mockResolvedValue({ data: {} });
+    apiClient.post.mockReset();
     mockListRegistered.mockResolvedValue({ data: { ontologies: [] } });
     mockWorkflowOptions.mockResolvedValue({ data: { workflows: [] } });
     mockOntologyUpload.mockReset();
@@ -310,7 +312,7 @@ describe('DataImportPipeline workflow routing', () => {
     apiClient.post.mockResolvedValueOnce({ data: { status: 'publication_queued',
       message: 'Graph job queued in background', ontology_registration: {ontology_id:'queued-schema'},
       publication_job: {job_id:'durable',ontology_id:'queued-schema',status:'queued'} } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Queued schema' } });
+    fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Queued schema' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
@@ -448,7 +450,7 @@ describe('DataImportPipeline workflow routing', () => {
     expect(screen.queryByText('Document retained and indexed for GraphRAG search.')).not.toBeInTheDocument();
   });
 
-  it('cleanup invalidates bulk schema reads that finish later', async () => {
+  it.each(['same tab', 'another tab'])('cleanup from %s invalidates bulk schema reads that finish later', async location => {
     await renderPipeline();
     const xml = '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>';
     let finish;
@@ -459,7 +461,7 @@ describe('DataImportPipeline workflow routing', () => {
     fireEvent.change(document.querySelector('input[type="file"]'), {target:{files:[first,second]}});
     await waitFor(() => expect(finish).toBeDefined());
     await act(async () => {
-      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      window.dispatchEvent(location === 'same tab' ? new Event('dt-schema-cleaned') : new StorageEvent('storage', { key: 'depo.import.jobs.v2', newValue: null }));
       finish(xml);
       await flushAsyncEffects();
     });

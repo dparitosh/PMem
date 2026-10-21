@@ -301,6 +301,9 @@ class OWLGenerationService:
             cfg.target_files = [Path(filename).stem]
             cfg.source_ns = target_namespace
             cfg.source_standard = target_namespace or "XML Schema"
+            # Preserve the source's declared version; do not invent a standard
+            # release number for the generated ontology header.
+            cfg.version_info = ET.fromstring(file_content).get('version', '').strip()
             from .xsd_semantics import inspect_conversion_schemas
             conversion_limitations = inspect_conversion_schemas([xsd_path, *[tmp_dir / name for name in dependencies]])
             result_path = convert_xsd_to_owl(cfg)

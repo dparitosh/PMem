@@ -15,15 +15,7 @@ export function getStatusTimestamp(status = {}, file = null) {
 }
 
 export function isTerminalPipelineStatus(status = {}) {
-  return Boolean(
-    status.error
-    || status.status === 'failed'
-    || (status.status === 'ready_for_commit' && !status.committing)
-    || status.committed
-    || status.status === 'completed'
-    || status.commitPhase === 'complete'
-    || status.progress === 100
-  );
+  return ['failed', 'completed', 'awaitingReview'].includes(importJobState(status));
 }
 
 export function isResumablePersistedJob(file, status, now = Date.now()) {
@@ -80,8 +72,11 @@ export function isAwaitingImportApproval(status = {}) {
 // Persisted outcome takes precedence over the in-memory started set.
 export function importJobState(status = {}, started = false) {
   if (status.error || status.commitError || status.resumeExpired || status.outcomeUnknown
-      || status.stage === 'error' || ['failed', 'error', 'outcome_unknown'].includes(status.status)) return 'failed';
-  if (status.committed || status.status === 'completed' || status.progress === 100) return 'completed';
+      || status.stage === 'error' || status.commitPhase === 'error'
+      || ['failed', 'error', 'outcome_unknown'].includes(status.status)) return 'failed';
+  if (status.committed) return 'completed';
   if (isAwaitingImportApproval(status)) return 'awaitingReview';
+  if (status.committing || status.status === 'committing') return 'active';
+  if (status.status === 'completed' || status.commitPhase === 'complete') return 'completed';
   return started ? 'active' : 'pending';
 }

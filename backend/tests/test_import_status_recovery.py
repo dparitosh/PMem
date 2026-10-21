@@ -2,6 +2,7 @@ import ast,json,logging,tempfile,unittest
 from pathlib import Path
 from typing import Any,Dict,List,Optional
 from types import SimpleNamespace
+from backend.depo_platform.import_cleanup import cleared
 
 SOURCE=Path(__file__).resolve().parents[1]/'Services/unified_data_import.py'
 class ImportStatusRecoveryTests(unittest.TestCase):
@@ -13,7 +14,7 @@ class ImportStatusRecoveryTests(unittest.TestCase):
         cls.bases=[]
         self.cache={}
         scope=dict(Path=Path,Dict=Dict,Any=Any,List=List,Optional=Optional,json=json,import_tasks=self.cache,
-                   logger=logging.getLogger(__name__),WorkflowArtifactService=SimpleNamespace(get_manifest=lambda _:{}))
+                   logger=logging.getLogger(__name__),WorkflowArtifactService=SimpleNamespace(get_manifest=lambda _:{}), import_task_cleared=cleared)
         exec(compile(ast.Module(body=[cls],type_ignores=[]),str(SOURCE),'exec'),scope)
         self.service=scope[cls.name]
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -33,5 +34,17 @@ class ImportStatusRecoveryTests(unittest.TestCase):
         self.service._task_snapshot_path('task').write_text('{',encoding='utf-8')
         self.assertEqual(self.service.get_status('task')['progress'],83)
         self.assertIsNone(self.service.get_status('absent'))
+
+    def test_deletion_receipt_hides_stale_process_cache(self):
+        folder=self.service.TASK_STORE_DIR/'.cleared';folder.mkdir()
+        (folder/'task').write_text('{}')
+        self.assertIsNone(self.service.get_status('task'))
+        self.assertEqual(self.service.list_tasks(),[])
+
+    def test_debug_snapshot_cannot_override_completed_task(self):
+        done={**self.old,'status':'completed','committing':False}
+        self.service._task_snapshot_path('task').write_text(json.dumps(done))
+        (self.service.TASK_STORE_DIR/'task.json.writer_123_v1.json').write_text(json.dumps(self.old))
+        self.assertEqual(self.service.list_tasks()[0]['status'],'completed')
 
 if __name__=='__main__':unittest.main()

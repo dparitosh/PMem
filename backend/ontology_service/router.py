@@ -361,6 +361,15 @@ def preview_merge(payload: MergePreviewBody) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/merges/{preview_id}/status", summary="Read retained merge planning and validation progress")
+def merge_review_status(preview_id: str) -> dict:
+    from .merge_background import background_merges
+    try:
+        return background_merges.status(merges, preview_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/merges/{preview_id}/apply", summary="Apply an approved, conflict-free ontology merge")
 async def apply_merge(preview_id: str, payload: MergeApplyBody, request: Request) -> dict:
     try:

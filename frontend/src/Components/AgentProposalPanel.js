@@ -1,3 +1,4 @@
+import ReadGoalPanel from './ReadGoalPanel';
 import React, { useEffect, useRef, useState } from 'react';
 import { agenticClient } from '../services/agenticApi';
 import { buildSemanticServiceUrl } from '../config';
@@ -125,6 +126,7 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
     <label>Saved recommendation ID <input aria-label="Saved recommendation ID" value={savedId} disabled={busy} onChange={event => { reset(); setSavedId(event.target.value); }} /></label>
     <button disabled={busy || !savedId.trim()} onClick={() => { setProposal(null); setReviewed(false); operate('reload'); }}>Load saved recommendation</button>
     </details>
+    <ReadGoalPanel agent={agent} task={task} context={context} />
     {proposal && <div>{proposal.status === 'failed' ? <p role="alert">Recommendation failed ({proposal.failure_status}). Review the retained prompt below; no action can be executed.</p> : <><strong>Proposed tool: {proposal.command.tool_id}</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({ ...proposal.command.inputs, ...(proposal.command.inputs?.file ? { file: { filename: proposal.command.inputs.file.filename, content_type: proposal.command.inputs.file.content_type, content: 'User-supplied attachment; binary content hidden' } } : {}) }, null, 2)}</pre></>}
       <details><summary>Prompt details</summary>{proposal.prompt_details ? <><p>Model: {proposal.prompt_details.model} · Prompt version: {proposal.prompt_details.prompt_version}</p><h4>User request</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.user_request}</pre><h4>System instructions</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.system_prompt}</pre><details><summary>Full model user prompt and tool context</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{proposal.prompt_details.user_prompt}</pre></details></> : <p>This older recommendation has no retained prompt snapshot.</p>}</details>
       {proposal.status !== 'failed' && <>{needsApprover && <p>An approver is required for this execution. Connect the required service access in Admin.</p>}<label>Approver <input aria-label="Recommendation steward" value={actor} disabled={busy} required={!!needsApprover} onChange={event => { setActor(event.target.value); setReviewed(false); }} /></label>

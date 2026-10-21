@@ -14,6 +14,27 @@ import hashlib
 import weakref
 
 
+async def _drain_stderr(stream, diagnostics):
+    """Drain without retaining/logging arbitrary child output or credentials."""
+    tail = b''
+    while True:
+        chunk = await stream.read(4096)
+        if not chunk:
+            return
+        diagnostics['bytes'] += len(chunk)
+        tail = (tail + chunk)[-4096:].lower()
+        for needle, category in (
+            (b'modulenotfounderror', 'missing-module'),
+            (b'permissionerror', 'permission-denied'),
+            (b'permission denied', 'permission-denied'),
+            (b'filenotfounderror', 'missing-file'),
+            (b'connection refused', 'connection-refused'),
+            (b'syntaxerror', 'syntax-error'),
+        ):
+            if needle in tail:
+                diagnostics['categories'].add(category)
+
+
 async def _invoke(server, method, params=None, *, timeout_seconds=None, session=None):
     if server.get('transport') != 'stdio':
         raise ValueError('Only configured stdio MCP servers are supported')
@@ -30,6 +51,7 @@ async def _invoke(server, method, params=None, *, timeout_seconds=None, session=
     if operation:
         timeout = operation.timeout(timeout)
     process = session.get("process") if session is not None else None
+    process_session = session if session is not None else {}
     healthy = False
     async with asyncio.timeout(timeout):
         try:
@@ -39,9 +61,11 @@ async def _invoke(server, method, params=None, *, timeout_seconds=None, session=
             if fresh:
                 process = await asyncio.create_subprocess_exec(command, *server.get('args', []),
                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL, env=env, limit=limit)
-                if session is not None:
-                    session['process'] = process
+                    stderr=asyncio.subprocess.PIPE, env=env, limit=limit)
+                process_session['process'] = process
+                diagnostics = {'bytes': 0, 'categories': set()}
+                process_session['stderr_diagnostics'] = diagnostics
+                process_session['stderr_task'] = asyncio.create_task(_drain_stderr(process.stderr, diagnostics))
             sequence = session.get('sequence', 0) if session is not None else 0
             consumed = 0
 
@@ -134,7 +158,7 @@ async def _invoke(server, method, params=None, *, timeout_seconds=None, session=
             return result
         finally:
             if process is not None and (session is None or not healthy):
-                await _close_process({'process': process})
+                await _close_process(process_session)
 
 
 _pools = weakref.WeakKeyDictionary()
@@ -159,6 +183,17 @@ async def _close_process(session):
             except ProcessLookupError:
                 pass
             await asyncio.wait_for(process.wait(), 1)
+    drain = session.pop('stderr_task', None)
+    if drain:
+        try:
+            await asyncio.wait_for(drain, 1)
+        except (TimeoutError, asyncio.CancelledError):
+            drain.cancel()
+    diagnostics = session.pop('stderr_diagnostics', {})
+    if diagnostics.get('bytes'):
+        logging.getLogger(__name__).info(
+            'MCP child diagnostics: exit=%s stderr_bytes=%s categories=%s; raw output omitted',
+            process.returncode, diagnostics['bytes'], ','.join(sorted(diagnostics['categories'])) or 'unclassified')
 
 
 def start_pool():

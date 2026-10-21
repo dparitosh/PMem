@@ -9,9 +9,39 @@ vi.mock('../services/apiClient', () => ({ API_METHODS: { admin: {
   health: vi.fn(async () => ({ data: { status: 'ok' } })),
   schemaStats: vi.fn(async () => ({ data: { stats: {} } })),
   clearCache: vi.fn(),
+  clearImportWorkflows: vi.fn(),
   resetDatabase: vi.fn(),
 }, agentic: { isConfigured: () => false } } }));
 vi.mock('../contexts/OntologyContext', () => ({ useOntologies: () => ({ fetchOntologies: async () => {} }) }));
+
+test('clearing import workflows requires confirmation and clears saved browser history after server success', async () => {
+  API_METHODS.admin.clearImportWorkflows.mockResolvedValue({ data: { status: 'success', deleted_count: 3 } });
+  window.localStorage.setItem('depo.import.jobs.v2', '{"files":[{"taskId":"old"}]}');
+  render(<AdminPanel />);
+  const button = screen.getByRole('button', { name: 'Clear Import Workflows' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  expect(API_METHODS.admin.clearImportWorkflows).not.toHaveBeenCalled();
+  const confirm = screen.getByRole('button', { name: 'Clear workflows' });
+  expect(confirm).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Confirmation phrase'), { target: { value: 'CLEAR IMPORT WORKFLOWS' } });
+  fireEvent.click(confirm);
+  await screen.findByText(/Import workflows cleared: 3/);
+  expect(window.localStorage.getItem('depo.import.jobs.v2')).toBeNull();
+});
+
+test('failed import cleanup retains browser history and displays the error', async () => {
+  API_METHODS.admin.clearImportWorkflows.mockRejectedValue({ response: { data: { detail: 'Import tasks are active' } } });
+  window.localStorage.setItem('depo.import.jobs.v2', 'retained');
+  render(<AdminPanel />);
+  const button = screen.getByRole('button', { name: 'Clear Import Workflows' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  fireEvent.change(screen.getByLabelText('Confirmation phrase'), { target: { value: 'CLEAR IMPORT WORKFLOWS' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Clear workflows' }));
+  await screen.findByText('Import tasks are active');
+  expect(window.localStorage.getItem('depo.import.jobs.v2')).toBe('retained');
+});
 
 test('partial cache failure remains visible after operational refresh', async () => {
   API_METHODS.admin.clearCache.mockResolvedValue({ data: { status: 'partial', message: 'Some caches could not be cleared.', cleared: { graph_cache: true, ontology_list_cache: false, config_cache: true } } });

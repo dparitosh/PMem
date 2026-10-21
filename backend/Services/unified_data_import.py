@@ -2369,6 +2369,10 @@ class Neo4jImporter:
 import_tasks: Dict[str, Dict[str, Any]] = {}
 
 
+from backend.depo_platform.ontology_maintenance import ontology_writer
+from backend.depo_platform.import_cleanup import cleared as import_task_cleared
+
+
 class UnifiedDataImportService:
     """Main service for unified data import"""
 
@@ -2434,7 +2438,10 @@ class UnifiedDataImportService:
         return persistable
 
     @classmethod
+    @ontology_writer
     def _persist_task(cls, task_id: str) -> None:
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return
         task = import_tasks.get(task_id)
         if not task:
             return
@@ -2580,6 +2587,9 @@ class UnifiedDataImportService:
     @classmethod
     def _restore_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Restore task snapshot when current worker does not have in-memory state."""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            import_tasks.pop(task_id, None)
+            return None
         if task_id in import_tasks:
             return import_tasks[task_id]
 
@@ -2634,7 +2644,7 @@ class UnifiedDataImportService:
         """
         tasks_by_id: Dict[str, Dict[str, Any]] = {}
         for task in import_tasks.values():
-            if isinstance(task, dict) and task.get('task_id'):
+            if isinstance(task, dict) and task.get('task_id') and not import_task_cleared(str(task['task_id']), cls.TASK_STORE_DIR):
                 tasks_by_id[str(task['task_id'])] = task
 
         cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -2644,7 +2654,7 @@ class UnifiedDataImportService:
             try:
                 task = json.loads(path.read_text(encoding='utf-8'))
                 task_id = str(task.get('task_id') or '')
-                if task_id:
+                if task_id and path.name == f'{task_id}.json' and not import_task_cleared(task_id, cls.TASK_STORE_DIR):
                     tasks_by_id[task_id] = task
             except (OSError, ValueError, TypeError) as exc:
                 logger.warning("Skipping unreadable import task snapshot %s: %s", path, exc)
@@ -2661,6 +2671,7 @@ class UnifiedDataImportService:
         return result
 
     @classmethod
+    @ontology_writer
     async def start_import(
         cls,
         file_content: bytes,
@@ -2769,6 +2780,7 @@ class UnifiedDataImportService:
         return task_id
 
     @classmethod
+    @ontology_writer
     def _parse_and_preview(
         cls,
         task_id: str,
@@ -2947,6 +2959,8 @@ class UnifiedDataImportService:
     @classmethod
     def _read_status_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Read atomic persisted state without replacing an active writer object."""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return None
         try:
             task = json.loads(cls._task_snapshot_path(task_id).read_text(encoding='utf-8'))
             if isinstance(task, dict) and task.get('task_id') == task_id:
@@ -2995,6 +3009,8 @@ class UnifiedDataImportService:
     @classmethod
     def get_preview(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Get preview data"""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return None
         if task_id not in import_tasks:
             restored = cls._restore_task(task_id)
             if not restored:
@@ -3068,7 +3084,10 @@ class UnifiedDataImportService:
         return lookup
 
     @classmethod
+    @ontology_writer
     def _commit_sync(cls, task_id: str, task: dict, schema: dict) -> Dict[str, Any]:
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            raise ValueError('Import workflow was cleared by an administrator')
         """
         Synchronous Neo4j write body — called via asyncio.to_thread so it never
         blocks the FastAPI event loop.
@@ -3589,6 +3608,7 @@ class UnifiedDataImportService:
         return result
 
     @classmethod
+    @ontology_writer
     def _generate_owl_background(cls, task_id: str, task: dict) -> None:
         """Generate OWL/TTL in a background thread — does not block the commit response."""
         try:
@@ -3667,6 +3687,7 @@ class UnifiedDataImportService:
             cls._persist_task(task_id)
 
     @classmethod
+    @ontology_writer
     async def commit_import(cls, task_id: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Commit import to Neo4j.
@@ -3676,6 +3697,8 @@ class UnifiedDataImportService:
         """
         import asyncio
 
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            raise ValueError('Import workflow was cleared by an administrator')
         if task_id not in import_tasks:
             restored = cls._restore_task(task_id)
             if not restored:
@@ -3766,6 +3789,7 @@ class UnifiedDataImportService:
         }
 
     @classmethod
+    @ontology_writer
     def cancel_import(cls, task_id: str) -> None:
         """Cancel import task"""
         if task_id in import_tasks:

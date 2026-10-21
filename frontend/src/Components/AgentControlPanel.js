@@ -20,6 +20,9 @@ export default function AgentControlPanel() {
   const [executorStopped, setExecutorStopped] = useState(false);
   const [compensationPlan, setCompensationPlan] = useState(null);
   const [compensationReason, setCompensationReason] = useState('');
+  const [memoryHealth, setMemoryHealth] = useState(null);
+  const [memoryError, setMemoryError] = useState('');
+  const memoryRequest = useRef(null);
   const [llmHealth, setLlmHealth] = useState(null);
   const [llmCapabilities, setLlmCapabilities] = useState(null);
   const [llmError, setLlmError] = useState('');
@@ -27,7 +30,7 @@ export default function AgentControlPanel() {
   const llmRequest = useRef(null);
   const request = useRef(null);
   useEffect(() => {
-    const clear = () => { setCompensationPlan(null); setCompensationReason(''); listRequest.current?.abort(); setRecentRuns([]); setListBusy(false); setListError(''); llmRequest.current?.abort(); setLlmHealth(null); setLlmCapabilities(null); setLlmError(''); setLlmBusy(false); request.current?.abort(); setRun(null); setMessage(''); setError(''); setBusy(false); setReconciliationEvidence(''); setReconciliationResult(''); setExecutorStopped(false); };
+    const clear = () => { setCompensationPlan(null); setCompensationReason(''); listRequest.current?.abort(); setRecentRuns([]); setListBusy(false); setListError(''); llmRequest.current?.abort(); setLlmHealth(null); memoryRequest.current?.abort(); setMemoryHealth(null); setMemoryError(''); setLlmCapabilities(null); setLlmError(''); setLlmBusy(false); request.current?.abort(); setRun(null); setMessage(''); setError(''); setBusy(false); setReconciliationEvidence(''); setReconciliationResult(''); setExecutorStopped(false); };
     const inspectAgent = event => { clear(); setRunKind(event.detail.execution_kind === 'workflow' ? 'workflow' : 'agent'); setRunId(event.detail.run_id); setRun(event.detail); };
     window.addEventListener('depo:inspect-agent-run', inspectAgent);
     window.addEventListener('depo:credentials-changed', clear);
@@ -37,7 +40,7 @@ export default function AgentControlPanel() {
       sessionStorage.removeItem('depo:inspect-agent-run');
       if (saved && typeof saved.run_id === 'string') inspectAgent({ detail: saved });
     } catch { /* optional navigation bookmark */ }
-    return () => { listRequest.current?.abort(); llmRequest.current?.abort(); request.current?.abort(); window.removeEventListener('depo:inspect-agent-run', inspectAgent); window.removeEventListener('depo:credentials-changed', clear); window.removeEventListener('depo:credentials-cleared', clear); };
+    return () => { memoryRequest.current?.abort(); listRequest.current?.abort(); llmRequest.current?.abort(); request.current?.abort(); window.removeEventListener('depo:inspect-agent-run', inspectAgent); window.removeEventListener('depo:credentials-changed', clear); window.removeEventListener('depo:credentials-cleared', clear); };
   }, []);
   useEffect(() => {
     if (!runId.trim() || !run || busy || !['running','queued','dispatching','paused'].includes(run.status)) return;
@@ -151,28 +154,37 @@ export default function AgentControlPanel() {
     <div className="depo-panel__body">
     <IxButton disabled={llmBusy} onClick={async () => {
       llmRequest.current?.abort(); const controller = new AbortController(); llmRequest.current = controller;
-      setLlmBusy(true); setLlmHealth(null); setLlmCapabilities(null); setLlmError('');
+      setLlmBusy(true); setLlmHealth(null); memoryRequest.current?.abort(); setMemoryHealth(null); setMemoryError(''); setLlmCapabilities(null); setLlmError('');
       try {
         const response = await agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/llm/health'), { signal: controller.signal, timeout: 10000 });
         if (!controller.signal.aborted) setLlmHealth(response.data);
       } catch (failure) { if (!controller.signal.aborted) setLlmError(failure.response?.data?.detail || 'Cannot reach agentic diagnostics. Check service connectivity and read credentials.'); }
       finally { if (!controller.signal.aborted) setLlmBusy(false); }
-    }}>Check Ollama configuration</IxButton>
+    }}>Check model configuration</IxButton>
     <IxButton disabled={llmBusy} onClick={async () => {
       llmRequest.current?.abort(); const controller = new AbortController(); llmRequest.current = controller;
       setLlmBusy(true); setLlmCapabilities(null); setLlmError('');
       try {
         const supervisor = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
-        if (!supervisor) throw new Error('Connect agent supervision access before probing Ollama capabilities.');
+        if (!supervisor) throw new Error('Connect agent supervision access before probing model capabilities.');
         const response = await agenticClient.post(buildSemanticServiceUrl('agentic', '/api/v1/llm/probe'),
           {approved_by:'agent-supervisor',approval_token:supervisor}, {signal:controller.signal,timeout:Math.max(config.chatStreamTimeout || 1200000, 1200000),headers:{Authorization:`Bearer ${supervisor}`}});
         if (!controller.signal.aborted) setLlmCapabilities(response.data);
       } catch (failure) { if (!controller.signal.aborted) setLlmError(typeof failure.response?.data?.detail === 'string' ? failure.response.data.detail : failure.message); }
       finally { if (!controller.signal.aborted) setLlmBusy(false); }
-    }}>Verify Ollama capabilities</IxButton>
+    }}>Verify model capabilities</IxButton>
+    <IxButton onClick={async () => {
+      memoryRequest.current?.abort(); const controller = new AbortController(); memoryRequest.current = controller;
+      try {
+        const response = await agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/memory/status'), {signal:controller.signal});
+        if (!controller.signal.aborted) { setMemoryHealth(response.data); setMemoryError(''); }
+      } catch { if (!controller.signal.aborted) setMemoryError('Memory health could not be verified.'); }
+    }}>Check agent memory</IxButton>
+    {memoryHealth && <p role="status">Optional graph memory: {memoryHealth.enabled ? memoryHealth.status : 'disabled'}. Workflow and read-goal scratchpads use PostgreSQL independently.</p>}
+    {memoryError && <p role="alert">{memoryError}</p>}
     <p>Capability verification sends up to three small inference requests. It does not execute a tool.</p>
     {llmCapabilities && <div role="status"><p>Capability model: {llmCapabilities.model || 'unverified'}.</p><p>Generation: {llmCapabilities.generation || 'unverified'}. Structured output: {llmCapabilities.structured_outputs || 'unverified'}. Native tool calling: {llmCapabilities.native_tool_calling || 'unverified'}.</p></div>}
-    {llmHealth && <div role="status"><p>Ollama: <strong>{llmHealth.status}</strong>. Model: {llmHealth.model || 'not selected'}.</p><p>{llmHealth.action}</p>{llmHealth.endpoint && <p>{llmHealth.discovery_enabled === false ? 'Configured generation endpoint' : 'Checked endpoint'}: {llmHealth.endpoint}.{llmHealth.probe_timeout_seconds != null && <> Probe deadline: {llmHealth.probe_timeout_seconds} seconds.</>}</p>}<p>Ontology agents: {llmHealth.ontology_agent_enabled ? 'enabled' : 'disabled'}. Companion generation: {llmHealth.companion_enabled ? 'enabled' : 'disabled'}.</p></div>}
+    {llmHealth && <div role="status"><p>Provider {llmHealth.provider || 'configured'}: <strong>{llmHealth.status}</strong>. Model: {llmHealth.model || 'not selected'}.</p><p>{llmHealth.action}</p>{llmHealth.endpoint && <p>{llmHealth.discovery_enabled === false ? 'Configured generation endpoint' : 'Checked endpoint'}: {llmHealth.endpoint}.{llmHealth.probe_timeout_seconds != null && <> Probe deadline: {llmHealth.probe_timeout_seconds} seconds.</>}</p>}<p>Ontology agents: {llmHealth.ontology_agent_enabled ? 'enabled' : 'disabled'}. Companion generation: {llmHealth.companion_enabled ? 'enabled' : 'disabled'}.</p></div>}
     {llmError && <p role="alert">{typeof llmError === 'string' ? llmError : 'LLM diagnostic failed.'}</p>}
     <p>Select a recent workflow or enter its ID. Status refreshes every three seconds while this page is visible. Pause and cancel take effect between tools; they do not interrupt an active tool or undo completed writes. The original execution deadline still applies.</p>
     <p>These controls apply to multi-step agent workflows. Standalone ontology intake, review and bridge planning remain single operations.</p>

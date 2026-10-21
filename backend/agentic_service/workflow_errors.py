@@ -29,4 +29,12 @@ def workflow_error(exc, tool_id):
                 code, message = 'merge_sources_not_distinct', 'Select two distinct ontologies before merging.'
             elif detail == 'Merge source exceeds ONTOLOGY_MAX_UPLOAD_BYTES':
                 code, message = 'merge_source_too_large', 'A merge source exceeds the configured ontology upload limit.'
+            elif detail.startswith(('Merge preparation timed out;', 'Merge validation timed out;')) or detail in {
+                'Merge source preparation exceeded its deadline', 'Merge preparation exceeded its deadline',
+                'Merge validation preparation exceeded its deadline', 'Merge validation result exceeded its deadline',
+            }:
+                code, message = 'merge_validation_timeout', (
+                    'The merge preparation and semantic validation worker exceeded its configured time budget. '
+                    'No merge was approved or published. Partition the sources or review '
+                    'MERGE_VALIDATION_TIMEOUT_SECONDS with the administrator before retrying.')
     return {'http_status': status, 'error_code': code, 'error_message': message}

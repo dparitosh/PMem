@@ -101,18 +101,33 @@ def _kind(row: dict[str, Any]) -> str:
 def list_requirements(source: str = Query(default="all"), limit: int = Query(default=1000, ge=1, le=5000), offset: int = Query(default=0, ge=0)) -> dict:
     selected_source = source.strip().lower()
     source_expression = "coalesce(n.source, n.source_format, n.source_ontology, CASE WHEN n.iri CONTAINS '/entity/reqif%3A' THEN 'ReqIF' ELSE 'Graph' END)"
+    # Format is a classification; source can instead be a provenance namespace.
+    # Preserve source in the response and classify before pagination in Neo4j.
+    source_kind_expression = (
+        "CASE "
+        "WHEN any(value IN source_values WHERE value = 'plmxml' OR value STARTS WITH 'http://www.plmxml.org/schemas/' "
+        "OR value STARTS WITH 'https://www.plmxml.org/schemas/') THEN 'plmxml' "
+        "WHEN any(value IN source_values WHERE value IN ['reqif', 'reqifz']) "
+        "OR coalesce(n.iri, '') CONTAINS '/entity/reqif%3A' THEN 'reqif' "
+        "WHEN any(value IN source_values WHERE value IN ['sysml-v1', 'sysml-v2', 'mbse']) THEN 'mbse' "
+        "WHEN any(value IN source_values WHERE value IN ['qif', 'oslc', 'alm', 'unstructured', 'graph']) "
+        "THEN head([value IN source_values WHERE value IN ['qif', 'oslc', 'alm', 'unstructured', 'graph']]) "
+        f"ELSE toLower({source_expression}) END"
+    )
     rows = publisher._session_rows(
         "MATCH (n) WHERE (n:Requirement OR any(label IN labels(n) WHERE toLower(label) CONTAINS 'requirement') "
         "OR EXISTS { MATCH (n)-[type_edge]->(t) WHERE type_edge.predicate = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' "
         "AND t.iri = 'https://depo.example.org/ceim/0.1/Requirement' }) "
         "AND NOT n:StagedOntologyResource "
-        f"AND ($source = 'all' OR toLower({source_expression}) = $source "
-        f"OR ($source = 'mbse' AND toLower({source_expression}) IN ['sysml-v1', 'sysml-v2'])) "
-        "WITH n ORDER BY coalesce(n.name, n.title, n.label, n.uri), elementId(n) SKIP $offset LIMIT $limit "
+        "WITH n, [value IN [n.source_format, n.source, n.source_ontology] "
+        "WHERE value IS NOT NULL | toLower(trim(toString(value)))] AS source_values "
+        f"WITH n, source_values, {source_kind_expression} AS source_kind "
+        "WHERE ($source = 'all' OR source_kind = $source OR $source IN source_values) "
+        "WITH n, source_kind ORDER BY coalesce(n.name, n.title, n.label, n.uri), elementId(n) SKIP $offset LIMIT $limit "
         "OPTIONAL MATCH (n)-[r]-() "
         "RETURN elementId(n) AS requirement_id, coalesce(n.name, n.title, n.label, n.uri) AS title, "
         "coalesce(n.text, n.description, n.comment, '') AS text, labels(n) AS labels, "
-        f"{source_expression} AS source, count(DISTINCT r) AS relationship_count "
+        f"{source_expression} AS source, source_kind, count(DISTINCT r) AS relationship_count "
         "ORDER BY title, requirement_id",
         limit=limit + 1,
         offset=offset,

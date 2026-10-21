@@ -17,6 +17,8 @@ from backend.artifact_store import artifact_store
 from backend.depo_platform.network import bounded_timeout_seconds, graph_dispatch_timeout_seconds
 from backend.depo_platform.operations import OperationContext, operation_scope, remaining_seconds
 from backend.depo_platform.execution_guard import ensure_execution_allowed, guarded_execution
+from backend.depo_platform.ontology_maintenance import ontology_writer
+from backend.depo_platform.import_cleanup import cleared
 
 from .preparation_worker import run_stage
 from .ownership import task_root, state_lock, execution_owner, ensure_owner
@@ -50,12 +52,17 @@ class QifTaskService:
         return self._task_dir(task_id) / "manifest.json"
 
     def _read(self, task_id: str) -> dict[str, Any]:
+        if cleared(task_id, self.root):
+            raise HTTPException(404, 'Schema-set workflow was cleared by an administrator')
         path = self._manifest_path(task_id)
         if not path.exists():
             raise HTTPException(status_code=404, detail="QIF task not found")
         return json.loads(path.read_text(encoding="utf-8"))
 
+    @ontology_writer
     def _write(self, task_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        if cleared(task_id, self.root):
+            raise HTTPException(404, 'Schema-set workflow was cleared by an administrator')
         ensure_owner()
         with self._lock, state_lock(task_id):
             path = self._manifest_path(task_id)
@@ -72,6 +79,7 @@ class QifTaskService:
     def _event(self, task: dict[str, Any], stage: str, message: str, level: str = "info") -> None:
         task.setdefault("events", []).append({"at": _now(), "stage": stage, "level": level, "message": message})
 
+    @ontology_writer
     def create(self, *, source_paths: list[Path], ontology_name: str, prefix: str, description: str, source: str, standard_id: str = "generic-xsd") -> dict[str, Any]:
         task_id = uuid.uuid4().hex
         task_dir = self._task_dir(task_id)
@@ -214,6 +222,7 @@ class QifTaskService:
     def submit_graph_retry(self, task_id: str) -> bool:
         return self._submit(task_id, self.retry_graph_sync)
 
+    @ontology_writer
     def queue_commit(self, task_id: str) -> dict[str, Any]:
         """Atomically mark a reviewed task for publishing and enqueue it once."""
         with self._lock, state_lock(task_id):
@@ -229,6 +238,7 @@ class QifTaskService:
                 raise HTTPException(status_code=409, detail="QIF task is already being processed")
             return task
 
+    @ontology_writer
     def queue_graph_retry(self, task_id: str) -> dict[str, Any]:
         """Atomically enqueue one retry for a registered ontology with a failed graph sync."""
         with self._lock, state_lock(task_id):
@@ -302,6 +312,7 @@ class QifTaskService:
             self._event(task, "cancelled", "Cancellation requested; no additional workflow stages will run.", "warning")
             return self._write(task_id, task)
 
+    @ontology_writer
     def prepare(self, task_id: str) -> None:
         """Run inspect → validate → generate, leaving an approval gate before persistence."""
         try:
@@ -366,6 +377,7 @@ class QifTaskService:
             self._event(task, "failed", f"Workflow failed: {type(exc).__name__}: {exc}", "error")
             self._write(task_id, task)
 
+    @ontology_writer
     def commit(self, task_id: str) -> None:
         """Register a reviewed ontology and capture final graph persistence status."""
         try:
@@ -430,6 +442,7 @@ class QifTaskService:
         self._event(task, "completed", "Ontology registration and graph synchronization completed." if success else ("Ontology registered; publication outcome unverified. Check the receipt before retrying." if graph_sync["status"] == "unverified" else "Ontology registered; graph synchronization failed and can be retried."), "info" if success else "warning")
         self._write(task_id, task)
 
+    @ontology_writer
     def retry_graph_sync(self, task_id: str) -> None:
         task = self._read(task_id)
         if not task.get("ontology_id"):

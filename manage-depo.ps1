@@ -9,8 +9,18 @@ param(
   [switch]$SkipBaselineProvisioning
 )
 $ErrorActionPreference = 'Stop'
+# Direct PowerShell invocation must protect nested release helpers too.
+# This changes only this process; enforced organization policy remains authoritative.
+if ((Get-ExecutionPolicy) -ne 'Bypass') {
+  try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop }
+  catch { throw 'PowerShell policy blocked setup. Run Setup-DEPO.cmd from the release root. If organization Group Policy enforces signing, use an approved signed release or contact your administrator; machine policy was not changed.' }
+  if ((Get-ExecutionPolicy) -ne 'Bypass') {
+    throw 'Process execution-policy bypass is overridden by organization policy. Use an approved signed release; machine policy was not changed.'
+  }
+}
+
 . (Join-Path $PSScriptRoot 'infra/windows/native-install-command.ps1')
-Invoke-DepoLoggedAction -Root $PSScriptRoot -Name ('manage-'+$Action) -Action {
+Invoke-DepoLoggedAction -Root $PSScriptRoot -Name ('manage-'+$Action) -AuditEnvFile $EnvFile -Action {
 function Invoke-ManagedStep([string]$Script,[hashtable]$Parameters=@{}) {
   $global:LASTEXITCODE=0
   & $Script @Parameters

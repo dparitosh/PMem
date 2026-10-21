@@ -39,7 +39,8 @@ class MergePreparationDeadlineTests(unittest.TestCase):
         completed = SimpleNamespace(returncode=0,stdout=pickle.dumps({'record':record}))
         with patch('backend.ontology_service.merge_preparation.subprocess.run',return_value=completed) as run:
             self.assertEqual(prepare(self.service(),{'source_ontology_ids':[' a ','b']}),record)
-        sources, payload = pickle.loads(run.call_args.kwargs['input'])
+        sources, payload, deferred = pickle.loads(run.call_args.kwargs['input'])
+        self.assertFalse(deferred)
         self.assertEqual(set(sources),{'a','b'})
         self.assertEqual(payload['source_ontology_ids'],['a','b'])
         self.assertGreater(run.call_args.kwargs['timeout'],0)

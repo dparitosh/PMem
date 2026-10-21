@@ -1,3 +1,5 @@
+import pytest
+from contextlib import contextmanager
 from fastapi.testclient import TestClient
 from backend.agentic_service.app import app
 from backend.agentic_service.router import _multipart
@@ -96,7 +98,26 @@ def test_ontology_agent_uses_generated_rdf_for_non_rdf_upload(monkeypatch):
     assert agents._resolve_ontology_path("", "schema") == "data/schema.generated.ttl"
 
 
-def test_companion_returns_bounded_graph_evidence(monkeypatch):
+@pytest.fixture
+def companion_persistence(monkeypatch):
+    from backend.agentic_service import router as routes
+    class Store:
+        records = {}
+        def get(self, key): return self.records.get(key)
+        def put(self, key, value): self.records[key] = value
+        @contextmanager
+        def advisory_lock(self, key): yield True
+    monkeypatch.setattr(routes.sessions, 'store', Store())
+    monkeypatch.setattr(routes, 'companion_job_store', Store())
+    monkeypatch.setattr(routes, '_session_turns', lambda *args: [])
+    monkeypatch.setattr(routes.telemetry, 'start', lambda **kw: ({'run_id':'fixture-chat'}, 0))
+    monkeypatch.setattr(routes, '_finish_observation', lambda *args, **kw: None)
+    monkeypatch.setattr(routes.AgentMemoryService, 'recent_context', lambda *args: {'messages':[]})
+    monkeypatch.setattr(routes.AgentMemoryService, 'record_chat_turn', lambda **kw: None)
+    monkeypatch.setenv('COMPANION_LLM_ENABLED', 'false')
+
+
+def test_companion_returns_bounded_graph_evidence(monkeypatch, companion_persistence):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
     async def grounded(message, **kwargs):
@@ -108,7 +129,7 @@ def test_companion_returns_bounded_graph_evidence(monkeypatch):
     assert response.json()["evidence"][0]["resource_id"] == "urn:product"
 
 
-def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch):
+def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch, companion_persistence):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
     async def unavailable(message, **kwargs):
@@ -117,3 +138,16 @@ def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch):
     response = TestClient(app).post("/api/v1/chat", json={"message": "Invent an answer"}, headers={"Authorization": "Bearer read-test"})
     assert response.status_code == 503
     assert "no answer was generated" in response.json()["detail"]
+
+
+def test_artifact_planning_includes_classes_after_previous_sampling_limit(tmp_path, monkeypatch):
+    from backend.agentic_service import ontology_orchestrator as agents
+    monkeypatch.setenv('ONTOLOGY_AGENT_ALLOWED_ROOTS', str(tmp_path))
+    monkeypatch.setenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false')
+    path = tmp_path / 'large.ttl'
+    path.write_text('@prefix owl: <http://www.w3.org/2002/07/owl#> .\n' +
+                    '\n'.join(f'<urn:Class{i:04}> a owl:Class .' for i in range(650)))
+    summary = agents.inspect_ontology(str(path))
+    assert len(summary['term_index']) == 650
+    result = agents.plan_bridge({'entities': ['Class0649']}, ontology_summary=summary)
+    assert result['alignment_candidates'][0]['target_iri'] == 'urn:Class0649'

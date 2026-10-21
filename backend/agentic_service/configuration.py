@@ -16,6 +16,7 @@ def configuration_status(*, check_workers=True):
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
         ('AGENTIC_WORKER_CONCURRENCY', '4', 1, 16),
+        ('AGENT_GOAL_MAX_DECISIONS', '8', 3, 16),
         ('OLLAMA_MAX_CONCURRENCY', '4', 1, 32),
         ('OLLAMA_FAILURE_THRESHOLD', '3', 1, 20),
         ('OLLAMA_CIRCUIT_COOLDOWN_SECONDS', '30', 1, 300),

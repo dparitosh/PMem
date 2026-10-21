@@ -37,9 +37,9 @@ def build_unstructured_plan(metadata: Dict[str, Any]) -> Dict[str, Any]:
     if classification["is_legacy_office"]:
         warnings.append("Legacy .doc and .ppt files must be converted to .docx or .pptx before upload.")
     if classification["is_visual"]:
+        warnings.append("Visual layout, figures and scanned table structure are not interpreted; PDF evidence preserves extracted page text.")
         steps.extend([
-            {"tool": "layout_analyzer", "purpose": "Detect sections, figures, captions, and tables."},
-            {"tool": "text_extractor", "purpose": "Extract the native text layer when one is available."},
+            {"tool": "text_extractor", "purpose": "Extract and retain page-level native text when available."},
             {"tool": "optional_ocr", "purpose": "Use a separately configured OCR enhancement only when native extraction finds no text."},
         ])
     if classification["is_tabular"]:

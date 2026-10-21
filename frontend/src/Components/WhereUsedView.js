@@ -274,15 +274,9 @@ const WhereUsedView = ({
                 .sort((a, b) => b.score - a.score)
                 .map(({ node }) => node);
 
-            const localFallbackNodes = (effectiveGraphData?.nodes || [])
-                .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
-                .filter(({ score }) => score > 0)
-                .sort((a, b) => b.score - a.score)
-                .map(({ node }) => node);
-
-            const finalNodes = nodes.length > 0 ? nodes : localFallbackNodes;
-            if (nodes.length === 0 && localFallbackNodes.length > 0) {
-                setSearchError('Server search returned no ranked matches. Showing local graph matches.');
+            const finalNodes = nodes;
+            if (finalNodes.length === 0) {
+                setSearchError('No matching business objects in the loaded graph snapshot. This does not prove the object is absent from the full graph.');
             }
 
             setHierarchySearchResults(finalNodes);
@@ -295,26 +289,12 @@ const WhereUsedView = ({
             }
         } catch (err) {
             if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
-            logger.search('Search error (server):', err);
-            try {
-                const fallbackNodes = (effectiveGraphData?.nodes || [])
-                    .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
-                    .filter(({ score }) => score > 0)
-                    .sort((a, b) => b.score - a.score)
-                    .map(({ node }) => node);
-                setHierarchySearchResults(fallbackNodes);
-                setSearchError('Server search failed. Showing local filtered results.');
-                if (fallbackNodes.length > 0) {
-                    handleNodeSelect(fallbackNodes[0]);
-                } else {
-                    setSelectedNode(null);
-                    setTreeData(null);
-                    setLevels([]);
-                }
-            } catch (_fe) {
-                setHierarchySearchResults([]);
-                setSearchError('Search failed.');
-            }
+            logger.search('Loaded graph search failed:', err);
+            setHierarchySearchResults([]);
+            setSelectedNode(null);
+            setTreeData(null);
+            setLevels([]);
+            setSearchError('Unable to search the loaded graph snapshot. Refresh graph context and retry.');
         } finally {
             if (!controller.signal.aborted) setIsSearching(false);
             if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -621,7 +601,7 @@ const WhereUsedView = ({
                 <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
                 <div style={{ fontSize: 12, color: WU.muted, lineHeight: 1.5 }}>Search for a part, requirement, instance, or named business object. We rank matches, select the best one, then build its upward usage chain from the graph.</div>
                 <div style={{ marginTop: 8, fontSize: 11, color: graphError ? WU.error : WU.subtle, fontWeight: 600 }}>
-                    {graphLoading ? 'Loading graph context...' : graphError ? graphError : `${totalSearchableNodes} business-object candidates are available for local fallback search.`}
+                    {graphLoading ? 'Loading graph context...' : graphError ? graphError : `${totalSearchableNodes} business-object candidates are available in the loaded graph snapshot.`}
                 </div>
             </div>
             <div style={{ ...panelStyle, marginBottom: 12 }}>
@@ -650,7 +630,7 @@ const WhereUsedView = ({
                     </button>
                 </div>
                 {searchError && (
-                    <div style={{ marginTop: 8, color: WU.error, fontSize: 12, fontWeight: 600 }}>{searchError}</div>
+                    <div role="status" aria-label="Search outcome" style={{ marginTop: 8, color: WU.muted, fontSize: 12, fontWeight: 600 }}>{searchError}</div>
                 )}
             </div>
             {/* Search Results */}

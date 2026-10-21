@@ -7,6 +7,16 @@ vi.mock('../SchemaContext', () => ({useSchema: () => ({})}));
 vi.mock('../widgets/DataGridWidget', () => ({default: ({rows}) => <div>{rows.map(row => <span key={row.id || row.nodeId}>{row.displayName}</span>)}</div>}));
 vi.mock('../services/graphApi', () => ({graphApi: {getTraversal: vi.fn(), getOverview: vi.fn(async () => ({data:{nodes:[],links:[]}}))}}));
 const root = {elementId:'root',labels:['Part'],properties:{name:'Root'}};
+
+test('an unmatched search explains the snapshot boundary without claiming full-graph absence', () => {
+ render(<WhereUsedView data={{nodes:[root],links:[]}} />);
+ fireEvent.change(screen.getByRole('textbox'), {target:{value:'Absent business object'}});
+ fireEvent.click(screen.getByRole('button',{name:'Search'}));
+ expect(screen.getByRole('status',{name:'Search outcome'})).toHaveTextContent('No matching business objects in the loaded graph snapshot');
+ expect(screen.getByRole('status',{name:'Search outcome'})).toHaveTextContent('does not prove the object is absent from the full graph');
+ fireEvent(window, new Event('depo:credentials-cleared'));
+ expect(screen.queryByRole('status',{name:'Search outcome'})).toBeNull();
+});
 test('upward traversal stops at the depth budget and shows partial evidence', async () => {
  graphApi.getTraversal.mockImplementation(async id => {
    const depth = id === 'root' ? 0 : Number(id.slice(1));

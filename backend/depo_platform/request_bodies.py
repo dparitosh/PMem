@@ -92,6 +92,7 @@ class EntityMapping(RequestBody, total=False):
     target_iri: Required[Text]
 
 class MergePreviewBody(RequestBody, total=False):
+    background: bool
     source_ontology_ids: Required[Annotated[list[Text], Field(min_length=2, max_length=16)]]
     entity_mappings: Annotated[list[EntityMapping], Field(max_length=200)]
     ontology_name: str

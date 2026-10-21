@@ -91,16 +91,16 @@ test('the first all-service health failure clears the online indicator', async (
   expect(await screen.findByText('offline')).toBeInTheDocument();
 });
 
-test('renders the landing-page boundary when home is persisted', () => {
+test('renders the landing-page boundary when home is persisted', async () => {
   window.localStorage.setItem('depo.activePage', 'home');
   render(<App />);
-  expect(screen.getByText('Landing Mock')).toBeInTheDocument();
+  expect(await screen.findByText('Landing Mock')).toBeInTheDocument();
 });
 
-test('renders the landing page for the root hash route', () => {
+test('renders the landing page for the root hash route', async () => {
   window.history.replaceState({}, '', '/#/');
   render(<App />);
-  expect(screen.getByText('Landing Mock')).toBeInTheDocument();
+  expect(await screen.findByText('Landing Mock')).toBeInTheDocument();
 });
 
 test('falls back to Graph Explorer for invalid persisted navigation', async () => {
@@ -114,6 +114,7 @@ test('falls back to Graph Explorer for invalid persisted navigation', async () =
 test('routes every application navigation item to its page boundary', async () => {
   window.history.replaceState({}, '', '/#/graph');
   render(<App />);
+  await screen.findByTestId('page-graph');
   const routes = [
     ['Import', 'page-import'],
     ['Ontology Junction', 'page-ontology'],

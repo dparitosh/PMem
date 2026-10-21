@@ -375,6 +375,8 @@ export const ontologyAPI = {
       source_ontology_ids: sourceOntologyIds,
       ...(options || {}),
     }),
+  governedMergeStatus: (previewId, options = {}) =>
+    apiClient.get(buildUrl(`${API.ontology.governedMergePreview.replace(/\/preview$/, '')}/${encodeURIComponent(previewId)}/status`), options),
   governedMergeApply: (previewId, approvedBy, approvalToken = '') =>
     apiClient.post(buildUrl(replaceParams(API.ontology.governedMergeApply, { preview_id: previewId })), {
       approved_by: approvedBy,
@@ -628,6 +630,7 @@ export const adminAPI = {
   cleanSchema: () =>
     apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
   clearCache: () => apiClient.post(buildUrl(API.admin.clearCache), undefined, { headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  clearImportWorkflows: () => apiClient.post(buildUrl(API.admin.clearImportWorkflows), { confirm: 'CLEAR_IMPORT_WORKFLOWS' }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
   deleteData: ({ label, prefix, property, value, batchSize = 10000, dryRun = false }) =>
     apiClient.post(buildUrl(API.admin.deleteData), {
       label: label || null,

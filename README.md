@@ -7,7 +7,7 @@ data products and a Neo4j-backed knowledge graph through controlled publication.
 ## Supported deployment topology
 
 The supported runtime is a React/Vite frontend, ten independently deployable
-FastAPI services, a durable data-product outbox worker and a data-pipeline worker, PostgreSQL control
+FastAPI services, three durable workers (data-product outbox, data-pipeline and agentic workflow), PostgreSQL control
 plane, artifact storage and a customer-managed graph database. The legacy
 `backend/main.py` host remains only for controlled frontend migration and is
 not the production deployment target.

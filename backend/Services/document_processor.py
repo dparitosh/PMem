@@ -325,8 +325,28 @@ def _extract_docx_text(file_path: Path) -> str:
         raise RuntimeError("python-docx is not available")
     _validate_ooxml_archive(file_path, "word/")
     document = DocxDocument(str(file_path))
-    paragraphs = [p.text.strip() for p in document.paragraphs if p.text and p.text.strip()]
-    return "\n".join(paragraphs).strip()
+    from docx.oxml.ns import qn
+
+    def blocks(parent, location):
+        # Walk XML in source order; document.paragraphs excludes table cells.
+        for index, child in enumerate(parent, 1):
+            if child.tag == qn('w:p'):
+                text = ''.join(node.text or '' for node in child.iter(qn('w:t'))).strip()
+                if text:
+                    yield text
+            elif child.tag == qn('w:tbl'):
+                for row_index, row in enumerate(child.findall(qn('w:tr')), 1):
+                    for cell_index, cell in enumerate(row.findall(qn('w:tc')), 1):
+                        cell_location = f'{location}/table[{index}]/row[{row_index}]/cell[{cell_index}]'
+                        content = list(blocks(cell, cell_location))
+                        if content:
+                            yield f'[{cell_location}] ' + '\n'.join(content)
+            elif child.tag == qn('w:sdt'):
+                content = child.find(qn('w:sdtContent'))
+                if content is not None:
+                    yield from blocks(content, location)
+
+    return "\n".join(blocks(document.element.body, 'body')).strip()
 
 
 def _extract_pptx_text(file_path: Path) -> str:
@@ -337,11 +357,21 @@ def _extract_pptx_text(file_path: Path) -> str:
     slides = []
     for slide_index, slide in enumerate(presentation.slides, start=1):
         parts = []
-        for shape in slide.shapes:
-            text = getattr(shape, "text", "") or ""
-            text = text.strip()
-            if text:
-                parts.append(text)
+        def shape_text(shapes, parent):
+            for shape_index, shape in enumerate(shapes, 1):
+                location = f'{parent}/shape[{shape_index}]'
+                if getattr(shape, 'has_table', False):
+                    for row_index, row in enumerate(shape.table.rows, 1):
+                        for cell_index, cell in enumerate(row.cells, 1):
+                            if cell.text.strip():
+                                yield f'[{location}/row[{row_index}]/cell[{cell_index}]] {cell.text.strip()}'
+                elif hasattr(shape, 'shapes'):
+                    yield from shape_text(shape.shapes, location)
+                else:
+                    text = (getattr(shape, 'text', '') or '').strip()
+                    if text:
+                        yield text
+        parts.extend(shape_text(slide.shapes, f'slide[{slide_index}]'))
         if parts:
             slides.append(f"[Slide {slide_index}]\n" + "\n".join(parts))
     return "\n\n".join(slides).strip()

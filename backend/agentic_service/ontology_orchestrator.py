@@ -80,8 +80,6 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
     term_index = []
     indexed_counts: dict[str, int] = {}
     for kind, term in typed_terms:
-        if indexed_counts.get(kind, 0) >= 500:
-            continue
         indexed_counts[kind] = indexed_counts.get(kind, 0) + 1
         label = next((str(value) for predicate in (SKOS.prefLabel, RDFS.label)
                       for value in graph.objects(term, predicate) if str(value).strip()), "")
@@ -155,7 +153,7 @@ def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | No
     entities: list[str] = []
     attributes: list[str] = []
     relationships: list[str] = []
-    for row in rows[:1000]:
+    for row in rows:
         if not isinstance(row, dict):
             continue
         for key, value in row.items():
@@ -263,7 +261,7 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
         "status": "review_required" if any(item["status"] != "candidate" for item in items) or summary.get("term_index_truncated") else "ready_for_mapping",
         "publication": "requires_human_approval",
-        "llm": _llm_suggestion(plan, instance_metadata, {"terms": summary.get("term_index", [])[:30], "candidates": candidates[:20],
+        "llm": _llm_suggestion(plan, instance_metadata, {"terms": sorted(summary.get("term_index", []), key=lambda term: term["iri"] not in {item["target_iri"] for item in candidates[:20]})[:30], "candidates": candidates[:20],
             "artifact_digest": summary.get("artifact_digest"), "term_index_truncated": summary.get("term_index_truncated", False)}),
     }
     return result
@@ -296,10 +294,11 @@ def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
     ontology_path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
     summary = inspect_ontology(ontology_path)
+    summary['data_source'] = 'retained-rdf-artifact'
     steps = [{"agent": "ontology_intake_agent", "status": "completed", "result": summary}]
     if workflow_id == "ontology_review":
         steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": _review_summary(summary)})
-    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": bridge_plan({**payload, "instance_metadata": metadata})})
+    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_summary=summary)})
     return {"workflow_id": workflow_id, "steps": steps, "status": "completed", "publication": "requires_human_approval"}
 
 
@@ -332,7 +331,7 @@ def graph_planning_summary(ontology_id: str) -> dict[str, Any]:
     import hashlib, json
     return {"engine": "neo4j", "data_source": "graph-service", "ontology_id": ontology_id,
             "graph_digest": hashlib.sha256(json.dumps(indexed, sort_keys=True).encode()).hexdigest(),
-            "term_index": indexed[:2000], "term_index_truncated": len(indexed) > 2000,
+            "term_index": indexed, "term_index_truncated": False,
             "ontology_iris": [], "warnings": ['Graph projection is not a complete RDF/OWL reasoning model'],
             "formal_reasoning_performed": False}
 

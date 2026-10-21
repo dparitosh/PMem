@@ -132,10 +132,10 @@ def _rdflib_semantic_fallback(file_path: Path, prefix: str) -> Dict[str, Any]:
     class_iris = {
         str(subject)
         for subject in graph.subjects(RDF.type, OWL.Class)
-        if str(subject) not in {"http://www.w3.org/2002/07/owl#Thing", "http://www.w3.org/2002/07/owl#Nothing"}
+        if isinstance(subject, URIRef) and str(subject) not in {"http://www.w3.org/2002/07/owl#Thing", "http://www.w3.org/2002/07/owl#Nothing"}
     }
-    object_property_iris = {str(subject) for subject in graph.subjects(RDF.type, OWL.ObjectProperty)}
-    datatype_property_iris = {str(subject) for subject in graph.subjects(RDF.type, OWL.DatatypeProperty)}
+    object_property_iris = {str(subject) for subject in graph.subjects(RDF.type, OWL.ObjectProperty) if isinstance(subject, URIRef)}
+    datatype_property_iris = {str(subject) for subject in graph.subjects(RDF.type, OWL.DatatypeProperty) if isinstance(subject, URIRef)}
 
     classes = [
         {
@@ -189,7 +189,7 @@ def _rdflib_semantic_fallback(file_path: Path, prefix: str) -> Dict[str, Any]:
     diagnostics: List[Dict[str, Any]] = [{
         "severity": "info",
         "category": "runtime",
-        "message": "OWL entities were extracted with RDFLib fallback because Owlready2 exposed no class/property entities.",
+        "message": "Asserted OWL entities were extracted with RDFLib; this is structural inspection, not deductive reasoning.",
         "items": [],
     }]
     if missing_domain_range:
@@ -202,8 +202,9 @@ def _rdflib_semantic_fallback(file_path: Path, prefix: str) -> Dict[str, Any]:
 
     return {
         "status": "success",
-        "engine": "owlready2+rdflib",
-        "available": OWLREADY2_AVAILABLE,
+        "engine": "rdflib",
+        "available": True,
+        "owlready2_available": OWLREADY2_AVAILABLE,
         "ontology_iri": "",
         "classes": classes,
         "object_properties": object_properties,
@@ -411,6 +412,9 @@ class OwlreadyOntologyRuntime:
     def inspect_ontology(file_path: Path, prefix: str = "") -> Dict[str, Any]:
         """Inspect OWL semantics using Owlready2 and return API-safe structures."""
         if not OWLREADY2_AVAILABLE:
+            fallback = _rdflib_semantic_fallback(file_path, prefix)
+            if fallback:
+                return fallback
             return {
                 "status": "unavailable",
                 "engine": "owlready2",
@@ -433,6 +437,9 @@ class OwlreadyOntologyRuntime:
                 world = World()
                 ontology = _load_ontology_without_imports(world, file_path)
             except Exception as fallback_exc:
+                structural = _rdflib_semantic_fallback(file_path, prefix)
+                if structural:
+                    return structural
                 return _unsupported_load_result(exc, fallback_exc)
 
         classes: List[Dict[str, Any]] = []

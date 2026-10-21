@@ -1,17 +1,7 @@
 """Exercise upload path checks without installing the service dependency stack."""
-import ast
-from pathlib import Path, PurePosixPath, PureWindowsPath
-import posixpath
+from pathlib import Path
 import unittest
-from urllib.parse import urlsplit, unquote
-from xml.etree import ElementTree as ET
-
-SOURCE = Path(__file__).resolve().parents[1] / 'Services/schema_upload_paths.py'
-TREE = ast.parse(SOURCE.read_text(encoding='utf-8'))
-SCOPE = dict(PurePosixPath=PurePosixPath, PureWindowsPath=PureWindowsPath,
-             posixpath=posixpath, ET=ET, urlsplit=urlsplit, unquote=unquote)
-exec(compile(ast.Module(body=[node for node in TREE.body if isinstance(node, ast.FunctionDef)], type_ignores=[]), str(SOURCE), 'exec'), SCOPE)
-validate = SCOPE['validate_schema_upload']
+from backend.Services.schema_upload_paths import validate_schema_upload as validate
 
 
 def schema(body=''):

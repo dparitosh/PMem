@@ -6,6 +6,26 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
+
+@pytest.mark.parametrize('absolute', [False, True])
+def test_selected_environment_secrets_are_redacted_before_import(tmp_path, absolute):
+    shell = shutil.which('powershell.exe')
+    if not shell:
+        pytest.skip('Windows PowerShell required')
+    selected = tmp_path / 'selected.env'
+    selected.write_text('ADMIN_API_KEY=selected-test-secret-987654\n')
+    script = tmp_path / 'run.ps1'
+    env_argument = str(selected) if absolute else 'selected.env'
+    helper = ROOT / 'infra/windows/native-install-command.ps1'
+    script.write_text(f". '{helper}'\nInvoke-DepoLoggedAction -Root '{tmp_path}' -Name selected -AuditEnvFile '{env_argument}' -Action {{throw 'failure selected-test-secret-987654'}}")
+    result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)], capture_output=True, text=True)
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    for log in (tmp_path / 'logs/installation/runs').glob('*'):
+        output += log.read_text(encoding='utf-8')
+    assert 'selected-test-secret-987654' not in output
+    assert '[REDACTED]' in output
+
 @pytest.mark.parametrize("mode", ["success", "throw", "native", "write_error", "continue_error"])
 def test_entrypoint_retains_errors_and_redacts_credentials(tmp_path, mode):
     shell = shutil.which("powershell.exe")

@@ -630,6 +630,12 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         )
     
     try:
+        from backend.depo_platform.import_cleanup import clear_import_workflows
+        # Reject active/uncertain imports before any graph data is removed.
+        try:
+            clear_import_workflows(dry_run=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         # 1. Clean database and schema. The UI action is a destructive full schema clean,
         # so leave indexes/constraints empty instead of recreating default indexes.
         cleaner = Neo4jSchemaCleaner()
@@ -646,6 +652,7 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         reconciliation = _reconcile_reset()
         from backend.depo_platform.ontology_cleanup import clear_ontology_registrations
         metadata_result = clear_ontology_registrations()
+        import_result = clear_import_workflows()
         metadata_cleared = metadata_result['cleared']
         # Publish again after file deletion so peers cannot retain a list cached
         # between graph reset and the filesystem cleanup.
@@ -666,8 +673,8 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
 
         return {
-            "success": graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial',
-            "status": "SUCCESS" if graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' else 'partial',
+            "success": graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' and import_result['status'] == 'success',
+            "status": "SUCCESS" if graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' and import_result['status'] == 'success' else 'partial',
             "registry_reconciliation": reconciliation,
             "graph_cleanup_status": result.get("status"),
             "graph_cleanup_message": result.get("message") if not graph_complete else None,
@@ -676,6 +683,7 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             "before": result.get("before"),
             "after": result.get("after"),
             "metadata_cleared": metadata_cleared,
+            "import_cleanup": import_result,
             "metadata_cleanup_status": metadata_result.get('status'),
             "metadata_failed": metadata_result.get('failed', []),
             "metadata_cleanup_message": 'Ontology registry cleanup is incomplete or unverified; inspect registry_verification and server logs.' if metadata_result.get('status') != 'success' else None,
@@ -935,6 +943,26 @@ def reset_database(recreate_indexes: bool = True):
     except Exception as e:
         logger.exception("Failed to reset database")
         raise HTTPException(status_code=500, detail="Unable to reset the Neo4j database") from e
+
+
+class ClearImportWorkflowsRequest(BaseModel):
+    confirm: str
+
+
+@router.post('/clear-import-workflows', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def clear_import_workflow_history(body: ClearImportWorkflowsRequest):
+    if body.confirm != 'CLEAR_IMPORT_WORKFLOWS':
+        raise HTTPException(400, 'Confirmation required: CLEAR_IMPORT_WORKFLOWS')
+    from backend.depo_platform.import_cleanup import clear_import_workflows
+    try:
+        return clear_import_workflows()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Import workflow cleanup failed')
+        raise HTTPException(500, 'Import workflow cleanup failed; inspect service logs') from exc
 
 
 @router.post("/clear-cache", dependencies=[Depends(require_admin_api_key)])

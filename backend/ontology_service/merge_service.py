@@ -47,6 +47,9 @@ class GovernedMergeService:
         temporary.replace(self.path)
 
     def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get('background') is True:
+            from .merge_background import background_merges
+            return background_merges.enqueue(self, payload)
         key = 'preview:' + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         with self._operation_lock(key) as acquired:
             if acquired is False:
@@ -58,7 +61,7 @@ class GovernedMergeService:
             self._save(values, record['preview_id'])
             return {key: value for key, value in record.items() if key != 'turtle'}
 
-    def _preview(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _preview(self, payload: dict[str, Any], *, defer_semantics=False) -> dict[str, Any]:
         supplied = payload.get('source_ontology_ids', [])
         if not isinstance(supplied, list) or not all(isinstance(value, str) and value.strip() for value in supplied):
             raise ValueError('source_ontology_ids must be a list of nonempty ontology IDs')
@@ -141,9 +144,10 @@ class GovernedMergeService:
         from .merge_validation import explicit_conflicts
         conflicts = self._literal_conflicts(merged) + explicit_conflicts(merged)
         from .merge_semantics import validate_merge
-        semantic_checks = validate_merge(merged, source_metadata, mappings)
+        semantic_checks = ({'shacl_conforms': None, 'inferred_conflicts': [], 'owl_rl_performed': False,
+                            'status': 'pending'} if defer_semantics else validate_merge(merged, source_metadata, mappings))
         conflicts.extend(semantic_checks['inferred_conflicts'])
-        if not semantic_checks['shacl_conforms']: conflicts.append({'kind':'shacl_nonconformance','message':'Review the retained SHACL report before approval'})
+        if semantic_checks['shacl_conforms'] is False: conflicts.append({'kind':'shacl_nonconformance','message':'Review the retained SHACL report before approval'})
         preview_id = uuid.uuid4().hex
         record = {"preview_id": preview_id, "created_at": datetime.now(timezone.utc).isoformat(),
                   "source_ontology_ids": source_ids, "sources": sources,
@@ -152,11 +156,11 @@ class GovernedMergeService:
                   "description": str(payload.get("description") or ""),
                   "triple_count": len(merged), "duplicate_triple_count": sum(occurrences.values()) - len(occurrences),
                   "consolidated_triple_count": len(original) - len(merged),
-                  "conflicts": conflicts, "publish_recommended": not conflicts, "changes": changes,
+                  "conflicts": conflicts, "publish_recommended": not conflicts and not defer_semantics, "changes": changes,
                   "entity_suggestions": suggestions, "matching_report": matching_report,
                   'semantic_checks': semantic_checks,
                   "validation": {"scope": "RDF union, functional literal conflicts and explicit OWL declaration contradictions",
-                      "formal_reasoning_performed": False, 'owl_rl_performed': True,
+                      "formal_reasoning_performed": False, 'owl_rl_performed': not defer_semantics,
                       "limitations": ["Different IRIs are not automatically equivalent",
                           "Logical consistency and domain/range compatibility require separate validation"]},
                   "turtle": merged.serialize(format="turtle")}
@@ -192,6 +196,11 @@ class GovernedMergeService:
         record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
         if not record:
             raise ValueError('Merge preview not found')
+        if record.get('background_validation'):
+            from .merge_background import background_merges
+            if not background_merges.is_complete(record):
+                return {'preview_id': preview_id, 'status': 'held', 'policy': 'conflict-free-union-v1',
+                        'reasons': ['semantic_validation_incomplete'], 'conflicts': record.get('conflicts', [])}
         from .merge_semantics import validate_merge
         conflicts = validate_merge(record['turtle'], [], declarations_only=True)['inferred_conflicts']
         # Automatic union preserves every entity identity. Consolidations remain
@@ -241,6 +250,10 @@ class GovernedMergeService:
             raise ValueError("Merge preview contains unresolved RDF/OWL conflicts")
         if record.get('applied_result'):
             return record['applied_result']
+        if record.get('background_validation'):
+            from .merge_background import background_merges
+            if not background_merges.is_complete(record):
+                raise ValueError('Semantic validation has not completed for this reviewed merge')
         source_metadata = []
         for source in record.get('sources', []):
             ontology_id = source['ontology_id']
@@ -260,7 +273,14 @@ class GovernedMergeService:
         if not record.get('sources'):
             raise ValueError('Merge preview lacks verified sources; generate a new preview')
         from .merge_semantics import validate_merge
-        semantic_checks = validate_merge(record['turtle'], source_metadata, record.get('changes', {}).get('entity_mappings', []))
+        if record.get('background_validation'):
+            from .merge_semantics import validation_fingerprint
+            receipt = record.get('validation_receipt', {})
+            if receipt.get('graph_sha256') != hashlib.sha256(record['turtle'].encode('utf-8')).hexdigest() or receipt.get('policy_sha256') != validation_fingerprint(source_metadata):
+                raise ValueError('Reviewed graph or validation policy/shapes changed; generate a new preview')
+            semantic_checks = record['semantic_checks']
+        else:
+            semantic_checks = validate_merge(record['turtle'], source_metadata, record.get('changes', {}).get('entity_mappings', []))
         if semantic_checks['shape_digests'] != (record.get('semantic_checks') or {}).get('shape_digests'):
             raise ValueError('Merge validation shapes changed; generate and review a new preview')
         if not semantic_checks['shacl_conforms'] or semantic_checks['inferred_conflicts']:

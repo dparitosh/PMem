@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 
-def prepare(service, payload):
+def prepare(service, payload, *, defer_semantics=False, stop=None):
     from backend.depo_platform.network import bounded_timeout_seconds
     from backend.depo_platform.operations import current_operation
     from backend.depo_platform.upload_limits import ontology_upload_limit
@@ -34,9 +34,15 @@ def prepare(service, payload):
             raise ValueError('Combined merge sources exceed ONTOLOGY_MAX_UPLOAD_BYTES; partition the merge')
         sources[key] = (metadata, content)
         if time.monotonic() - started >= budget: raise ValueError('Merge source preparation exceeded its deadline')
-    encoded = pickle.dumps((sources, payload), protocol=pickle.HIGHEST_PROTOCOL)
+    encoded = pickle.dumps((sources, payload, defer_semantics), protocol=pickle.HIGHEST_PROTOCOL)
     remaining = budget - (time.monotonic() - started)
     if remaining <= 0: raise ValueError('Merge preparation exceeded its deadline')
+    if stop is not None:
+        from .merge_background import validation_child
+        response = validation_child((sources, payload, defer_semantics), stop, remaining,
+                                    'backend.ontology_service.merge_preparation')
+        if 'error' in response: raise ValueError(response['error'])
+        return response['record']
     try:
         result = subprocess.run([sys.executable, '-m', 'backend.ontology_service.merge_preparation'],
             input=encoded, capture_output=True, timeout=remaining, cwd=str(Path(__file__).resolve().parents[2]))
@@ -58,7 +64,7 @@ def main():
     # This entire process is terminable. Run validation here rather than spawning
     # a grandchild that could survive termination of the preparation worker.
     merge_semantics.validate_merge = merge_semantics._validate_merge
-    sources, payload = pickle.loads(sys.stdin.buffer.read())
+    sources, payload, defer_semantics = pickle.loads(sys.stdin.buffer.read())
     service = object.__new__(GovernedMergeService)
     service.catalog = SimpleNamespace(get=lambda key: sources.get(key, (None,))[0],
         read_artifact=lambda key: sources[key], _parse_ontology=OntologyCatalog._parse_ontology)
@@ -67,7 +73,7 @@ def main():
     service._load = lambda: {}
     service._save = lambda values, key: retained.update(record=values[key])
     try:
-        with redirect_stdout(sys.stderr): service._preview(payload)
+        with redirect_stdout(sys.stderr): service._preview(payload, defer_semantics=defer_semantics)
         response = retained
     except ValueError as exc:
         response = {'error': str(exc)}
