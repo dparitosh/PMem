@@ -1,4 +1,4 @@
-/** Business domain/function deck and updated technical companion.
+/** Business domain/function deck, replacing the former technical presentation.
  * Uses the bundled Artifact Tool. Requires DEPO_ARTIFACT_MODULE,
  * DEPO_PRESENTATION_SKILL_DIR, DEPO_PRESENTATION_PYTHON and RUNTIME_NODE_MODULES.
  * Run from the repository root after recording the presentation edit operation.
@@ -219,65 +219,6 @@ function steps(s,items){
 }
 const BUSINESS_COUNT=p.slides.items.length;
 if(BUSINESS_COUNT!==18)throw new Error(`Business count: ${BUSINESS_COUNT}`);
-// Updated technical companion: six current operational views after the business story.
-{
- const s=slide('Technical responsibilities behind the workflow','Ten APIs and three workers separate capture, governance, execution and delivery.',['infra/deployment/services.json']);
- table(s,['Responsibility','Owning services','Business-facing result'],[
-  ['Capture','Schema sets 8010; ingestion 8014; OSLC 8015','Source artifacts and model context'],
-  ['Govern','Ontology 8011; CEIM 8018','Vocabulary, semantic checks and approved mappings'],
-  ['Assist and execute','Agentic 8012; data pipeline 8019','Retained jobs, plans and evidence'],
-  ['Publish and discover','Graph 8013; products 8017; catalog 8016','Graph receipts and discoverable packages'],
- ],[305,495,360],{h:384});
- takeaway(s,'Workers execute agentic workflows, data-pipeline jobs and data-product catalog delivery.');
-}
-{
- const s=slide('Data ownership and evidence','PostgreSQL, artifact storage and Neo4j have different responsibilities.',['infra/postgres/SCHEMA.md','backend/ontology_service/catalog.py','backend/graph_service/staged_publication.py']);
- table(s,['Store','What it owns','Operational requirement'],[
-  ['PostgreSQL','Workflow/registry state, credential digests and migration history','Schema migrations, privileges and tested restore'],
-  ['Artifact storage','Retained sources, generated files and evidence references','Durable paths, permissions and backup'],
-  ['Neo4j','Published ontology/instance projections and graph receipts','Schema provisioning, capacity and receipt reconciliation'],
- ],[295,515,350],{h:335});
- takeaway(s,'A retained artifact, a registered ontology and an active graph publication are distinct outcomes.');
-}
-{
- const s=slide('Authentication and credential synchronization','Local workstation access and manual/gateway access use configurable flows.',['INSTALLATION.md','frontend/src/Components/BrowserAccessBoundary.js','backend/depo_platform/credential_import.py']);
- table(s,['Concern','Current behavior'],[
-  ['Local browser','Same-origin launcher issues delegated access; explicit logout remains disconnected'],
-  ['Guided setup','Synchronizes supplied central application profiles from root .env.local'],
-  ['Unchanged credentials','Matching keys and omitted profiles are retained; changed keys require reconnect'],
-  ['Validation-only choice','CredentialPolicy Validate rejects replacements; advanced installer defaults to validation'],
- ],[325,835],{h:384});
- takeaway(s,'Server/provider secrets remain outside the browser build. Session recovery does not replay failed writes.');
-}
-{
- const s=slide('Installation and update sequence','Customer entry point: Setup-DEPO.cmd; use the complete matching release.',['INSTALLATION.md','infra/windows/setup-depo.ps1']);
- table(s,['Sequence','Action','Verification'],[
-  ['Prepare','Python 3.12 x64, Node.js 24+, PostgreSQL 16 and Neo4j','Database/role, paths, permissions and backup ready'],
-  ['Preflight','Validate release, configuration and upgrade prerequisites','Checks pass before stopping tracked application processes'],
-  ['Update','Dependencies/build, PostgreSQL migrations and credential policy','Corrected schema and verified central profiles'],
-  ['Start and accept','Neo4j schema provisioning, APIs/workers and frontend','Ready services plus a completed business workflow'],
- ],[225,510,425],{h:384});
- takeaway(s,'Database servers remain running during application shutdown. Correct failed stages and rerun setup.');
-}
-{
- const s=slide('Large ontology operating boundaries','Administrative byte limits do not establish a supported production capacity.',['docs/audits/extra-large-ontologies-2026-10-21.md','backend/ingestion_service/conversion_process.py']);
- table(s,['Boundary','Current default or result','What still needs acceptance'],[
-  ['Shared artifact budget','25 MiB for upload/registration/publication; combined merge budget','Consistent settings across owning services'],
-  ['Generated worker result','256 MiB; configurable up to 1 GiB','Parser memory, temporary disk and concurrency'],
-  ['Synthetic hierarchy check','25,000 classes; 74,999 triples; exact tested identities','Representative blank nodes, reasoning and live publication'],
- ],[320,475,365],{h:335,size:23});
- takeaway(s,'Full-graph parsing and inference remain scale risks; million-triple customer capacity is not certified.');
-}
-{
- const s=slide('Customer release acceptance','Technical readiness and useful business outcomes require separate evidence.',['INSTALLATION.md','docs/MBSE_IMPORT.md','docs/audits/extra-large-ontologies-2026-10-21.md']);
- table(s,['Acceptance area','Evidence to retain'],[
-  ['Installation and recovery','Clean install/update, restart, failed-stage recovery and database/artifact restore'],
-  ['Semantic correctness','Expected classes, identities, links, validation findings and publication counts'],
-  ['MBSE interchange','Representative customer model, extracted links and known unsupported semantics'],
-  ['Business and AI use','Useful evidence-backed answers; configured provider succeeds; no unsupported approval'],
- ],[355,805],{h:384});
- takeaway(s,'Source regression tests support release preparation; customer-environment acceptance remains necessary.');
-}
 await fs.writeFile(path.join(build,'outline.json'),JSON.stringify(outline,null,2));
 async function finalize(deck,label,count,owners){
  const candidate=path.join(build,`${label}-candidate.pptx`),finalPath=path.join(finalDir,`${label}.pptx`);
@@ -285,14 +226,12 @@ async function finalize(deck,label,count,owners){
  await finalizePresentation({workspaceDir:root,candidatePath:candidate,finalPath,pythonExecutable:process.env.DEPO_PRESENTATION_PYTHON,integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit',...owners.flatMap(n=>['--require-native-table-slide',String(n)])],requiredNativeTableOwnerSlides:owners,explicitTotalSlideCount:count,fontPolicy:{basis:'design',families:[FONT]},verifyArtifactToolImport:true,receiptPath:path.join(build,`${label}.validation.json`)});
  return finalPath;
 }
-const fullPath=await finalize(p,'DEPO_Functional_Architecture_and_Deployment_Updated',24,tableOwners);
-const final=await PresentationFile.importPptx(await FileBlob.load(fullPath));
+const businessPath=await finalize(p,'DEPO_Business_Domain_and_Functional_Overview',BUSINESS_COUNT,tableOwners);
+const final=await PresentationFile.importPptx(await FileBlob.load(businessPath));
 for(let i=0;i<final.slides.items.length;i++){
  const blob=await final.export({slide:final.slides.items[i],format:'png',scale:1});
  await fs.writeFile(path.join(build,`slide-${String(i+1).padStart(2,'0')}.png`),new Uint8Array(await blob.arrayBuffer()));
 }
 await fs.writeFile(path.join(build,'final-inspect.ndjson'),(await final.inspect({kind:'slide,textbox,shape,table',maxChars:500000})).ndjson);
-final.slides.keep(Array.from({length:BUSINESS_COUNT},(_,i)=>i));
-const businessPath=await finalize(final,'DEPO_Business_Domain_and_Functional_Overview',BUSINESS_COUNT,tableOwners.filter(n=>n<=BUSINESS_COUNT));
-await fs.copyFile(fullPath,main);await fs.copyFile(businessPath,business);
-console.log(JSON.stringify({main,business,mainSlides:24,businessSlides:BUSINESS_COUNT,build}));
+await fs.copyFile(businessPath,main);await fs.copyFile(businessPath,business);
+console.log(JSON.stringify({main,business,mainSlides:BUSINESS_COUNT,businessSlides:BUSINESS_COUNT,build}));
