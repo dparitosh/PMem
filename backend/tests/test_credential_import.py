@@ -45,6 +45,24 @@ class CredentialImportTests(TestCase):
         result, register = self.apply(True)
         self.assertEqual(result[0]['status'], 'replaced'); register.assert_called_once()
 
+    def test_synchronization_keeps_matching_key_without_registering_again(self):
+        self.cursor.fetchone.return_value = self.valid_record
+        results, register = self.apply(True)
+        self.assertEqual(results, [{'profile': 'GRAPH_READ_TOKEN', 'status': 'unchanged'}])
+        register.assert_not_called()
+
+    def test_synchronization_updates_changed_actor_even_when_key_matches(self):
+        self.cursor.fetchone.side_effect = [(*self.valid_record[:3], 'old-reader', None), self.valid_record]
+        results, register = self.apply(True)
+        self.assertEqual(results[0]['status'], 'replaced')
+        register.assert_called_once()
+
+    def test_synchronization_verification_failure_rolls_back_batch(self):
+        self.cursor.fetchone.side_effect = [None, None]
+        with self.assertRaisesRegex(importer.ImportValidationError, 'concurrently'):
+            self.apply(True)
+        self.assertIs(self.transaction.__exit__.call_args.args[0], importer.ImportValidationError)
+
     def test_invalid_expiry_is_safe_and_checked_before_database(self):
         self.values['GRAPH_READ_TOKEN_EXPIRES_AT'] = 'sensitive-invalid-value'
         with patch.object(importer, 'connection') as connect:

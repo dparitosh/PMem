@@ -12,7 +12,7 @@ def installation_documentation():
 
 def test_customer_guide_is_concise_and_links_complete_operator_reference():
     guide = (ROOT / 'INSTALLATION.md').read_text(encoding='utf-8')
-    assert len(guide.splitlines()) < 180
+    assert len(guide.splitlines()) < 300
     assert 'docs/installation/OPERATOR_REFERENCE.md' in guide
     assert 'Setup-DEPO.cmd' in guide
     assert '## 1. Prepare the machine' in guide

@@ -37,17 +37,18 @@ def apply_values(values, replace=False):
         for profile, key, actor, expiry in prepared:
             cursor.execute('SELECT salt,digest,revoked,actor,expires_at FROM depo_api_credentials WHERE profile=%s FOR UPDATE', (profile,))
             existing = cursor.fetchone()
-            if existing and not replace:
+            if existing:
                 reasons = []
                 if existing[2]: reasons.append('revoked')
                 if existing[3] != actor: reasons.append('actor mismatch')
                 if existing[4] != expiry: reasons.append('expiry mismatch')
                 if not hmac.compare_digest(key_digest(existing[0], key), existing[1]): reasons.append('key mismatch')
-                if reasons:
+                if reasons and not replace:
                     conflicts.append(profile + ': ' + ', '.join(reasons))
                     continue
-                results.append({'profile': profile, 'status': 'unchanged'})
-                continue
+                if not reasons:
+                    results.append({'profile': profile, 'status': 'unchanged'})
+                    continue
             register_key(profile, key, actor, expiry, db=db, audit_actor='deployment-import', bootstrap=not replace)
             # Insert-only default also protects against writers that do not use
             # the application advisory lock. Never silently overwrite a key.

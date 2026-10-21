@@ -1,8 +1,26 @@
 # DEPO customer installation
 
-Use **Setup-DEPO.cmd** from the complete release folder for Windows installation, update, repair, Start, Stop and Restart. You do not need to run internal scripts individually. For Linux, gateways, remote databases and optional components, see the [operator reference](docs/installation/OPERATOR_REFERENCE.md).
+Follow this runbook in order. Commands use `E:\App\PMem` as the example release root; replace that directory with your installation location. Use **Setup-DEPO.cmd** for Windows installation, update, repair, Start, Stop and Restart. Linux, gateways, remote databases and optional components have separate procedures in the [operator reference](docs/installation/OPERATOR_REFERENCE.md).
 
 ## 1. Prepare the machine
+
+### 1.1 Check the complete release
+
+Extract a complete matching release. For an existing deployment, complete section 5's backup steps before replacing files. Do not mix scripts from different releases.
+
+| Exact relative path | Role |
+| --- | --- |
+| `Setup-DEPO.cmd` | Customer menu; invokes Windows PowerShell with process execution-policy handling. |
+| `infra\windows\setup-depo.ps1` | Guided configuration, upgrade preflight, tracked application shutdown and complete installation. |
+| `install-depo.ps1` | Root orchestrator: dependencies, migrations, application credentials, graph schema and readiness. |
+| `infra\windows\install-depo.ps1` | Internal dependency helper, called automatically. Do not run it as a complete installation. |
+| `infra\deployment\services.json` | API and worker runtime manifest. |
+| `backend\requirements-lock.txt`, `frontend\package-lock.json` | Reviewed dependency locks; keep these files with the release. |
+| `infra\postgres\migrations\` | Versioned PostgreSQL migration `.sql` files. |
+
+The two files named `install-depo.ps1` have different purposes. Run the customer launcher once; do not run both scripts manually.
+
+### 1.2 Install and start prerequisites
 
 | Prerequisite | Required before Setup |
 | --- | --- |
@@ -16,7 +34,33 @@ Use **Setup-DEPO.cmd** from the complete release folder for Windows installation
 
 Setup discovers PATH tools and supported adjacent portable Python312/NodeJS folders. It checks versions before installing dependencies. It does not install database engines or create database users. Provision those first using the operator reference. Dependency installation needs access to the package sources configured for your deployment.
 
+### 1.3 Open the correct working directory
+
+In Windows PowerShell, run this line **before** any relative-path command:
+
+```powershell
+Set-Location -LiteralPath 'E:\App\PMem'
+```
+
+Then check the release and prerequisites:
+
+```powershell
+Test-Path -LiteralPath '.\Setup-DEPO.cmd'
+py -3.12 --version
+node --version
+npm.cmd --version
+```
+
+Expected: `True`, Python 3.12.x, Node v24.x or newer, npm 10.2 or newer. Portable tools can use explicit paths; guided setup accepts `-Python 'C:\Path\To\Python312\python.exe'`. Setup does not install Python/Node engines or register every API as a Windows service.
+
 ## 2. Install
+
+### 2.1 Choose the installation scenario
+
+- **New installation:** complete section 1; have the existing PostgreSQL application database/role and running Neo4j connection ready. Setup prompts for connections and generates application keys.
+- **Existing deployment:** back up and preserve root `.env.local`, `frontend\.env.local`, databases and durable artifacts as described in section 5. Keeping the original root file retains deployed application keys.
+
+### 2.2 Launch setup
 
 1. Open the extracted release folder and double-click **Setup-DEPO.cmd**.
 2. Choose **1 — Install / update / repair**.
@@ -24,7 +68,34 @@ Setup discovers PATH tools and supported adjacent portable Python312/NodeJS fold
 4. Wait for setup to finish. It validates the release, configuration, prerequisites and artifact storage before stopping application processes. Existing deployments also receive read-only database upgrade checks before shutdown.
 5. Confirm **DEPO Windows installation completed successfully**, then open the frontend URL reported by the installer. The default workstation address is `http://127.0.0.1:3000/`.
 
-First-run connection values are validated before staged configuration is promoted. Setup generates application keys and applies credentials when PostgreSQL credential storage is enabled. Ordinary updates retain existing keys.
+From PowerShell, the equivalent setup command is:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Setup
+```
+
+From Command Prompt, change both drive and directory before running the menu:
+
+```bat
+cd /d E:\App\PMem
+Setup-DEPO.cmd
+```
+
+Choose one method and wait for completion. Do not run concurrent installers.
+
+### 2.3 Review configuration and credential policy
+
+First-run connection values are validated before staged configuration is promoted. Password prompts are hidden; remote Neo4j requires verified TLS. Existing configuration files are reused.
+
+Guided setup defaults to `-CredentialPolicy Synchronize`. When `AUTH_MODE=token` and `DEPO_CREDENTIAL_STORE=postgres`, root `.env.local` supplies the desired application credentials. Missing profiles are created; changed keys or actor/expiry metadata are updated atomically; matching keys and omitted profiles are retained. Repeating setup with the same file does not rotate matching keys. Changed keys require dependent clients to reconnect.
+
+To reject replacements instead, use this explicit validation command:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Setup -CredentialPolicy Validate
+```
+
+The advanced root `install-depo.ps1` remains validation-only unless `-ReplaceExistingCredentials` is supplied. PostgreSQL schema migration and credential synchronization are separate stages. PostgreSQL stores salted key digests and cannot recover an old plaintext key into a lost environment file. Database passwords, Neo4j credentials and provider keys remain server configuration; they are not application credential profiles.
 
 There are two configuration files:
 
@@ -34,6 +105,21 @@ There are two configuration files:
 New workstation setup enables the loopback browser broker, so users do not paste an Admin key into the browser. Existing manual/gateway authentication settings are preserved. Manual delegated sessions are explained in the operator reference; do not repeat manual credential import after successful guided setup.
 
 Every guided action starts PowerShell with process-scoped ExecutionPolicy Bypass. Machine policy is unchanged. If organization policy requires signed software, use an approved signed release; do not disable organization policy.
+
+### 2.4 Follow the stages and expected results
+
+| Order | Installer action | Expected result |
+| --- | --- | --- |
+| 1 | Check release, configuration, Python/Node versions and writable artifact storage; existing deployments receive database upgrade preflight checks. | Preflight passes before application shutdown. |
+| 2 | Stop tracked frontend/backend processes using ownership checks. | PostgreSQL and Neo4j servers remain running. |
+| 3 | Install/reuse verified Python/npm dependencies and build frontend source. | Dependency checks pass; `frontend\dist\index.html` exists. |
+| 4 | Start selected PostgreSQL runtime when configured; check connectivity and deployment mode. | Database is reachable and existing/new mode is reported. |
+| 5 | Run PostgreSQL schema migrations through the lifecycle scripts. | Required migrations pass; the database is not recreated. |
+| 6 | Apply the selected application credential policy. | Atomic validation/synchronization passes. |
+| 7 | Provision/validate Neo4j schema and start APIs/workers. | Backend readiness passes. |
+| 8 | Start/verify frontend and stage ontology upgrade review where applicable. | Actual frontend URL and installation success are printed. |
+
+Expected final messages include `DEPO Windows installation completed successfully` and `Setup finished`. Follow section 3 before treating the application workflow as accepted.
 
 ## 3. Verify the application
 
@@ -55,14 +141,20 @@ For command-line use, run the required action individually from the release root
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Start
+```
+
+```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Stop
+```
+
+```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Restart
 ```
 
 ## 5. Update or repair
 
 1. Back up PostgreSQL, Neo4j, durable artifacts and configuration. Confirm the restore procedure for the current schema version.
-2. Place the complete matching release in the application directory, preserving both environment files, customer uploads and durable data. Use a maintenance window when replacing a running release.
+2. Place the complete matching release in the application directory, preserving root `.env.local`, `frontend\.env.local`, customer uploads and durable data. Use a maintenance window when replacing a running release. Review intentional credential changes before setup; guided synchronization applies them to PostgreSQL.
 3. Run **Setup-DEPO.cmd → Install / update / repair**. Do not manually stop services before its preflight.
 4. Verify services and the browser workflow again. Review any staged ontology upgrades separately.
 
@@ -85,6 +177,9 @@ Setup retains timestamped `.log` and `.jsonl` files in `logs/installation/runs` 
 | PowerShell blocked | Use Setup-DEPO.cmd. If signing policy overrides process bypass, obtain an approved release from the administrator. |
 | Python/Node/npm rejected | Install the required version. Setup accepts `-Python` for an explicit executable; Node discovery settings are in the operator reference. |
 | PostgreSQL timeout/refused | Check server availability, configured database, user, TLS and role privileges. |
+| PostgreSQL migration failed | Read the structured SQLSTATE/action, correct privileges or incompatible schema, then retry setup with the database/configuration retained. |
+| Application key mismatch | Guided Synchronize updates supplied profiles from root `.env.local`. Validate mode and the advanced installer reject differing keys; preserve the original file or deliberately select synchronization. |
+| Script not found | First change to the release root; verify the exact `.ps1`/`.cmd` path. Restore the complete matching release if missing. |
 | Neo4j unavailable | Check the selected database, URI, credentials and TLS. |
 | Process inspection or PID identity rejected | Use an account permitted to inspect processes/listeners. Inspect the recorded process; never kill unrelated PIDs or bypass ownership checks. |
 | Installation fails | Correct the first error in the audit log, then rerun the same launcher. Failed preflight leaves PMem running; failures after shutdown can leave it stopped until repaired. |

@@ -1,5 +1,11 @@
 # Installation operator reference
 
+## Guided credential policy
+
+The customer sequence and exact launcher commands are in root `INSTALLATION.md`. Guided `Setup-DEPO.cmd` / `infra/windows/setup-depo.ps1 -Action Setup` defaults to `-CredentialPolicy Synchronize`. After PostgreSQL migration, central token credentials are synchronized from root `.env.local`: changed supplied keys and actor/expiry metadata are updated atomically; matching keys and omitted profiles are retained. Keeping the original deployment file preserves its keys. New keys require clients to reconnect. `-CredentialPolicy Validate` rejects mismatches instead. Other authentication/storage modes do not request replacement.
+
+The advanced root `install-depo.ps1` and updater remain validation-only unless their supported explicit replacement option is supplied; the root installer accepts `-ReplaceExistingCredentials`. Schema migration does not recover or overwrite credential secrets by itself. The credential importer stores salted digests, verifies post-write records and rolls back the batch on a failure. Repeated synchronization of identical profiles does not call key registration again.
+
 ## Import workflow cleanup
 
 Admin → Maintenance → Clear Import Workflows deletes quiescent instance-import and schema-set task snapshots, task-owned sources/previews/reports and matching workflow artifact manifests in PostgreSQL. Full Schema Cleanup includes this operation; Graph Reset Only does not. Active processing, queued execution and uncertain publication outcomes block deletion before the graph is changed. Resolve those outcomes or cancel through the supported workflow controls first.
@@ -3016,7 +3022,7 @@ Set-Location E:\App\PMem
 .\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
 ```
 
-Migration 008 creates `depo_api_credentials` (salted key digests, actor, expiry and revocation) and `depo_api_credential_events` (rotation/revocation audit events). No plaintext keys are stored. Bootstrap inserts missing profiles only: reinstall never overwrites rotated or revoked profiles. Services reject database outages rather than falling back to old environment keys.
+Migration 008 creates `depo_api_credentials` (salted key digests, actor, expiry and revocation) and `depo_api_credential_events` (rotation/revocation audit events). No plaintext keys are stored. Migration bootstrap inserts missing profiles only. The separate guided Synchronize policy deliberately updates differing supplied profiles, including revoked profiles; Validate mode rejects them. Services reject database outages rather than falling back to old environment keys.
 
 In Admin → Service credentials, test and apply the current `ADMIN_API_KEY`. Enter a new random profile key and an assigned actor, then use **Register / rotate in database** and confirm. This invalidates the prior key for that profile. Lost registration responses are ambiguous: test the proposed new key before retrying. Rotating the administrator key requires retaining the new key securely; there is no anonymous password recovery. The **Test and apply** button does not register a key. Graph-read testing checks all configured services, with individual results.
 
@@ -3233,7 +3239,7 @@ working: reconnect in Admin using the selected file's `ADMIN_API_KEY`.
 Without this option the installer validates existing profiles and stops on a
 mismatch; it does not silently overwrite customer credentials.
 
-The installer migrates PostgreSQL, initializes missing profiles and checks supplied credential keys, actor metadata, expiry and revocation before launching APIs. Existing keys are preserved. Conflicts stop the installation with profile names and reasons; secret values are never printed.
+The advanced root installer migrates PostgreSQL, initializes missing profiles and checks supplied credential keys, actor metadata, expiry and revocation before launching APIs. Without its replacement switch, existing keys are preserved and conflicts stop installation with profile names and reasons. Guided setup uses its separate Synchronize/Validate policy described above. Secret values are never printed.
 
 Normal first installation or redeployment, from the application repository root:
 
@@ -3242,7 +3248,7 @@ Set-Location E:\App\PMem
 .\install-depo.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production
 ```
 
-If the reviewed file intentionally replaces the central credentials, stop running services first, then use the explicit option. This rotates all supplied application key profiles and invalidates dependent browser sessions:
+For an advanced installation where the reviewed file intentionally replaces central credentials, stop running services first, then use the explicit option. Changed supplied profiles are updated; matching profiles are retained. Clients using changed keys must reconnect:
 
 ```powershell
 .\infra\windows\stop-depo-services.ps1 -EnvFile 'E:\App\PMem\.env.local'
@@ -3251,7 +3257,7 @@ If the reviewed file intentionally replaces the central credentials, stop runnin
 .\infra\windows\start-depo-frontend.ps1 -EnvFile 'E:\App\PMem\.env.local'
 ```
 
-The installer builds the frontend unless skipped; frontend serving remains an explicit final step. Reconnect in Admin after rotating credentials.
+The complete installer builds and starts the frontend unless skipped; a separate start is unnecessary after successful installation. Manual delegated browser sessions require reconnection after changed keys; local broker mode connects using its configured server credentials.
 
 ### Optional Ollama proxy with subscription authentication
 
@@ -4176,8 +4182,9 @@ restore them. Reimporting an environment file clears settings imported previousl
 by these launchers when the selected file now omits them; unrelated shell settings
 are preserved.
 A failed stage stops the update and reports the error; correct it and rerun the
-same command. Credential mismatches require restoring the current keys or deliberate
-rotation; redeployment does not automatically rotate keys.
+same command. The advanced updater rejects credential mismatches. Guided setup
+defaults to synchronizing supplied profiles from root `.env.local`; choose
+`-CredentialPolicy Validate` to reject replacements. Matching profiles are retained.
 
 For a database-only upgrade, without rebuilding or starting services:
 

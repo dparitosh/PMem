@@ -28,7 +28,7 @@ try {
   $omittedProfiles = @($profiles | Where-Object { $_ -notin $suppliedProfiles })
   Write-Host ('Applying {0} application credential profiles from the selected environment file.' -f $suppliedProfiles.Count)
   if ($omittedProfiles.Count -gt 0) { Write-Host ('Not supplied; central values are preserved: {0}' -f ($omittedProfiles -join ', ')) }
-  if ($ReplaceExisting) { Write-Host 'Synchronization mode: supplied keys and their actor/expiry metadata replace existing central profiles. Existing browser sessions may require reconnection.' }
+  if ($ReplaceExisting) { Write-Host 'Synchronization mode: changed supplied keys and actor/expiry metadata update central profiles atomically; matching and omitted profiles are retained. Changed keys may require clients to reconnect.' }
   else { Write-Host 'Validation mode: creates missing profiles and verifies existing profiles. To deliberately make the selected file authoritative, rerun with -Synchronize.' }
   if ($values.ContainsKey('DEPO_TOKEN_EXPIRES_AT')) { $selected['DEPO_TOKEN_EXPIRES_AT'] = $values['DEPO_TOKEN_EXPIRES_AT'] }
   $arguments = @('-m', 'backend.depo_platform.credential_import')
