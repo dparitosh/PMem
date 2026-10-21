@@ -179,6 +179,7 @@ Setup retains timestamped `.log` and `.jsonl` files in `logs/installation/runs` 
 | PostgreSQL timeout/refused | Check server availability, configured database, user, TLS and role privileges. |
 | PostgreSQL migration failed | Read the structured SQLSTATE/action, correct privileges or incompatible schema, then retry setup with the database/configuration retained. |
 | Application key mismatch | Guided Synchronize updates supplied profiles from root `.env.local`. Validate mode and the advanced installer reject differing keys; preserve the original file or deliberately select synchronization. |
+| Engineering conversion result exceeds its limit | Generated output is separate from upload size. The worker spools its result to a temporary file and checks `ENGINEERING_CONVERSION_MAX_RESULT_BYTES` before decoding. Default: 268435456 bytes (256 MiB); maximum: 1073741824 bytes (1 GiB). If necessary, set a larger integer in root `.env.local` within server memory capacity and restart the backend, or narrow the schema set. Conversion failure occurs before ontology registration. |
 | Script not found | First change to the release root; verify the exact `.ps1`/`.cmd` path. Restore the complete matching release if missing. |
 | Neo4j unavailable | Check the selected database, URI, credentials and TLS. |
 | Process inspection or PID identity rejected | Use an account permitted to inspect processes/listeners. Inspect the recorded process; never kill unrelated PIDs or bypass ownership checks. |

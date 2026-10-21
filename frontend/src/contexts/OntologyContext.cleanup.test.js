@@ -34,6 +34,16 @@ test('cleanup removes displayed registrations even when refresh fails', async ()
   expect(screen.queryByText('QIF')).toBeNull();
 });
 
+test('catalog authorization failure remains visible alongside a registry timeout', async () => {
+  mocks.get.mockImplementation(path => Promise.reject(path.startsWith('/api/v1/ontologies')
+    ? {response:{status:403,data:{detail:'Required API key is missing or invalid'}}}
+    : {code:'ECONNABORTED'}));
+  render(<OntologyProvider><Registry /></OntologyProvider>);
+  const alert=await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('Ontology catalog (Required API key is missing or invalid)');
+  expect(alert).toHaveTextContent('Ingestion registry (The request timed out.');
+});
+
 test('cleanup aborts a registry request that started before deletion', async () => {
   const signals = [];
   mocks.get.mockImplementation((_path, options) => {

@@ -1,5 +1,11 @@
 # Installation operator reference
 
+## Generated conversion results and browser reconnection
+
+`ENGINEERING_CONVERSION_MAX_RESULT_BYTES` in root `.env.local` controls the trusted engineering worker's generated result size, independently of upload limits. Default: 268435456 bytes (256 MiB); accepted range: 1 through 1073741824 bytes. The parent spools worker output to temporary files, checks its size before decoding and removes temporary files on success/failure. The existing conversion deadline remains in force. Large schemas can expand well beyond their input size. Raise the limit only within server memory capacity; restart the backend after changing it. A limit failure occurs before ontology registration and does not authorize publication.
+
+After application credential changes, refresh/reconnect browser access. Local mode obtains a fresh delegated session through the same-origin launcher and recovers promptly on delegated-session expiry. Explicit logout remains disconnected. Manual/gateway deployments use their own reconnect flow. Recovery does not replay failed writes: check retained operation status before resubmitting a write with an uncertain outcome. Registry errors now preserve both catalog and ingestion-registry failures, so a timeout cannot hide a separate authorization rejection.
+
 ## Guided credential policy
 
 The customer sequence and exact launcher commands are in root `INSTALLATION.md`. Guided `Setup-DEPO.cmd` / `infra/windows/setup-depo.ps1 -Action Setup` defaults to `-CredentialPolicy Synchronize`. After PostgreSQL migration, central token credentials are synchronized from root `.env.local`: changed supplied keys and actor/expiry metadata are updated atomically; matching keys and omitted profiles are retained. Keeping the original deployment file preserves its keys. New keys require clients to reconnect. `-CredentialPolicy Validate` rejects mismatches instead. Other authentication/storage modes do not request replacement.

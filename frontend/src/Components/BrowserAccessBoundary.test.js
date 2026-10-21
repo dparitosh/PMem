@@ -7,6 +7,30 @@ vi.mock('../services/serviceAuth',()=>({getBrowserSessionStatus:vi.fn(),installB
 beforeEach(()=>{sessionStorage.clear();vi.clearAllMocks();getBrowserSessionStatus.mockReturnValue(null);});
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 const response=body=>({ok:true,json:async()=>body});
+
+test('local credential expiry reconnects promptly without waiting for the interval',async()=>{
+  const fetch=vi.fn().mockResolvedValueOnce(response({mode:'local'}))
+    .mockResolvedValueOnce(response({token:'depo_session_old'}))
+    .mockResolvedValueOnce(response({token:'depo_session_new'}));
+  vi.stubGlobal('fetch',fetch);
+  render(<BrowserAccessBoundary><div>Workspace</div></BrowserAccessBoundary>);
+  await screen.findByText('Workspace');
+  fireEvent(window,new Event('depo:session-expired'));
+  await waitFor(()=>expect(installBrowserSession).toHaveBeenCalledWith({token:'depo_session_new'}));
+  expect(fetch.mock.calls.map(([path])=>path)).toEqual(['/_pmem-local/config','/_pmem-local/session','/_pmem-local/session']);
+});
+
+test('expiry does not reconnect after explicit local sign-out',async()=>{
+  const fetch=vi.fn().mockResolvedValueOnce(response({mode:'local'})).mockResolvedValueOnce(response({token:'depo_session_old'}));
+  vi.stubGlobal('fetch',fetch);
+  render(<BrowserAccessBoundary><div>Workspace</div></BrowserAccessBoundary>);
+  await screen.findByText('Workspace');
+  fireEvent(window,new Event('depo:credentials-cleared'));
+  fireEvent(window,new Event('depo:session-expired'));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10));});
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('Local access is disconnected.')).toBeInTheDocument();
+});
 test('manual deployments do not bootstrap on startup or visibility changes',async()=>{
   const fetch=vi.fn().mockResolvedValue(response({mode:'manual'}));vi.stubGlobal('fetch',fetch);
   render(<BrowserAccessBoundary><div>Workspace</div></BrowserAccessBoundary>);

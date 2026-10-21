@@ -71,14 +71,13 @@ export const OntologyProvider = ({ children }) => {
         }));
         const merged = new Map();
         let successes = 0;
-        let lastError = null;
         const failedSources = [];
         for (const [index, result] of results.entries()) {
           if (controller.signal.aborted) return [];
-          if (result.status === 'rejected') { lastError = result.reason; failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (${apiErrorMessage(result.reason, 'request failed')})`); continue; }
+          if (result.status === 'rejected') { failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (${apiErrorMessage(result.reason, 'request failed')})`); continue; }
           const payload = result.value?.data || {};
           const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
-          if (!Array.isArray(rows)) { lastError = new Error('Registry returned an invalid ontology list.'); failedSources.push(index === 0 ? 'Ontology catalog' : 'Ingestion registry'); continue; }
+          if (!Array.isArray(rows)) { failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (invalid ontology list)`); continue; }
           successes += 1;
           for (const row of normalizeOntologyRows(rows)) {
             if (!row.value) continue;
@@ -90,7 +89,9 @@ export const OntologyProvider = ({ children }) => {
             }
           }
         }
-        if (!successes) throw lastError || new Error('Failed to load ontologies');
+        if (!successes) throw new Error(failedSources.length
+          ? `Failed to load ontology registries: ${failedSources.join('; ')}`
+          : 'Failed to load ontologies');
         if (controller.signal.aborted) return [];
         const ontologyList = [...merged.values()];
         if (mountedRef.current) {

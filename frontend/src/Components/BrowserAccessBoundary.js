@@ -15,6 +15,7 @@ export default function BrowserAccessBoundary({ children }) {
     let inFlight = false;
     let local = false;
     let timer;
+    let recoveryTimer;
     let generation = 0;
     const controller = new AbortController();
     const fetchLocal = async (path, options = {}) => {
@@ -77,12 +78,21 @@ export default function BrowserAccessBoundary({ children }) {
       } catch { /* Manual access stays available if the launcher is absent. */ }
       finally { if (!cancelled) setReady(true); }
     };
+    const recoverExpired = () => {
+      if (!local || stopped || cancelled) return;
+      clearTimeout(recoveryTimer);
+      // Renewal rejection can emit this while a request is still unwinding.
+      // Recover on the next turn without replaying any failed API operation.
+      recoveryTimer = setTimeout(keepAlive, 0);
+    };
     window.addEventListener('depo:credentials-cleared', disconnected);
+    window.addEventListener('depo:session-expired', recoverExpired);
     document.addEventListener('visibilitychange', keepAlive);
     initialize();
     return () => {
-      cancelled = true; generation += 1; controller.abort(); clearInterval(timer);
+      cancelled = true; generation += 1; controller.abort(); clearInterval(timer); clearTimeout(recoveryTimer);
       window.removeEventListener('depo:credentials-cleared', disconnected);
+      window.removeEventListener('depo:session-expired', recoverExpired);
       document.removeEventListener('visibilitychange', keepAlive);
     };
   }, [retry]);
