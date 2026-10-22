@@ -22,22 +22,23 @@ it.each(['removed', 'retained', 'failed'])('background refresh handles a %s prod
   readProductCollection.mockResolvedValueOnce({rows:[{product_id:'a',version:'1'}],total:1,warning:''});
   if (outcome === 'failed') readProductCollection.mockRejectedValue(new Error('List unavailable'));
   else readProductCollection.mockResolvedValue({rows:outcome === 'retained' ? [{product_id:'a',version:'1'}] : [],total:outcome === 'retained' ? 1 : 0,warning:''});
-  apiClient.get.mockResolvedValueOnce({data:{marker:'old-package-details'}})
-    .mockResolvedValue({data:{marker:'refreshed-package-details'}});
+  apiClient.get.mockResolvedValueOnce({data:{name:'old-package-details'}})
+    .mockResolvedValue({data:{name:'refreshed-package-details'}});
   render(<DataProductsPage />);
   await screen.findByText('Data Products (1 total; 1 loaded)');
   fireEvent.change(screen.getByLabelText('Product details and versions'), {target:{value:'a:1'}});
-  await screen.findByText(/old-package-details/);
+  await screen.findByRole('heading',{name:'old-package-details'});
   try {
     await act(async () => { poll(); });
     expect(screen.queryByText(/old-package-details/)).toBeNull();
     expect(screen.getByLabelText('Product details and versions')).toHaveValue(outcome === 'retained' ? 'a:1' : '');
-    if (outcome === 'retained') expect(await screen.findByText(/refreshed-package-details/)).toBeVisible();
+    if (outcome === 'retained') expect(await screen.findByRole('heading',{name:'refreshed-package-details'})).toBeVisible();
   } finally { cleanup(); interval.mockRestore(); visibility.mockRestore(); }
 });
 it('shows declared totals separately from a partial collection', async () => {
   readProductCollection.mockResolvedValue({rows:[{product_id:'a',version:'1'}],total:3,warning:'Partial collection'});
   render(<DataProductsPage mode="catalog" />);
+  fireEvent.click(screen.getByRole('tab',{name:'Published products'}));
   expect(await screen.findByText('Data Catalog (3 total; 1 loaded)')).toBeVisible();
   expect(screen.getByText('Partial collection')).toBeVisible();
 });
@@ -49,4 +50,35 @@ it('reloads retained Data Flow evidence through the pipeline service', async () 
   await waitFor(() => expect(screen.getByTestId('retained-draft')).toHaveTextContent('retained-1'));
   expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('run-1', expect.objectContaining({timeout:15000}));
   expect(screen.getByTestId('retained-draft')).toHaveTextContent('requires_review');
+});
+
+it('visible evidence actions expand the relevant product workflow',async()=>{
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ render(<DataProductsPage/>);
+ fireEvent.click(screen.getByRole('tab',{name:'Create & review'}));
+ fireEvent.click(screen.getByRole('button',{name:'Review structural analytics'}));
+ expect(screen.getByText('Structural analytics: schema, dimensions and KPIs').closest('details')).toHaveAttribute('open');
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline evidence'}));
+ fireEvent.click(screen.getByRole('button',{name:'Review pipeline evidence'}));
+ expect(screen.getByText('Pipeline evidence: create a product from Data Flow').closest('details')).toHaveAttribute('open');
+});
+
+it('catalog deep links open structural analytics directly on Products',async()=>{
+ window.location.hash='#/data-products?view=structural';
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ render(<DataProductsPage/>);
+ expect(screen.getByText('Structural analytics: schema, dimensions and KPIs').closest('details')).toHaveAttribute('open');
+});
+
+it('catalog starts with ingested sources and keeps product creation behind its workspace',async()=>{
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ render(<DataProductsPage mode="catalog"/>);
+ expect(screen.getByRole('tab',{name:'Ingested sources'})).toHaveAttribute('aria-selected','true');
+ expect(screen.queryByRole('tab',{name:'Structural analytics'})).toBeNull();
+ fireEvent.click(screen.getByRole('tab',{name:'Product opportunities'}));
+ expect(screen.getByRole('tab',{name:'Structural analytics'})).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'Published products'}));
+ expect(await screen.findByRole('button',{name:'Browse ingested sources'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Browse ingested sources'}));
+ expect(screen.getByRole('tab',{name:'Ingested sources'})).toHaveAttribute('aria-selected','true');
 });

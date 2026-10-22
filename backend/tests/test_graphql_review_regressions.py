@@ -91,7 +91,7 @@ class GraphResponseSafetyTests(unittest.TestCase):
         tree = ast.parse((ROOT / 'graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_explorer_payload')
         method.decorator_list = []
-        scope = {'Any': Any}
+        scope = {'Any': Any,'__name__':'backend.graph_service.neo4j_publisher','__package__':'backend.graph_service'}
         exec(compile(ast.Module(body=[method], type_ignores=[]), 'publisher', 'exec'), scope)
         result = scope['_explorer_payload'](nodes=[{'id':'urn:Part','graph_id':'first'}, {'id':'urn:Part','graph_id':'second'}],
             edges=[{'source':'urn:Part','target':'urn:Part','graph_source':'first','graph_target':'second'}, {'source':'missing','target':'urn:Part'}], view={})
@@ -158,7 +158,8 @@ class GraphResponseSafetyTests(unittest.TestCase):
 
     def test_projection_keeps_rdf_iris_and_limits_edges_to_selected_nodes(self):
         from backend.graph_service import query_repository
-        scope = {'Any':Any,'cypher':query_repository}
+        from backend.depo_platform.graph_access import ontology_projection_reader
+        scope = {'Any':Any,'cypher':query_repository,'ontology_projection_reader':ontology_projection_reader}
         tree = ast.parse((ROOT / 'graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         method = next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='projection')
         exec(compile(ast.Module(body=[method],type_ignores=[]),'publisher','exec'),scope)

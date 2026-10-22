@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ReadGoalPanel from '../ReadGoalPanel';
 import { UI_COLORS as C } from '../../styles/uiTokens';
 
 const INFERENCE_RULES = [
@@ -30,6 +31,9 @@ export default function OntologyInferenceWorkbench(props) {
     filter,
   } = props;
 
+  const [question, setQuestion] = useState('Explain the inferred statements, supporting declarations, disjointness findings and limitations for this ontology.');
+  const investigationKey = JSON.stringify([selectedOntologyApi, inferenceRules, inferenceLimit]);
+
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', minHeight: '360px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -46,6 +50,17 @@ export default function OntologyInferenceWorkbench(props) {
           {inferenceBusy ? 'Previewing' : 'Run preview'}
         </button>
       </div>
+
+      <section aria-label="Inference agent" style={{ padding: 12, marginBottom: 12, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+        <h3>Ontology Inference Advisor</h3>
+        <p>Ask the agent to plan an investigation, run the selected inference rules and explain evidence using ontology IRIs. The model-assisted explanation remains separate from the structural rule preview.</p>
+        <label htmlFor="inference-agent-question">What would you like to understand?</label>
+        <textarea id="inference-agent-question" value={question} onChange={event => setQuestion(event.target.value)} maxLength={8000} rows={2} style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
+        {selectedOntologyApi ? <ReadGoalPanel key={investigationKey} storageKey={`depo:inference-goal:${investigationKey}`} agent="ontology-inference" task={question}
+          context={{ ontology_id: selectedOntologyApi, rules: inferenceRules, limit: Number(inferenceLimit) }} />
+          : <p>Select an active ontology to investigate its inferences.</p>}
+        <p>Requires a configured OpenAI, Mistral or Ollama model and the agent worker. Plans, tool evidence and conclusions are retained; no graph changes are made.</p>
+      </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 360px) 1fr', gap: '12px', alignItems: 'start' }}>
         <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', background: C.bg }}>

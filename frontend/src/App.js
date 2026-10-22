@@ -13,6 +13,7 @@ import AppPageOutlet from './app/AppPageOutlet';
 import { normalizePage } from './app/navigation';
 import { platformAPI } from './services/apiClient';
 
+const PageTaskWorkspace = lazy(() => import('./Components/PageTaskWorkspace'));
 const Chatbot = lazy(() => import('./Components/Chatbot'));
 
 
@@ -233,13 +234,15 @@ function App() {
                 <Suspense fallback={<PageFallback />}>
                     <Chatbot
                       key={`chat-${serviceAuthRevision}`}
-                    graphData={data}
+                    graphData={page !== 'home' && ['graph','ontology','whereused','requirements','modeling','qif'].includes(activePage) ? data : undefined}
+                    pageId={page === 'home' ? 'home' : activePage}
                     setChatResults={setChatResults}
                   />
                 </Suspense>
               </ErrorBoundary>
             )}
             >
+              <Suspense fallback={null}><PageTaskWorkspace key={`tasks-${page === 'home' ? 'home' : activePage}-${serviceAuthRevision}`} page={page === 'home' ? 'home' : activePage} /></Suspense>
               {page === 'home' ? (
                 <LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} />
               ) : (

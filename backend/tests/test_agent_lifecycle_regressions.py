@@ -201,7 +201,7 @@ def test_telemetry_failure_does_not_change_completed_tool(client, monkeypatch):
 
 def test_companion_uses_credential_scoped_memory(client, monkeypatch):
     queries, recorded = [], []
-    monkeypatch.setattr(router.AgentMemoryService, 'recent_context', lambda *args: {'messages': [{'role': 'user', 'text': 'Motor assembly'}]})
+    monkeypatch.setattr(router, '_session_turns', lambda *args: [{'user_request':'Motor assembly','graph_context':{}}])
     monkeypatch.setattr(router.AgentMemoryService, 'record_chat_turn', lambda **kwargs: recorded.append(kwargs))
     async def ask(query, **kwargs):
         queries.append(query)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 # Older ingestion writes typed nodes directly, without an OntologyResource
 # projection. Keep its counts distinct from explicit RDF declarations.
-LEGACY_NODE_FILTER = "(n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:OntologyResource"
+LEGACY_NODE_FILTER = "(n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:OntologyResource AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity"
 LEGACY_SCOPE_FILTER = "(($ontology_id = '' AND $ontology_prefix = '') OR ($ontology_id <> '' AND (n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id)) OR ($ontology_prefix <> '' AND (n.prefix = $ontology_prefix OR n.source_ontology = $ontology_prefix) AND ($ontology_id = '' OR (n.ontology_id IS NULL AND (n.source_ontology IS NULL OR n.source_ontology = $ontology_prefix)))))"
 LEGACY_METRICS = (
     "CALL { MATCH (n) WHERE " + LEGACY_NODE_FILTER + " AND " + LEGACY_SCOPE_FILTER + " "
@@ -22,13 +22,13 @@ LEGACY_SEARCH = (
     "MATCH (n) WHERE " + LEGACY_NODE_FILTER + " AND " + LEGACY_SCOPE_FILTER + " "
     "WITH n, coalesce(n.name, n.label, n.uri, n.iri, '') AS label, "
     "coalesce(n.uri, n.iri, '') AS iri "
-    "WITH n, label, reduce(score = 0, term IN $terms | score + CASE "
+    "WITH n, label, iri, reduce(score = 0, term IN $terms | score + CASE "
     "WHEN toLower(label) = term THEN 5 "
     "WHEN toLower(label) CONTAINS term OR toLower(iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 RETURN elementId(n) AS id, label, "
     "coalesce(n.concept_type, head(labels(n)), 'resource') AS type, "
-    "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, score "
-    "ORDER BY score DESC, label LIMIT $limit"
+    "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, iri, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "ORDER BY score DESC, label, id LIMIT $limit"
 )
 LEGACY_OVERVIEW = (
     'MATCH (n) WHERE ' + LEGACY_NODE_FILTER + ' '
@@ -86,8 +86,8 @@ ONTOLOGY_SEARCH_NODES = (
     "WHEN toLower(coalesce(n.label, '')) = term OR toLower(n.iri) ENDS WITH '/' + term OR toLower(n.iri) ENDS WITH '#' + term THEN 5 "
     "WHEN toLower(coalesce(n.label, '')) CONTAINS term OR toLower(n.iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 "
-    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, score "
-    "ORDER BY score DESC, label LIMIT $limit"
+    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "ORDER BY score DESC, label, id LIMIT $limit"
 )
 
 

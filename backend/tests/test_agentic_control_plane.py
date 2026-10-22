@@ -129,6 +129,20 @@ def test_companion_returns_bounded_graph_evidence(monkeypatch, companion_persist
     assert response.json()["evidence"][0]["resource_id"] == "urn:product"
 
 
+def test_invalid_optional_model_settings_do_not_suppress_retrieval(monkeypatch, companion_persistence):
+    monkeypatch.setenv('AUTH_MODE','token')
+    monkeypatch.setenv('GRAPH_READ_TOKEN','read-test')
+    monkeypatch.setenv('COMPANION_LLM_ENABLED','true')
+    def invalid_settings():raise ValueError('Invalid provider configuration')
+    monkeypatch.setattr('backend.agentic_service.local_llm.settings',invalid_settings)
+    async def grounded(*args,**kwargs):
+        return {'answerable':True,'response':'Retained mapping evidence remains available.','evidence':[],'sources':[]}
+    monkeypatch.setattr('backend.agentic_service.router.companion.ask',grounded)
+    response=TestClient(app).post('/api/v1/chat',json={'message':'AP242 QIF mappings'},headers={'Authorization':'Bearer read-test'})
+    assert response.status_code==200
+    assert response.json()['answerable'] is True
+
+
 def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch, companion_persistence):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")

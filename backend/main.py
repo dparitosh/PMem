@@ -4178,6 +4178,8 @@ except ImportError:
     from Services.similar_parts_recommender import SimilarPartsRecommender
     from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
 
+from backend.depo_platform.decision_policy import assess_recommendation
+
 _change_impact = ChangeImpactRecommender(graph)
 _similar_parts = SimilarPartsRecommender(graph)
 _mfg_process = ManufacturingProcessRecommender(graph)
@@ -4195,7 +4197,7 @@ def recommend_change_impact(body: ContextBody):
     if not change_name and not part_name:
         raise HTTPException(status_code=400, detail="Provide 'change_name' or 'part_name'")
     try:
-        return _change_impact.analyse(change_name=change_name, part_name=part_name, scope=scope)
+        return assess_recommendation(_change_impact.analyse(change_name=change_name, part_name=part_name, scope=scope), "change-impact", scope)
     except Exception as e:
         safe_error("/recommendations/change-impact", e)
 
@@ -4212,7 +4214,7 @@ def recommend_similar_parts(body: ContextBody):
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _similar_parts.recommend(part_name, top_n=int(top_n), scope=scope, node_id=node_id)
+        return assess_recommendation(_similar_parts.recommend(part_name, top_n=int(top_n), scope=scope, node_id=node_id), "similar-parts", scope)
     except Exception as e:
         safe_error("/recommendations/similar-parts", e)
 
@@ -4228,7 +4230,7 @@ def recommend_manufacturing(body: ContextBody):
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _mfg_process.recommend(part_name, scope=scope, node_id=node_id)
+        return assess_recommendation(_mfg_process.recommend(part_name, scope=scope, node_id=node_id), "manufacturing", scope)
     except Exception as e:
         safe_error("/recommendations/manufacturing", e)
 

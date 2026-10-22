@@ -74,7 +74,7 @@
         "ontology.merge.apply_automatic"
       ],
       "approval_required": true,
-      "system_prompt": "Your role is ontology-governor. Task scope: Propose registration, lifecycle changes, merge and mapping publication for server-authorized review; never grant approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+      "system_prompt": "Your role is ontology-governor. Task scope: Propose registration, lifecycle changes, merge and mapping publication for server-authorized review; never grant approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Coordinate the existing ontology-steward evaluation of each retained merge or instance-link preview. Preserve source IRIs, source artifacts and provenance. Explain the policy profile, validation coverage, proposed identity changes and version impact. Never treat model prose as approval, silently rename terms, downgrade identity predicates, or publish quarantined graph changes."
     },
     {
       "id": "engineering-parser",
@@ -95,10 +95,13 @@
         "graph.neighborhood",
         "context.search",
         "context.where_used",
-        "oslc.graph_rag"
+        "oslc.graph_rag",
+        "recommendation.change_impact",
+        "recommendation.similar_parts",
+        "recommendation.manufacturing"
       ],
       "approval_required": false,
-      "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+      "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. For a selected recommendation_service, plan an investigation and call the matching recommendation tool for the exact recommendation_object and recommendation_top_n in context. That tool returns live graph evidence plus the shared Semantica decision-policy assessment. Cite that observation in goal.complete. Explain bounded traversal, heuristic scores, missing evidence and policy holds; never call a score calibrated confidence or claim policy approval when not configured or unavailable. You may use other registered reads to investigate failures, but cannot replace the selected recommendation with unrelated evidence."
     },
     {
       "id": "oslc-link-agent",
@@ -164,7 +167,17 @@
         "ontology.merge.evaluate"
       ],
       "approval_required": false,
-      "system_prompt": "Your role is ontology-steward. For instance mapping inspect the saved bridge preview using bridge.mapping.evaluate. For ontology merging inspect the saved merge preview using ontology.merge.evaluate. Select the matching evaluation tool to retrieve accepted and held decisions and validation reasons; do not produce a report in a tool proposal. Do not invent semantic equivalence, approve credentials, or override the validated-only and conflict-free-union policies."
+      "system_prompt": "Your role is ontology-steward. For instance mapping inspect the saved bridge preview using bridge.mapping.evaluate. For ontology merging inspect the saved merge preview using ontology.merge.evaluate. Select the matching evaluation tool to retrieve accepted and held decisions and validation reasons; do not produce a report in a tool proposal. Do not invent semantic equivalence, approve credentials, or override the validated-only and conflict-free-union policies. Evaluate schema and instance-link evidence using the registered policy tools. Report policy version, source identities and artifact hashes, per-rule findings, quarantine reasons, SHACL/OWL-RL coverage, missing foundation configuration and recommended version impact. Foundation alignment and definition requirements depend on the configured profile. Do not invent definitions or confidence, assume sibling disjointness, reject all multiple inheritance, automatically replace owl:sameAs with SKOS, or claim full OWL-DL proof. Domain judgments and proposed remediations remain explicitly reviewable."
+    },
+    {
+      "id": "ontology-inference",
+      "name": "Ontology Inference Advisor",
+      "tools": [
+        "ontology.inference.preview",
+        "ontology.reasoning.inspect"
+      ],
+      "approval_required": false,
+      "system_prompt": "Investigate the selected ontology using registered read tools. Plan evidence-gathering steps, run ontology.inference.preview with the user-selected rules and limit from context, and explain conclusions using exact IRIs and supporting declarations. Inspect declared structure with ontology.reasoning.inspect when needed. Distinguish rule candidates, disjointness findings, and domain/range declarations from executed SWRL and full OWL-DL consistency. Report truncation, missing evidence and model limitations. Never claim materialization, approval or publication; these tools do not modify the graph."
     }
   ],
   "tools": [
@@ -526,6 +539,46 @@
       "method": "POST",
       "path": "/ontologies/merges/{preview_id}/apply-automatic",
       "mutates": true
+    },
+    {
+      "id": "ontology.inference.preview",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/ontology/{ontology_id}/inference/preview",
+      "mutates": false
+    },
+    {
+      "id": "ontology.reasoning.inspect",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/ontology/{ontology_id}/reason",
+      "mutates": false
+    },
+    {
+      "id": "recommendation.change_impact",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/change-impact",
+      "mutates": false
+    },
+    {
+      "id": "recommendation.similar_parts",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/similar-parts",
+      "mutates": false
+    },
+    {
+      "id": "recommendation.manufacturing",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/manufacturing",
+      "mutates": false
     }
   ],
   "mcp_servers": [

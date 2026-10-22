@@ -18,7 +18,7 @@ def test_camel_case_tokens_and_trigrams_propose_different_labels():
     assert rows[0]['confidence_score'] == .8
     assert rows[0]['score_components']['character_trigrams'] == 1
     assert rows[0]['requires_review'] is True
-    assert report['policy'] == 'lexical-context-v1'
+    assert report['policy'] == 'lexical-context-v2'
 
 
 def test_property_kinds_and_context_are_compared_without_cross_kind_matches():
@@ -83,3 +83,17 @@ def test_broad_candidate_buckets_report_incomplete_search():
     rows, report = match_entities(source, target)
     assert not rows
     assert report['truncated'] is True
+
+
+def test_skos_synonyms_and_definitions_are_grounded_matching_evidence():
+ from rdflib.namespace import SKOS
+ source,target=Graph(),Graph()
+ a=term(source,'urn:a','Deliverable Product')
+ b=term(target,'urn:b','Finished Item')
+ source.add((a,SKOS.altLabel,Literal('Finished Good')))
+ target.add((b,SKOS.prefLabel,Literal('Finished Good')))
+ for graph,subject in ((source,a),(target,b)):graph.add((subject,SKOS.definition,Literal('A product ready for delivery')))
+ rows,_=match_entities(source,target)
+ assert len(rows)==1 and rows[0]['score_components']['definitions']==1
+ assert rows[0]['proposed_relation']=='unverified'
+ assert rows[0]['source_evidence']['definitions']==['A product ready for delivery']

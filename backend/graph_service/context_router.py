@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from backend.depo_platform.request_bodies import ContextBody
+from backend.depo_platform.decision_policy import assess_recommendation
 
 from typing import Any
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
@@ -151,8 +153,7 @@ def recommendation_health() -> dict:
     }
 
 
-@router.post("/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
-def change_impact(payload: ContextBody) -> dict:
+def _change_impact_result(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("change_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "impacted_parts": [], "assembly_impact": [], "impacted_requirements": [], "process_impacts": [], "realization_chain": []}
@@ -183,8 +184,7 @@ def change_impact(payload: ContextBody) -> dict:
     }
 
 
-@router.post("/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
-def similar_parts(payload: ContextBody) -> dict:
+def _similar_parts_result(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "similar_parts": []}
@@ -198,25 +198,29 @@ def similar_parts(payload: ContextBody) -> dict:
         "WHERE any(token IN $tokens WHERE toLower(name) CONTAINS token) "
         "RETURN elementId(n) AS id, name, labels(n) AS labels, coalesce(n.source_ontology, n.ontology_id, n.prefix, 'graph') AS source_tag "
         "ORDER BY name LIMIT $limit",
-        root_id=root["id"], tokens=tokens or [str(root["name"]).lower()], limit=top_n,
+        root_id=root["id"], tokens=tokens or [str(root["name"]).lower()], limit=50,
     )
     source_labels = set(root.get("labels") or [])
     candidates = []
-    for index, row in enumerate(rows):
+    for row in rows:
         type_match = bool(source_labels.intersection(set(row.get("labels") or [])))
+        source_tokens = set(re.findall(r"[a-z0-9]+", str(root["name"]).casefold()))
+        target_tokens = set(re.findall(r"[a-z0-9]+", _display_name(row).casefold()))
+        lexical = len(source_tokens & target_tokens) / max(1, len(source_tokens | target_tokens))
         candidates.append({
             "name": _display_name(row),
-            "similarity_score": max(10, 90 - index * 7 + (10 if type_match else 0)),
-            "source_tag_match": type_match,
+            "similarity_score": round(100 * (.75 * lexical + .25 * int(type_match)), 2),
+            "score_evidence": {"token_jaccard": lexical, "graph_type_match": type_match,
+                               "weights": {"token_jaccard": .75, "graph_type_match": .25}},
+            "source_tag_match": row.get("source_tag") == root.get("source_tag"),
             "rflp_layer_match": False,
             "shared_assembly": False,
             "traceability_link": "lexical + graph-type match",
         })
-    return {"source_part": {"name": root["name"], "source_tag": root.get("source_tag", "graph"), "rflp_layer": None}, "similar_parts": candidates}
+    return {"source_part": {"name": root["name"], "source_tag": root.get("source_tag", "graph"), "rflp_layer": None}, "similar_parts": sorted(candidates, key=lambda c: (-c["similarity_score"], c["name"]))[:top_n], "ranking_scope": "At most 50 lexical graph candidates; score is a heuristic, not probability."}
 
 
-@router.post("/recommendations/manufacturing", summary="Find process context linked to a graph term")
-def manufacturing_context(payload: ContextBody) -> dict:
+def _manufacturing_context_result(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "direct_processes": [], "process_instances": [], "related_processes": [], "process_summary": {}}
@@ -232,3 +236,21 @@ def manufacturing_context(payload: ContextBody) -> dict:
         "process_summary": {"total_direct": len(direct), "total_instances": 0, "total_related": 0},
         "message": None if direct else "No manufacturing-process nodes are linked to this semantic term yet.",
     }
+
+
+@router.post("/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
+@router.post("/api/v1/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
+def change_impact(payload: ContextBody) -> dict:
+    return assess_recommendation(_change_impact_result(payload), "change-impact", payload.get("scope"))
+
+
+@router.post("/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
+@router.post("/api/v1/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
+def similar_parts(payload: ContextBody) -> dict:
+    return assess_recommendation(_similar_parts_result(payload), "similar-parts", payload.get("scope"))
+
+
+@router.post("/recommendations/manufacturing", summary="Find process context linked to a graph term")
+@router.post("/api/v1/recommendations/manufacturing", summary="Find process context linked to a graph term")
+def manufacturing_context(payload: ContextBody) -> dict:
+    return assess_recommendation(_manufacturing_context_result(payload), "manufacturing", payload.get("scope"))

@@ -117,16 +117,18 @@ class EngineeringWorkflow:
             ).hexdigest(),
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
+            from backend.depo_platform.decision_policy import decision, policy_blocks
             policy_response = await self._request(client, 'policy_evaluation', request_id,
                 f"{self.ontology_url}/ontologies/policies/evaluate",
-                json={"decision": {"outcome": "approved", "confidence": 1.0,
-                      "decision_maker": "engineering-ingestion",
-                      "reasoning": f"Publish {filename}"},
+                json={"decision": decision(operation="ontology_import", decision_maker="engineering-ingestion",
+                      artifact_sha256=hashlib.sha256(turtle_bytes).hexdigest(),
+                      source_sha256=hashlib.sha256(content).hexdigest(),
+                      reasoning="Engineering import evidence; lifecycle approval remains required."),
                       "exception_policy_ids": policy_exception_ids or []},
             )
             policy_response.raise_for_status()
             policy = policy_response.json()
-            if publish and not policy.get("compliant", False):
+            if publish and policy_blocks(policy):
                 return {"status": "policy_blocked", "conversion": conversion, "policy": policy,
                         "message": "Publication was blocked by policy checks."}
             quality_response = await self._request(client, 'quality_gate', request_id,

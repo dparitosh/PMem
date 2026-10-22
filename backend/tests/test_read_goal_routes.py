@@ -146,3 +146,15 @@ async def test_authority_outage_backs_off_but_rejection_blocks(setup, monkeypatc
     await routes.execute_candidate(updated)
     assert verify.call_count == 1
     control._dispatch.assert_not_awaited()
+
+
+@pytest.mark.parametrize('context,agent,status', [
+ ({'recommendation_service':'unknown','recommendation_object':'Motor'},'graph-analyst',422),
+ ({'recommendation_service':'change-impact','recommendation_object':'Motor'},'reviewer',422),
+ ({'recommendation_service':'change-impact','recommendation_object':'Motor'},'graph-analyst',409),
+])
+def test_recommendation_goal_validates_selection_and_registered_binding_before_enqueue(setup, context, agent, status):
+ client, store, _ = setup
+ response=client.post(f'/api/v1/agents/{agent}/goals',json={'task':'Investigate Motor','context':context},headers={'Authorization':'Bearer owner-one'})
+ assert response.status_code==status
+ assert not store.records

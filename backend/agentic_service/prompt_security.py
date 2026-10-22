@@ -54,4 +54,8 @@ def validate_summary(text, identifiers):
     citations = re.findall(r'\[evidence:([^\]\n]+)\]', text)
     if not identifiers or not citations or any(value not in identifiers for value in citations):
         raise ValueError('Companion summary requires citations to supplied evidence identifiers')
+    for paragraph in re.split(r'\n\s*\n|\n(?=\s*[-*]\s)',text):
+        if not paragraph.strip() or re.fullmatch(r'\s*#{1,6}[^\n]+',paragraph):continue
+        if not re.search(r'\[evidence:([^\]\n]+)\]',paragraph):
+            raise ValueError('Every summary paragraph or list item requires evidence citations')
     return text

@@ -113,6 +113,18 @@ def mapping_terms(scope: str) -> dict:
         raise HTTPException(503, 'Graph mapping data unavailable; check graph service dependencies') from exc
 
 
+@router.get('/explorer-search', dependencies=[Depends(graph_read_identity)], summary='Search graph nodes, relationships, property names and values')
+def explorer_search(query: str, scope: str = '', limit: int = 80, instances_only: bool = False) -> dict:
+    from .explorer_search import search as universal_search
+    try:
+        return universal_search(query,scope,limit,instances_only)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Explorer search failed')
+        raise HTTPException(503,'Graph search unavailable; inspect service logs with X-Request-ID') from exc
+
+
 @router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
 def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict:
     try:

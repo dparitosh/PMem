@@ -16,7 +16,7 @@ function normalizeColumns(rows) {
   }));
 }
 
-export default function RegistryWidget({ title, rows = [], columns, height = 300 }) {
+export default function RegistryWidget({ title, rows = [], columns, height = 300, showFilter = true, onRowClicked = null }) {
   const [filter, setFilter] = useState('');
   const columnDefs = useMemo(() => columns || normalizeColumns(rows), [columns, rows]);
 
@@ -24,7 +24,7 @@ export default function RegistryWidget({ title, rows = [], columns, height = 300
     <div className="depo-registry-widget" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div className="depo-registry-widget__header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ color: widgetColors.text, fontSize: 15, fontWeight: 800 }}>{title}</div>
-        <input
+        {showFilter && <input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           placeholder="Filter"
@@ -36,9 +36,9 @@ export default function RegistryWidget({ title, rows = [], columns, height = 300
             fontSize: 12,
             outline: 'none',
           }}
-        />
+        />}
       </div>
-      <DataGridWidget rows={rows} columns={columnDefs} height={height} quickFilterText={filter} />
+      <DataGridWidget rows={rows} columns={columnDefs} height={height} quickFilterText={showFilter ? filter : ''} onRowClicked={onRowClicked} />
     </div>
   );
 }

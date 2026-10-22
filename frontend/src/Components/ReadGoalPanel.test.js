@@ -4,7 +4,7 @@ import ReadGoalPanel from './ReadGoalPanel';
 import { agenticClient } from '../services/agenticApi';
 
 vi.mock('../services/agenticApi', () => ({agenticClient: {post: vi.fn(), get: vi.fn()}}));
-vi.mock('../config', () => ({buildSemanticServiceUrl: (_, path) => path}));
+vi.mock('../config', () => ({config:{},buildSemanticServiceUrl: (_, path) => path}));
 vi.mock('../utils/apiErrorMessage', () => ({apiErrorMessage: e => e.message}));
 
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
@@ -20,7 +20,7 @@ test('runs a selected read goal and exposes the plan, failure and cited result',
   fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
   await screen.findByText('Motor evidence found');
   expect(agenticClient.post).toHaveBeenCalledWith('/api/v1/agents/reviewer/goals',
-    {task:'Inspect motor',context:{ontology_id:'selected'}},expect.anything());
+    expect.objectContaining({task:'Inspect motor',context:expect.objectContaining({ontology_id:'selected'}),submission_id:expect.any(String)}),expect.anything());
   expect(screen.getByText('Inspect retained ontology')).toBeInTheDocument();
   expect(screen.getByText(/Retained for the next planning decision/)).toBeInTheDocument();
   expect(screen.getByText(/Evidence: observation-3/)).toBeInTheDocument();
@@ -29,7 +29,7 @@ test('runs a selected read goal and exposes the plan, failure and cited result',
 test('reopens a retained goal and clears its view when credentials change', async () => {
   sessionStorage.setItem('depo:read-goal','goal-existing');
   agenticClient.get.mockResolvedValue({data:{run_id:'goal-existing',goal:'Retained work',status:'completed',plans:[],observations:[]}});
-  render(<ReadGoalPanel agent="reviewer" task="Other task" />);
+  render(<ReadGoalPanel agent="reviewer" task="Other task" storageKey="depo:read-goal" />);
   await screen.findByText('Retained work');
   fireEvent(window, new Event('depo:credentials-cleared'));
   await waitFor(() => expect(screen.queryByText('Retained work')).not.toBeInTheDocument());
@@ -49,4 +49,27 @@ test('cancels an active read goal and retains the visible plan', async () => {
   await screen.findByText(/Status: cancelled/);
   expect(screen.getByText('Inspect')).toBeInTheDocument();
   expect(agenticClient.post).toHaveBeenCalledWith('/api/v1/goals/goal-active/cancel',{},expect.anything());
+});
+
+test('a lost response recovers the same submission even after navigation', async () => {
+  agenticClient.post.mockRejectedValueOnce(new Error('Response lost')).mockResolvedValueOnce({data:{run_id:'goal-original',status:'completed',goal:'Original work'}});
+  const first=render(<ReadGoalPanel agent="reviewer" task="Inspect motor" context={{page:'graph',ontology_id:'selected'}}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
+  await screen.findByRole('button',{name:'Recover submitted investigation'});
+  const submission=agenticClient.post.mock.calls[0][1].submission_id;
+  first.unmount();
+  render(<ReadGoalPanel agent="reviewer" task="Inspect motor" context={{page:'graph',ontology_id:'selected'}}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Recover submitted investigation'}));
+  expect(await screen.findByText('Original work')).toBeVisible();
+  expect(agenticClient.post.mock.calls[1][1].submission_id).toBe(submission);
+});
+
+test('changing the selected source clears the previous task view', async () => {
+  agenticClient.post.mockResolvedValue({data:{run_id:'goal-original',status:'completed',goal:'Original work'}});
+  const view=render(<ReadGoalPanel agent="reviewer" task="Inspect" context={{page:'graph',ontology_id:'first'}}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
+  await screen.findByText('Original work');
+  view.rerender(<ReadGoalPanel agent="reviewer" task="Inspect" context={{page:'graph',ontology_id:'second'}}/>);
+  await waitFor(()=>expect(screen.queryByText('Original work')).not.toBeInTheDocument());
+  expect(screen.getByRole('button',{name:'Start read-only investigation'})).toBeEnabled();
 });

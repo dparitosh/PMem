@@ -81,9 +81,12 @@ class PolicyBody(RequestBody, total=False):
     policy_id: Text
     name: Text
     rules: Required[dict[str, Any]]
+    operations: list[str]
     active: bool
 
 class EvaluatePoliciesBody(RequestBody, total=False):
+    operation: str
+    decisions: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=2000)]
     decision: dict[str, Any]
     exception_policy_ids: list[str]
 
@@ -300,14 +303,28 @@ class LegacyCleanupBody(RequestBody, total=False):
     batch_size: Annotated[int, Field(ge=1)]
     confirm: str
 
+class TaskPageContext(TypedDict, total=False):
+    __pydantic_config__ = ConfigDict(strict=True, extra="forbid")
+    page: Required[Annotated[str, Field(min_length=1, max_length=32)]]
+    ontology_id: Annotated[str, Field(max_length=256)]
+    ontology_prefix: Annotated[str, Field(max_length=256)]
+    import_task_id: Annotated[str, Field(max_length=256)]
+    product_id: Annotated[str, Field(max_length=256)]
+    run_id: Annotated[str, Field(max_length=256)]
+    node_id: Annotated[str, Field(max_length=256)]
+
+
 class ToolRunBody(AgentPlanBody, ApprovalBody, total=False):
+    page_context: TaskPageContext | None
     inputs: dict[str, Any]
 
 class WorkflowRunBody(WorkflowPlanBody, ApprovalBody, total=False):
+    page_context: TaskPageContext | None
     inputs: dict[str, Any]
     step_inputs: list[dict[str, Any]] | None
 
 class ToolSuggestionBody(RequestBody, total=False):
+    submission_id: Annotated[str, Field(pattern=r"^[a-f0-9-]{36}$")]
     task: Required[Text]
     context: dict[str, Any] | None
     attachment: dict[str, Any] | None

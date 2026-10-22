@@ -129,7 +129,7 @@ async def summarize(question, evidence, on_token=None, prompt_details=None):
     identifiers = evidence_ids(safe_evidence)
     if not identifiers:
         raise ValueError('No citable graph evidence is available for a companion summary')
-    system += ' Cite supporting supplied identifiers using [evidence:IDENTIFIER]. Use only the provided citation identifiers; do not invent citations.'
+    system += ' Cite supporting supplied identifiers using [evidence:IDENTIFIER]. Every factual paragraph and list item must cite supplied evidence. Use only the provided citation identifiers; do not invent citations. Historical review records do not prove current graph publication. A retrieved match does not establish a complete answer, absence of other matches, equivalence or causation.'
     evidence_text = bounded_prompt_json({'question': protect(question), 'evidence': safe_evidence, 'citation_identifiers': identifiers})
     if prompt_details is not None:
         prompt_details.update(system_prompt=system, user_prompt=evidence_text, model=model, prompt_version=os.getenv('AGENT_PROMPT_VERSION', '1'), **prompt_identity(system))

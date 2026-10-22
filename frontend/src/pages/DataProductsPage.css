@@ -1,0 +1,33 @@
+.product-overview {display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0;}
+.product-overview article,.product-evidence-card {padding:14px;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;background:var(--ui-surface,#fff);}
+.product-overview strong {display:block;font-size:24px;color:var(--ui-primary,#005a9c);}
+.product-evidence-card dl {display:grid;grid-template-columns:minmax(120px,1fr) 2fr;gap:8px;margin:8px 0;}
+.product-evidence-card dt {text-transform:capitalize;color:var(--ui-muted,#66788a);}
+.product-evidence-card dd {margin:0;overflow-wrap:anywhere;}
+.product-workspace-details {margin:16px 0;padding:12px;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;}
+.product-workspace-details summary {font-weight:700;cursor:pointer;}
+.product-discovery {display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0;}
+.product-discovery input {min-width:220px;padding:8px;}
+.evidence-product-options {margin:16px 0;}
+.evidence-product-options__tabs {display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--ui-border,#d9e2ec);}
+.evidence-product-options__tabs [role="tab"] {padding:12px 18px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--ui-text,#243746);font:inherit;font-weight:600;cursor:pointer;}
+.evidence-product-options__tabs [aria-selected="true"] {border-bottom-color:var(--ui-primary,#005a9c);color:var(--ui-primary,#005a9c);background:var(--ui-surface,#fff);}
+.evidence-product-options__tabs [role="tab"]:focus-visible,.evidence-product-options [role="tabpanel"]:focus-visible {outline:2px solid var(--ui-primary,#005a9c);outline-offset:2px;}
+.evidence-product-options [role="tabpanel"] {border:1px solid var(--ui-border,#d9e2ec);border-top:0;border-radius:0 0 8px 8px;padding:16px;background:var(--ui-surface,#fff);}
+.evidence-product-options h4 {font-size:18px;margin:0 0 8px;color:var(--ui-primary,#005a9c);}
+.evidence-product-options dl {display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px;}
+.evidence-product-options dd {margin:0;font-weight:600;}
+[aria-label="Ingested data inventory"] table {width:100%;min-width:1050px;border-collapse:collapse;text-align:left;}
+[aria-label="Ingested data inventory"] th,[aria-label="Ingested data inventory"] td {padding:10px 12px;border-bottom:1px solid var(--ui-border,#d9e2ec);vertical-align:top;}
+[aria-label="Ingested data inventory"] th {position:sticky;top:0;background:var(--ui-surface,#fff);white-space:nowrap;}
+[aria-label="Ingested data inventory"] td:nth-child(2) {max-width:230px;overflow-wrap:anywhere;}
+[aria-label="Ingested data inventory"] td:last-child {white-space:nowrap;}
+[aria-label="Ingested data inventory"] label {display:inline-flex;align-items:center;gap:8px;margin:8px 12px;}
+
+.data-cockpit .product-overview {margin:16px 0;gap:12px;}.data-cockpit .product-overview article {display:grid;gap:5px;padding:14px 18px;}.data-cockpit .product-overview article>a {font-size:12px;}.data-cockpit .product-overview strong {font-size:26px;}
+.data-cockpit .product-discovery {justify-content:space-between;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;padding:14px;background:var(--ui-surface,#fff);margin:0 0 14px;}.data-cockpit .product-discovery label {font-weight:600;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}.data-cockpit .product-discovery input {width:300px;min-width:0;}.data-cockpit .product-discovery>span {font-size:12px;color:var(--ui-muted,#526679);}
+.data-cockpit .product-workspace-details {background:var(--ui-surface,#fff);padding:16px;}.data-cockpit .product-workspace-details summary {line-height:1.5;}.data-cockpit .product-workspace-details[open]>summary {padding-bottom:12px;border-bottom:1px solid var(--ui-border,#d9e2ec);margin-bottom:16px;}
+.data-cockpit [aria-label="Ingested data inventory"] {padding:18px;background:var(--ui-surface,#fff);border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;}.data-cockpit [aria-label="Ingested data inventory"] h3 {margin-top:0;}
+.data-cockpit .evidence-product-options {margin-top:0;}.data-cockpit .evidence-product-options h3 {font-size:17px;}.data-cockpit .evidence-product-options p {line-height:1.6;}
+
+.product-overview__action {border:0;background:transparent;color:var(--ui-primary,#006f87);font:inherit;font-size:12px;padding:0;text-align:left;text-decoration:underline;cursor:pointer;}

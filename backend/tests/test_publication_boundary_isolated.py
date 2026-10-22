@@ -31,7 +31,7 @@ class PublicationBoundaryTests(unittest.TestCase):
     def execute(self, state="approved", receipt_id="digest"):
         calls = []
         class Response:
-            def __init__(self, value): self.value = value
+            def __init__(self, value): self.value = value; self.status_code = 200
             def raise_for_status(self): pass
             def json(self): return self.value
         class Client:

@@ -1,4 +1,55 @@
 # Process identity and listener checks shared by Windows launchers.
+function Test-DepoAdministrator {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  return ([Security.Principal.WindowsPrincipal]::new($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Invoke-DepoVisibleManagement {
+  [CmdletBinding()]
+  param([string]$Root,[string]$Action,[string]$EnvFile,[string]$Profile,
+    [switch]$SkipPostgres,[switch]$SkipFrontend,[switch]$SkipBaselineProvisioning,[switch]$ElevatedRetry)
+  $tracking = Join-Path $Root 'logs/windows-services'
+  if(-not(Test-Path -LiteralPath $tracking)){return $false}
+  $tracked = @(Get-ChildItem -LiteralPath $tracking -Filter '*.pid' -File | Where-Object { -not $SkipFrontend -or $_.Name -ne 'frontend.pid' })
+  if(-not $tracked.Count){return $false}
+  $hidden = $false
+  try {
+    $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    foreach($file in $tracked) {
+      $trackedId = 0
+      if(-not [int]::TryParse(([string](Get-Content -LiteralPath $file.FullName -Raw)).Trim(),[ref]$trackedId)){continue}
+      $process = $snapshot | Where-Object {$_.ProcessId -eq $trackedId} | Select-Object -First 1
+      if($process -and (-not $process.ExecutablePath -or -not $process.CommandLine)){$hidden=$true;break}
+    }
+  } catch {$hidden=$true}
+  if(-not $hidden){return $false}
+  if($ElevatedRetry -or (Test-DepoAdministrator)) {
+    throw 'Windows still hides tracked process identities in the elevated session. No lifecycle action was started. Inspect Windows CIM/WMI and process-access policy; do not delete PID files or disable ownership checks.'
+  }
+  $scriptPath = Join-Path $Root 'manage-depo.ps1'
+  $selectedEnv = if([IO.Path]::IsPathRooted($EnvFile)){$EnvFile}else{Join-Path $Root $EnvFile}
+  # Encode a command made exclusively from individually quoted literal arguments.
+  # This preserves spaces, apostrophes and the selected environment without shell interpolation.
+  $quote = {param([string]$Value) "'"+$Value.Replace("'","''")+"'"}
+  $command = '& '+(& $quote $scriptPath)+' -Action '+(& $quote $Action)+' -EnvFile '+(& $quote $selectedEnv)+' -Profile '+(& $quote $Profile)+' -ElevatedRetry'
+  foreach($name in @('SkipPostgres','SkipFrontend','SkipBaselineProvisioning')) {
+    if(Get-Variable -Name $name -ValueOnly){$command+=' -'+$name}
+  }
+  $command = 'try { '+$command+'; if(-not $?){exit 1}; exit 0 } catch { Write-Error $_; exit 1 }'
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+  Write-Host 'Windows is hiding tracked process identities. Requesting UAC elevation before any lifecycle action. Audit logs remain under logs/installation/runs.'
+  try {
+    $child = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -Verb RunAs -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -ErrorAction Stop
+  } catch {
+    throw 'Windows elevation was cancelled or unavailable. No lifecycle action was started. Open PowerShell with Run as administrator and rerun the same manage-depo.ps1 command.'
+  }
+  # Start-Process -Wait also waits for newly launched service descendants.
+  # Wait only for the lifecycle process; PMem services intentionally remain alive.
+  $child.WaitForExit()
+  if($child.ExitCode -ne 0){throw 'The elevated PMem lifecycle command failed. Inspect the latest manage log under logs/installation/runs; tracking and ownership checks were retained.'}
+  return $true
+}
+
 function Get-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module) {
   $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
   $rootProcess = $snapshot | Where-Object { $_.ProcessId -eq $ProcessId } | Select-Object -First 1

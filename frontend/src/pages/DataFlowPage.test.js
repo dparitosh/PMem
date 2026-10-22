@@ -32,6 +32,7 @@ test('marks quality unknown when the run evidence endpoint fails', async () => {
   const { dataPipelineAPI } = await import('../services/apiClient');
   dataPipelineAPI.runs.mockRejectedValueOnce(new Error('Run evidence unavailable'));
   render(<DataFlowPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Quality & evidence'}));
   expect(await screen.findByText(/Evidence is unavailable or stale/)).toBeInTheDocument();
   expect(screen.getByText('unknown')).toBeInTheDocument();
 });
@@ -41,6 +42,7 @@ test('Run now reuses the retained input instead of submitting an empty payload',
   dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'test',version:'1',lifecycle_state:'approved',enabled:true}]}});
   dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[{run_id:'retained-input',job_id:'test',job_version:'1',status:'completed'}]}});
   render(<DataFlowPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
   fireEvent.click(await screen.findByRole('button', {name:'Run now'}));
   await waitFor(() => expect(dataPipelineAPI.replay).toHaveBeenCalledWith('retained-input', expect.any(Object)));
 });
@@ -72,6 +74,7 @@ test('approves a registered data-job definition through the pipeline service', a
   await screen.findByText('QIF quality');
   fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
   setCredentialProfile('DATA_JOB_APPROVAL_TOKEN', 'direct-token');
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
   fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
   await waitFor(() => expect(dataPipelineAPI.approveDefinition).toHaveBeenCalledWith('qif-quality', '1.0.0', {
@@ -95,4 +98,39 @@ test('does not select another run when a requested run is missing', async () => 
   await screen.findByText(/Requested run is missing or inaccessible/);
   expect(screen.queryByText('Run ID')).not.toBeInTheDocument();
   window.location.hash = '';
+});
+
+test('cockpit separates pipeline configuration from runs and filters run status without executing a job',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.replay.mockClear();
+ render(<DataFlowPage/>);
+ await screen.findByText('configured');
+ expect(screen.queryByRole('heading',{name:'Data-job definitions'})).toBeNull();
+ fireEvent.change(screen.getByLabelText('Run status'),{target:{value:'failed'}});
+ expect(screen.getByText('No durable job runs match the current filter.')).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+ expect(screen.getByRole('heading',{name:'Data-job definitions'})).toBeVisible();
+ expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+test('pipeline jobs explain missing inputs and prevent empty run and schedule attempts',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'new',version:'1',lifecycle_state:'approved',enabled:true}]}});
+ render(<DataFlowPage/>);
+ await screen.findByText('configured');
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+ expect(await screen.findByRole('button',{name:'Run now'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Schedule',exact:true})).toBeDisabled();
+ expect(screen.getByRole('link',{name:'Import source data first'})).toHaveAttribute('href','#/import');
+});
+
+test('quality does not claim a healthy outcome before any run exists',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[]}});
+ render(<DataFlowPage/>);
+ await screen.findByText('configured');
+ fireEvent.click(screen.getByRole('tab',{name:'Quality & evidence'}));
+ expect(screen.getByText('No retained runs yet. Quality has not been evaluated.')).toBeVisible();
+ expect(screen.getByText('unknown')).toBeVisible();
+ expect(screen.queryByText('ok')).toBeNull();
 });

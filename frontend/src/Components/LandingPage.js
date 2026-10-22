@@ -266,7 +266,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           <div className="ix-landing-page__chat-body">
             <ErrorBoundary>
               <Suspense fallback={<div className="depo-muted">Loading Knowledge Companion…</div>}>
-                <Chatbot setChatResults={setChatResults} ontologyId={selectedOntology} ontologyPrefix={selectedPrefix} />
+                <Chatbot pageId="home" setChatResults={setChatResults} ontologyId={selectedOntology} ontologyPrefix={selectedPrefix} />
               </Suspense>
             </ErrorBoundary>
           </div>

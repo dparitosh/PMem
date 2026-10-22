@@ -6,7 +6,8 @@ param(
   [ValidateSet('Bootstrap','Production')][string]$Profile = 'Production',
   [switch]$SkipPostgres,
   [switch]$SkipFrontend,
-  [switch]$SkipBaselineProvisioning
+  [switch]$SkipBaselineProvisioning,
+  [switch]$ElevatedRetry
 )
 $ErrorActionPreference = 'Stop'
 # Direct PowerShell invocation must protect nested release helpers too.
@@ -21,6 +22,12 @@ if ((Get-ExecutionPolicy) -ne 'Bypass') {
 
 . (Join-Path $PSScriptRoot 'infra/windows/native-install-command.ps1')
 Invoke-DepoLoggedAction -Root $PSScriptRoot -Name ('manage-'+$Action) -AuditEnvFile $EnvFile -Action {
+. (Join-Path $PSScriptRoot 'infra/windows/process-control.ps1')
+$visibilityParameters = @{Root=$PSScriptRoot;Action=$Action;EnvFile=$EnvFile;Profile=$Profile;ElevatedRetry=$ElevatedRetry}
+foreach($name in @('SkipPostgres','SkipFrontend','SkipBaselineProvisioning')) {
+  if(Get-Variable -Name $name -ValueOnly){$visibilityParameters[$name]=$true}
+}
+if(Invoke-DepoVisibleManagement @visibilityParameters){return}
 function Invoke-ManagedStep([string]$Script,[hashtable]$Parameters=@{}) {
   $global:LASTEXITCODE=0
   & $Script @Parameters

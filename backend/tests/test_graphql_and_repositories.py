@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi.testclient import TestClient
 import pytest
 
@@ -169,7 +170,9 @@ def test_federation_requires_approved_https_peer_and_never_forwards_service(monk
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
-        async def post(self, url, **kwargs): return httpx.Response(200, request=httpx.Request("POST", url), json={"count": 1})
+        @asynccontextmanager
+        async def stream(self, method, url, **kwargs):
+            yield httpx.Response(200, request=httpx.Request(method, url), json={"count": 1})
     monkeypatch.setattr(federation_service.httpx, "AsyncClient", FakeClient)
     response = client.post("/api/v1/sparql/federation/peers/trusted-peer/query", json={"ontology_id": "engineering", "query": "SELECT ?s WHERE { ?s ?p ?o }"})
     assert response.status_code == 200

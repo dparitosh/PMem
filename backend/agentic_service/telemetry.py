@@ -21,6 +21,9 @@ class AgentTelemetry:
 
     def start(self, *, operation: str, request_id: str = "", session_id: str = "", workflow_id: str = "", workflow_run_id: str = "") -> tuple[dict[str, Any], float]:
         run_id = f"agent-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{uuid4().hex[:8]}"
+        provider=os.getenv('USE_LLM','ollama').strip().lower()
+        selected_model=(os.getenv(provider.upper()+'_MODEL') if provider in {'openai','mistral'}
+                        else os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or os.getenv('LLM_MODEL') or os.getenv('AZURE_OPENAI_DEPLOYMENT'))
         record = {
             "run_id": run_id,
             "operation": operation,
@@ -31,7 +34,9 @@ class AgentTelemetry:
             "status": "running",
             "started_at": _now(),
             'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=agent_run_timeout_seconds())).isoformat(),
-            "model": os.getenv("LLM_MODEL_NAME") or os.getenv("OLLAMA_MODEL") or os.getenv("LLM_MODEL") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "deterministic",
+            "provider": provider,
+            "model": selected_model or 'not_configured',
+            "model_selection_only": True,
             "prompt_version": os.getenv("AGENT_PROMPT_VERSION", "1"),
             "tool_spans": [],
             "evidence_count": 0,

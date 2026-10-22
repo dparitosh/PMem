@@ -8,6 +8,7 @@ import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection, wasBrowserSessionExpired } from '../services/serviceAuth';
 import { createChatFrameParser } from '../services/chatStreamFrames';
+import { companionFallbackPrompts } from '../services/companionPrompts';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -21,7 +22,7 @@ const CHAT_COLORS = {
     textMuted: 'var(--theme-color-soft-text, #66788a)',
 };
 
-const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '' }) => {
+const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '' }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
@@ -38,7 +39,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     const sessionIdRef = useRef(getClientSessionId());
     const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
     const scopePrefix = ontologyPrefix || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
-    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix });
+    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix, page: pageId });
     const resetConversation = useCallback(() => {
         abortRef.current?.abort();
         abortRef.current = null;
@@ -56,10 +57,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     }, [setChatResults]);
 
     useEffect(() => {
-        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix) return;
-        scopeRef.current = { id: scopeId, prefix: scopePrefix };
+        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix && scopeRef.current.page === pageId) return;
+        scopeRef.current = { id: scopeId, prefix: scopePrefix, page: pageId };
         resetConversation();
-    }, [scopeId, scopePrefix, resetConversation]);
+    }, [scopeId, scopePrefix, pageId, resetConversation]);
 
     useEffect(() => {
         let readKey = getCredentialProfile('GRAPH_READ_TOKEN');
@@ -105,7 +106,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         const controller = new AbortController();
         let active = true;
         const timeout = setTimeout(() => controller.abort(), 10000);
-        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history`);
+        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history?ontology_id=${encodeURIComponent(scopeId)}&ontology_prefix=${encodeURIComponent(scopePrefix)}&page=${encodeURIComponent(pageId)}`);
         fetch(url, { headers: serviceAuthHeaders(url), signal: controller.signal, credentials: 'omit', redirect: 'error' })
             .then(async response => {
                 if ([404, 410].includes(response.status)) {
@@ -118,19 +119,15 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 if (!active || credential !== getCredentialProfile('GRAPH_READ_TOKEN') || requestActiveRef.current || !Array.isArray(body?.turns)) return;
                 const restored = body.turns.flatMap(turn => [
                     { id: `${turn.job_id}-user`, role: 'user', text: turn.user_request || '' },
-                    { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, retainedPromptJobId: turn.job_id },
+                    { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, restored: true, retainedPromptJobId: turn.job_id },
                 ]);
                 setChatMessages(current => current.length ? current : restored);
             }).catch(error => { if (active && error.name !== 'AbortError') setError(error.message); })
             .finally(() => clearTimeout(timeout));
         return () => { active = false; clearTimeout(timeout); controller.abort(); };
-    }, [scopeId, scopePrefix, historyVersion]);
+    }, [scopeId, scopePrefix, pageId, historyVersion]);
 
-    const [sampleQueries, setSampleQueries] = useState([
-        'Find ontology resources matching product',
-        'Find ontology resources matching requirement',
-        'Find ontology resources matching measurement',
-    ]);
+    const [sampleQueries, setSampleQueries] = useState(companionFallbackPrompts);
 
     // [OK] SECURE: Input validation + error handling
     const handleAsk = async (queryText = null) => {
@@ -187,7 +184,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
 
             let activeSessionId = getClientSessionId() || sessionIdRef.current;
             sessionIdRef.current = activeSessionId;
-            const graphContext = scopeId ? { ontology: scopeId, ontology_prefix: scopePrefix } : null;
+            const graphContext = (scopeId || pageId) ? { ontology: scopeId, ontology_prefix: scopePrefix, ...(pageId ? {page:pageId}: {}) } : null;
             let requestAuthorization = '';
             const sendRequest = (sessionId) => {
                 const authHeaders = serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post');
@@ -371,19 +368,23 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     useEffect(() => {
         // Fetch dynamic sample queries from backend
         const sampleController = new AbortController();
+        setSampleQueries(companionFallbackPrompts);
+        const samplesUrl = new URL(buildUrl(API.chat.sampleQueries), window.location.origin);
+        samplesUrl.searchParams.set('page', pageId || 'home');
         const fetchSampleQueries = async () => {
             try {
                 const activeSessionId = getClientSessionId() || sessionIdRef.current;
                 sessionIdRef.current = activeSessionId;
-                const response = await fetch(buildUrl(API.chat.sampleQueries), {
+                const response = await fetch(samplesUrl.toString(), {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
-                        ...serviceAuthHeaders(buildUrl(API.chat.sampleQueries), 'get'),
+                        ...serviceAuthHeaders(samplesUrl.toString(), 'get'),
                         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
                     },
                     signal: sampleController.signal,
                 });
+                if (sampleController.signal.aborted) return;
                 const returnedSessionId = response.headers.get('x-session-id');
                 if (returnedSessionId) {
                     sessionIdRef.current = returnedSessionId;
@@ -391,7 +392,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 }
                 if (response.ok) {
                     const data = await response.json();
-                    if (Array.isArray(data.queries) && data.queries.length > 0 && data.queries.every(query => typeof query === 'string' && query.trim())) {
+                    if (!sampleController.signal.aborted && Array.isArray(data.queries) && data.queries.length > 0 && data.queries.length <= 8 && data.queries.every(query => typeof query === 'string' && query.trim() && query.length <= 300)) {
                         setSampleQueries(data.queries);
                         logger.data('Loaded dynamic sample queries', {
                             count: data.queries.length,
@@ -416,7 +417,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 abortRef.current.abort();
             }
         };
-    }, []);
+    }, [pageId]);
 
     useEffect(() => {
         if (followLatestRef.current) messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
@@ -575,10 +576,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     ) : (
                                         msg.text
                                     )}
-                                    {msg.generation && <p>Model generation: {msg.generation.status}</p>}
-                                    {msg.generation?.prompt_details && <details><summary>Prompt details</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{JSON.stringify(msg.generation.prompt_details, null, 2)}</pre></details>}
-                                    {msg.runId && <small>Agent run: {msg.runId}</small>}
-                                    {msg.retainedPromptJobId && <small>Saved conversation result: {msg.retainedPromptJobId}</small>}
+                                    {msg.generation && <p>Model generation: {msg.generation.status}{msg.generation.provider ? ` (${msg.generation.provider})` : ''}</p>}
+                                    {msg.generation?.status === 'completed' && <p>Model summary — verify its interpretation against the evidence.</p>}
+                                    {msg.generation?.action && <p>{msg.generation.action}</p>}
+                                    {msg.restored && <p>Saved answer — evidence has not been refreshed.</p>}
                                     {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
                                         <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>
@@ -628,7 +629,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         />
                         <button type="submit" aria-label="Send chat question" disabled={requestActive || !question.trim()}>Send</button>
                     </form>
-                    <details className="chat-answer-help"><summary>About these answers</summary>Ontology search returns matching resources and evidence; comparison and impact analysis are not supported here. Use Shift+Enter for a new line.</details>
+                    <details className="chat-answer-help"><summary>About these answers</summary>Answers use matching graph resources and saved mapping reviews. Historical reviews do not verify current Neo4j publication. Model summaries require an enabled provider; missing evidence is never invented. Use Shift+Enter for a new line.</details>
                     {requestActive && <button type="button" onClick={() => {
                         abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');
                         setChatMessages(messages => messages.map(message => message.streaming ? { ...message, streaming: false, stopped: true } : message));

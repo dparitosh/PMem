@@ -38,13 +38,15 @@ class SemanticIngestionWorkflow:
         }
         from backend.depo_platform.network import engineering_workflow_timeout_seconds
         async with asyncio.timeout(engineering_workflow_timeout_seconds()), httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
+            from backend.depo_platform.decision_policy import decision, policy_blocks
+            from backend.depo_platform.bridge_contract import digest
             policy_response = await client.post(
                 f"{self.ontology_url}/ontologies/policies/evaluate",
-                json={"decision": {"outcome": "approved", "confidence": 1.0, "decision_maker": "ingestion-service", "reasoning": f"Publish {name}"}, "exception_policy_ids": policy_exception_ids or []},
+                json={"decision": decision(operation="ontology_import", decision_maker="ingestion-service", source_digest=digest(normalized), reasoning="Normalized import evidence; lifecycle approval remains required."), "exception_policy_ids": policy_exception_ids or []},
             )
             policy_response.raise_for_status()
             policy = policy_response.json()
-            if publish and not policy.get("compliant", False):
+            if publish and policy_blocks(policy):
                 return {"status": "policy_blocked", "normalization": normalized["provenance"], "records_processed": normalized["records_processed"], "policy": policy, "message": "Publication was blocked by Semantica policy checks."}
             quality_response = await client.post(
                 f"{self.ontology_url}/ontologies/quality-gate",

@@ -32,6 +32,7 @@ beforeEach(() => { vi.clearAllMocks(); API_METHODS.ontology.getDataDictionary.mo
 
 test('browses both real vocabularies before agent suggestions exist', async () => {
   render(<MergeMappingReview {...defaults} />);
+  fireEvent.click(screen.getByText('Browse source and target vocabularies'));
   await waitFor(() => expect(screen.getAllByText('Diameter')).toHaveLength(2));
   expect(API_METHODS.ontology.getDataDictionary.mock.calls.map(call => call[0])).toEqual(['ap242', 'qif']);
   expect(screen.getByText('Generate an agent preview to see proposed mappings')).toBeInTheDocument();
@@ -42,6 +43,7 @@ test('browses both real vocabularies before agent suggestions exist', async () =
 test('a slow vocabulary read keeps the saved proposals and offers a read-only retry', async () => {
   API_METHODS.ontology.getDataDictionary.mockRejectedValueOnce(new Error('The request timed out. Refresh operation status before retrying a write.'));
   render(<MergeMappingReview {...defaults} suggestions={[candidate]} />);
+  fireEvent.click(screen.getByText('Browse source and target vocabularies'));
   await screen.findByText('Ontology term loading timed out. Retry term loading; saved merge proposals are retained.');
   expect(screen.getByText(candidate.source_iri)).toBeVisible();
   expect(screen.queryByText(/retrying a write/)).not.toBeInTheDocument();
@@ -61,6 +63,7 @@ test('distinguishes preview failure from zero conflicts and permits independent 
   render(<MergeMappingReview {...defaults} error="Preview rejected (422)" />);
   expect(screen.getByText('Agent preview did not complete')).toBeInTheDocument();
   expect(screen.getByText('No mapping approval is available. Term browsing remains available below.')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Browse source and target vocabularies'));
   await waitFor(() => expect(screen.getAllByText('Diameter')).toHaveLength(2));
 });
 test('clearing selection removes consolidation, and conflicts remain visible', () => {

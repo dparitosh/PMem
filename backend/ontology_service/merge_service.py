@@ -108,6 +108,9 @@ class GovernedMergeService:
         if not isinstance(mappings, list) or len(mappings) > 200:
             raise ValueError('entity_mappings must be a list of at most 200 reviewed mappings')
         replacements = {}
+        mapping_evidence = []
+        from .governance import policy
+        governance_rules = policy()
         kinds = {OWL.Class, RDFS.Class, OWL.ObjectProperty, OWL.DatatypeProperty, OWL.AnnotationProperty, OWL.NamedIndividual}
         for item in mappings:
             if not isinstance(item, dict) or not all(isinstance(item.get(key), str) and item[key].startswith(('http://', 'https://', 'urn:')) for key in ('source_iri', 'target_iri')):
@@ -124,6 +127,12 @@ class GovernedMergeService:
             target_types = {OWL.Class if value == RDFS.Class else value for value in target_types}
             if source == target or not source_types or source_types != target_types or source in replacements:
                 raise ValueError('Entity mappings require distinct declared entities of the same kind and a unique source')
+            mapping_evidence.append({'source_iri': str(source), 'target_iri': str(target),
+                'individual': OWL.NamedIndividual in source_types,
+                'source_context': {predicate: hashlib.sha256(json.dumps(sorted(value.n3() for value in candidate_graphs[0].objects(source, URIRef(predicate)))).encode()).hexdigest()
+                                   for predicate in governance_rules['identity_context_predicates'] if any(candidate_graphs[0].objects(source, URIRef(predicate)))},
+                'target_context': {predicate: hashlib.sha256(json.dumps(sorted(value.n3() for value in candidate_graphs[-1].objects(target, URIRef(predicate)))).encode()).hexdigest()
+                                   for predicate in governance_rules['identity_context_predicates'] if any(candidate_graphs[-1].objects(target, URIRef(predicate)))}})
             replacements[source] = target
         if set(replacements) & set(replacements.values()):
             raise ValueError('Chained or cyclic entity mappings require separate reviewed merges')
@@ -148,9 +157,16 @@ class GovernedMergeService:
                             'status': 'pending'} if defer_semantics else validate_merge(merged, source_metadata, mappings))
         conflicts.extend(semantic_checks['inferred_conflicts'])
         if semantic_checks['shacl_conforms'] is False: conflicts.append({'kind':'shacl_nonconformance','message':'Review the retained SHACL report before approval'})
+        from .governance import change_impact
+        baseline_entities = {subject for subject, predicate, kind in baseline if predicate == RDF.type and kind in kinds}
+        proposed_entities = {subject for subject, predicate, kind in proposed if predicate == RDF.type and kind in kinds}
+        removed_active_iris = sorted(str(subject) for subject in baseline_entities - proposed_entities
+                                    if not any(str(value).lower() in {'true', '1'} for value in candidate_graphs[-1].objects(subject, OWL.deprecated)))
         preview_id = uuid.uuid4().hex
         record = {"preview_id": preview_id, "created_at": datetime.now(timezone.utc).isoformat(),
                   "source_ontology_ids": source_ids, "sources": sources,
+                  "mapping_evidence": mapping_evidence, "governance_policy_sha256": governance_rules["sha256"], "recommended_version_bump": change_impact(added, removed),
+                  "removed_active_iris": removed_active_iris,
                   "ontology_name": str(payload.get("ontology_name") or "Merged Ontology"),
                   "prefix": str(payload.get("prefix") or "merged"),
                   "description": str(payload.get("description") or ""),
@@ -192,6 +208,17 @@ class GovernedMergeService:
             return self.catalog.with_publication_lock(identifier, lambda: acquire(index + 1))
         return acquire(0)
 
+    def _decision_policy(self, record):
+        from backend.depo_platform.decision_policy import decision, unavailable_assessment
+        try:
+            # The owning service evaluates locally; never consume its own HTTP worker pool.
+            return self.intelligence.evaluate_decisions('ontology_merge', [decision(
+                artifact_sha256=hashlib.sha256(record['turtle'].encode('utf-8')).hexdigest(),
+                source_ontology_ids=record['source_ontology_ids'],
+                selected_mappings=record.get('changes', {}).get('entity_mappings', []))])
+        except Exception as exc:
+            return unavailable_assessment('ontology_merge', exc)
+
     def evaluate_policy(self, preview_id: str) -> dict[str, Any]:
         record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
         if not record:
@@ -205,13 +232,19 @@ class GovernedMergeService:
         conflicts = validate_merge(record['turtle'], [], declarations_only=True)['inferred_conflicts']
         # Automatic union preserves every entity identity. Consolidations remain
         # explicit reviewed operations because RDF union cannot prove equivalence.
+        from .governance import audit_ontology_bounded as audit_ontology
+        governance = audit_ontology(record)
+        shared = self._decision_policy(record)
+        governance['decision_policy'] = shared
         reasons = []
+        if shared['blocking']: reasons.append('decision_policy_' + shared['status'])
+        if governance['overall_verdict'] != 'APPROVED': reasons.append('steward_governance_hold')
         if conflicts or record.get('conflicts'): reasons.append('unresolved_rdf_owl_conflicts')
         if record.get('changes', {}).get('entity_mappings'): reasons.append('entity_consolidation_requires_review')
         return {'preview_id': preview_id, 'policy': 'conflict-free-union-v1',
                 'status': 'held' if reasons else 'ready', 'reasons': reasons,
                 'conflicts': conflicts, 'changes': record.get('changes'),
-                'validation': record.get('validation')}
+                'validation': record.get('validation'), 'governance': governance}
 
     def receipt(self, preview_id: str) -> dict[str, Any]:
         record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
@@ -230,6 +263,9 @@ class GovernedMergeService:
         with self._operation_lock(preview_id) as acquired:
             if acquired is False:
                 raise ValueError('A merge operation is already running; refresh and retry')
+            record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
+            if record and record.get('applied_result'):
+                return {**self.receipt(preview_id), 'approval_policy': record.get('approval_policy')}
             decision = self.evaluate_policy(preview_id)
             if decision['status'] == 'held':
                 return decision
@@ -285,6 +321,17 @@ class GovernedMergeService:
             raise ValueError('Merge validation shapes changed; generate and review a new preview')
         if not semantic_checks['shacl_conforms'] or semantic_checks['inferred_conflicts']:
             raise ValueError('Reviewed merge no longer passes SHACL/OWL-RL checks; create a new preview')
+        from .governance import audit_ontology_bounded as audit_ontology
+        governance = audit_ontology({**record, 'semantic_checks': semantic_checks})
+        if governance['overall_verdict'] != 'APPROVED':
+            raise ValueError('Ontology Steward policy blocks this merge; evaluate the saved plan and review its quarantined findings')
+        shared = self._decision_policy(record)
+        governance['decision_policy'] = shared
+        if shared['blocking']:
+            record['decision_policy'] = shared
+            self._save(values, preview_id)
+            raise ValueError('Semantica decision policy holds this merge; review the retained assessment')
+        record['governance_audit'] = governance
         if not record.get('approved_by'):
             record['approved_by'] = approved_by
             if approval_policy is not None:
@@ -295,12 +342,12 @@ class GovernedMergeService:
             content=record["turtle"].encode("utf-8"), filename=f"{record['prefix']}_merged.ttl",
             ontology_name=record["ontology_name"], prefix=record["prefix"], description=record["description"],
             source='governed-merge:' + hashlib.sha256(preview_id.encode('utf-8')).hexdigest(), extra_metadata={"status": "merged", "provenance": {"preview_id": preview_id,
-            "source_ontology_ids": record["source_ontology_ids"], "approved_by": approved_by,
+            "source_ontology_ids": record["source_ontology_ids"], "approved_by": approved_by, "governance_audit": governance,
             **({'approval_policy': record['approval_policy']} if record.get('approval_policy') else {})}},
         )
         version = self.intelligence.create_merge_version(ontology={"ontology_id": artifact["ontology_id"], "provenance": artifact["provenance"], "triple_count": record["triple_count"]}, author=approved_by)
         result = {"status": "merged", "ontology": artifact, "version": version, "preview_id": preview_id,
-                  "changes": record.get('changes'), "approved_by": approved_by}
+                  "changes": record.get('changes'), "approved_by": approved_by, "governance": governance}
         record['applied_result'] = result
         self._save(values, preview_id)
         return result

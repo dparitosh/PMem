@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import DecisionPolicyAssessment from './DecisionPolicyAssessment';
+import React, { useState, useCallback, useEffect, useRef, useId } from 'react';
 import * as d3 from 'd3';
 import {
   Zap, Search, Factory,
@@ -8,6 +9,11 @@ import {
 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import './RecommendationsTab.css';
+import ReadGoalPanel from './ReadGoalPanel';
+import {agenticClient} from '../services/agenticApi';
+import {buildSemanticServiceUrl} from '../config';
+import {recommendationGoalEvidence,recommendationTask,recommendationTools} from '../utils/recommendationGoal';
 import { UI_COLORS as C } from '../styles/uiTokens';
 
 // Shared UI configuration
@@ -44,39 +50,6 @@ const TD = {
 
 const TABLE = { width: '100%', borderCollapse: 'collapse', fontSize: '13px' };
 
-const FIELD_LABEL = {
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: 0,
-  textTransform: 'uppercase',
-  color: C.textSec,
-};
-
-const FIELD_CONTROL = {
-  minHeight: 36,
-  padding: '8px 11px',
-  borderRadius: 6,
-  border: `1px solid ${C.borderDark}`,
-  fontSize: 13,
-  color: C.textPrimary,
-  outline: 'none',
-  boxSizing: 'border-box',
-  width: '100%',
-};
-
-const COMPACT_ALERT = {
-  background: C.surface,
-  border: `1px solid ${C.borderDark}`,
-  borderLeft: `3px solid ${C.amber}`,
-  borderRadius: 6,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-  padding: '8px 10px',
-  marginBottom: '10px',
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: 8,
-};
-
 // Shared UI configuration
 const Badge = ({ color = C.primary, children }) => (
   <span style={{
@@ -87,7 +60,8 @@ const Badge = ({ color = C.primary, children }) => (
 );
 
 const ScoreBar = ({ score, max = 100 }) => {
-  const pct = Math.min((score / max) * 100, 100);
+  if(typeof score!=='number'||!Number.isFinite(score))return <span>Impact score not recorded</span>;
+  const pct = Math.max(0, Math.min((score / max) * 100, 100));
   const barColor = score > 70 ? C.red : score > 40 ? C.amber : C.green;
   const label = score > 70 ? 'High Impact' : score > 40 ? 'Medium Impact' : 'Low Impact';
   return (
@@ -200,7 +174,7 @@ const normalizeRecommendationResult = (service, payload) => {
       ...data,
       direct_processes: Array.isArray(data.direct_processes) ? data.direct_processes : [],
       process_instances: Array.isArray(data.process_instances) ? data.process_instances : [],
-      related_processes: Array.isArray(data.related_processes) ? data.related_processes : [],
+      related_part_processes: Array.isArray(data.related_part_processes) ? data.related_part_processes : Array.isArray(data.related_processes) ? data.related_processes : [],
       process_summary: data.process_summary || {},
     };
   }
@@ -248,150 +222,6 @@ const ResultTabBar = ({ tabs, active, onChange }) => (
 // ============================================================
 // Shared UI configuration
 // ============================================================
-const ScenarioPanel = ({ onSelect, health }) => {
-  const scenarios = [
-    {
-      id: 'change-impact',
-      Icon: Zap,
-      color: C.orange,
-      lightColor: C.orangeLight,
-      title: 'Change Impact',
-      tagline: 'Trace affected parts, assemblies, requirements, and processes.',
-      scenario: `A design engineer raised a change request to modify the bearing-shaft fit tolerance on the Induction Motor Assembly. Before the Change Control Board approves it, they need to know: which parts, assemblies, requirements, and production processes will be affected downstream?`,
-      tryWith: 'Change the fit between bearing and shaft',
-      tryLabel: 'Use sample',
-    },
-    {
-      id: 'similar-parts',
-      Icon: Search,
-      color: C.primaryText,
-      lightColor: C.primaryLight,
-      title: 'Similar Parts',
-      tagline: 'Find reuse candidates with structural and semantic similarity.',
-      scenario: `A procurement lead is evaluating whether to source a new Rotor Shaft variant or reuse an existing part from another product line. The AI surfaces structurally and semantically similar parts by comparing assembly co-occurrence, type, RFLP layer, and traceability links Ã¢â‚¬â€ you review and decide.`,
-      tryWith: 'Rotor Shaft Machined',
-      tryLabel: 'Use sample',
-    },
-    {
-      id: 'manufacturing',
-      Icon: Factory,
-      color: C.green,
-      lightColor: C.greenLight,
-      title: 'Process Context',
-      tagline: 'Use process-like and operational graph context around a business object.',
-      scenario: `A process planner needs to document the operational and manufacturing context around the Motor Cover before submitting the production order. The AI looks for direct process links, traceability-connected activities, and neighboring operational objects so the user can review a grounded context instead of a blind graph dump.`,
-      tryWith: 'Sugarplant Requirement Specification',
-      tryLabel: 'Use sample',
-    },
-  ];
-
-  const inferenceQueries = [
-    'Show change impact for REQ-006 across requirement, function, logical, physical, part, and process links.',
-    'Find requirements satisfied by SKF_6306-2Z and the affected EBOM/MBOM/BOP objects.',
-    'Compare EBOM to MBOM and list missing or extra manufacturing objects.',
-    'Trace design-to-manufacturing flow for Induction Motor Assembly from system function to process step.',
-    'Find similar parts by type, dimensions, tolerance, material, and connected requirements.',
-    'List ontology classes and object properties involved in requirement-to-part traceability.',
-    'Validate whether a selected instance violates ontology domain/range or SHACL constraints.',
-  ];
-  return (
-    <div>
-      <div style={{
-        background: `linear-gradient(135deg, ${C.primary} 0%, ${C.primaryDark} 100%)`,
-        borderRadius: '10px', padding: '22px 28px', marginBottom: '20px', color: '#fff',
-      }}>
-        <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', letterSpacing: '-0.01em' }}>
-          Recommendations
-        </div>
-        <div style={{ fontSize: '13px', opacity: 0.85, maxWidth: '600px', lineHeight: 1.65 }}>
-          Select a service and run it against the current graph context.
-        </div>
-      </div>
-
-      <div style={{ ...CARD, padding: '14px 16px', marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: C.textPrimary, marginBottom: 8 }}>
-          High-value ontology inference prompts
-        </div>
-        <div style={{ display: 'grid', gap: 6 }}>
-          {inferenceQueries.map((query) => (
-            <button
-              key={query}
-              type="button"
-              onClick={() => {
-                onSelect('change-impact', query);
-              }}
-              style={{
-                textAlign: 'left',
-                border: `1px solid ${C.border}`,
-                borderRadius: 6,
-                background: C.bg,
-                color: C.textPrimary,
-                padding: '7px 9px',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              {query}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {scenarios.map(s => (
-          <div
-            key={s.id}
-            onClick={() => onSelect(s.id)}
-            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'none'; }}
-            style={{
-              ...CARD, marginBottom: 0, cursor: 'pointer',
-              borderLeft: `4px solid ${s.color}`,
-              display: 'flex', gap: '16px', alignItems: 'flex-start',
-              transition: 'box-shadow .18s ease, transform .18s ease',
-            }}
-          >
-            <div style={{
-              flexShrink: 0, width: '42px', height: '42px', borderRadius: '10px',
-              background: s.lightColor, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <s.Icon size={20} color={s.color} strokeWidth={2} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: C.textPrimary }}>{s.title}</span>
-                <span style={{ fontSize: '12px', color: s.color, fontWeight: 600 }}>{s.tagline}</span>
-              </div>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect(s.id, s.tryWith);
-                }}
-                style={{
-                  padding: '6px 10px',
-                  background: s.lightColor,
-                  color: s.color,
-                  border: `1px solid ${s.color}30`,
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                {s.tryLabel}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ============================================================
-// Shared UI configuration
-// Alternate layout: stacked block, metric chips, no flex cramping
-// ============================================================
 const MetricChip = ({ value, label, color }) => (
   <div style={{
     display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
@@ -412,12 +242,13 @@ const AIInsightBanner = ({ service, data }) => {
     const asmCount  = data.assembly_impact?.length || 0;
     const procCount = data.process_impacts?.length || 0;
     const reqCount  = data.impacted_requirements?.length || 0;
-    const score     = data.impact_score || 0;
+    const score     = data.impact_score;
+    const hasScore=typeof score==='number'&&Number.isFinite(score);
     const sev = score > 70 ? 'high' : score > 40 ? 'medium' : 'low';
     const color = sev === 'high' ? C.red : sev === 'medium' ? C.amber : C.green;
     const bg    = sev === 'high' ? C.redLight : sev === 'medium' ? C.amberLight : C.greenLight;
     const Icon  = sev === 'high' ? AlertTriangle : Info;
-    const headline = sev === 'high' ? 'High impact'
+    const headline = !hasScore?'Impact evidence (score not recorded)':sev === 'high' ? 'High impact'
       : sev === 'medium' ? 'Moderate impact'
       : 'Low impact';
     insight = {
@@ -436,7 +267,7 @@ const AIInsightBanner = ({ service, data }) => {
       color: C.primaryText, bg: C.primaryLight, Icon: Info,
       headline: `${count} candidate part${count !== 1 ? 's' : ''} identified for reuse consideration`,
       chips: [{ value: count, label: 'Candidates' }],
-      cta: 'Score combines structure, type, layer, and traceability.',
+      cta: data.ranking_scope || 'Review candidate score evidence before deciding whether a part can be reused. Similarity is not a probability or an approval.',
     };
   } else if (service === 'manufacturing' && data?.part) {
     const direct = data.process_summary?.total_direct    || 0;
@@ -459,7 +290,7 @@ const AIInsightBanner = ({ service, data }) => {
       color: C.primaryText,
       bg: C.primaryLight,
       Icon: Info,
-      headline: 'Analysis completed',
+      headline: 'No structured recommendation evidence',
       chips: [],
       cta: data?.message || 'The recommendation service returned a response, but there is no structured summary for this result yet.',
     };
@@ -509,19 +340,37 @@ const AIInsightBanner = ({ service, data }) => {
 // Main Component
 // ============================================================
 const RecommendationsTab = () => {
-  const [activeService, setActiveService] = useState(null);
+  const [activeService, setActiveService] = useState('change-impact');
+  const serviceTabs=useRef([]);
+  const tabId=useId();
   const [inputValue, setInputValue] = useState('');
   const analysisGeneration = useRef(0);
   const analysisController = useRef(null);
-  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setLoading(false); }, [activeService, inputValue]);
+
   const [topN, setTopN] = useState(10);
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthRevision, setHealthRevision] = useState(0);
-  const [result, setResult] = useState(null);
+  const [quickResult, setResult] = useState(null);
+  const [executionMode,setExecutionMode]=useState('agent');
+  const [agentRun,setAgentRun]=useState(null);
+  const [agentContract,setAgentContract]=useState(false);
+  const [agentTools,setAgentTools]=useState(null);
+  const [agentError,setAgentError]=useState('');
   const [error, setError] = useState('');
 
+  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setAgentRun(null); setError(''); setLoading(false); }, [activeService, inputValue, topN]);
+
+  useEffect(()=>{
+    const controller=new AbortController();setAgentTools(null);setAgentContract(false);setAgentError('');
+    agenticClient.get(buildSemanticServiceUrl('agentic','/api/v1/tools'),{signal:controller.signal,timeout:15000}).then(response=>{
+      if(!controller.signal.aborted){setAgentTools(new Set((response.data?.tools||[]).map(tool=>tool.id)));setAgentContract(response.data?.read_goal_capabilities?.recommendation_evidence===1);}
+    }).catch(failure=>{if(!controller.signal.aborted)setAgentError(apiErrorMessage(failure,'Agent tools are unavailable.'));});
+    return()=>controller.abort();
+  },[healthRevision]);
+  const goalContext={page:'quality',recommendation_service:activeService,recommendation_object:inputValue.trim(),recommendation_top_n:topN};
+  const result=executionMode==='agent'?recommendationGoalEvidence(agentRun,goalContext):quickResult;
   const recommendationReady = !healthLoading && health?.status === 'ok' && health?.readiness?.scenario_ready === true;
   const readinessMessage = health?.readiness?.message || health?.error || (
     healthLoading ? 'Checking recommendation readiness...' : 'Recommendation readiness is unavailable.'
@@ -558,6 +407,7 @@ const RecommendationsTab = () => {
       analysisController.current?.abort();
       analysisGeneration.current += 1;
       setResult(null);
+      setAgentRun(null);
       setError('');
       setLoading(false);
       setHealth(null);
@@ -579,7 +429,7 @@ const RecommendationsTab = () => {
     const applyPrefill = (detail = {}) => {
       const service = normalizeRecommendationService(detail.service);
       const input = extractRecommendationInput(detail);
-      if (service && input) {
+      if (['change-impact','similar-parts','manufacturing'].includes(service) && input) {
         setActiveService(service);
         setInputValue(input);
         setResult(null);
@@ -603,7 +453,8 @@ const RecommendationsTab = () => {
   const handleAnalyse = useCallback(async () => {
     const generation = ++analysisGeneration.current;
     if (!inputValue.trim() || !activeService) return;
-    if (!recommendationReady) { setLoading(false); setError('Verify recommendation readiness before analysis.'); return; }
+    if (!recommendationReady || activeServiceReadiness===false || activeServiceReadiness?.ready===false) { setLoading(false); setError('Verify recommendation readiness before analysis.'); return; }
+    if(activeService==='similar-parts'&&(!Number.isInteger(topN)||topN<1||topN>50)){setError('Choose a whole number of results from 1 to 50.');return;}
     analysisController.current?.abort();
     const controller = new AbortController();
     analysisController.current = controller;
@@ -611,11 +462,11 @@ const RecommendationsTab = () => {
     try {
       let resp;
       if (activeService === 'change-impact') {
-        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), {}, { signal: controller.signal });
+        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), {}, { signal: controller.signal, timeout:60000 });
       } else if (activeService === 'similar-parts') {
-        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, {}, { signal: controller.signal });
+        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, {}, { signal: controller.signal, timeout:60000 });
       } else if (activeService === 'manufacturing') {
-        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {}, { signal: controller.signal });
+        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {}, { signal: controller.signal, timeout:60000 });
       }
       if (generation === analysisGeneration.current) setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {
@@ -623,11 +474,10 @@ const RecommendationsTab = () => {
     } finally {
       if (generation === analysisGeneration.current) setLoading(false);
     }
-  }, [activeService, inputValue, topN, recommendationReady]);
+  }, [activeService, inputValue, topN, recommendationReady, activeServiceReadiness]);
 
   useEffect(() => () => { analysisGeneration.current += 1; }, []);
 
-  const handleKeyDown = (e) => { if (e.key === 'Enter') handleAnalyse(); };
 
   const handleSelect = (id, prefill) => {
     setActiveService(normalizeRecommendationService(id));
@@ -640,173 +490,43 @@ const RecommendationsTab = () => {
     { id: 'similar-parts',  Icon: Search,  label: 'Similar Parts',        color: C.primaryText },
     { id: 'manufacturing',  Icon: Factory, label: 'Process Context', color: C.green   },
   ];
-  return (
-    <div style={{ padding: '20px', minHeight: '100%', overflowX: 'hidden', background: C.bg, boxSizing: 'border-box' }}>
-      <style>{`@keyframes rec-spin { to { transform: rotate(360deg); } }`}</style>
+  const canAnalyse=recommendationReady&&activeServiceReadiness!==false&&activeServiceReadiness?.ready!==false;
+  const selectedService=services.find(service=>service.id===activeService);
+  const navigate=(event,index)=>{
+    const next=event.key==='Home'?0:event.key==='End'?services.length-1:event.key==='ArrowRight'?(index+1)%services.length:event.key==='ArrowLeft'?(index+services.length-1)%services.length:null;
+    if(next===null)return;
+    event.preventDefault();handleSelect(services[next].id);serviceTabs.current[next]?.focus();
+  };
+  return <section className="recommendation-cockpit" aria-label="Graph recommendations">
+    <header className="recommendation-heading"><div><span className="recommendation-eyebrow">Decision support</span><h2>Recommendations</h2><p>Choose an analysis, identify a graph object, then review the evidence before making a decision.</p></div><button type="button" disabled={healthLoading} onClick={()=>setHealthRevision(value=>value+1)}>{healthLoading?'Checking readiness…':'Retry recommendation readiness'}</button></header>
+    <div className="recommendation-readiness" role="status"><span className={`recommendation-readiness__badge ${recommendationReady?'is-ready':''}`}>{healthLoading?'Checking':recommendationReady?'Graph ready':'Needs attention'}</span><span>{readinessMessage}</span>{!healthLoading&&!recommendationReady&&<a href="#/import">Review source imports</a>}</div>
+    <div className="recommendation-services" role="tablist" aria-label="Recommendation analyses">{services.map((service,index)=><button key={service.id} type="button" role="tab" id={`${tabId}-${service.id}`} aria-controls={`${tabId}-analysis`} aria-selected={activeService===service.id} tabIndex={activeService===service.id?0:-1} ref={node=>{serviceTabs.current[index]=node;}} onClick={()=>handleSelect(service.id)} onKeyDown={event=>navigate(event,index)}><service.Icon size={17} aria-hidden="true"/>{service.label}</button>)}</div>
+    <section role="tabpanel" id={`${tabId}-analysis`} aria-labelledby={`${tabId}-${activeService}`} tabIndex={0}>
+      <p className="recommendation-purpose">{activeService==='change-impact'?'Trace downstream parts, assemblies, requirements and processes affected by a change.':activeService==='similar-parts'?'Compare an existing part with graph candidates to assess possible reuse.':'Inspect process links and operational context around a part or assembly.'}</p>
+      {recommendationReady&&(activeServiceReadiness===false||activeServiceReadiness?.ready===false)&&<p role="status" className="recommendation-notice">{activeServiceReadiness?.message||'This analysis is not ready. Review source graph data and retry readiness.'}</p>}
+      <div className="recommendation-mode"><label>Analysis method<select value={executionMode} onChange={event=>{analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setExecutionMode(event.target.value);}}><option value="agent">Agent investigation + Semantica review</option><option value="graph">Direct graph analysis</option></select></label><p>{executionMode==='agent'?'The existing Graph Analyst plans read steps, retains observations and explains graph evidence with the shared decision-policy assessment.':'Run the bounded graph query directly, with the same shared decision-policy assessment.'}</p></div>
+      <form className="recommendation-query" onSubmit={event=>{event.preventDefault();if(executionMode==='graph')handleAnalyse();}}>
+        <label>{activeService==='change-impact'?'Changed item':activeService==='similar-parts'?'Reference part':'Part or assembly'}<input value={inputValue} onChange={event=>setInputValue(event.target.value)} placeholder="Enter an existing graph object name" autoComplete="off"/></label>
+        {activeService==='similar-parts'&&<label className="recommendation-query__limit">Results<input type="number" min="1" max="50" step="1" value={topN} onChange={event=>setTopN(event.target.value===''?'':Number(event.target.value))}/></label>}
+        {executionMode==='graph'&&<button type="submit" disabled={loading||!inputValue.trim()||!canAnalyse}>{loading?'Analysing…':'Analyse'}</button>}
+      </form>
+      {executionMode==='agent'&&<>
+        {agentError&&<p role="alert">{agentError}</p>}
+        {agentTools&&(!agentContract||!agentTools.has(recommendationTools[activeService]))&&<p role="status">Agent investigation is awaiting the updated PMem backend. Restart PMem, then retry readiness. Direct graph analysis remains available when graph context is ready.</p>}
+        <ReadGoalPanel agent="graph-analyst" task={inputValue.trim()?recommendationTask(goalContext):''} context={goalContext} compact startLabel="Analyse with agent" disabled={!canAnalyse||!inputValue.trim()||!Number.isInteger(topN)||topN<1||topN>50||!agentContract||!agentTools?.has(recommendationTools[activeService])} onRunChange={setAgentRun}/>
+      </>}
+      {error&&<div role="alert" className="recommendation-notice recommendation-notice--error">{error}</div>}
+      {loading&&<p role="status">Reading graph context for {inputValue}. Changing the object or analysis cancels this request.</p>}
+      {!result&&!loading&&!error&&!(executionMode==='agent'&&agentRun)&&<div className="recommendation-empty"><strong>{inputValue?'Ready to analyse':'Start with a graph object'}</strong><p>{inputValue?'Run the analysis to inspect matching evidence.':'Copy an object name from Graph Explorer, or open a recommendation from its object actions.'}</p><a href="#/graph">Find an object in Graph Explorer</a></div>}
+      {result&&<section className="recommendation-results" aria-label="Recommendation evidence"><div className="recommendation-result-heading"><h3>{selectedService.label} results</h3><span>Object: {inputValue}</span></div><AIInsightBanner service={activeService} data={result}/><details className="recommendation-method"><summary>Analysis method & scope</summary><p>{result.traceability || result.ranking_scope || 'Graph-derived read-only analysis. The response does not record additional method or coverage details.'}</p><p>Scores are heuristics, not calibrated confidence. The graph tool returns evidence and a shared decision-policy assessment. In agent mode, the existing Graph Analyst plans the investigation and cites the retained tool observation.</p></details><DecisionPolicyAssessment report={result.decision_policy}/>
+        {activeService==='change-impact'&&<ChangeImpactResult data={result}/>}
+        {activeService==='similar-parts'&&<SimilarPartsResult data={result}/>}
+        {activeService==='manufacturing'&&<ManufacturingResult data={result}/>}
+      </section>}
+    </section>
+    <p className="recommendation-review-note">Results reflect the available graph, not a complete engineering approval. Review source links, scores and decision-policy findings; agent conclusions and policy findings support review; neither analysis method approves or publishes changes.</p>
+  </section>;
 
-      {/* Persistent service sub-tab bar Ã¢â‚¬â€ always visible */}
-      <div style={{
-        display: 'flex', gap: '0', marginBottom: '16px',
-        borderBottom: `2px solid ${C.border}`, alignItems: 'flex-end',
-        background: C.surface, borderRadius: '10px 10px 0 0',
-        padding: '0 8px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      }}>
-        {services.map(svc => {
-          const isActive = activeService === svc.id;
-          return (
-            <button
-              key={svc.id}
-              onClick={() => handleSelect(svc.id)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '7px',
-                padding: '12px 20px', border: 'none', background: 'transparent',
-                borderBottom: isActive ? `3px solid ${svc.color}` : '3px solid transparent',
-                color: isActive ? svc.color : C.textSec,
-                fontSize: '13px', fontWeight: isActive ? 700 : 500,
-                cursor: 'pointer', transition: 'all .15s ease', marginBottom: '-2px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <svc.Icon size={13} strokeWidth={2.2} />
-              {svc.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {!recommendationReady && (
-        <div style={{
-          ...COMPACT_ALERT,
-          background: C.amberLight,
-          color: C.textPrimary,
-        }}>
-          <AlertTriangle size={10} color={C.amber} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.textPrimary, marginBottom: 2 }}>
-              Recommendation graph readiness
-            </div>
-            <div style={{ fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
-              {readinessMessage}
-              <button type="button" disabled={healthLoading} onClick={() => setHealthRevision(value => value + 1)}>Retry recommendation readiness</button>
-              {health?.readiness && (
-                <span>
-                  {' '}Current graph: {health.readiness.individual_count || 0} normalized instances,
-                  {' '}{health.readiness.business_object_count || 0} business objects,
-                  {' '}{health.readiness.raw_graph_count || 0} raw graph nodes.
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ ...COMPACT_ALERT, background: C.primaryLight, borderLeftColor: C.primary, marginBottom: 12 }}>
-        <Info size={10} color={C.primary} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
-        <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
-          Recommendations are decision-support outputs grounded in the current graph. Review source objects, confidence, and traceability before using them for approval or release decisions.
-        </div>
-      </div>
-
-      {/* Welcome scenario panel Ã¢â‚¬â€ shown when no service chosen */}
-      {!activeService && <ScenarioPanel onSelect={handleSelect} health={health} />}
-
-      {/* Input area */}
-      {activeService && (
-        <div style={{ ...CARD, padding: '14px 16px' }}>
-          {activeServiceReadiness && activeServiceReadiness.ready === false && (
-            <div style={{ ...COMPACT_ALERT, background: C.amberLight, marginBottom: 12 }}>
-              <AlertTriangle size={10} color={C.amber} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
-              <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
-                {activeServiceReadiness.message}
-              </div>
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.2fr) minmax(240px, 0.8fr) auto', gap: 12, alignItems: 'end' }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-              <span style={FIELD_LABEL}>
-                {activeService === 'change-impact' ? 'Changed item'
-                  : activeService === 'similar-parts' ? 'Reference part'
-                  : 'Part or assembly'}
-              </span>
-              <input
-                type="text"
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  activeService === 'change-impact' ? 'Enter part, assembly, requirement, or property name'
-                  : activeService === 'similar-parts' ? 'Enter part name to compare'
-                  : 'Enter part or assembly name'
-                }
-                style={FIELD_CONTROL}
-                onFocus={e => { e.target.style.borderColor = C.primary; e.target.style.boxShadow = `0 0 0 3px ${C.primaryLight}`; }}
-                onBlur={e => { e.target.style.borderColor = C.borderDark; e.target.style.boxShadow = 'none'; }}
-              />
-            </label>
-
-            {activeService === 'similar-parts' && (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 96 }}>
-                <span style={FIELD_LABEL}>Results</span>
-                <input
-                  type="number" min={1} max={50} value={topN}
-                  onChange={e => setTopN(Number(e.target.value))}
-                  style={{ ...FIELD_CONTROL, textAlign: 'right' }}
-                />
-              </label>
-            )}
-
-            <button
-              onClick={handleAnalyse}
-              disabled={loading || !inputValue.trim()}
-              style={{
-                minHeight: 36,
-                padding: '8px 18px',
-                border: 'none',
-                borderRadius: 6,
-                background: loading || !inputValue.trim() ? C.textMuted : C.primary,
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: loading || !inputValue.trim() ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 7,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {loading ? (
-                <>
-                  <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'rec-spin 0.9s linear infinite', display: 'inline-block' }} />
-                  Analysing...
-                </>
-              ) : 'Analyse'}
-            </button>
-          </div>
-
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div style={{ ...COMPACT_ALERT, background: C.redLight, borderLeftColor: C.red, color: C.red }}>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <AlertTriangle size={10} strokeWidth={2.5} />
-            <strong>Error:</strong> {error}
-          </div>
-        </div>
-      )}
-
-      {/* AI Insight banner */}
-      {result && <AIInsightBanner service={activeService} data={result} />}
-
-      {/* Results */}
-      {result && activeService === 'change-impact'  && <ChangeImpactResult  data={result} />}
-      {result && activeService === 'similar-parts'  && <SimilarPartsResult  data={result} />}
-      {result && activeService === 'manufacturing'  && <ManufacturingResult data={result} />}
-    </div>
-  );
 };
 
 // ============================================================
@@ -1477,11 +1197,4 @@ const ProcessFlowTimeline = ({ data }) => {
 };
 
 // Shared UI configuration
-export default React.memo(RecommendationsTab, (prevProps, nextProps) => {
-  // Only re-render if selectedNode or key data changes
-  return (
-    prevProps.selectedNode === nextProps.selectedNode &&
-    prevProps.graphData === nextProps.graphData &&
-    JSON.stringify(prevProps.recommendations) === JSON.stringify(nextProps.recommendations)
-  );
-});
+export default RecommendationsTab;

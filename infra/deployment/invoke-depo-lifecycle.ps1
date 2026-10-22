@@ -40,6 +40,11 @@ switch ($Action) {
       }
     }
     Invoke-DepoLifecycleStep 'Configuration preflight' (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') @{EnvFile=$EnvFile; Profile=$Profile; SkipEndpointChecks=$true}
+    . (Join-Path $root 'infra/windows/runtime-config.ps1')
+    $schemaValues = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+    if ($schemaValues.NEO4J_URI -or $schemaValues.NEO4J_URL) {
+      Invoke-DepoLifecycleStep 'Neo4j publication constraints and indexes' (Join-Path $root 'infra/windows/test-depo-neo4j.ps1') @{EnvFile=$EnvFile; Production=$true}
+    }
     $startParameters = @{ EnvFile = $EnvFile; ServiceStartupTimeoutSeconds = $ServiceStartupTimeoutSeconds }
     if ($PostgresBinDir) { $startParameters.PostgresBinDir = $PostgresBinDir }
     if ($PostgresDataDir) { $startParameters.PostgresDataDir = $PostgresDataDir }

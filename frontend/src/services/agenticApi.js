@@ -1,3 +1,4 @@
+import { pageTaskContext } from './pageTasks';
 import axios from 'axios';
 import { openApiPreview } from './openApiPreview';
 import { reportRunRecovery } from './runRecovery';
@@ -13,6 +14,9 @@ const agenticClient = axios.create({
 
 export function applyAgenticAuth(requestConfig) {
   requestConfig.headers = requestConfig.headers || {};
+  if (String(requestConfig.method).toLowerCase() === 'post' && /\/api\/v1\/(runs|workflow-runs)$/.test(String(requestConfig.url).split('?')[0]) && requestConfig.data && typeof requestConfig.data === 'object') {
+    requestConfig.data = { ...requestConfig.data, page_context: pageTaskContext(requestConfig.data.page_context || {}) };
+  }
   // A call may provide a scoped credential (for example, the ontology review
   // read token). Keep it ahead of the app-wide bootstrap token.
   const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
@@ -24,7 +28,12 @@ export function applyAgenticAuth(requestConfig) {
 }
 
 agenticClient.interceptors.request.use(applyAgenticAuth);
-agenticClient.interceptors.response.use(response => response, error => {
+agenticClient.interceptors.response.use(response => {
+  if (String(response.config?.method).toLowerCase() === 'post' && response.data?.run_id) {
+    window.dispatchEvent(new CustomEvent('depo:page-task-updated'));
+  }
+  return response;
+}, error => {
   error.apiError = { status: error.response?.status, requestId: apiRequestId(error),
     message: apiErrorMessage(error) };
   const authorization = error.config?.headers?.get?.('Authorization') || error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
@@ -37,6 +46,8 @@ function agenticUrl(endpoint) {
 }
 
 export const agenticAPI = {
+  pageTasks: (page, offset = 0, options = {}) => agenticClient.get(agenticUrl('/api/v1/page-tasks'), { ...options, params: {page,offset,limit:20} }),
+  pageTask: (kind, id, options = {}) => agenticClient.get(agenticUrl(`/api/v1/page-tasks/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`), options),
   importOpenApi: async (document, filename) => ({ data: openApiPreview(document, filename) }),
   controlWorkflow: (id, action, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/control`), { action }, options),
   recoverWorkflow: (id, identity, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/recover`), identity, options),

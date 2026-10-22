@@ -2,6 +2,15 @@ from backend.agentic_service.telemetry import AgentTelemetry
 from backend.mesh_store import InMemoryRegistry
 
 
+def test_telemetry_records_selected_cloud_model_without_claiming_execution(monkeypatch):
+    monkeypatch.setenv('USE_LLM','openai');monkeypatch.setenv('OPENAI_MODEL','cloud-model')
+    monkeypatch.setenv('LLM_MODEL_NAME','old-ollama-model')
+    telemetry=AgentTelemetry();telemetry.store=InMemoryRegistry('telemetry-model')
+    record,_=telemetry.start(operation='ontology-policy')
+    assert record['provider']=='openai' and record['model']=='cloud-model'
+    assert record['model_selection_only'] is True
+
+
 def test_agent_telemetry_summarizes_runs_tools_and_evidence():
     telemetry = AgentTelemetry()
     telemetry.store = InMemoryRegistry("agent-observability-test")

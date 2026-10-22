@@ -56,3 +56,6 @@ app.include_router(bridge_router)
 
 from .goal_routes import router as goal_router
 app.include_router(goal_router)
+
+from .page_tasks import router as page_tasks_router
+app.include_router(page_tasks_router)

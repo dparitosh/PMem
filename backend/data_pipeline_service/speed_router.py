@@ -12,6 +12,7 @@ from backend.depo_platform.authorization import approval_identity
 from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers
 from backend.artifact_store import ArtifactStore
 from . import speed_path
+from backend.depo_platform.peer_http import async_peer_response
 
 router = APIRouter(prefix="/pipeline/speed", tags=["speed-path"])
 
@@ -62,13 +63,22 @@ async def publish(reconciliation_id: str, payload: JobPublicationBody, request: 
         root = root if root.endswith("/api/v1") else f"{root}/api/v1"
         publication_payload = {**batch, "ontology_id": payload.get("ontology_id"), "prefix": payload.get("prefix", "ceim"), "semantic_release": payload.get("semantic_release"), "approved_by": actor, "approval_token": payload.get("approval_token"), "publication_id": reconciliation_id, "source_system": payload.get("source_system") or batch.get("source_system")}
         publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
-        async with httpx.AsyncClient(timeout=publication_timeout) as client:
-            response = await client.post(f"{root}/ceim/publications/graph", json=publication_payload, headers=service_bearer_headers("CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=root))
-        if response.is_error: raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
-        publication = response.json()
-        if not isinstance(publication, dict) or publication.get("status") != "published":
-            raise RuntimeError("Canonical publication did not report success; reconciliation remains pending")
+        endpoint = f"{root}/ceim/publications/graph"
+        try:
+            response = await async_peer_response('POST', endpoint, budget=publication_timeout,
+                json=publication_payload, headers=service_bearer_headers("CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=endpoint))
+            if response.is_error:
+                raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}; verify its receipt before retrying")
+            publication = response.json()
+            from backend.depo_platform.graph_publication_transport import verified_receipt
+            expected_ontology = str(payload.get("ontology_id") or f"ceim-{batch.get('standard', '')}").strip().lower()
+            if (not isinstance(publication, dict) or publication.get("status") != "published"
+                    or publication.get("ontology_id") != expected_ontology or publication.get("publication_id") != reconciliation_id
+                    or not verified_receipt(publication.get("publication"), expected_ontology, reconciliation_id)):
+                raise RuntimeError("Canonical publication receipt is unverified; reconciliation remains pending")
+        except ValueError as exc:
+            raise RuntimeError("Canonical publication response is invalid or exceeds its size limit; verify its receipt") from exc
         published = {**record, "status": "published", "published_at": speed_path._now(), "published_by": actor, "publication": publication}
         return speed_path.reconciliations.put(reconciliation_id, published)
     except (ValueError, json.JSONDecodeError) as exc: raise HTTPException(422, str(exc)) from exc
-    except (RuntimeError, httpx.HTTPError) as exc: raise HTTPException(503, str(exc)) from exc
+    except (RuntimeError, httpx.HTTPError, TimeoutError) as exc: raise HTTPException(503, "Canonical publication unavailable; reconciliation is retained. Verify its receipt before retrying.") from exc

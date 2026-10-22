@@ -1,3 +1,4 @@
+import DecisionPolicyAssessment from '../DecisionPolicyAssessment';
 import MappingExplanation, { explainHoldReason, matchScore } from './MappingExplanation';
 import { getCredentialProfile, publicationRecoveryScope } from '../../services/serviceAuth';
 import React, { useEffect, useRef, useState } from 'react';
@@ -210,6 +211,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
     {automationStage !== 'idle' && <p role="status" aria-live="polite">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
     {policyReport && <div role="status"><strong>Steward decision:</strong> {policyReport.accepted_ids?.length || 0} policy-approved; {policyReport.held_count} held. <small>Workflow: {automationRun?.run_id}</small>
+      <DecisionPolicyAssessment report={policyReport.decision_policy} />
+      {policyReport.governance && <p>Scope: instance classification candidates. This assessment does not establish full ABox SHACL conformance or identity equivalence. Source task: {policyReport.governance.provenance?.import_task_id}. No automatic predicate changes were applied.</p>}
       <details><summary>Why mappings were held</summary>{policyReport.decisions.filter(item => item.decision === 'hold').map(item => <p key={item.candidate_id}>{preview?.candidates.find(row => row.candidate_id === item.candidate_id)?.source_term || item.candidate_id}: {item.reasons.map(explainHoldReason).join(' ')}</p>)}</details>
     </div>}
     {preview && <section aria-label="Mapping guidance">

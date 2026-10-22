@@ -148,7 +148,7 @@ async def import_sysml_commit(request: Request, payload: SysmlCommitBody) -> dic
         return {**result, "project_id": snapshot["project_id"], "commit_id": snapshot["commit_id"]}
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
-    except (httpx.HTTPError, RuntimeError) as exc:
+    except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
         raise HTTPException(503, "Repository or data pipeline unavailable") from exc
 
 

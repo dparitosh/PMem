@@ -4,8 +4,9 @@ import unicodedata
 from collections import defaultdict
 from difflib import SequenceMatcher
 from rdflib import URIRef, RDF, RDFS, OWL
+from rdflib.namespace import SKOS
 
-POLICY = 'lexical-context-v1'
+POLICY = 'lexical-context-v2'
 MIN_SCORE = 0.55
 MAX_COMPARISONS = 100000
 MAX_CANDIDATES = 200
@@ -33,14 +34,14 @@ def inventory(graph):
             declared[subject].add(OWL.Class if kind == RDFS.Class else kind)
     result = []
     for subject in sorted(declared, key=str):
-        labels = sorted({str(value)[:512] for value in graph.objects(subject, RDFS.label)})
+        labels = sorted({str(value)[:512] for predicate in (RDFS.label, SKOS.prefLabel, SKOS.altLabel) for value in graph.objects(subject, predicate)})
         local = str(subject).rsplit('#', 1)[-1].rsplit('/', 1)[-1].rsplit(':', 1)[-1]
         labels = labels[:8] or [local[:512]]
         def refs(predicate):
             return sorted(str(value) for value in graph.objects(subject, predicate) if isinstance(value, URIRef))[:20]
         domains, ranges = refs(RDFS.domain), refs(RDFS.range)
         properties = sorted(str(value) for value in graph.subjects(RDFS.domain, subject) if isinstance(value, URIRef))[:40]
-        definitions = sorted(str(value)[:2048] for value in graph.objects(subject, RDFS.comment))[:5]
+        definitions = sorted({str(value)[:2048] for predicate in (RDFS.comment, SKOS.definition) for value in graph.objects(subject, predicate)})[:5]
         def context_terms(values):
             return set().union(*(tokens(value.rsplit('#', 1)[-1].rsplit('/', 1)[-1].rsplit(':', 1)[-1]) for value in values))
         context = [context_terms(values) for values in (domains, ranges, properties)]
@@ -94,7 +95,7 @@ def match_entities(source_graph, target_graph):
                     'definitions': round(definition, 4), 'property_context': round(context, 4)},
                 source_evidence=evidence(left), target_evidence=evidence(right),
                 reason='Weighted lexical and structural similarity; heuristic score, not a probability. Semantic equivalence requires review.',
-                requires_review=True))
+                requires_review=True, proposed_relation='unverified'))
         if comparisons >= MAX_COMPARISONS: break
     proposals.sort(key=lambda row: (-row['confidence_score'], row['source_iri'], row['target_iri']))
     by_source, by_target = defaultdict(list), defaultdict(list)

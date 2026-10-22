@@ -9,6 +9,7 @@ from backend.depo_platform.request_bodies import BrowserSessionBody, RotateCrede
 
 import os
 import uuid
+import re
 import logging
 from contextlib import asynccontextmanager
 from collections.abc import Collection
@@ -24,7 +25,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """Propagate a client request id or add a new one to every response."""
 
     async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        supplied_id = request.headers.get("X-Request-ID", "")
+        request_id = supplied_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", supplied_id) else str(uuid.uuid4())
         request.state.request_id = request_id
         try:
             response = await call_next(request)

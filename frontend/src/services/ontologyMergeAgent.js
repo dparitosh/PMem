@@ -1,26 +1,45 @@
+import { agentToolResult } from './agentToolResult';
 import agenticAPI from './agenticApi';
 import { getCredentialProfile } from './serviceAuth';
 
-export function governorResult(response, tool) {
-  const run = response.data;
-  if (!run?.result || typeof run.result !== 'object' || Array.isArray(run.result) ||
-      typeof run.run_id !== 'string' || !run.run_id || (run.status && run.status !== 'completed') ||
-      run.agent_id !== 'ontology-governor' || run.tool_id !== tool) {
-    throw new Error('Agent returned an incompatible result. Inspect agent telemetry before retrying.');
-  }
-  return { result: run.result, runId: run.run_id };
+export function validStewardReport(report) {
+  const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  if (!report || !['APPROVED','REJECTED','PENDING_VALIDATION'].includes(report.overall_verdict) ||
+      !hash(report.audit_id) || !hash(report.policy_sha256) || !hash(report.artifact_sha256) ||
+      !['imported_standard','enterprise_curated'].includes(report.profile) ||
+      !['MAJOR','MINOR','PATCH','NONE'].includes(report.recommended_version_bump) ||
+      !Array.isArray(report.violations_and_remediations) || report.violations_and_remediations.length > 200 ||
+      !count(report.metrics?.findings) || !count(report.metrics?.quarantined_subjects) ||
+      report.metrics.findings < report.violations_and_remediations.length ||
+      typeof report.coverage?.complete !== 'boolean' ||
+      report.violations_and_remediations.some(row => !row ||
+        ['subject_uri','issue_category','diagnosis','action_taken'].some(key => typeof row[key] !== 'string' || !row[key]) ||
+        !['BLOCKER','WARNING','EDITORIAL'].includes(row.severity) ||
+        (row.recommended_action !== undefined && typeof row.recommended_action !== 'string'))) return false;
+  return report.overall_verdict !== 'APPROVED' || (report.coverage.complete &&
+    report.coverage.shacl === 'retained-result' && report.coverage.owl_rl_performed === true &&
+    report.metrics.quarantined_subjects === 0 && !report.violations_and_remediations.some(row => row.severity === 'BLOCKER'));
 }
 
-async function execute(tool, inputs, approvedBy) {
+async function execute(tool, inputs, approvedBy, agent = 'ontology-governor') {
   const actor = approvedBy.trim();
   const token = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
   if (!actor || !token) throw new Error('Enter the approving steward and connect governed agent access in Admin.');
-  const response = await agenticAPI.runAgent('ontology-governor', tool, inputs,
+  const response = await agenticAPI.runAgent(agent, tool, inputs,
     { approved_by: actor, approval_token: token });
-  return governorResult(response, tool);
+  return agentToolResult(response, agent, tool);
 }
 
 export const ontologyMergeAgent = {
+  evaluate: async (previewId, actor) => {
+    const response = await execute('ontology.merge.evaluate', {preview_id: previewId}, actor, 'ontology-steward');
+    const report = response.result.governance;
+    if (response.result.preview_id !== previewId || !validStewardReport(report)) {
+      throw new Error('Steward returned an incompatible governance report. Approval remains blocked.');
+    }
+    return response;
+  },
   preview: (sources, options, actor) => execute('ontology.merge.preview', { source_ontology_ids: sources, ...options }, actor),
   apply: async (previewId, actor) => {
     const response = await execute('ontology.merge.apply', { preview_id: previewId, publish: true }, actor);

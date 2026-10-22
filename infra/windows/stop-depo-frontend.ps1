@@ -20,6 +20,9 @@ if (Test-Path -LiteralPath $pidFile) {
     throw 'Invalid frontend PID file. Tracking retained for inspection.'
   }
   $recorded = $snapshot | Where-Object { $_.ProcessId -eq $recordedPid } | Select-Object -First 1
+  if ($recorded -and (-not $recorded.ExecutablePath -or -not $recorded.CommandLine)) {
+    throw "Windows did not expose the identity of frontend PID $recordedPid. Tracking retained; no process was stopped. Run manage-depo.ps1 from an elevated PowerShell or allow its UAC elevation request. If already elevated, inspect Windows process-access policy."
+  }
   if ($recorded -and -not (Test-ProjectFrontend $recorded)) {
     throw "Recorded frontend PID $recordedPid has executable '$($recorded.ExecutablePath)', expected '$expectedPython', or its frontend command does not match. Tracking retained; no unrelated process was stopped."
   }

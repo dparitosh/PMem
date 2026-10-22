@@ -18,7 +18,7 @@ class CompanionBoundaryTests(unittest.TestCase):
 
     def test_context_retains_only_bounded_scope(self):
         request = ChatRequest(message='product', graph_context={'ontology': 'qif', 'visibleGraph': {'nodes': [{'label': 'untrusted'}]}})
-        self.assertEqual(request.graph_context.model_dump(), {'ontology': 'qif', 'ontology_prefix': ''})
+        self.assertEqual(request.graph_context.model_dump(), {'ontology': 'qif', 'ontology_prefix': '', 'page':''})
         with self.assertRaises(ValidationError):
             ChatRequest(message='product', graph_context={'ontology': 'x' * 129})
         with self.assertRaises(ValidationError):

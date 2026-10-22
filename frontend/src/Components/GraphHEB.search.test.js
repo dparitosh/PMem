@@ -1,0 +1,21 @@
+import React from 'react';
+import {render,screen,fireEvent,waitFor} from '@testing-library/react';
+import GraphHEB from './GraphHEB';
+import {graphApi} from '../services/graphApi';
+vi.mock('../contexts/OntologyContext',()=>({useOntologies:()=>({ontologies:[],loading:false,error:null})}));
+vi.mock('../services/apiClient',()=>({apiClient:{post:vi.fn()},platformAPI:{health:vi.fn().mockResolvedValue({data:{status:'ok'}})}}));
+vi.mock('../services/graphApi',()=>({graphApi:{getOverview:vi.fn(),getOntologyGraph:vi.fn(),getArchitectureGraph:vi.fn(),getStepParts:vi.fn(),searchUniversal:vi.fn()}}));
+vi.mock('../utils/logger',()=>({logger:{error:vi.fn(),warn:vi.fn(),info:vi.fn(),debug:vi.fn(),data:vi.fn(),render:vi.fn(),ontology:vi.fn(),api:vi.fn()}}));
+test('submitting a query keeps it visible and reaches universal search even with an empty overview',async()=>{
+ const empty={data:{nodes:[],relationships:[],view:{}}};
+ graphApi.getOverview.mockResolvedValue(empty);graphApi.getOntologyGraph.mockResolvedValue(empty);
+ graphApi.searchUniversal.mockResolvedValue(empty);
+ const update=vi.fn();
+ render(<GraphHEB setData={update} setSearchResults={update} setActiveTab={update} setVisibleRelationships={update}/>);
+ const input=await screen.findByRole('textbox',{name:'Search graph'});
+ await screen.findByText('No Graph Data Available');
+ fireEvent.change(input,{target:{value:'PART_OF'}});
+ fireEvent.click(screen.getByRole('button',{name:'Search'}));
+ await waitFor(()=>expect(graphApi.searchUniversal).toHaveBeenCalledWith('PART_OF',expect.objectContaining({scope:'',limit:80}),expect.anything()),{timeout:2000});
+ expect(input).toHaveValue('PART_OF');
+});

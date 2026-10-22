@@ -19,6 +19,7 @@ class MergeEntityChangesTests(unittest.TestCase):
         second = b'@prefix ex: <urn:ex:> . @prefix owl: <http://www.w3.org/2002/07/owl#> . ex:Component a owl:Class .'
         if incompatible: second = second.replace(b'owl:Class', b'owl:ObjectProperty')
         service.catalog = SimpleNamespace(get=lambda key: {}, read_artifact=lambda key: ({'ontology_name': key, 'original_filename': 'source.ttl'}, first if key == 'a' else second), _parse_ontology=lambda *args: {'rdf_format': 'turtle'})
+        service._decision_policy = lambda record: {'status':'not_configured','blocking':False,'checks':[]}
         service.registry = None; service._load = lambda: {}; service._save = lambda *args: None
         return service
 

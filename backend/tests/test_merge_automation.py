@@ -44,9 +44,17 @@ class MergeAutomationTests(unittest.TestCase):
         self.assertEqual(values[preview['preview_id']]['approved_by'], 'registered-actor')
         provenance = service.catalog.register.call_args.kwargs['extra_metadata']['provenance']
         self.assertEqual(provenance['approval_policy'], decision)
+        service.catalog.read_artifact = Mock(return_value=({'provenance': provenance}, values[preview['preview_id']]['turtle'].encode()))
         service.apply_automatic(preview['preview_id'], 'registered-actor')
         service.catalog.register.assert_called_once()
         service.intelligence.create_merge_version.assert_called_once()
+
+    def test_manual_publication_cannot_skip_steward_identity_checks(self):
+        service, values, preview = self.service()
+        values[preview['preview_id']]['turtle'] += '\n<urn:ex:Design> <http://www.w3.org/2002/07/owl#sameAs> <urn:ex:Serialized> .'
+        with self.assertRaisesRegex(ValueError, 'Steward policy blocks'):
+            service._apply(preview['preview_id'], 'reviewer')
+        service.catalog.register.assert_not_called()
 
     def test_entity_consolidation_is_held_without_writes(self):
         service, _, preview = self.service([{'source_iri':'urn:ex:Part','target_iri':'urn:ex:Component'}])

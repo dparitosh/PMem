@@ -10,7 +10,7 @@ global.TextDecoder = TextDecoder;
 
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 
-test('completed chat shows generation status and the telemetry run', async () => {
+test('completed chat shows generation status without internal agent diagnostics', async () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'read-fixture');
   let sent = false;
   global.fetch = vi.fn((_url, options = {}) => {
@@ -27,8 +27,9 @@ test('completed chat shows generation status and the telemetry run', async () =>
   await screen.findByText('Model generation: unavailable');
   const post = global.fetch.mock.calls.find(([, options]) => options?.method === 'POST');
   expect(post[1]).toMatchObject({ credentials: 'omit', redirect: 'error' });
-  expect(screen.getByText('Agent run: chat-run-1')).toBeInTheDocument();
-  expect(screen.getByText('Saved conversation result: saved-chat-1')).toBeInTheDocument();
+  expect(screen.queryByText(/chat-run-1/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/saved-chat-1/)).not.toBeInTheDocument();
+  expect(screen.queryByText('Prompt details')).not.toBeInTheDocument();
   expect(screen.getByText('You · Question 1')).toBeVisible();
   expect(screen.getByText('Companion · Response 1')).toBeVisible();
   const history = screen.getByRole('log', { name: 'Conversation history' });
@@ -239,4 +240,60 @@ test('malformed sample-query responses retain safe prompts',async()=>{
  render(<Chatbot />);
  await waitFor(()=>expect(global.fetch).toHaveBeenCalled());
  expect(screen.getByRole('button',{name:'Send chat question'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Find MBSE functions, system components and their recorded relationships.'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Find ontology resources matching product'})).not.toBeInTheDocument();
+});
+
+test('samples follow the active page and refresh when the page changes',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ global.fetch=vi.fn().mockImplementation(url=>Promise.resolve({ok:true,headers:{get:()=>null},json:async()=>({queries:new URL(url).searchParams.get('page')==='catalog'?['Which catalog sources are recorded?']:['What processing jobs are recorded?']})}));
+ const view=render(<Chatbot pageId="catalog"/>);
+ expect(await screen.findByRole('button',{name:'Which catalog sources are recorded?'})).toBeVisible();
+ view.rerender(<Chatbot pageId="data-flow"/>);
+ expect(await screen.findByRole('button',{name:'What processing jobs are recorded?'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Which catalog sources are recorded?'})).not.toBeInTheDocument();
+});
+
+
+test('provider failures retain the grounded answer and show an actionable diagnosis',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ let sent=false;
+ global.fetch=vi.fn((_url,options={})=> options.method!=='POST' ? Promise.resolve({ok:true,json:async()=>({queries:[]})}) : Promise.resolve({ok:true,status:200,headers:{get:()=>null},body:{getReader:()=>({read:async()=>{
+  if(sent)return {done:true};sent=true;
+  return {done:false,value:bytes('data: '+JSON.stringify({response:'198 proposals; zero selected consolidations.',evidence:[{resource_id:'review',label:'AP242 to QIF'}],sources:[],answerable:true,generation:{status:'rate_limited',provider:'openai',action:'Check provider quota and billing.'}})+'\n\ndata: {"done":true}\n\n')};
+ }})}}));
+ render(<Chatbot/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'AP242 QIF mappings'}});
+ fireEvent.click(screen.getByLabelText('Send chat question'));
+ expect(await screen.findByText('198 proposals; zero selected consolidations.')).toBeVisible();
+ expect(screen.getByText('Model generation: rate_limited (openai)')).toBeVisible();
+ expect(screen.getByText('Check provider quota and billing.')).toBeVisible();
+});
+
+
+test('restored answers are scoped and labelled as historical evidence',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ setClientSessionId('restore-fixture');
+ global.fetch=vi.fn(url=>Promise.resolve({ok:true,status:200,json:async()=>String(url).includes('/history?') ? {turns:[{job_id:'private-result-id',user_request:'Find measurement',response:'Saved cited answer',evidence:[]}]} : {queries:[]}}));
+ render(<Chatbot ontologyId="qif-version" ontologyPrefix="qif"/>);
+ expect(await screen.findByText('Saved cited answer')).toBeVisible();
+ expect(screen.getByText('Saved answer — evidence has not been refreshed.')).toBeVisible();
+ expect(global.fetch.mock.calls.some(([url])=>String(url).includes('ontology_id=qif-version&ontology_prefix=qif'))).toBe(true);
+ expect(screen.queryByText(/private-result-id/)).not.toBeInTheDocument();
+});
+
+
+test('Companion sends a page hint and clears evidence when changing pages',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');let sent=false;
+ global.fetch=vi.fn((_url,options={})=>options.method!=='POST' ? Promise.resolve({ok:true,json:async()=>({queries:[]})}) : Promise.resolve({ok:true,status:200,headers:{get:()=>null},body:{getReader:()=>({read:async()=>{
+  if(sent)return {done:true};sent=true;
+  return {done:false,value:bytes('data: {"response":"Catalog context","evidence":[],"sources":[],"answerable":true}\n\ndata: {"done":true}\n\n')};
+ }})}}));
+ const view=render(<Chatbot pageId="catalog"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'List products'}});fireEvent.click(screen.getByLabelText('Send chat question'));
+ expect(await screen.findByText('Catalog context')).toBeVisible();
+ const request=global.fetch.mock.calls.find(([,options])=>options?.method==='POST')[1];
+ expect(JSON.parse(request.body).graph_context.page).toBe('catalog');
+ view.rerender(<Chatbot pageId="data-flow"/>);
+ await waitFor(()=>expect(screen.queryByText('Catalog context')).not.toBeInTheDocument());
 });

@@ -4,6 +4,7 @@ import { dataPipelineAPI, metadataRegistryAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { readRequestedRunId, requireRunManifest } from '../workflows/runTracking';
 import './DataFlowPage.css';
+import DataWorkspace, {DataJourney} from '../Components/DataWorkspace';
 import { productDraftFromRun } from '../services/analyticsProductDraft';
 import AgentProposalPanel from '../Components/AgentProposalPanel';
 
@@ -73,7 +74,7 @@ function QualityOverview({ runs, accepted, rejected, unavailable }) {
   const total = Math.max(accepted + rejected, 1);
   const acceptedWidth = Math.round((accepted / total) * 100);
   return <article className="data-flow-card data-flow-quality" aria-label="Data quality overview">
-    <div className="data-flow-card__heading"><div><h2>Live quality and workflow status</h2><p>{unavailable ? 'Evidence is unavailable or stale; displaying the last retained snapshot.' : 'Derived from the latest retained pipeline snapshot; Zeppelin remains optional.'}</p></div><Status value={unavailable ? 'unknown' : failed ? 'warning' : 'ok'} /></div>
+    <div className="data-flow-card__heading"><div><h2>Live quality and workflow status</h2><p>{unavailable ? 'Evidence is unavailable or stale; displaying the last retained snapshot.' : !runs.length?'No retained runs yet. Quality has not been evaluated.':'Derived from the latest retained pipeline snapshot.'}</p></div><Status value={unavailable || !runs.length ? 'unknown' : failed ? 'warning' : 'ok'} /></div>
     <div className="data-flow-quality__bar" role="img" aria-label={`${accepted} accepted and ${rejected} rejected records`}><span style={{ width: `${acceptedWidth}%` }} /></div>
     <div className="data-flow-quality__legend"><span><i className="data-flow-quality__swatch data-flow-quality__swatch--accepted" />Accepted <strong>{accepted}</strong></span><span><i className="data-flow-quality__swatch data-flow-quality__swatch--rejected" />Rejected <strong>{rejected}</strong></span></div>
     <div className="data-flow-quality__states"><span>Completed <strong>{completed}</strong></span><span>Queued <strong>{queued}</strong></span><span>Running <strong>{running}</strong></span><span>Failed <strong>{failed}</strong></span></div>
@@ -81,11 +82,13 @@ function QualityOverview({ runs, accepted, rejected, unavailable }) {
 }
 
 export default function DataFlowPage() {
+  const [workspace,setWorkspace]=useState('runs');
   const [health, setHealth] = useState(null);
   const [telemetry, setTelemetry] = useState(null);
   const [runs, setRuns] = useState([]);
   const [definitions, setDefinitions] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
+  const [runStatus,setRunStatus]=useState('all');
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -192,10 +195,11 @@ export default function DataFlowPage() {
 
   const visibleRuns = useMemo(() => {
     const term = filter.trim().toLowerCase();
-    if (!term) return runs;
-    return runs.filter((run) => [run.job_id, run.job_type, run.status, run.correlation_id, sourceStandard(run)]
+    const matchingStatus=runs.filter(run=>runStatus==='all'||run.status===runStatus);
+    if (!term) return matchingStatus;
+    return matchingStatus.filter((run) => [run.job_id, run.job_type, run.status, run.correlation_id, sourceStandard(run)]
       .some((value) => String(value || '').toLowerCase().includes(term)));
-  }, [filter, runs]);
+  }, [filter, runs, runStatus]);
 
   const totals = telemetry?.durable_job_telemetry || telemetry?.totals || {};
   const durableTotals = useMemo(() => ({
@@ -221,6 +225,7 @@ export default function DataFlowPage() {
       preferredRunId.current = replayed.run_id;
       setSelectedRun(replayed);
 
+      setWorkspace('runs');
       await load();
     } catch (replayFailure) {
       setReplayError(apiErrorMessage(replayFailure, 'Replay could not be started.'));
@@ -292,13 +297,13 @@ export default function DataFlowPage() {
   };
 
   return (
-    <section className="data-flow-page" aria-labelledby="data-flow-title">
-      <AgentProposalPanel title="Data job recommendations" agentIds={['data-quality-monitor', 'engineering-parser', 'ceim-mapper']} context={selectedRun ? { run_id: selectedRun.run_id, job_id: selectedRun.job_id, version: selectedRun.version, job_type: selectedRun.job_type } : { page: 'data-flow' }} />
+    <section className="data-flow-page data-cockpit" aria-labelledby="data-flow-title">
+
       <header className="data-flow-page__header">
         <div>
           <p className="data-flow-page__eyebrow">Data processing operations</p>
           <h1 id="data-flow-title">Data Flow</h1>
-          <p>Operational evidence for configured Spark and semantic processing jobs. Refreshes every 15 seconds.</p>
+          <p>Monitor processing, manage pipeline jobs and turn validated outputs into reusable evidence. Refreshes every 15 seconds.</p>
         </div>
         <div className="data-flow-page__actions">
           <Status value={health?.status || health?.spark?.status || 'checking'} />
@@ -307,67 +312,29 @@ export default function DataFlowPage() {
           </button>
         </div>
       </header>
-
-      <details className="data-flow-notice" style={{ marginBottom: 12 }}>
-        <summary>Data-job approval credentials (only when the API gateway does not provide identity)</summary>
-        <p>These values are held only in memory and the API key is cleared after a lifecycle action starts.</p>
-        <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
-      </details>
-      <section className="data-flow-notice" aria-label="Semantic publication settings">
-        <button type="button" onClick={loadReleases}>Load approved semantic releases</button>
-        <label>Semantic release <select value={releaseIndex} onChange={(event) => setReleaseIndex(event.target.value)}>
-          <option value="">Select an approved release</option>
-          {semanticReleases.map((asset, index) => <option key={`${asset.asset_id}:${asset.version}`} value={index}>{asset.name || asset.asset_id} — {asset.version}</option>)}
-        </select></label>
-        <label>Source system <input value={publicationSource} onChange={(event) => setPublicationSource(event.target.value)} placeholder="e.g. teamcenter-customer-prod" /></label>
-      </section>
+      <DataJourney current="flow"/>
 
       {error && <div className="data-flow-notice" role="status">{error}</div>}
       {replayError && <div className="data-flow-notice data-flow-notice--error" role="alert">{replayError}</div>}
 
       <div className="data-flow-kpis" aria-label="Data-job telemetry summary">
-        <article><span>Configured jobs</span><strong>{definitions.length}</strong></article>
-        <article><span>Quality jobs</span><strong>{qualityJobCount}</strong></article>
-        <article><span>Durable runs</span><strong>{totals.runs ?? durableTotals.runs}</strong></article>
-        <article><span>Accepted records</span><strong>{totals.records_accepted ?? durableTotals.accepted}</strong></article>
-        <article><span>Rejected records</span><strong>{totals.records_rejected ?? durableTotals.rejected}</strong></article>
-        <article><span>Scheduler</span><strong className="data-flow-kpi-state">{telemetry?.scheduler?.running ? 'Running' : telemetry?.scheduler?.enabled ? 'Stopped' : 'Disabled'}</strong></article>
-        <article><span>Pipeline workers</span><strong className="data-flow-kpi-state">{telemetry?.worker_count ?? health?.worker_count ?? 0} / {telemetry?.busy_workers ?? health?.busy_workers ?? 0} busy</strong></article>
+        <article><span>Configured jobs</span><strong>{loading||error?'—':definitions.length}</strong></article>
+        <article><span>Quality jobs</span><strong>{loading||error?'—':qualityJobCount}</strong></article>
+        <article><span>Durable runs</span><strong>{loading||error?'—':totals.runs ?? durableTotals.runs}</strong></article>
+        <article><span>Accepted records</span><strong>{loading||error?'—':totals.records_accepted ?? durableTotals.accepted}</strong></article>
+        <article><span>Rejected records</span><strong>{loading||error?'—':totals.records_rejected ?? durableTotals.rejected}</strong></article>
+        <article><span>Scheduler</span><strong className="data-flow-kpi-state">{!telemetry||error?'Unknown':telemetry?.scheduler?.running ? 'Running' : telemetry?.scheduler?.enabled ? 'Stopped' : 'Disabled'}</strong></article>
+        <article><span>Pipeline workers</span><strong className="data-flow-kpi-state">{!telemetry||error?'Unknown':`${telemetry.worker_count ?? health?.worker_count ?? '—'} / ${telemetry.busy_workers ?? health?.busy_workers ?? '—'} busy`}</strong></article>
       </div>
 
       <p>Run and record totals cover the latest {totals.limit ?? 100} runs, not lifetime history.</p>
-      <QualityOverview runs={runs} accepted={totals.records_accepted ?? durableTotals.accepted} rejected={totals.records_rejected ?? durableTotals.rejected} unavailable={!!error || !telemetry} />
-      <article className="data-flow-card data-flow-card--definitions">
-        <div className="data-flow-card__heading">
-          <div><h2>Data-job definitions</h2><p>Approve, disable, or schedule only versioned jobs with retained inputs.</p></div>
-          <label className="data-flow-filter">Schedule interval (seconds)<input aria-label="Schedule interval seconds" type="number" min="60" max="86400" value={scheduleInterval} onChange={(event) => setScheduleInterval(event.target.value)} /></label>
-        </div>
-        <div className="data-flow-table-wrap"><table className="data-flow-table data-flow-definition-table">
-          <thead><tr><th>Definition</th><th>Contract</th><th>State</th><th>Schedule</th><th aria-label="Actions" /></tr></thead>
-          <tbody>{definitions.map((definition) => {
-            const busy = !!definitionActionId;
-            const isApproved = definition.lifecycle_state === 'approved' && definition.enabled;
-            return <tr key={`${definition.job_id}:${definition.version}`}>
-              <td><strong>{definition.name || definition.job_id}</strong><small>{definition.job_id} · {definition.version} · {definition.owner || 'No owner recorded'}</small></td>
-              <td>{definition.input_contract || '—'}<small>{definition.output_contract || '—'}</small></td>
-              <td><Status value={definition.lifecycle_state || (definition.enabled ? 'enabled' : 'disabled')} /></td>
-              <td>{definition.schedule ? `Every ${definition.schedule.interval_seconds}s` : 'Not scheduled'}</td>
-              <td className="data-flow-definition-actions">
-                {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
-                {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'run')}>Run now</button>}
-                {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'disable')}>Disable</button>}
-                {isApproved && !definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'schedule')}>Schedule</button>}
-                {isApproved && definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'unschedule')}>Stop schedule</button>}
-              </td>
-            </tr>;
-          })}{!definitions.length && <tr><td colSpan="5" className="data-flow-empty">No versioned data-job definitions are registered.</td></tr>}</tbody>
-        </table></div>
-      </article>
+      <DataWorkspace label="Data Flow workspace" active={workspace} onChange={setWorkspace} tabs={[{id:'runs',label:'Run monitor'},{id:'pipelines',label:'Pipeline jobs'},{id:'quality',label:'Quality & evidence'},{id:'settings',label:'Approval & publication'},{id:'agent',label:'Agent assistance'}]}>
+        {{runs:<><div className="data-cockpit__guidance"><div><strong>Inspect a run, resolve issues, then reuse its evidence</strong><p>Select a job to inspect quality, lineage and retained outputs. Configure approval and semantic release settings before replaying or publishing.</p></div><button type="button" className="data-flow-button" onClick={()=>setWorkspace('settings')}>Review approval settings</button></div>
       <div className="data-flow-grid">
         <article className="data-flow-card data-flow-card--runs">
           <div className="data-flow-card__heading">
             <div><h2>Processing-job runs</h2><p>Durable run manifests, quality outcome, and replay status.</p></div>
-            <label className="data-flow-filter">Filter<input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Job, source, type, status…" /></label>
+            <div className="data-flow-run-tools"><label className="data-flow-filter">Find a run<input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Job, source, type, status…" /></label><label>Run status<select value={runStatus} onChange={event=>setRunStatus(event.target.value)}><option value="all">All statuses</option>{['queued','running','completed','failed'].map(value=><option key={value} value={value}>{value}</option>)}</select></label></div>
           </div>
           {loading ? <div className="data-flow-empty"><ix-spinner size="medium" /> Loading job evidence…</div> : (
             <div className="data-flow-table-wrap">
@@ -382,7 +349,7 @@ export default function DataFlowPage() {
                     <td><Status value={qualityStatus(run)} /></td>
                     <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
-                  {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">No durable job runs match the current filter.</td></tr>}
+                  {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -419,6 +386,56 @@ export default function DataFlowPage() {
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}
         </aside>
       </div>
+        </>,pipelines:<><div className="data-cockpit__guidance"><div><strong>Manage versioned pipeline jobs</strong><p>Approve a definition, run it with retained inputs, then schedule recurring processing. Import source inputs before the first execution.</p></div><a href="#/import">Import source data</a></div>
+      <article className="data-flow-card data-flow-card--definitions">
+        <div className="data-flow-card__heading">
+          <div><h2>Data-job definitions</h2><p>Approve, disable, or schedule only versioned jobs with retained inputs.</p></div>
+          <label className="data-flow-filter">Schedule interval (seconds)<input aria-label="Schedule interval seconds" type="number" min="60" max="86400" value={scheduleInterval} onChange={(event) => setScheduleInterval(event.target.value)} /></label>
+        </div>
+        <div className="data-flow-table-wrap"><table className="data-flow-table data-flow-definition-table">
+          <thead><tr><th>Definition</th><th>Contract</th><th>State</th><th>Schedule</th><th aria-label="Actions" /></tr></thead>
+          <tbody>{definitions.map((definition) => {
+            const busy = !!definitionActionId;
+            const isApproved = definition.lifecycle_state === 'approved' && definition.enabled;
+            const hasRetainedInput=runs.some(run=>run.job_id===definition.job_id&&run.job_version===definition.version);
+            return <tr key={`${definition.job_id}:${definition.version}`}>
+              <td><strong>{definition.name || definition.job_id}</strong><small>{definition.job_id} · {definition.version} · {definition.owner || 'No owner recorded'}</small></td>
+              <td>{definition.input_contract || '—'}<small>{definition.output_contract || '—'}</small></td>
+              <td><Status value={definition.lifecycle_state || (definition.enabled ? 'enabled' : 'disabled')} /></td>
+              <td>{definition.schedule ? `Every ${definition.schedule.interval_seconds}s` : 'Not scheduled'}</td>
+              <td className="data-flow-definition-actions">
+                {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
+                {isApproved && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput} onClick={() => manageDefinition(definition, 'run')}>Run now</button>}
+                {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'disable')}>Disable</button>}
+                {isApproved && !definition.schedule && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput} onClick={() => manageDefinition(definition, 'schedule')}>Schedule</button>}
+                {isApproved && definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'unschedule')}>Stop schedule</button>}
+                {isApproved&&!hasRetainedInput&&<small>No retained inputs. <a href="#/import">Import source data first</a>.</small>}
+              </td>
+            </tr>;
+          })}{!definitions.length && <tr><td colSpan="5" className="data-flow-empty">No versioned data-job definitions are registered.</td></tr>}</tbody>
+        </table></div>
+      </article>
+        </>,quality:<>
+      <QualityOverview runs={runs} accepted={totals.records_accepted ?? durableTotals.accepted} rejected={totals.records_rejected ?? durableTotals.rejected} unavailable={!!error || !telemetry} />
+        <div className="data-cockpit__guidance"><div><strong>Turn completed evidence into a reusable product</strong><p>Review accepted and rejected records in the run monitor. Completed runs with retained artifacts can supply a product draft.</p></div><a href="#/data-products?view=pipeline">Review pipeline evidence</a></div>
+        </>,settings:<><h2>Approval & publication</h2><p>Set the reviewer identity and approved semantic release used by explicit lifecycle actions. Changing these settings does not execute a job.</p>
+      <details className="data-flow-notice" style={{ marginBottom: 12 }}>
+        <summary>Reviewer identity for direct service actions</summary>
+        <p>The reviewer identity is held in memory. Application credentials come from the configured connection.</p>
+        <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
+      </details>
+      <section className="data-flow-notice" aria-label="Semantic publication settings">
+        <button type="button" onClick={loadReleases}>Load approved semantic releases</button>
+        <label>Semantic release <select value={releaseIndex} onChange={(event) => setReleaseIndex(event.target.value)}>
+          <option value="">Select an approved release</option>
+          {semanticReleases.map((asset, index) => <option key={`${asset.asset_id}:${asset.version}`} value={index}>{asset.name || asset.asset_id} — {asset.version}</option>)}
+        </select></label>
+        <label>Source system <input value={publicationSource} onChange={(event) => setPublicationSource(event.target.value)} placeholder="e.g. teamcenter-customer-prod" /></label>
+      </section>
+
+        </>,agent:<><div className="data-cockpit__guidance"><div><strong>Ask an agent to investigate the selected run</strong><p>Use the quality monitor, parser or mapper to propose a next step. Review the proposed tool and evidence before execution.</p></div><button type="button" className="data-flow-button" onClick={()=>setWorkspace('runs')}>Select a run</button></div>
+      <AgentProposalPanel title="Data job recommendations" agentIds={['data-quality-monitor', 'engineering-parser', 'ceim-mapper']} context={selectedRun ? { run_id: selectedRun.run_id, job_id: selectedRun.job_id, version: selectedRun.job_version || selectedRun.version, job_type: selectedRun.job_type } : { page: 'data-flow' }} />        </>}}
+      </DataWorkspace>
     </section>
   );
 }

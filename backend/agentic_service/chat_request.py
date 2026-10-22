@@ -1,4 +1,5 @@
 """Bounded requests shared by all Companion entry points."""
+from typing import Literal
 from pydantic import BaseModel, Field, StrictStr
 
 
@@ -7,6 +8,7 @@ class ChatContext(BaseModel):
     # identifier is used to filter server-owned graph retrieval.
     ontology: StrictStr = Field(default='', max_length=128)
     ontology_prefix: StrictStr = Field(default='', max_length=128)
+    page: Literal['','home','import','data-flow','ontology','catalog','data-products','registry','graph','code-audit','modeling','requirements','qif','whereused','data-quality','quality','reports','admin'] = ''
 
 
 class ChatRequest(BaseModel):

@@ -4,7 +4,7 @@ from __future__ import annotations
 from backend.depo_platform.ontology_maintenance import ontology_writer
 from backend.depo_platform.rdf_preparation import prepare_rdf
 from backend.depo_platform.graph_publication_lock import graph_publication
-from backend.depo_platform.graph_access import ontology_projection_reader
+from backend.depo_platform.graph_access import ontology_projection_reader, graph_projection_reader
 
 import os
 import logging
@@ -212,7 +212,7 @@ class Neo4jPublisher:
                 self._read_driver.close()
                 self._read_driver = None
 
-    def _session_rows(self, query: str, *, _publication_receipt=False, **parameters: Any) -> list[dict[str, Any]]:
+    def _session_rows(self, query: str, *, _publication_receipt=False, _timeout_seconds=None, **parameters: Any) -> list[dict[str, Any]]:
         if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
         with self._driver_lock:
@@ -225,6 +225,9 @@ class Neo4jPublisher:
         with (nullcontext() if _publication_receipt else projection_access()), driver.session(database=self.database) as session:
             from backend.depo_platform.network import bounded_timeout_seconds
             timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
+            if _timeout_seconds is not None:
+                timeout=min(timeout,float(_timeout_seconds))
+                if timeout<=0:raise TimeoutError('Graph read deadline elapsed')
             return session.run(Query(query, timeout=timeout), parameters).data()
 
     def mapping_terms(self, scope: str) -> dict[str, Any]:
@@ -262,11 +265,13 @@ class Neo4jPublisher:
         provider.  Keeping this adapter in the graph service avoids the old
         port-8000 proxy and lets an API gateway expose this endpoint directly.
         """
+        from .search_evidence import search_properties
         explorer_nodes = [
             {
                 "elementId": str(node.get("graph_id") or node["id"]),
                 "labels": [str(node.get("type") or "resource")],
                 "properties": {
+                    **search_properties(node),
                     "iri": str(node.get("iri") or node["id"]),
                     "label": str(node.get("label") or node["id"]),
                     "kind": str(node.get("type") or "resource"),
@@ -377,8 +382,9 @@ class Neo4jPublisher:
             view={"type": "overview", "source": "published_and_existing_ontology", "limit": safe_limit, "truncated": len(combined) >= safe_limit},
         )
 
+    @graph_projection_reader
     def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict[str, Any]:
-        stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships"}
+        stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships", "what", "which", "where", "when", "why", "how", "are", "does", "find", "matching", "resources", "ontology", "please"}
         terms = sorted({token for token in re.findall(r"[a-z0-9]+", str(query).lower()) if len(token) >= 3 and token not in stop_words})
         if not terms:
             raise ValueError("query must contain at least one searchable term")
@@ -389,7 +395,7 @@ class Neo4jPublisher:
             raise ValueError('ontology_prefix must be at most 128 characters')
         nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
         legacy = self._session_rows(cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
-        combined = sorted(nodes + legacy, key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or '')))
+        combined = sorted(nodes + legacy, key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or ''), str(node.get('id') or '')))
         selected = combined[:safe_limit]
         # Read edges after ranking so excluded candidates cannot consume the
         # relationship budget of the resources actually returned to chat.

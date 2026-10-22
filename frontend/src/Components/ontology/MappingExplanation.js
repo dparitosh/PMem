@@ -1,6 +1,9 @@
 import React from 'react';
 
 const holdReasons = {
+  decision_policy_blocked: "A configured Semantica decision rule did not pass. Expand Shared decision policy for its findings.",
+  decision_policy_unavailable: "Shared decision policy could not be assessed; publication is held until the service and evidence store recover.",
+  identity_requires_domain_review: 'Identity assertions need domain review. A class assignment or high similarity score does not establish that two resources are identical.',
   invalid_target_or_source: 'The source or ontology target did not pass validation.',
   not_automatically_validated: 'Semantic compatibility has not been verified for automatic publication.',
   validation_warning: 'Validation found questions that need review.',

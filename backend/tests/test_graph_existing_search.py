@@ -14,7 +14,8 @@ class ExistingSearchTests(unittest.TestCase):
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
         methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in ('overview', 'search', '_explorer_payload', '_read_edges', '_legacy_traversal', '_bounded_walk')]
         cls.body = methods
-        scope = {'re': re, 'Any': Any, 'cypher': cypher}
+        from backend.depo_platform.graph_access import graph_projection_reader
+        scope = {'__package__':'backend.graph_service','__name__':'backend.graph_service.neo4j_publisher','graph_projection_reader':graph_projection_reader,'re': re, 'Any': Any, 'cypher': cypher}
         exec(compile(ast.Module(body=[cls], type_ignores=[]), str(path), 'exec'), scope)
         self.publisher = scope['Neo4jPublisher']()
         self.calls = []
@@ -57,6 +58,25 @@ class ExistingSearchTests(unittest.TestCase):
         edge_reads = [(q,p) for q,p in self.calls if 'ids' in p]
         self.assertEqual(len(edge_reads), 1)
         self.assertEqual(edge_reads[0][1]['ids'], ['neo4j-node-1'])
+
+    def test_search_keeps_publication_barrier_across_all_queries(self):
+        from contextlib import contextmanager
+        from unittest.mock import patch
+        active=[]
+        @contextmanager
+        def barrier():
+            active.append(True)
+            try:yield
+            finally:active.pop()
+        original=self.publisher._session_rows
+        def rows(*args,**kwargs):
+            self.assertEqual(active,[True])
+            return original(*args,**kwargs)
+        self.publisher._session_rows=rows
+        with patch('backend.depo_platform.graph_access.projection_access',barrier):
+            self.publisher.search(query='product')
+        self.assertEqual(active,[])
+        self.assertGreaterEqual(len(self.calls),3)
 
     def test_invalid_scope_is_rejected_before_any_graph_reads(self):
         with self.assertRaises(ValueError): self.publisher.search(query='product', ontology_prefix='x'*129)

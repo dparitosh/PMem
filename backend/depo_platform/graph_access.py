@@ -94,6 +94,15 @@ def ontology_projection_reader(function):
     return guarded
 
 
+def graph_projection_reader(function):
+    """Hold the cross-ontology activation barrier across a multi-query read."""
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        with projection_access():
+            return function(*args, **kwargs)
+    return guarded
+
+
 @contextmanager
 def _deadline_scope(deadline, *, recovery=False):
     from datetime import datetime, timedelta, timezone

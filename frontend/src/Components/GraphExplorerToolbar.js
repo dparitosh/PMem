@@ -13,11 +13,6 @@ import {
 } from 'lucide-react';
 
 
-const SEARCH_MODES = [
-  { id: 'best', label: 'Best Match', title: 'Best match only' },
-  { id: 'broader', label: 'Many Matches', title: 'Return multiple matching nodes' },
-];
-
 const VIEW_MODES = [
   { id: 'full', label: 'Full Graph', Icon: Globe },
   { id: 'ontology', label: 'Ontology Schema', Icon: Workflow },
@@ -33,8 +28,6 @@ function GraphExplorerToolbar({
   onSearchInputChange,
   onSearchSubmit,
   searchLoading,
-  searchResultMode,
-  onSearchResultModeChange,
   onOpenFullGraph,
   onOpenOntologyGraph,
   onOpenArchitectureGraph,
@@ -140,7 +133,9 @@ function GraphExplorerToolbar({
           <input
             type="text"
             aria-label="Search graph"
-            placeholder={graphViewMode === 'individual' ? 'Search instances, type, label, properties...' : 'Search nodes...'}
+            placeholder="Search nodes, relationships, keys or values..."
+            title="Search the selected graph scope by node, relationship, property name or value"
+            maxLength={500}
             value={searchInput}
             style={{
               padding: '6px 10px',
@@ -217,35 +212,7 @@ function GraphExplorerToolbar({
             </button>
           )}
         </form>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `1px solid ${theme.borderStrong}`, borderRadius: 6, padding: 2, background: theme.surfaceMuted }}>
-          {SEARCH_MODES.map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              title={mode.title}
-              aria-label={mode.title}
-              onClick={() => onSearchResultModeChange?.(mode.id)}
-              style={{
-                minWidth: mode.id === 'best' ? 80 : 98,
-                height: 28,
-                padding: '0 10px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: 'none',
-                borderRadius: 4,
-                background: searchResultMode === mode.id ? theme.primary : 'transparent',
-                color: searchResultMode === mode.id ? '#fff' : theme.inkSoft,
-                cursor: 'pointer',
-                fontSize: 10.5,
-                fontWeight: 800,
-                lineHeight: 1,
-              }}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
+
       </div>
 
       {graphViewMode === 'ontology' && (

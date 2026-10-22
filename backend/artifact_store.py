@@ -24,6 +24,13 @@ class ArtifactStore:
             self.root = Path(configured)
         else:
             self.root = Path(__file__).resolve().parents[1] / "data" / "artifacts"
+        # Content-addressed subfolders and atomic temporary names can exceed MAX_PATH
+        # even when the configured root itself is short enough to create.
+        if os.name == "nt":
+            absolute = os.path.abspath(str(self.root))
+            if not absolute.startswith("\\\\?\\"):
+                absolute = "\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute
+            self.root = Path(absolute)
         self.root.mkdir(parents=True, exist_ok=True)
         self.root = self.root.resolve()
 

@@ -18,6 +18,8 @@ import ErrorBoundary from './ErrorBoundary';
 import OntologyInferenceWorkbench from './ontology/OntologyInferenceWorkbench';
 import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
 import MergeMappingReview from './ontology/MergeMappingReview';
+import MergeWorkflowControls from './ontology/MergeWorkflowControls';
+import MergeStewardReview from './ontology/MergeStewardReview';
 import {
   normalizeOntologyBrowserNode,
   isOntologyClassNode,
@@ -1584,6 +1586,8 @@ export default function OntologyMapper() {
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [semanticDetailsLoading, setSemanticDetailsLoading] = useState(false);
   const [semanticDetailsError, setSemanticDetailsError] = useState(null);
+  const [semanticRevision, setSemanticRevision] = useState(0);
+  const defaultSelectionResolved = useRef(false);
   const [dictionarySourceMode, setDictionarySourceMode] = useState('primary');
   const [targetDictionarySourceMode, setTargetDictionarySourceMode] = useState('primary');
   const [stats, setStats] = useState(null);
@@ -1622,7 +1626,6 @@ export default function OntologyMapper() {
     [selectedImportTaskId, selectedOntologyApi, bridgeSourceTerm, bridgeTargetTerm, bridgeSourceKind, bridgeTargetKind]);
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_source') || '');
   const [mergeBusy, setMergeBusy] = useState(false);
-  const [mergeAutomationActive, setMergeAutomationActive] = useState(false);
   const mergeGeneration = useRef(0);
   const {validation:swrlValidation,busy:swrlBusy,error:swrlError,validate:validateSwrlExpression} = useRuleValidation(swrlExpression, selectedOntologyApi, activeView);
   const inferenceGeneration = useRef(0);
@@ -1631,16 +1634,17 @@ export default function OntologyMapper() {
   useEffect(() => { inferenceGeneration.current += 1; inferenceRequest.current?.abort(); setInferenceResult(null); setInferenceError(null); setInferenceBusy(false); return () => inferenceRequest.current?.abort(); }, [selectedOntologyApi, inferenceRules, inferenceLimit]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
+  const [mergeStewardReview, setMergeStewardReview] = useState(null);
   const [mergeEntityMappings, setMergeEntityMappings] = useState([]);
   const [mergeSuggestions, setMergeSuggestions] = useState([]);
   useEffect(() => { setMergeSuggestions([]); setMergeEntityMappings([]); }, [mergeSourceOntologyId, selectedMapping]);
-  useEffect(() => { mergeGeneration.current += 1; setMergeResult(null); setMergeBusy(false); }, [mergeEntityMappings]);
+  useEffect(() => { mergeGeneration.current += 1; setMergeBusy(false); }, [mergeEntityMappings]);
   useEffect(() => {
     const invalidate = () => {
       mergeGeneration.current += 1; inferenceGeneration.current += 1;
       setMergeResult(null); setMergeBusy(false); setInferenceBusy(false);
     };
-    const events = ['depo:credentials-changed', 'depo:credentials-cleared'];
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
     events.forEach(event => window.addEventListener(event, invalidate));
     return () => { events.forEach(event => window.removeEventListener(event, invalidate)); mergeGeneration.current += 1; };
   }, []);
@@ -1690,13 +1694,18 @@ export default function OntologyMapper() {
     ?? mergeResult?.report?.conflict_count
     ?? 0,
   );
-  const mergePlanReady = Boolean(
-    mergeResult?.report
+  const mappingIdentity = rows => JSON.stringify((rows || []).map(({source_iri, target_iri}) => [source_iri, target_iri]).sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  const mergePlanDirty = Boolean(mergeResult?.governedPreview && mappingIdentity(mergeEntityMappings) !== mappingIdentity(mergeResult.governedPreview.changes?.entity_mappings));
+  const mergeValidationReady = Boolean(
+    !mergePlanDirty && mergeResult?.report
     && mergeResult?.governedPreview?.preview_id
     && mergeConflictCount === 0
     && (!mergeResult?.governedPreview?.background_validation ||
         (mergeResult.governedPreview.job_status === 'completed' && mergeResult.governedPreview.publish_recommended)),
   );
+  const mergeReviewKey = JSON.stringify([mergeResult?.governedPreview?.preview_id, mappingIdentity(mergeEntityMappings), mergeApprover]);
+  const mergePlanReady = mergeValidationReady && mergeStewardReview?.key === mergeReviewKey &&
+    mergeStewardReview?.status === 'completed' && mergeStewardReview?.result?.governance?.overall_verdict === 'APPROVED' && !mergeStewardReview?.result?.governance?.decision_policy?.blocking;
   const visibleMappingEdges = useMemo(() => {
     const baseEdges = (mappingEdges || [])
       .filter((edge) => (!edge.source_instance_id || edge.source_instance_id === selectedImportTaskId) && String(edge.mapping_type || '').toLowerCase() !== 'property_of')
@@ -1844,12 +1853,20 @@ export default function OntologyMapper() {
 
       if (options.length === 0) {
         setSelectedOntologyApi('');
-        setMappingOptionsError(registryError || (registryLoading ? 'Loading ontology registries…' : 'No ontologies are registered. Import an ontology first.'));
+        setMappingOptionsError(registryError || null);
         setLoading(false);
         return;
       }
 
-      // Initialize defaults only once (or if current selection no longer exists)
+      // Resolve a default once the registry is ready. Explicit URL targets and
+      // subsequent user selections (including clearing the selector) take priority.
+      if (!registryLoading && !defaultSelectionResolved.current) {
+        defaultSelectionResolved.current = true;
+        if (!selectedMapping) {
+          setSelectedMapping(options[0].value);
+          return;
+        }
+      }
       const selectedOption = resolveSelectedOntologyOption(options, selectedMapping);
       if (!selectedOption) {
         if (selectedMapping && !registryLoading) setMappingOptionsError('The requested ontology is unavailable in the registry. Select a registered version to load its terms.');
@@ -2129,8 +2146,7 @@ export default function OntologyMapper() {
   }, [selectedOntologyApi]);
 
   useEffect(() => {
-    if (!selectedOntologyApi || !['taxonomy', 'alignment'].includes(activeView)) return;
-    if (taxonomy !== null && (activeView === 'taxonomy' || reasoning)) return;
+    if (!selectedOntologyApi || !['taxonomy', 'alignment', 'inference'].includes(activeView)) return;
 
     let cancelled = false;
     const controller = new AbortController();
@@ -2141,11 +2157,9 @@ export default function OntologyMapper() {
       try {
         const requests = [];
         const keys = [];
-        if (taxonomy === null) {
-          keys.push('taxonomy');
-          requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, options));
-        }
-        if (activeView === 'alignment' && !reasoning) {
+        keys.push('taxonomy');
+        requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, options));
+        if (['alignment', 'inference'].includes(activeView)) {
           keys.push('reasoning');
           requests.push(API_METHODS.ontology.getReasoning(selectedOntologyApi, options));
         }
@@ -2178,7 +2192,7 @@ export default function OntologyMapper() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeView, reasoning, selectedOntologyApi, taxonomy]);
+  }, [activeView, selectedOntologyApi, semanticRevision]);
 
   useEffect(() => {
     setStats((prev) => {
@@ -2249,7 +2263,7 @@ export default function OntologyMapper() {
   const retainedMergePending = mergeResult?.governedPreview?.background_validation &&
     ['queued', 'preparing', 'validating'].includes(mergeResult.governedPreview.job_status);
   useEffect(() => {
-    if (!retainedMergeId || !retainedMergePending) return undefined;
+    if (!retainedMergeId || !retainedMergePending || mergePlanDirty) return undefined;
     const generation = mergeGeneration.current;
     const controller = new AbortController();
     let timer;
@@ -2277,7 +2291,7 @@ export default function OntologyMapper() {
     };
     poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [retainedMergeId, retainedMergePending, mergePollGeneration]);
+  }, [retainedMergeId, retainedMergePending, mergePollGeneration, mergePlanDirty]);
 
   const handlePreviewOntologyMerge = async () => {
     const generation = ++mergeGeneration.current;
@@ -2591,10 +2605,11 @@ export default function OntologyMapper() {
       }}>
         <div style={{ display: 'grid', gap: '4px', width: '100%' }}>
           {mappingOptionsError && (
-            <details className="ontology-service-status" style={{color:C.red,fontSize:12}}><summary>Ontology service unavailable · Show details</summary><p>{mappingOptionsError}</p></details>
+            <details className="ontology-service-status" style={{color:C.red,fontSize:12}}><summary>{registryError ? 'Ontology service unavailable · Show details' : 'Ontology selection needs attention · Show details'}</summary><p>{mappingOptionsError}</p></details>
           )}
 
           <>
+            {!registryLoading && !registryError && mappingOptions.length === 0 && <p role="status">No ontologies are registered. <a href="#/import">Import an ontology</a> to browse terms or compare registered versions.</p>}
             <div className="ontology-compact-selection">
               <label style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active ontology</label>
               <select aria-label="Active ontology"
@@ -2753,6 +2768,7 @@ export default function OntologyMapper() {
               {(semanticDetailsLoading || semanticDetailsError) && (
                 <div style={{ marginBottom: '8px', padding: '7px 10px', borderRadius: '6px', border: `1px solid ${semanticDetailsError ? '#F29B9B' : C.border}`, background: semanticDetailsError ? '#FFF5F5' : C.surface, color: semanticDetailsError ? C.red : C.textSec, fontSize: '11px', fontWeight: 700 }}>
                   {semanticDetailsLoading ? 'Loading OWL taxonomy details...' : semanticDetailsError}
+                  {!semanticDetailsLoading && semanticDetailsError && <button type="button" onClick={() => setSemanticRevision(value => value + 1)}>Retry taxonomy loading</button>}
                 </div>
               )}
               {taxonomy?.view_mode === 'classic' ? (
@@ -3055,7 +3071,7 @@ export default function OntologyMapper() {
               <details open className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
                 <summary>Merge two ontologies</summary>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
-                  1. Select two ontologies. 2. Generate a merge plan and inspect changes and conflicts. 3. Optionally select a suggested entity match and regenerate the plan. 4. Approve the reviewed plan to create and publish the merged ontology.
+                  Create a new ontology from two retained versions. The target supplies the identities used for any consolidations; both original ontologies remain unchanged.
                 </div>
                 <div className="depo-merge-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                   <div>
@@ -3075,6 +3091,15 @@ export default function OntologyMapper() {
                     <label>Target ontology<select aria-label="Target ontology" value={selectedMapping} onChange={event => applyOntologySelection(event.target.value)} style={{width:'100%'}}><option value="">Select target ontology</option>{mappingOptions.map(option => <option key={option.value} value={option.value} disabled={option.value === mergeSourceOntologyId}>{option.label}</option>)}</select></label>
                   </div>
                 </div>
+                <MergeWorkflowControls availableCount={mappingOptions.length} sourceId={mergeSourceOntologyId} targetId={selectedMapping}
+                  reviewer={mergeApprover} onReviewerChange={setMergeApprover}
+                  connected={Boolean(getCredentialProfile('AGENTIC_APPROVAL_TOKEN'))}
+                  busy={mergeBusy} preview={mergeResult?.governedPreview} dirty={mergePlanDirty}
+                  ready={mergePlanReady} stewardStatus={mergeStewardReview?.key === mergeReviewKey ? mergeStewardReview.status : undefined} error={mergeResult?.kind === 'error' ? mergeResult.text : ''} publication={mergeResult?.report?.governed?.publication_status}
+                  selectionCount={mergeEntityMappings.length} onGenerate={handlePreviewOntologyMerge}
+                  onResume={resumeMergeReview} onPublish={handleCommitOntologyMerge} />
+                <MergeStewardReview reviewKey={mergeReviewKey} previewId={mergeResult?.governedPreview?.preview_id}
+                  enabled={mergeValidationReady} reviewer={mergeApprover} onReview={setMergeStewardReview} />
                 <MergeMappingReview sourceId={mergeSourceOntologyId} targetId={selectedMapping}
                   sourceLabel={mappingOptions.find(option => option.value === mergeSourceOntologyId)?.label}
                   targetLabel={selectedOntologyOption?.label} suggestions={mergeSuggestions}
@@ -3085,44 +3110,11 @@ export default function OntologyMapper() {
                     const others = current.filter(row => row.source_iri !== candidate.source_iri);
                     return chosen ? others : others.length < 200 ? [...others, candidate] : current;
                   })}
-                  preview={mergeResult?.governedPreview} busy={mergeBusy}
+                  preview={mergeResult?.governedPreview} busy={mergeBusy} dirty={mergePlanDirty}
                   error={mergeResult?.kind === 'error' ? mergeResult.text : ''} />
-                <button type="button" onClick={resumeMergeReview} disabled={mergeBusy || !mergeSourceOntologyId || !selectedMapping}>Resume retained review for these selections</button>
-                {mergeBusy && <p role="status" aria-live="polite">The Ontology Governor is queuing the retained merge request. Mappings appear after preparation; semantic validation continues in the background. Approval requires the completed validation result.</p>}
-                <details open><summary>Review and approve the merge plan</summary>
-                <div className="depo-merge-fields" style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:16}}>
-                  <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approver</label>
-                    <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Connect governed agent access in Admin → Service credentials. Both sources require retained RDF artifacts. The reviewed merge is approved and published to Neo4j.</label>
-                  </div>
-                  <p>Review source-to-target pairs in the mapping table above. Generate a fresh agent preview after changing the selection.</p>
-                  <button
-                    type="button"
-                    onClick={handlePreviewOntologyMerge}
-                    disabled={mergeBusy || mergeAutomationActive || !mergeSourceOntologyId || !selectedMapping || mergeSourceOntologyId === selectedMapping || !mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}
-                    style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? 'not-allowed' : 'pointer' }}
-                  >
-                    {mergeBusy ? 'Working...' : 'Review merge plan'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCommitOntologyMerge}
-                    disabled={mergeBusy || mergeAutomationActive || !mergePlanReady || !mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}
-                    title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
-                    style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
-                  >
-                    Approve merge and publish
-                  </button>
-                </div>
-                </details>
-                {(!mergeSourceOntologyId || !selectedMapping) && <p role="status">Select both ontologies above to continue.</p>}
-                {mergeSourceOntologyId && selectedMapping && (!mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')) && <p role="status">Enter the reviewing steward and connect governed agent access in Admin to generate the retained preview.</p>}
                 {mergeResult && (
                   <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergePlanDirty ? 'Mapping selections changed. Validate selected mappings before approving this merge.' : mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
                     {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">Merged ontology: {mergeResult.report.governed.ontology.ontology_id}. Publication: {mergeResult.report.governed.publication_status || "not requested"}.</p>}
                     {mergeResult.report?.governed?.publication?.job_id && <OntologyPublicationPanel ontologyId={mergeResult.report.governed.ontology.ontology_id} fromWorkflow onPublished={() => {
@@ -3131,11 +3123,11 @@ export default function OntologyMapper() {
                     }} />}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
                     {mergeResult.governedPreview?.conflicts?.length > 0 && <details open><summary>Conflicts requiring resolution</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(mergeResult.governedPreview.conflicts, null, 2)}</pre></details>}
-                    {mergeResult.governedPreview?.changes && <details open><summary>What changes in the new draft?</summary>
+                    {mergeResult.governedPreview?.changes && <details><summary>Statement changes and technical evidence</summary>
                       <p>Compared with the active ontology: {mergeResult.governedPreview.changes.added} added statements; {mergeResult.governedPreview.changes.removed} removed; {mergeResult.governedPreview.changes.unchanged} unchanged; {mergeResult.governedPreview.changes.modified_entity_count} consolidated identities. Source ontologies remain unchanged.</p>
                       {['added', 'removed', 'unchanged'].map(kind => <details key={kind}><summary>{kind} statements (first 200)</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{(mergeResult.governedPreview.changes[`${kind}_sample`] || []).join('\n') || 'None'}</pre></details>)}
                     </details>}
-                    {mergeResult.governedPreview?.conflicts?.length > 0 && <div role="alert"><strong>Conflicts block approval</strong><pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{JSON.stringify(mergeResult.governedPreview.conflicts,null,2)}</pre></div>}
+
                     {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements and checks SHACL with OWL-RL inference. Full OWL-DL consistency is not established; entity equivalence still requires review. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
                     {mergeResult.governedPreview?.semantic_checks && <details><summary>Semantic validation evidence</summary><p>SHACL: {mergeResult.governedPreview.semantic_checks.shacl_conforms == null ? 'Pending' : mergeResult.governedPreview.semantic_checks.shacl_conforms ? 'Conforms' : 'Does not conform'}. Shapes: {mergeResult.governedPreview.semantic_checks.shape_sources?.join(', ')}</p>
                       {Number.isInteger(mergeResult.governedPreview.semantic_checks.report_summary?.total_results) && <p>

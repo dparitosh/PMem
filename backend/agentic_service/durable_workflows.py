@@ -80,6 +80,9 @@ async def enqueue(payload, request, recovery=None):
     actor = approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN') if any(step['requires_approval'] for step in plan['steps']) else graph_read_identity(request)
     workflow = routes.catalog.item('workflows', payload['workflow_id'])
     command = clean_command(payload)
+    from .page_tasks import page_binding
+    clean_page = page_binding('validation', command.get('page_context'))
+    if clean_page: command['page_context'] = clean_page['page_context']
     requested = command.get('step_inputs')
     if requested is not None and (not isinstance(requested,list) or len(requested) != len(workflow['steps']) or any(not isinstance(item,dict) for item in requested)):
         raise ValueError('step_inputs must contain one object for each workflow step')
@@ -103,6 +106,8 @@ async def enqueue(payload, request, recovery=None):
               'started_at': recovery['started_at'] if recovery else now.isoformat(), 'updated_at':now.isoformat(),
               'deadline_at':recovery['deadline_at'] if recovery else (now+timedelta(seconds=agent_run_timeout_seconds())).isoformat(),
               'traces': recovery['traces'] if recovery else []}
+    from .page_tasks import page_binding
+    record.update(page_binding(record['owner'], command.get('page_context')))
     record.pop('_expected_record',None)
     if recovery:
         if not await routes._agent_io(routes.workflow_store.compare_and_put,record['run_id'],recovery['_expected_record'],record):

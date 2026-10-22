@@ -111,6 +111,15 @@ Each step displays its next action and the output it produces. This gives the cu
 
 > The platform separates a source system’s vocabulary from the enterprise meaning used for analysis.
 
+### Review a merge with the Ontology Governor
+
+1. Open **Semantic Bridge → Merge two ontologies** and select two distinct ontology versions. The target supplies the identities used for selected consolidations; both originals are retained.
+2. Enter the **Reviewing steward** and click **Generate mapping plan**. This creates review evidence, not a Neo4j publication. The progress panel distinguishes preparation from semantic validation.
+3. Inspect the proposed source-to-target pairs. Similarity reflects matching tools, not an LLM confidence score or proof of equivalence. Expand the matching explanation or vocabulary browsers when needed.
+4. Optionally select pairs that represent the same concept. Existing candidates stay visible. Click **Validate selected mappings**; approval remains disabled until the current selection passes validation. Selecting no pairs preserves separate identities in the combined ontology.
+5. Review findings and changes, then click **Approve merge and publish**. Follow the publication receipt. A queued publication is not a completed graph update.
+6. Use **Resume saved plan** to return to the retained review for the selected versions and mappings.
+
 ### Optional Inference Workbench Demonstration
 
 Use this short step immediately after Semantic Bridge when the customer wants to see ontology reasoning:
@@ -118,8 +127,12 @@ Use this short step immediately after Semantic Bridge when the customer wants to
 1. Select **3. Inference Workbench** from the step guide.
 2. Choose rules such as transitive subclass, domain/range typing, or individual type closure.
 3. Click **Run preview**.
-4. Review the inferred statement table, evidence, confidence, and warnings.
-5. Explain that this is a reviewable preview; inferred facts are not materialized into Neo4j without the appropriate approved workflow.
+4. Review the inferred statement table, supporting declarations, and warnings. Rule support is not a model confidence score.
+5. In **Ontology Inference Advisor**, enter a question and click **Start read-only investigation**. The configured OpenAI, Mistral or Ollama model plans subtasks, uses the registered inference and structure tools, and explains cited evidence. The agent worker and model must be available; failures appear explicitly.
+6. Inspect the retained plan, observations and model-assisted conclusion. Each investigation uses the selected ontology version, rules and limit. Structural evidence and model explanations remain distinct.
+7. Preview and investigation do not materialize facts into Neo4j. Publication remains a separate approved workflow.
+
+Opening Ontology Junction without a target selects the first registered ontology in the selector and loads Taxonomy / OWL immediately. An explicit target takes priority; an unavailable target shows an error. Use **Retry taxonomy loading** after a temporary read failure.
 
 ### 3. Automated Impact and Dependency Tracing
 
@@ -277,3 +290,14 @@ The API fallback should be used to diagnose a UI issue, not as a substitute for 
 ## Current environment configuration reference
 
 For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.
+
+
+### Explain alignment recommendations accurately
+
+The merge matching tool compares labels and SKOS preferred/alternative labels, comments/definitions and declared property context. The UI shows the original identifiers and concept evidence, missing evidence, score components and ambiguity. A similarity score does not establish a semantic relation. Current pair selection requests identity consolidation within the new merged draft; it does not generate a separate bridge ontology or SSSOM mapping artifact.
+
+The Governor prepares the saved plan, the existing Steward evaluates it, and the Governor submits publication after explicit review. The Steward report answers: what was found, which identifiers are affected, what blocks publication, what evidence is missing, and what the user should do next. Model text cannot grant approval.
+
+When discussing future alignment modes, keep equivalence, narrower/broader relations, disjointness and identity distinct. In the supplied example, a narrower source concept would use `skos:broadMatch` toward its broader target; `skos:narrowMatch` has the inverse direction. SKOS mapping properties have defined semantics and should not be described as having zero reasoning impact. A subclass assertion can also introduce contradictions in context. See the [W3C SKOS mapping specification](https://www.w3.org/TR/skos-reference/#mapping) and [OWL 2 Primer](https://www.w3.org/TR/owl2-primer/).
+
+Embeddings, LLM relation adjudication, instance-overlap matching, SSSOM export, complex restriction bridges and ELK/HermiT consistency checking are not established by the current matching score. Do not demonstrate or claim those capabilities from lexical/property evidence. The current validation report states SHACL/OWL-RL coverage and explicitly excludes a full OWL-DL proof.

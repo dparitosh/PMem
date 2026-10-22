@@ -10,7 +10,7 @@ export const normalizeSearchTerm = (value = '') => String(value || '')
   .trim()
   .toLowerCase()
   .replace(/\*+/g, '')
-  .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+  .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 
 export const normalizeRelationshipType = (value = '') => {
   const raw = String(value || '').trim();

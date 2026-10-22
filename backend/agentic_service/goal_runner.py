@@ -102,6 +102,8 @@ def validate_action(record, proposal, tools):
         action_key = fingerprint({'tool_id': tool_id, 'inputs': protect(inputs)})
         if any(item.get('action_key') == action_key for item in record['observations']):
             raise ValueError('This exact read was already attempted; revise the plan or inputs')
+    from .recommendation_goals import validate_read, completion_evidence
+    validate_read(record.get('context', {}), tool_id, inputs)
     if tool_id == PLAN['id'] and len(record['plans']) >= 3:
         raise ValueError('Plan revision limit reached')
     if tool_id == COMPLETE['id']:
@@ -109,6 +111,7 @@ def validate_action(record, proposal, tools):
                     and item.get('result') and not (isinstance(item['result'], dict) and item['result'].get('truncated'))}
         if not set(inputs['evidence_steps']).issubset(evidence):
             raise ValueError('Completion must cite completed, untruncated observations')
+        completion_evidence(record.get('context', {}), record['observations'], inputs['evidence_steps'])
     return tool_id, inputs
 
 
@@ -141,7 +144,9 @@ async def drive(record, *, propose, dispatch, save, tools):
                     await persist()
                     continue
                 if tool_id == COMPLETE['id']:
-                    record.update(status='completed', result=inputs, completed_at=now())
+                    from .recommendation_goals import completion_evidence
+                    binding = completion_evidence(record.get('context', {}), record['observations'], inputs['evidence_steps'])
+                    record.update(status='completed', result={**inputs, **(binding or {})}, completed_at=now())
                     await persist()
                     return record
                 observation = {'id': f"observation-{record['decisions']}", 'tool_id': tool_id,

@@ -61,6 +61,15 @@ class PostgresRegistry:
             cursor.execute("SELECT key, value FROM depo_registry WHERE namespace = %s", (self.namespace,))
             return {key: value for key, value in cursor.fetchall()}
 
+    def prefix_items(self, prefix: str, *, limit: int = 1000) -> dict[str, Any]:
+        """Read bounded configuration keys without loading unrelated version/audit records."""
+        if not isinstance(prefix, str) or not prefix or type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError('Invalid registry prefix lookup')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT key, value FROM depo_registry WHERE namespace=%s AND left(key, length(%s))=%s ORDER BY key LIMIT %s",
+                           (self.namespace, prefix, prefix, limit))
+            return dict(cursor.fetchall())
+
     def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         """Bounded identity lookup without counting an entire namespace."""
         if not 1 <= limit <= 100:
@@ -303,6 +312,8 @@ class InMemoryRegistry:
         self.namespace = namespace
         self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
+    def prefix_items(self, prefix: str, *, limit: int = 1000) -> dict[str, Any]:
+        return dict(sorted((key,value) for key,value in self.values.items() if key.startswith(prefix))[:limit])
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
     def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         if not 1 <= limit <= 100:

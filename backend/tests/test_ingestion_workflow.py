@@ -4,6 +4,11 @@ from backend.ingestion_service.workflow import SemanticIngestionWorkflow
 from backend.ingestion_service.neo4j_writer import GraphStoreConfig
 
 
+@pytest.fixture(autouse=True)
+def service_credentials(monkeypatch):
+    monkeypatch.setattr('backend.ingestion_service.workflow.service_bearer_headers',lambda *a,**kw:{'Authorization':'Bearer test-only'})
+
+
 class _Response:
     def __init__(self, payload):
         self.payload = payload

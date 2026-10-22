@@ -33,6 +33,9 @@ class Graph:
 
 class BridgeJobTests(unittest.TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        policy = patch("backend.depo_platform.decision_policy.assess_decisions", return_value={"status":"not_configured", "blocking":False, "checks":[]})
+        policy.start(); self.addCleanup(policy.stop)
         self.source = Source(); self.graph = Graph(); self.store = InMemoryRegistry()
         self.jobs = BridgeJobs(self.store, self.source, self.graph)
         self.preview = self.jobs.preview('ontology', 'import', 'reader')
@@ -53,6 +56,16 @@ class BridgeJobTests(unittest.TestCase):
                 self.assertFalse(candidate['eligible'])
                 with self.assertRaises(ValueError):
                     self.jobs.publish(preview['job_id'], [candidate['candidate_id']], 'reviewer')
+        self.assertEqual(self.graph.calls, [])
+
+    def test_identity_assertions_cannot_bypass_steward_with_manual_approval(self):
+        original = self.source.preview()[1][0]
+        self.source.preview = lambda *args: (self.source.snapshot(), [{**original, 'predicate':'http://www.w3.org/2002/07/owl#sameAs'}])
+        preview = self.jobs.preview('ontology', 'import', 'reader')
+        decision = self.jobs.evaluate_policy(preview['job_id'])
+        self.assertIn('identity_requires_domain_review', decision['decisions'][0]['reasons'])
+        with self.assertRaisesRegex(ValueError, 'Steward requires domain review'):
+            self.jobs.publish(preview['job_id'], [preview['candidates'][0]['candidate_id']], 'reviewer')
         self.assertEqual(self.graph.calls, [])
 
     def test_receipt_without_approved_digest_is_rejected(self):
@@ -153,6 +166,9 @@ class BridgeJobTests(unittest.TestCase):
 
 class BridgeRouteTests(unittest.TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        policy = patch("backend.depo_platform.decision_policy.assess_decisions", return_value={"status":"not_configured", "blocking":False, "checks":[]})
+        policy.start(); self.addCleanup(policy.stop)
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from backend.agentic_service import bridge_router
@@ -193,8 +209,7 @@ class GraphBridgeRouteTests(unittest.TestCase):
         httpx = MagicMock()
         response = MagicMock()
         response.status_code = 409
-        httpx.Client.return_value.__enter__.return_value.request.return_value = response
-        with patch.dict(sys.modules, {'httpx': httpx}), patch.dict(os.environ, {'GRAPH_SERVICE_URL': 'http://graph:8013', 'GRAPH_PUBLICATION_TOKEN': 'private-test'}):
+        with patch('backend.depo_platform.peer_http.peer_response', return_value=response), patch.dict(os.environ, {'GRAPH_SERVICE_URL': 'http://graph:8013', 'GRAPH_PUBLICATION_TOKEN': 'private-test'}):
             with self.assertRaisesRegex(BridgeConflict, 'Create a new preview'):
                 GraphBridgeClient().publish({'publication_id': 'job'})
         response.raise_for_status.assert_not_called()
@@ -207,10 +222,10 @@ class GraphBridgeRouteTests(unittest.TestCase):
         driver.__enter__.return_value.session.return_value.__enter__.return_value = graph
         neo4j = MagicMock()
         neo4j.GraphDatabase.driver.return_value = driver
-        with patch.dict(os.environ, {'NEO4J_URI': 'neo4j://127.0.0.1:7687', 'NEO4J_AUTH_MODE': 'none', 'NEO4J_DATABASE': 'ontology'}), patch.dict(sys.modules, {'neo4j': neo4j}):
+        with patch.dict(os.environ, {'NEO4J_URI': 'neo4j://127.0.0.1:7687', 'NEO4J_AUTH_MODE': 'none', 'NEO4J_DATABASE': 'ontology'}), patch('backend.depo_platform.graph_access.GraphDatabase.driver', return_value=driver) as connect:
             with bridge_publication.session() as actual:
                 self.assertIs(actual, graph)
-        self.assertIsNone(neo4j.GraphDatabase.driver.call_args.kwargs['auth'])
+        self.assertIsNone(connect.call_args.kwargs['auth'])
 
     def test_bridge_publication_requires_preprovisioned_constraint(self):
         from unittest.mock import MagicMock
@@ -272,7 +287,7 @@ class GraphBridgeRouteTests(unittest.TestCase):
         writes = MagicMock(); writes.single.return_value = {'applied': 0}
         tx.run.side_effect = [state, counts, writes]
         with self.assertRaises(ValueError):
-            _publish_transaction(tx, {'publication_id': 'job', 'rows': [{}], 'approved_by': 'reviewer'})
+            _publish_transaction(tx, {'publication_id': 'job', 'ontology_id': 'ontology', 'rows': [{}], 'approved_by': 'reviewer'})
         self.assertEqual(tx.run.call_count, 3)
 
 

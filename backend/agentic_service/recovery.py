@@ -21,7 +21,7 @@ def execution_payload(payload):
         if isinstance(value, list):
             return [clean(item) for item in value]
         return value
-    return clean({key: payload[key] for key in ('workflow_id', 'inputs', 'step_inputs') if key in payload})
+    return clean({key: payload[key] for key in ('workflow_id', 'inputs', 'step_inputs', 'page_context') if key in payload})
 
 
 def prepare_recovery(record, workflow, activity_at=None):

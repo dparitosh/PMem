@@ -35,10 +35,12 @@ class DurableWorkerTests(unittest.TestCase):
             routes._workflow_owner=lambda *args:'original-owner'
             import backend.agentic_service as package
             with patch.dict(sys.modules,modules), patch.object(package, 'router', routes, create=True):
-                result=asyncio.run(enqueue({'workflow_id':'review','inputs':{'artifact':'retained'},'approval_token':'browser-secret'},object()))
+                result=asyncio.run(enqueue({'workflow_id':'review','inputs':{'artifact':'retained'},'page_context':{'page':'ontology','ontology_id':'selected'},'approval_token':'browser-secret'},object()))
             self.assertEqual(result['status'],'queued')
             self.assertEqual(store.record['owner'],'original-owner')
-            self.assertEqual(store.record['execution_payload'],{'workflow_id':'review','inputs':{'artifact':'retained'}})
+            self.assertEqual(store.record['execution_payload'],{'workflow_id':'review','inputs':{'artifact':'retained'},'page_context':{'page':'ontology','ontology_id':'selected'}})
+            self.assertEqual(store.record['page_context'],{'page':'ontology','ontology_id':'selected'})
+            self.assertTrue(store.record['page_owner'])
             self.assertNotIn('browser-secret',str(store.record))
             self.assertNotIn('server-read',str(store.record))
             routes._preflight_tools.assert_awaited_once()

@@ -19,7 +19,6 @@ const renderToolbar = (overrides = {}) => render(
     graphViewMode="ontology"
     selectedOntology="ALL"
     searchInput=""
-    searchResultMode="best"
     selectedStepPart="ALL"
     getRelationshipVisual={() => ({ color: '#777', width: 1, dasharray: '' })}
     {...overrides}
@@ -31,6 +30,9 @@ test('renders safely while ontology and STEP options are unavailable', () => {
 
   expect(screen.getByRole('combobox', { name: /select an ontology/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+  expect(screen.getByRole('textbox',{name:'Search graph'})).toHaveAttribute('placeholder','Search nodes, relationships, keys or values...');
+  expect(screen.queryByText('Best Match')).not.toBeInTheDocument();
+  expect(screen.queryByText('Many Matches')).not.toBeInTheDocument();
 });
 
 test('submits the controlled search value and clears active search', () => {

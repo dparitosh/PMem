@@ -6,11 +6,12 @@ their dedicated, governed HTTP APIs.
 """
 from __future__ import annotations
 
-import os
 from backend.depo_platform.service_urls import service_url
 from urllib.parse import quote
 
 import httpx
+from backend.depo_platform.peer_http import peer_response
+from backend.depo_platform.network import service_bearer_headers
 
 
 class ControlPlaneUnavailable(RuntimeError):
@@ -23,15 +24,13 @@ class ControlPlaneClient:
 
     def _get(self, base_url: str, path: str) -> dict:
         try:
-            token = os.getenv("GRAPH_READ_TOKEN", "").strip()
-            headers = {"Authorization": f"Bearer {token}"} if token else {}
-            from backend.depo_platform.network import gateway_subscription_headers
-            headers.update(gateway_subscription_headers(f'{base_url}{path}'))
-            response = httpx.get(f"{base_url}{path}", headers=headers, timeout=self.timeout_seconds)
+            endpoint = f"{base_url}{path}"
+            response = peer_response('GET', endpoint, budget=self.timeout_seconds,
+                headers=service_bearer_headers('GRAPH_READ_TOKEN', service_name='control-plane read', endpoint=endpoint))
             response.raise_for_status()
             payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ControlPlaneUnavailable(f"Control-plane read failed for {path}: {exc}") from exc
+        except (httpx.HTTPError, ValueError, RuntimeError, TimeoutError) as exc:
+            raise ControlPlaneUnavailable("Control-plane read unavailable; verify peer readiness and read credentials") from exc
         if not isinstance(payload, dict):
             raise ControlPlaneUnavailable(f"Control-plane read returned an invalid response for {path}")
         return payload

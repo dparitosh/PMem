@@ -4,6 +4,17 @@ import { buildSemanticServiceUrl } from '../config';
 
 afterEach(() => clearServiceAuthToken());
 
+test('execution metadata captures the page without modifying tool inputs',()=>{
+ window.location.hash='#/ontology';
+ const inputs={ontology_id:'selected'};
+ const request=applyAgenticAuth({method:'post',url:buildSemanticServiceUrl('agentic','/api/v1/runs'),data:{tool_id:'review',inputs},headers:{}});
+ expect(request.data.page_context).toEqual({page:'ontology'});
+ expect(request.data.inputs).toBe(inputs);
+ const scoped=applyAgenticAuth({method:'post',url:buildSemanticServiceUrl('agentic','/api/v1/workflow-runs'),data:{page_context:{page:'import',ontology_id:'selected'}},headers:{}});
+ expect(scoped.data.page_context).toEqual({page:'import',ontology_id:'selected'});
+ window.location.hash='';
+});
+
 test('Admin OpenAPI import method returns a local metadata preview', async () => {
   const result = await agenticAPI.importOpenApi({openapi:'3.0.3',paths:{'/health':{get:{summary:'Health'}}}}, 'service.json');
   expect(result.data.title).toBe('service.json');

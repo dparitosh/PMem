@@ -517,12 +517,11 @@ def test_speed_path_publication_uses_ceim_boundary(monkeypatch):
         b'{"standard":"qif","entities":[],"relationships":[]}', filename="speed.json", kind="accepted-semantic-partition", media_type="application/json"
     )
     speed_path.reconciliations.put("reconcile-1", {"reconciliation_id": "reconcile-1", "status": "ready_for_approved_publication", "partition_artifact_id": artifact["artifact_id"]})
-    class FakeClient:
-        def __init__(self, *args, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, url, **kwargs): return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "published", "ontology_id": "speed"})
-    monkeypatch.setattr("backend.data_pipeline_service.speed_router.httpx.AsyncClient", FakeClient)
+    async def fake_publication(method, url, **kwargs):
+        assert method == 'POST' and kwargs['json']['publication_id'] == 'reconcile-1'
+        return httpx.Response(200, request=httpx.Request('POST', url), json={"status":"published","ontology_id":"speed","publication_id":"reconcile-1",
+            "publication":{"status":"success","ontology_id":"speed","publication_id":"reconcile-1","resources":0,"relationships":0,"hierarchy_edges":0}})
+    monkeypatch.setattr("backend.data_pipeline_service.speed_router.async_peer_response", fake_publication)
     response = TestClient(app).post("/api/v1/pipeline/speed/reconciliations/reconcile-1/publish", json={"ontology_id": "speed", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"}})
     assert response.status_code == 200
     assert response.json()["status"] == "published"

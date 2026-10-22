@@ -19,6 +19,7 @@ import {
 import { buildUrl, replaceParams, API } from '../config';
 import { apiClient, platformAPI } from '../services/apiClient';
 import { graphApi } from '../services/graphApi';
+import { searchLoadedGraph } from '../utils/universalGraphSearch';
 import { buildTooltipHeader } from './tooltipBuilder';
 import GraphExplorerToolbar from './GraphExplorerToolbar';
 import useMountedRef from '../hooks/useMountedRef';
@@ -1056,7 +1057,6 @@ const GraphHEB = ({
   const [error, setError] = useState(null);
   // Performance: Add loading states for better UX
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResultMode, setSearchResultMode] = useState('broader');
   const [isLayoutSwitching] = useState(false);
   useEffect(() => {
     graphNodeCountRef.current = Array.isArray(graphData?.nodes) ? graphData.nodes.length : 0;
@@ -1403,11 +1403,11 @@ const GraphHEB = ({
       if (clear) setSearchResults([]);
       return;
     }
-    if (!clear && graphSearchActive && !force) {
+    if (!clear && graphSearchActiveRef.current && !force) {
       return;
     }
     setSearchResults(nodes);
-  }, [setSearchResults, graphSearchActive]);
+  }, [setSearchResults]);
 
   const clearExpansionState = useCallback(() => {
     expansionEpochRef.current += 1;
@@ -1429,7 +1429,7 @@ const GraphHEB = ({
 
   useEffect(() => {
     clearExpansionState();
-  }, [debouncedSearchQuery, graphViewMode, selectedOntology, selectedStepPart, searchResultMode, clearExpansionState]);
+  }, [debouncedSearchQuery, graphViewMode, selectedOntology, selectedStepPart, clearExpansionState]);
 
   const syncContextualHighlights = useCallback((query, nodesOverride = null) => {
     const sourceNodes = Array.isArray(nodesOverride)
@@ -1455,37 +1455,7 @@ const GraphHEB = ({
     return { nodes: [], links: [] };
   }, [graphData, initialData]);
 
-  const buildSearchResultSlice = useCallback((baseData, query, mode = 'broader') => {
-    const safeBase = baseData?.nodes?.length || baseData?.links?.length
-      ? baseData
-      : { nodes: [], links: [] };
-    const matchedNodes = nodeSearchFunction(
-      (safeBase.nodes || []).filter((node) => !isMetadataWrapperNode(node) && !isRelationshipCarrierNode(node)),
-      query
-    );
-    const selectedNodes = mode === 'best'
-      ? matchedNodes.slice(0, 1)
-      : matchedNodes.slice(0, 80);
-    const selectedNodeIds = new Set(selectedNodes.map((node) => node.elementId));
-    const selectedLinks = (safeBase.links || []).filter((link) => {
-      const sourceId = getLinkEndpointId(link.source);
-      const targetId = getLinkEndpointId(link.target);
-      return selectedNodeIds.has(sourceId) || selectedNodeIds.has(targetId);
-    });
-    const contextualNodeIds = new Set(selectedNodeIds);
-    selectedLinks.forEach((link) => {
-      const sourceId = getLinkEndpointId(link.source);
-      const targetId = getLinkEndpointId(link.target);
-      if (sourceId) contextualNodeIds.add(sourceId);
-      if (targetId) contextualNodeIds.add(targetId);
-    });
-    const contextualNodes = (safeBase.nodes || []).filter((node) => contextualNodeIds.has(node.elementId));
-
-    return {
-      nodes: contextualNodes,
-      links: selectedLinks,
-    };
-  }, [nodeSearchFunction]);
+  const buildSearchResultSlice = useCallback((baseData, query) => searchLoadedGraph(baseData, query), []);
 
   const commitGraphSlice = useCallback((nextData, options = {}) => {
     const {
@@ -2257,15 +2227,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
             selectedOntologyRef.current,
             preferredOntologyValue
           );
-          const response = await graphApi.getContextualSubgraph({
-            search: debouncedSearchQuery,
+          const response = await graphApi.searchUniversal(debouncedSearchQuery, {
+            instances_only: true,
             // Keep the backend search broad and object-centric; root context is
             // chosen client-side from the returned matches so it is based on
             // actual Neo4j hits instead of a premature server-side root guess.
             limit: 24,
-            ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
-            search_mode: 'broader',
-            expand_neighbors: false,
+            ...(ontologyPrefix ? { scope: ontologyPrefix } : {}),
           }, abortController.signal);
 
           if (requestId !== contextualSearchRequestIdRef.current) {
@@ -2280,7 +2248,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
             && !isMetadataWrapperNode(node)
             && (allowSchemaFallbackNodes || !isSchemaTerminalNode(node))
           ));
-          const rankedMatches = nodeSearchFunction(candidateNodes, debouncedSearchQuery);
+          const ranked = nodeSearchFunction(candidateNodes, debouncedSearchQuery);
+          const rankedMatches = ranked.length ? ranked : candidateNodes;
           await loadContextualSearchMatch(rankedMatches, debouncedSearchQuery, requestId, normalized);
         } catch (err) {
           if (abortController.signal.aborted || requestId !== contextualSearchRequestIdRef.current || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
@@ -2310,7 +2279,15 @@ const getPrimaryNodeLabel = useCallback((d) => {
       const baseData = resolveSearchBaseDataset();
 
       try {
-        const normalized = buildSearchResultSlice(baseData, debouncedSearchQuery, searchResultMode);
+        const response = await graphApi.searchUniversal(debouncedSearchQuery, {
+          scope: selectedOntologyRef.current === 'ALL' ? '' : selectedOntologyRef.current,
+          limit: 80,
+        }, abortController.signal);
+        if (abortController.signal.aborted) return;
+        const normalized = normalizeGraphDataset(response.data);
+        setOntologyGraphMessage(response.data?.view?.truncated
+          ? 'Showing a bounded set of matches in the selected scope. Refine the search to find more specific results.'
+          : 'Search covers nodes, relationships, property names and values in the selected scope. Property previews are shortened.');
 
         performanceLog(
           '[SEARCH] Search API response:',
@@ -2356,6 +2333,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             resetCenteredSearch: true,
             syncResults: true,
             forceSearchResults: true,
+            preserveIsolatedNodes: true,
           });
         });
         } else {
@@ -2370,6 +2348,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             clearActiveSearchId: true,
             syncResults: true,
             forceSearchResults: true,
+            preserveIsolatedNodes: true,
           });
         });
         }
@@ -2380,9 +2359,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
         });
       } catch (err) {
         // Ignore cancelled requests (superseded by newer search)
-        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        if (abortController.signal.aborted || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+        setOntologyGraphMessage('Graph search is unavailable. Showing matches only from the loaded view; results may be incomplete.');
         logger.error('Search Error:', err);
-        const fallbackGraph = buildSearchResultSlice(resolveSearchBaseDataset(), debouncedSearchQuery, searchResultMode);
+        const fallbackGraph = buildSearchResultSlice(resolveSearchBaseDataset(), debouncedSearchQuery);
         // Batch fallback search updates
         startTransition(() => {
           const currentActiveId = activeSearchResultIdRef.current;
@@ -2400,6 +2380,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             resetCenteredSearch: true,
             syncResults: true,
             forceSearchResults: true,
+            preserveIsolatedNodes: true,
           });
           setSearchLoading(false);
         });
@@ -2410,7 +2391,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Cleanup: abort in-flight request when query changes or component unmounts
     return () => abortController.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildSearchResultSlice, commitGraphSlice, debouncedSearchQuery, graphViewMode, isFullGraphMode, isOntologyGraphMode, resolveSearchBaseDataset, searchResultMode]);
+  }, [buildSearchResultSlice, commitGraphSlice, debouncedSearchQuery, graphViewMode, isFullGraphMode, isOntologyGraphMode, resolveSearchBaseDataset]);
 
   // ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Ontology viewer: fetch ontology graph when dropdown changes ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
@@ -4015,13 +3996,6 @@ const boundaryForce = (width, height) => {
         }}
         onSearchSubmit={submitSearchQuery}
         searchLoading={searchLoading}
-        searchResultMode={searchResultMode}
-        onSearchResultModeChange={(mode) => {
-          setSearchResultMode(mode);
-          if (debouncedSearchQueryRef.current) {
-            lastCenteredSearchRef.current = '';
-          }
-        }}
         onToolTargetSelect={(target) => {
           if (typeof setActiveTab === 'function') setActiveTab(target);
         }}

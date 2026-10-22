@@ -142,7 +142,9 @@ def agent_architecture() -> dict:
     from .agent_usage import architecture
     return architecture(catalog.read())
 @router.get("/tools")
-def tools() -> dict: return {"tools": catalog.read()["tools"]}
+def tools() -> dict:
+    return {"tools": catalog.read()["tools"],
+            "read_goal_capabilities": {"recommendation_evidence": 1, "engine": "existing-read-goal-worker"}}
 @router.get("/mcp-servers")
 def mcp_servers() -> dict: return {"mcp_servers": catalog.read()["mcp_servers"]}
 @router.get("/workflows")
@@ -294,16 +296,10 @@ def ontology_agent_bridge_plan(payload: OntologyAgentBody) -> dict:
     return _ontology_agent_call(bridge_plan, payload)
 
 
-_COMPANION_PROMPTS = [
-    "Find ontology resources matching product",
-    "Find ontology resources matching requirement",
-    "Find ontology resources matching measurement",
-]
-
-
 @router.get("/chat/sample-queries")
-def companion_sample_queries() -> dict:
-    return {"queries": _COMPANION_PROMPTS, "data_available": None, "mode": "ontology-search"}
+def companion_sample_queries(page: str = 'home') -> dict:
+    from .companion_prompts import sample_queries
+    return sample_queries(page)
 
 
 @router.post("/chat/validate", dependencies=[Depends(graph_read_identity)])
@@ -328,12 +324,13 @@ def _session_turns(session, limit=20):
 
 
 @router.get('/chat/sessions/{session_id}/history', dependencies=[Depends(graph_read_identity)])
-async def companion_history(session_id: str, request: Request):
+async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = ''):
     actor = graph_read_identity(request)
     session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
     turns = await run_in_threadpool(_session_turns, session)
+    turns = [turn for turn in turns if (turn.get('graph_context') or {}).get('ontology','') == ontology_id and (turn.get('graph_context') or {}).get('ontology_prefix','') == ontology_prefix and (turn.get('graph_context') or {}).get('page','') == page]
     return {'session_id': session_id, 'turns': [
-        {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'finished_at')}
+        {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'answerable', 'retrieval', 'graph_context', 'finished_at')}
         for item in reversed(turns)]}
 
 
@@ -352,25 +349,23 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
     try:
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
         memory_key = sessions.memory_id(session)
-        context = await run_in_threadpool(AgentMemoryService.recent_context, memory_key, 6)
-        if not context.get('messages'):
-            turns = await run_in_threadpool(_session_turns, session, 6)
-            context = {'messages': [{'role': 'user', 'text': turn.get('user_request', '')} for turn in turns]}
-        # History supports follow-up retrieval only; graph evidence remains the
-        # answer authority and memory text cannot authorize tools or writes.
-        query = message
-        if len(message.split()) <= 4:
-            prior = next((item['text'] for item in context.get('messages', []) if item.get('role') == 'user'), '')
-            if prior:
-                query = f'{str(prior)[:1000]} {message}'
+        from .companion_memory import retrieval_query
+        turns = await run_in_threadpool(_session_turns, session, 6)
+        query = retrieval_query(message, turns, payload.get('graph_context') or {})
         generation_budget = 0
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             from .local_llm import settings
-            generation_budget = settings()[3]
-        async with asyncio.timeout(bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
+            try:
+                generation_budget = settings()[3]
+            except ValueError:
+                # Invalid optional model settings must not suppress retrieval.
+                generation_budget = 0
+        async with asyncio.timeout(3 * bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
             kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
             if (payload.get('graph_context') or {}).get('ontology_prefix'):
                 kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
+            if (payload.get('graph_context') or {}).get('page'):
+                kwargs['page']=payload['graph_context']['page']
             if on_token:
                 kwargs['on_token'] = on_token
             result = await companion.ask(query, **kwargs)
@@ -385,7 +380,7 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
             'job_id': retained_id, 'status': 'completed', 'session_id': session['session_id'],
             'owner': sessions.owner(request, graph_read_identity(request)),
             'user_request': message, 'response': result['response'], 'generation': result.get('generation'),
-            'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'finished_at': _now()})
+            'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'retrieval': result.get('retrieval'), 'graph_context': payload.get('graph_context') or {}, 'finished_at': _now()})
         await _agent_io(_finish_observation,
             observation,
             observed_at,
@@ -852,10 +847,18 @@ async def run(payload: ToolRunBody, request: Request) -> dict:
         approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
     else:
         graph_read_identity(request)
+    from .page_tasks import page_binding
+    page_binding('validation', payload.get('page_context'))
     if planned['tool'].get('mutates'):
         from .single_tool import execute
         return await execute(payload, request)
+    from .page_tasks import page_binding
+    task_owner = _workflow_owner(request, 'agent-reader')
+    task_page = page_binding(task_owner, payload.get('page_context'))
     observation, started = await _agent_io(telemetry.start, operation='tool', request_id=getattr(request.state, 'request_id', ''))
+    observation.update(owner=task_owner, agent_id=payload.get('agent_id'), task_label=payload.get('tool_id'))
+    observation.update(task_page)
+    await _agent_io(telemetry.store.put, observation['run_id'], observation)
     try:
         from backend.depo_platform.network import agent_run_timeout_seconds
         async with asyncio.timeout(agent_run_timeout_seconds()):
@@ -892,6 +895,8 @@ def tool_run(run_id: str) -> dict:
 
 @router.post('/workflow-runs')
 async def run_workflow(payload: WorkflowRunBody, request: Request) -> dict:
+    from .page_tasks import page_binding
+    page_binding('validation', payload.get('page_context'))
     from .durable_workflows import execution_mode, enqueue
     if execution_mode() == 'worker':
         try: return await enqueue(payload,request)
@@ -957,6 +962,8 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
         record = {'owner': _workflow_owner(request, actor), 'run_id': run_id, 'telemetry_run_id': observation['run_id'], 'workflow_id': workflow['id'], 'request_id': request_id,
                   'status': 'running', 'started_at': _now(), 'updated_at': _now(),
                   'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat(), 'traces': []}
+        from .page_tasks import page_binding
+        record.update(page_binding(record['owner'], payload.get('page_context')))
         from .recovery import execution_payload, fingerprint
         definition = {'workflow': workflow, 'steps': planned['steps']}
         record.update(execution_id=uuid4().hex, execution_payload=execution_payload(payload),

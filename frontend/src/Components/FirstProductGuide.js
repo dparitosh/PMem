@@ -6,7 +6,7 @@ export default function FirstProductGuide({ catalog = false }) {
     <p>No governed product versions are listed. Existing imports and ontology drafts can still be present. Follow these steps to publish a reviewed product.</p>
     <ol>
       <li><a href="#/admin">Connect credentials in Admin</a> with ingestion and data-product approval scopes.</li>
-      <li><a href="#/data-products">Open Data Products</a>, expand “Inspect an XSD with dependency files”, select the root schema and any dependencies, then inspect the schema set. You can also select an existing imported schema draft.</li>
+      <li><a href="#/data-products?view=structural">Review structural analytics in Data Products</a>, expand “Inspect an XSD with dependency files”, select the root schema and any dependencies, then inspect the schema set. You can also select an existing imported schema draft. For completed processing outputs, choose “Review pipeline evidence”.</li>
       <li>Obtain an approved semantic release for the source. Supply its asset ID and release version in the publication form; a draft alone does not satisfy this requirement.</li>
       <li>Enter the product ID, name, version, domain, owner, steward, classification and approver. Validate the publication contract, review the result, then publish.</li>
       <li>Refresh Data Products to check the retained package and delivery status, then <a href="#/catalog">open Data Catalog</a> to verify registration.</li>

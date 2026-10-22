@@ -348,6 +348,10 @@ def add_policy(payload: PolicyBody) -> dict:
 @router.post("/policies/evaluate", summary="Evaluate Semantica policies before a governed action")
 def evaluate_policies(payload: EvaluatePoliciesBody) -> dict:
     try:
+        if "decisions" in payload:
+            if "decision" in payload or payload.get("exception_policy_ids"):
+                raise ValueError("Batch policy checks cannot mix decisions or request exceptions")
+            return intelligence.evaluate_decisions(str(payload.get("operation") or ""), payload["decisions"])
         return intelligence.evaluate_policies(dict(payload.get("decision") or {}), _array_field(payload, "exception_policy_ids"))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -359,6 +363,12 @@ def preview_merge(payload: MergePreviewBody) -> dict:
         return merges.preview(payload)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get('/companion/mapping-evidence', summary='Read bounded historical mapping evidence', dependencies=[Depends(graph_read_identity)])
+def companion_mapping_evidence(query: str = Query(min_length=1,max_length=4000), ontology_id: str = Query(default='',max_length=128), ontology_prefix: str = Query(default='',max_length=128)) -> dict:
+    from .companion_evidence import retained_mapping_evidence
+    return retained_mapping_evidence(PostgresRegistry('ontology_merge_previews'),query,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
 
 
 @router.get("/merges/{preview_id}/status", summary="Read retained merge planning and validation progress")
@@ -461,6 +471,8 @@ def search_business_context(query: str, limit: int = 50) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    except RuntimeError:
+        raise HTTPException(status_code=503, detail="Business context persistence is unavailable")
 
 @router.get("/mcp", summary="Get the local Semantica MCP stdio-server launch contract")
 def mcp_contract() -> dict:
