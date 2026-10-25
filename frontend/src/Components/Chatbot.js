@@ -558,15 +558,15 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     <div className="chat-message-label">{msg.role === 'user' ? 'You · Question' : 'Companion · Response'} {Math.floor(index / 2) + 1}</div>
                                     {msg.role === 'assistant' ? (
                                         <>
-                                            <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text) }} />
+                                            <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text, msg.evidence || []) }} />
                                             {Array.isArray(msg.evidence) && msg.evidence.length > 0 && (
                                                 <details style={{ marginTop: 8 }}>
                                                     <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Evidence ({msg.evidence.length})</summary>
                                                     <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                                                        {msg.evidence.slice(0, 12).map((item, index) => (
+                                                        {msg.evidence.slice(0, 26).map((item, index) => (
                                                             <li key={`${item.resource_id || item.source_id || 'evidence'}-${index}`}>
-                                                                {item.label || `${item.source_id} ${item.relationship || ''} ${item.target_id}`}
-                                                                {item.ontology_id ? ` (${item.ontology_id})` : ''}
+                                                                [{index + 1}] {item.label || `${item.source_id} ${item.relationship || ''} ${item.target_id}`}
+                                                                <details><summary>Source identity</summary><code>{item.resource_id || item.source_id || item.source}</code>{item.ontology_id ? ` · ${item.ontology_id}` : ''}</details>
                                                             </li>
                                                         ))}
                                                     </ul>

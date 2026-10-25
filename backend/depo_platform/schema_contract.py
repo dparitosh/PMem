@@ -27,6 +27,8 @@ CONSTRAINTS = {
  'depo_metadata_outbox_status_check': ('depo_metadata_outbox',"CHECK(status=ANY(ARRAY['pending','published']))"),
 }
 INDEXES = {
+ 'idx_depo_registry_status_recent': "ON depo_registry(namespace,(value->>'status'),updated_at DESC,key)",
+ 'idx_depo_job_identity': "ON depo_registry(namespace,(value->>'job_id'),(value->>'job_version')) WHERE namespace='data_job_runs'",
  'idx_depo_chat_messages': 'ON depo_chat_messages(session_id,message_id)',
  'idx_depo_rate_limits': 'ON depo_rate_limits(client_key,created_at)',
  'idx_metadata_pending': "ON depo_metadata_outbox(created_at) WHERE status='pending'",

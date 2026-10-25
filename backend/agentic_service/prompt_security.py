@@ -54,6 +54,12 @@ def validate_summary(text, identifiers):
     citations = re.findall(r'\[evidence:([^\]\n]+)\]', text)
     if not identifiers or not citations or any(value not in identifiers for value in citations):
         raise ValueError('Companion summary requires citations to supplied evidence identifiers')
+    for line in text.splitlines():
+        if line.strip().startswith('|') and not re.fullmatch(r'[| :\-]+',line.strip()) and not re.search(r'\[evidence:([^\]\n]+)\]',line):
+            # A header is non-factual; data rows must cite their supporting record.
+            lines=text.splitlines();index=lines.index(line)
+            if index+1>=len(lines) or not re.fullmatch(r'[| :\-]+',lines[index+1].strip()):
+                raise ValueError('Every summary table row requires evidence citations')
     for paragraph in re.split(r'\n\s*\n|\n(?=\s*[-*]\s)',text):
         if not paragraph.strip() or re.fullmatch(r'\s*#{1,6}[^\n]+',paragraph):continue
         if not re.search(r'\[evidence:([^\]\n]+)\]',paragraph):

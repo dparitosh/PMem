@@ -104,8 +104,12 @@ class PostgresRegistry:
         where = 'namespace=%s'
         args = [self.namespace]
         if field is not None:
-            where += ' AND value->>%s=%s'
-            args.extend([field, value])
+            if field == 'status':
+                where += " AND value->>'status'=%s"
+                args.append(value)
+            else:
+                where += ' AND value->>%s=%s'
+                args.extend([field, value])
         if exclude_latest:
             where += " AND right(key,7) <> ':latest'"
         if exclude_superseded:
@@ -114,7 +118,7 @@ class PostgresRegistry:
             cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
             cursor.execute('SELECT count(*) FROM depo_registry WHERE '+where, args)
             total = cursor.fetchone()[0]
-            ordering = 'updated_at DESC, key DESC' if order_field is None else "COALESCE(value->>%s,'') DESC, key DESC"
+            ordering = 'updated_at DESC, key' if order_field is None else "COALESCE(value->>%s,'') DESC, key DESC"
             order_args = [] if order_field is None else [order_field]
             cursor.execute('SELECT value FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*args,*order_args,limit,offset])
             return total, [row[0] for row in cursor.fetchall()]

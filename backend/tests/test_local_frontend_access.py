@@ -96,4 +96,23 @@ class LocalFrontendAccessTests(unittest.TestCase):
                 self.assertEqual(client.recv(1),b'')
 
 
+
+def test_startup_probe_checks_business_reads_and_revokes_its_session(monkeypatch):
+    from backend.depo_platform.frontend_server import verify_local_access
+    seen=[]
+    def handle(request):
+        seen.append((request.method,request.url.path))
+        if request.url.path.endswith('/config'):return httpx.Response(200,json={'mode':'local','writes':False})
+        if request.url.path.endswith('/session'):
+            return httpx.Response(200,json={'token':'depo_session_opaque_valid_token','profiles':['GRAPH_READ_TOKEN'],
+                'expires_at':'2099-01-01T00:00:00Z','absolute_expires_at':'2099-01-02T00:00:00Z'})
+        return httpx.Response(200,json={})
+    real=httpx.Client
+    monkeypatch.setattr(httpx,'Client',lambda **kw:real(transport=httpx.MockTransport(handle),**kw))
+    assert verify_local_access('http://127.0.0.1:3000','http://127.0.0.1:8011')['status']=='ok'
+    assert ('GET','/api/v1/ontologies/health') in seen
+    assert ('GET','/api/v1/ontologies') in seen
+    assert seen[-1]==('DELETE','/auth/browser-session')
+
+
 if __name__ == '__main__': unittest.main()

@@ -79,6 +79,7 @@ class Neo4jPublisher:
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
         SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind, node.rdf_types = row.rdf_types,
+            node.search_label = toLower(coalesce(row.label,'')), node.search_iri = toLower(row.iri),
             node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
             node.source = row.source, node.description = row.description,
             node.publication_revision = $projection_revision
@@ -397,7 +398,7 @@ class Neo4jPublisher:
         )
 
     @graph_projection_reader
-    def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict[str, Any]:
+    def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '', business_only: bool = False) -> dict[str, Any]:
         stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships", "what", "which", "where", "when", "why", "how", "are", "does", "find", "matching", "resources", "ontology", "please"}
         terms = sorted({token for token in re.findall(r"[a-z0-9]+", str(query).lower()) if len(token) >= 3 and token not in stop_words})
         if not terms:
@@ -407,9 +408,17 @@ class Neo4jPublisher:
             raise ValueError('ontology_id must be at most 128 characters')
         if len(ontology_prefix) > 128:
             raise ValueError('ontology_prefix must be at most 128 characters')
-        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
-        legacy = self._session_rows(cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
-        combined = sorted(nodes + legacy, key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or ''), str(node.get('id') or '')))
+        nodes = self._session_rows(cypher.ONTOLOGY_BUSINESS_SEARCH if business_only else cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, candidate_limit=min(2000,max(200,safe_limit*10)), ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        legacy = self._session_rows(cypher.LEGACY_BUSINESS_SEARCH if business_only else cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        legacy += self._session_rows(cypher.IMPORTED_INSTANCE_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        if business_only:
+            from backend.Services.graph_view_service import GraphViewService
+            legacy=[node for node in legacy if GraphViewService._is_individual_node({'labels':[node.get('type')], 'properties':node}) and not GraphViewService._is_metadata_like_node({'labels':[node.get('type')], 'properties':node})]
+        unique={}
+        for node in nodes + legacy:
+            if node['id'] not in unique or int(node.get('score') or 0) > int(unique[node['id']].get('score') or 0):
+                unique[node['id']]=node
+        combined = sorted(unique.values(), key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or ''), str(node.get('id') or '')))
         selected = combined[:safe_limit]
         # Read edges after ranking so excluded candidates cannot consume the
         # relationship budget of the resources actually returned to chat.
@@ -419,7 +428,7 @@ class Neo4jPublisher:
         edges = edges[:safe_limit * 4]
         return self._explorer_payload(
             nodes=selected, edges=edges,
-            view={"type": "search", "query": query, "terms": terms, "ontology_id": ontology_id, "limit": safe_limit, "truncated": len(combined) >= safe_limit, "source": "published_and_existing_ontology"},
+            view={"type": "search", "query": query, "terms": terms, "ontology_id": ontology_id, "business_only":business_only,"candidate_limit_per_term":min(2000,max(200,safe_limit*10)), "limit": safe_limit, "truncated": len(combined) >= safe_limit, "source": "published_existing_and_imported"},
         )
 
     def _legacy_overview(self, *, limit: int) -> dict[str, Any]:

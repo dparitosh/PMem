@@ -20,10 +20,10 @@ class IndexRecoveryTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): verify_source_lookup_index(cursor,'semantic')
         cursor.fetchone.return_value=(True,True,'depo_registry','key',"value ->> 'source'",'namespace')
         with self.assertRaises(RuntimeError): verify_source_lookup_index(cursor,'semantic')
-        self.assertEqual(MIGRATIONS[-1][0],11)
+        self.assertIn(11, [v for v, _, _ in MIGRATIONS])
 
     def test_neo4j_indexes_must_be_online_with_expected_properties(self):
-        rows=[{'name':name,'state':'ONLINE','labelsOrTypes':[label],'properties':properties} for name,(label,properties) in REQUIRED_INDEXES.items()]
+        rows=[{'name':name,'state':'ONLINE','type':'TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE','labelsOrTypes':[label],'properties':properties} for name,(label,properties) in REQUIRED_INDEXES.items()]
         self.assertEqual(verify_indexes(rows),sorted(REQUIRED_INDEXES))
         rows[0]['state']='POPULATING'
         with self.assertRaises(RuntimeError): verify_indexes(rows)
@@ -39,8 +39,8 @@ class IndexRecoveryTests(unittest.TestCase):
         fn=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=='ontology_publication_status')
         fn.decorator_list=[]
         content=b'retained ontology'; digest=hashlib.sha256(content).hexdigest()
-        scope=dict(hashlib=hashlib,graph_publications=SimpleNamespace(get=lambda key:None,put=Mock()),
-            catalog=SimpleNamespace(get=lambda key:{'source':'engineering-workflow:old-source-hash'},read_artifact=lambda key:({},content)),
+        scope=dict(__name__='backend.ontology_service.router',__package__='backend.ontology_service',hashlib=hashlib,graph_publications=SimpleNamespace(get=lambda key:None,put=Mock()),
+            catalog=SimpleNamespace(get=lambda key:{'source':'engineering-workflow:old-source-hash'},artifact_digest=lambda key:digest),
             service_url=lambda *a:'http://graph',service_bearer_headers=lambda *a,**kw:{})
         async def thread(fn,*a):return fn(*a)
         urls=[]

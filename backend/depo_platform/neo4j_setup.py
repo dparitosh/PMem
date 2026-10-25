@@ -14,6 +14,8 @@ CONSTRAINT_DEFINITIONS = {
     'uq_ontologystagedresource_identity': ('StagedOntologyResource', ['ontology_id', 'publication_id', 'iri']),
 }
 REQUIRED_INDEXES = {
+    'idx_depo_resource_search_label': ('OntologyResource', ['search_label']),
+    'idx_depo_resource_search_iri': ('OntologyResource', ['search_iri']),
     'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
     'idx_depo_ontologyresource_scope': ('OntologyResource', ['ontology_id']),
 }
@@ -47,7 +49,7 @@ def verify_indexes(records, *, allow_missing=False):
         row = indexed.get(name)
         if row is None and allow_missing:
             continue
-        if not row or row.get('state') != 'ONLINE' or row.get('labelsOrTypes') != [label] or row.get('properties') != properties:
+        if not row or row.get('type') != ('TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE') or row.get('state') != 'ONLINE' or row.get('labelsOrTypes') != [label] or row.get('properties') != properties:
             invalid.append(name)
     if invalid:
         raise RuntimeError('Missing or unavailable Neo4j performance indexes: ' + ', '.join(sorted(invalid)))
@@ -115,12 +117,20 @@ def provision(*, check_only: bool = False, upgrade_preflight: bool = False) -> d
         if not check_only and not upgrade_preflight:
             for statement in _statements(SCHEMA_FILE.read_text(encoding="utf-8")):
                 driver.execute_query(statement, database_=database)
+            # Backfill in bounded transactions; original labels and IRIs stay intact.
+            while True:
+                updated, _, _ = driver.execute_query(
+                    "MATCH (n:OntologyResource) WHERE n.search_label IS NULL OR n.search_iri IS NULL "
+                    "WITH n LIMIT 5000 SET n.search_label=toLower(coalesce(n.label,'')), n.search_iri=toLower(coalesce(n.iri,'')) "
+                    "RETURN count(n) AS updated", database_=database)
+                if not updated or updated[0]['updated'] == 0:
+                    break
         records, _, _ = driver.execute_query(
             "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties WHERE name IN $names RETURN name, type, entityType, labelsOrTypes, properties ORDER BY name",
             names=sorted(REQUIRED_CONSTRAINTS), database_=database, routing_="r",
         )
         index_records, _, _ = driver.execute_query(
-            'SHOW INDEXES YIELD name, state, labelsOrTypes, properties WHERE name IN $names RETURN name, state, labelsOrTypes, properties',
+            'SHOW INDEXES YIELD name, type, state, labelsOrTypes, properties WHERE name IN $names RETURN name, type, state, labelsOrTypes, properties',
             names=sorted(REQUIRED_INDEXES), database_=database, routing_='r')
     verified_indexes = verify_indexes([dict(row) for row in index_records], allow_missing=upgrade_preflight)
     verified_constraints = verify_constraints([dict(row) for row in records], allow_missing=upgrade_preflight)

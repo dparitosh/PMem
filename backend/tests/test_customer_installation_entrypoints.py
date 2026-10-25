@@ -166,6 +166,8 @@ def test_manager_orders_frontend_and_backend_and_stops_on_failure(tmp_path):
     (tmp_path / 'infra/deployment').mkdir(parents=True)
     shutil.copyfile(ROOT / 'manage-depo.ps1', tmp_path / 'manage-depo.ps1')
     shutil.copyfile(ROOT / 'infra/windows/native-install-command.ps1', tmp_path / 'infra/windows/native-install-command.ps1')
+    # Process visibility is covered separately; keep this ordering fixture local.
+    (tmp_path / 'infra/windows/process-control.ps1').write_text('function Invoke-DepoVisibleManagement { param($Root,$Action,$EnvFile,$Profile,$ElevatedRetry) return $false }')
     trace = tmp_path / 'trace.txt'
     for phase in ['start','stop']:
         (tmp_path / f'infra/windows/{phase}-depo-frontend.ps1').write_text(f"param([string]$EnvFile)\nAdd-Content -LiteralPath '{trace}' -Value 'frontend-{phase}'\n$global:LASTEXITCODE=0\n")

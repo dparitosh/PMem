@@ -126,9 +126,9 @@ def explorer_search(query: str, scope: str = '', limit: int = 80, instances_only
 
 
 @router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
-def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict:
+def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '', business_only: bool = False) -> dict:
     try:
-        return publisher.search(query=query, limit=limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        return publisher.search(query=query, limit=limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix, business_only=business_only)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

@@ -1,6 +1,13 @@
 import { formatChatMarkdown } from './chatMarkdown';
 
 describe('formatChatMarkdown', () => {
+  test('shows numbered references while retaining full identities in evidence data', () => {
+    const html = formatChatMarkdown('Motor [evidence:long-uuid]', [{ resource_id: 'long-uuid' }]);
+    expect(html).toContain('chat-citation');
+    expect(html).toContain('[1]');
+    expect(html).not.toContain('long-uuid');
+    expect(formatChatMarkdown('Unknown [evidence:unknown]', [])).toContain('[evidence:unknown]');
+  });
   test('renders structured headings, facts, lists, and tables', () => {
     const html = formatChatMarkdown(
       '## Impact\nDirect: REQ-006\n\n- Bearing\n- Process\n\n| Object | Relation |\n| --- | --- |\n| Part | SATISFIES |'

@@ -28,8 +28,8 @@ def test_constraint_validation_still_rejects_incompatible_definitions(field, val
 
 def test_publication_schema_contains_only_idempotent_statements():
     statements = neo4j_setup._statements(neo4j_setup.SCHEMA_FILE.read_text(encoding="utf-8"))
-    assert len(statements) == 7
-    assert all("IF NOT EXISTS" in statement for statement in statements[:-1])
+    assert len(statements) == 11
+    assert all("IF NOT EXISTS" in statement or statement == "CALL db.awaitIndexes(60)" for statement in statements)
     assert "depo_bridge_publication_id" in statements[2]
     assert statements[-1] == "CALL db.awaitIndexes(60)"
     assert not any(token in statement.upper() for statement in statements for token in (" DELETE ", " DETACH ", " DROP "))

@@ -226,16 +226,44 @@ class BoundedFrontendServer(ThreadingHTTPServer):
             self.slots.release()
 
 
+def verify_local_access(origin, authority):
+    """Exercise the actual launcher cookie/exchange and owning-service read path."""
+    import httpx
+    origin, authority = local_url(origin), local_url(authority)
+    token = ''
+    with httpx.Client(timeout=15,trust_env=False,follow_redirects=False) as client:
+        try:
+            config=client.get(origin+PREFIX+'config');config.raise_for_status()
+            if config.json().get('mode')!='local': raise ValueError('Local broker is not enabled')
+            response=client.post(origin+PREFIX+'session',headers={'Origin':origin,'Content-Type':'application/json'},json={})
+            response.raise_for_status()
+            body=validate_delegate(response.json(),bool(config.json().get('writes')))
+            token=body['token'];headers={'Authorization':'Bearer '+token}
+            for path in ('/api/v1/ontologies/health','/api/v1/ontologies?limit=1&offset=0'):
+                client.get(authority+path,headers=headers).raise_for_status()
+            return {'status':'ok','local_broker':'verified','ontology_reads':'verified'}
+        except (httpx.HTTPError,ValueError,KeyError):
+            raise RuntimeError('Local browser authentication failed. Verify the selected environment, central credential synchronization, and restart the frontend broker; no API operation was replayed.') from None
+        finally:
+            if token:
+                client.delete(authority+'/auth/browser-session',headers={'Authorization':'Bearer '+token})
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('port', type=int)
     parser.add_argument('--bind', default='127.0.0.1')
     parser.add_argument('--directory', required=True)
     parser.add_argument('--env-file', required=True)
+    parser.add_argument('--verify-local-access',action='store_true')
     args = parser.parse_args()
     from dotenv import dotenv_values
     values = dotenv_values(Path(args.env_file))
     settings = configuration(values, args.bind)
+    if args.verify_local_access:
+        if settings['mode']!='local': raise RuntimeError('Local browser access is not selected')
+        print(json.dumps(verify_local_access(f'http://[{args.bind}]:{args.port}' if ':' in args.bind else f'http://{args.bind}:{args.port}',settings['authority'])))
+        return
     server_type = BoundedFrontendServer
     if ':' in args.bind:
         class IPv6Server(BoundedFrontendServer):

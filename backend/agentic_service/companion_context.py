@@ -42,6 +42,43 @@ PAGE_READS={
     'data-products':('DATA_PRODUCT_SERVICE_URL','http://127.0.0.1:8017','/data-products','products'),
     'data-flow':('DATA_PIPELINE_SERVICE_URL','http://127.0.0.1:8019','/pipeline/jobs/runs','runs'),
 }
+
+
+async def business_context(node_id, *, headers, ontology_id='', ontology_prefix=''):
+    body, endpoint=await _read_json('GRAPH_SERVICE_URL','http://127.0.0.1:8013','/graph/business-context',
+        {'node_id':node_id,'ontology_id':ontology_id,'ontology_prefix':ontology_prefix,'depth':1,'limit':20},headers)
+    nodes,edges=body.get('nodes'),body.get('relationships')
+    if not isinstance(nodes,list) or not isinstance(edges,list) or len(nodes)>100 or len(edges)>400:
+        raise ValueError('Invalid business context evidence')
+    if body.get('root_node_id')!=node_id or any(not isinstance(n,dict) or not isinstance(n.get('elementId'),str) or not isinstance(n.get('properties'),dict) for n in nodes):
+        raise ValueError('Invalid business context identity')
+    ids={n['elementId'] for n in nodes}
+    if len(ids)!=len(nodes) or node_id not in ids:
+        raise ValueError('Missing or duplicate business context identity')
+    for n in nodes:
+        props=n['properties']
+        if ontology_id and ontology_id not in (props.get('ontology_id'),props.get('source_ontology')):
+            raise ValueError('Business evidence changed selected ontology')
+        if ontology_prefix and ontology_prefix not in (props.get('prefix'),props.get('ontology_prefix')):
+            raise ValueError('Business evidence changed selected prefix')
+    if any(not isinstance(e,dict) or e.get('start') not in ids or e.get('end') not in ids for e in edges):
+        raise ValueError('Business relationship changed evidence scope')
+    return body,endpoint
+
+
+async def document_context(query, *, headers, ontology_id='', ontology_prefix=''):
+    body,_=await _read_json('GRAPH_SERVICE_URL','http://127.0.0.1:8013','/graph/document-evidence',
+        {'query':query[:500],'ontology_id':ontology_id,'ontology_prefix':ontology_prefix,'limit':6},headers)
+    items=body.get('evidence')
+    if body.get('status') not in {'available','no_evidence','not_indexed'} or not isinstance(items,list) or len(items)>6:
+        raise ValueError('Invalid indexed evidence response')
+    for item in items:
+        if not isinstance(item,dict) or item.get('evidence_type') not in {'document_excerpt','graph_excerpt'} or item.get('source')!='neo4j:retained-evidence-index':
+            raise ValueError('Invalid indexed evidence source')
+        if not isinstance(item.get('label'),str) or len(item['label'])>300 or not isinstance(item.get('resource_id'),str) or not item['resource_id'] or len(item['resource_id'])>256 or not isinstance(item.get('description'),str) or len(item['description'])>2000:
+            raise ValueError('Invalid indexed evidence identity or excerpt')
+    body['evidence']=[{key:item.get(key) for key in ('evidence_type','resource_id','label','description','source_node_id','content_hash','publication_revision','source')} for item in items]
+    return body
 CONTEXT_PAGES={'graph','whereused','modeling','requirements','ontology','qif'}
 
 
@@ -77,3 +114,13 @@ async def page_context(query, *, page, headers, ontology_id='', ontology_prefix=
             'source_revision_status': 'unverified',
             'coverage': {'returned_records': len(rows), 'selected_evidence': min(len(evidence), 8),
                          'bounded_listing': True, 'whole_graph_complete': False}}
+
+
+async def plm_context(query, *, headers, ontology_id='', ontology_prefix=''):
+    body,_=await _read_json('GRAPH_SERVICE_URL','http://127.0.0.1:8013','/graph/business-answer',
+        {'query':query[:500],'ontology_id':ontology_id,'ontology_prefix':ontology_prefix},headers)
+    if body.get('evidence_type')!='business_answer' or body.get('source')!='graph-service:typed-business-read' or not isinstance(body.get('rows'),list) or len(body['rows'])>20 or not isinstance(body.get('resource_id'),str) or not body['resource_id'].startswith('business-answer:'):
+        raise ValueError('Invalid PLM evidence')
+    if any(not isinstance(row,dict) or (ontology_id and row.get('source')!=ontology_id) or (ontology_prefix and row.get('prefix')!=ontology_prefix) for row in body['rows']):
+        raise ValueError('PLM evidence changed selected source')
+    return {key:body.get(key) for key in ('evidence_type','resource_id','label','intent','rows','description','source','coverage')}

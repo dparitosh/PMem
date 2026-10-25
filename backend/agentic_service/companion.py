@@ -47,6 +47,8 @@ class KnowledgeCompanion:
             raise ValueError("message is required")
         if headers is None:
             headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
+        from backend.depo_platform.plm_questions import intent
+        business_intent=intent(query)
         from .companion_context import mapping_context
         context = {'evidence': [], 'status': 'unavailable'}
         try:
@@ -54,7 +56,7 @@ class KnowledgeCompanion:
         except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
             logging.getLogger(__name__).warning('Companion retained mapping retrieval unavailable')
         page_result={'evidence':[],'status':'not_requested'}
-        if page:
+        if page and not business_intent:
             from .companion_context import page_context
             try:
                 page_result=await page_context(query,page=page,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
@@ -62,18 +64,35 @@ class KnowledgeCompanion:
                 page_result={'evidence':[],'status':'unavailable'}
                 logging.getLogger(__name__).warning('Companion page evidence unavailable: page=%s',page)
         context['evidence']+=page_result['evidence']
-        endpoint = f"{self._graph_root()}/graph/search"
-        graph_status = 'available'
+        if business_intent:
+            try:
+                from .companion_context import plm_context
+                context['evidence'].append(await plm_context(query,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix))
+            except (httpx.HTTPError,TimeoutError,ValueError,RuntimeError):
+                logging.getLogger(__name__).warning('Companion typed PLM read unavailable')
+        document_result={'status':'unavailable','evidence':[]}
         try:
-            from backend.depo_platform.network import bounded_timeout_seconds
-            timeout = bounded_timeout_seconds("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", default=15, maximum=120)
-            async with asyncio.timeout(timeout), httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
-                from backend.depo_platform.network import gateway_subscription_headers
-                headers = {**headers, **gateway_subscription_headers(endpoint)}
-                from .response_limits import read_bounded_response
-                async with client.stream('GET', endpoint, params={"query": query, "limit": self.max_nodes, "ontology_id": ontology_id, "ontology_prefix": ontology_prefix}, headers=headers) as response:
-                    response.raise_for_status()
-                    graph = json.loads(await read_bounded_response(response))
+            from .companion_context import document_context
+            document_result=await document_context(query,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+            context['evidence']+=document_result['evidence']
+        except (httpx.HTTPError,TimeoutError,ValueError,RuntimeError):
+            logging.getLogger(__name__).warning('Companion indexed excerpt retrieval unavailable')
+        endpoint = f"{self._graph_root()}/graph/search"
+        typed_answer=next((item for item in context['evidence'] if item.get('evidence_type')=='business_answer'),None)
+        graph_status = 'not_requested' if typed_answer else 'available'
+        try:
+            if typed_answer:
+                graph={'nodes':[],'relationships':[],'view':{'truncated':bool((typed_answer.get('coverage') or {}).get('has_more'))}}
+            else:
+                from backend.depo_platform.network import bounded_timeout_seconds
+                timeout = bounded_timeout_seconds("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", default=15, maximum=120)
+                async with asyncio.timeout(timeout), httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+                    from backend.depo_platform.network import gateway_subscription_headers
+                    headers = {**headers, **gateway_subscription_headers(endpoint)}
+                    from .response_limits import read_bounded_response
+                    async with client.stream('GET', endpoint, params={"query": query, "limit": self.max_nodes, "ontology_id": ontology_id, "ontology_prefix": ontology_prefix, "business_only": bool(business_intent) or page == 'graph'}, headers=headers) as response:
+                        response.raise_for_status()
+                        graph = json.loads(await read_bounded_response(response))
         except (httpx.HTTPError, TimeoutError, ValueError) as exc:
             if not context['evidence']:
                 raise RuntimeError("Knowledge graph retrieval is unavailable; no answer was generated. Check graph service readiness and read access in Admin.") from exc
@@ -106,6 +125,27 @@ class KnowledgeCompanion:
                 scored.append((score, node))
         scored.sort(key=lambda item: (-item[0], str((item[1].get("properties") or {}).get("label") or item[1].get("elementId"))))
         selected = [node for _, node in scored[: min(8, self.max_evidence)]]
+        business_status='not_requested'
+        inclusion={}
+        context_coverage={}
+        if page == 'graph' and selected:
+            exact=[node for node in selected if str(node['properties'].get('label') or '').casefold()==query.casefold()]
+            roots=(exact if len(exact)==1 else selected if len(nodes)==1 else []) if not (graph.get('view') or {}).get('truncated') else []
+            business_status='ambiguous' if not roots else 'unavailable'
+            if roots:
+                try:
+                    from .companion_context import business_context
+                    connected,context_endpoint=await business_context(roots[0]['elementId'],headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+                    root_id=roots[0]['elementId']
+                    selected=sorted(connected['nodes'],key=lambda n:(n['elementId']!=root_id,n['elementId']))[:max(1,min(6,self.max_evidence//2))]
+                    relationships=connected['relationships']
+                    inclusion=connected.get('inclusion') or {}
+                    context_coverage={'nodes_examined':len(connected['nodes']),'relationships_examined':len(relationships),
+                                      'truncated':bool((connected.get('view') or {}).get('truncated')) or len(connected['nodes'])>len(selected)}
+                    endpoint=context_endpoint
+                    business_status='available'
+                except (httpx.HTTPError,TimeoutError,ValueError,RuntimeError):
+                    logging.getLogger(__name__).warning('Companion business context unavailable')
         selected_ids = {str(node.get("elementId")) for node in selected}
         edge_budget = max(0, self.max_evidence - len(selected))
         selected_edges = [edge for edge in relationships if str(edge.get("start")) in selected_ids and str(edge.get("end")) in selected_ids][:edge_budget]
@@ -116,11 +156,12 @@ class KnowledgeCompanion:
                 "kind": str((node.get("properties") or {}).get("kind") or (node.get("labels") or ["resource"])[0]),
                 "ontology_id": (node.get("properties") or {}).get("ontology_id"), "source": endpoint,
                 "properties": descriptive_properties(node.get("properties") or {}),
+                "why_included": inclusion.get(node['elementId']),
             }
             for node in selected
         ]
         evidence.extend({
-            "evidence_type": "graph_relationship", "source_id": str(edge.get("start") or ""),
+            "evidence_type": "graph_relationship", "resource_id":str(edge.get('elementId') or ''), "source_id": str(edge.get("start") or ""),
             "target_id": str(edge.get("end") or ""), "relationship": str((edge.get('properties') or {}).get('predicate') or edge.get("type") or "RELATED_TO"), "source": endpoint,
         } for edge in selected_edges)
         from .prompt_security import protect
@@ -128,6 +169,10 @@ class KnowledgeCompanion:
         selection_truncated = len(scored)>len(selected) or len(relationships)>len(selected_edges)
         retrieval = {"nodes_examined": len(nodes), "relationships_examined": len(relationships), "truncated": bool((graph.get("view") or {}).get("truncated")), 'graph_status': graph_status, 'mapping_history_status': context['status'], 'page_evidence_status': page_result['status'], 'page':page, 'selection_truncated': selection_truncated, 'selected_resources': len(selected), 'selected_relationships': len(selected_edges), 'answer_scope': 'bounded_retrieval', 'semantic_entailment_verified': False, 'retrieved_at': datetime.now(timezone.utc).isoformat(), 'evidence_sha256': hashlib.sha256(json.dumps(evidence,sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
         retrieval['page_representation'] = page_result.get('representation', 'not_available')
+        retrieval['document_evidence_status'] = document_result['status']
+        retrieval['document_retrieval_mode'] = 'lexical_fulltext'
+        retrieval['business_context_status'] = business_status
+        retrieval['business_context_coverage'] = context_coverage
         retrieval['page_coverage'] = page_result.get('coverage')
         retrieval['source_revision_status'] = 'unverified'
         if not evidence:
@@ -136,6 +181,7 @@ class KnowledgeCompanion:
                 "response": ("No matching graph resources were found in the current ontology scope. "
                              + ("No saved mapping reviews matched either. " if context['status'] == 'available' else
                                 "Saved mapping history could not be checked; verify ontology service readiness and read access in Admin. " if context['status'] == 'unavailable' else '')
+                             + ("Indexed document coverage is unavailable. " if document_result['status'] in {'not_indexed','unavailable'} else "No indexed excerpts matched this bounded search. ")
                              + "For data questions, select the relevant ontology and check its Neo4j publication. Try a specific class, property or instance name. The Companion cannot infer facts from data it cannot retrieve."),
                 "evidence": [], "sources": [endpoint], "retrieval": retrieval,
             }
@@ -148,7 +194,14 @@ class KnowledgeCompanion:
         application_items=[item for item in evidence if item['evidence_type']=='application_record']
         if application_items:
             response_text+=('\n\n' if response_text else '')+'\n'.join(item['description']+f" [evidence:{item['resource_id']}]" for item in application_items)
-        if labels:
+        excerpts=[item for item in evidence if item['evidence_type'] in {'document_excerpt','graph_excerpt'}]
+        if excerpts:
+            response_text+=('\n\n' if response_text else '')+'Retrieved excerpts (source freshness is unverified):\n'+'\n'.join(item['description'][:1000]+f" [evidence:{item['resource_id']}]" for item in excerpts[:3])
+        business_items=[item for item in evidence if item['evidence_type']=='business_answer']
+        if business_items:
+            from .business_answers import render
+            response_text=render(business_items)
+        if labels and not business_items:
             response_text += ("\n\n" if response_text else '') + f"Matching graph resources: {', '.join(labels[:6])}."
             for item in evidence:
                 if item['evidence_type'] != 'graph_resource': continue
@@ -161,18 +214,21 @@ class KnowledgeCompanion:
         if page_result['status']=='unavailable': response_text+='\n\nThe current page service could not be checked; this answer does not establish its current state.'
         if graph_status == 'unavailable': response_text += '\n\nGraph retrieval is unavailable; this answer uses owning-service records only.'
         if context['status'] == 'unavailable': response_text += '\n\nSaved mapping history could not be checked. Verify ontology service readiness and read access in Admin.'
-        if relation_types:
+        if document_result['status'] in {'unavailable','not_indexed'}:
+            response_text += '\n\nIndexed document evidence could not be checked; this answer does not establish document coverage.'
+        if relation_types and not business_items:
             response_text += f" Connected relationship types: {', '.join(relation_types[:6])}."
-        if on_token:
-            await on_token(response_text)
+        if business_status=='available':
+            response_text += '\n\nConnected objects are included through recorded graph paths. Source references do not by themselves establish business impact or semantic equivalence.'
+        elif business_status=='ambiguous':
+            response_text += '\n\nSeveral business objects may match. Select a specific graph node and use Investigate with agent to preserve its identity and retrieve its context.'
         generation = {'enabled': False, 'status': 'disabled', 'action': 'This is a retrieval answer. Enable COMPANION_LLM_ENABLED=true with a configured provider for cited model summaries.'}
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             prompt_details = {}
             try:
                 from .local_llm import summarize
                 summary = await summarize(query, evidence, prompt_details=prompt_details)
-                if on_token: await on_token('\n\nModel-assisted summary (review against the evidence): ' + summary)
-                response_text += '\n\nModel-assisted summary (review against the evidence): ' + summary
+                response_text = summary
                 generation = {'enabled': True, 'status': 'completed', 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'prompt_details': prompt_details, 'grounding': 'citation-identifiers-checked', 'semantic_entailment_verified': False}
             except Exception as failure:
                 code = getattr(getattr(failure, 'response', None), 'status_code', None)
@@ -182,6 +238,8 @@ class KnowledgeCompanion:
                 logging.getLogger(__name__).warning('Companion generation failed: stage=generation status=%s error_type=%s', status, type(failure).__name__)
                 generation = {'enabled': True, 'status': status, 'prompt_details': prompt_details, 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'action': 'The provider returned HTTP 429. Check its quota, billing and rate limits before retrying.' if code == 429 else 'Check the selected provider configuration and capability diagnostics in Admin, and the agentic service logs.'}
                 response_text += '\n\nThe configured language model is unavailable; the retrieved evidence above remains available.'
+        if on_token:
+            await on_token(response_text)
         return {
             "status": "grounded", "answerable": True, "response": response_text,
             "evidence": evidence, "sources": sorted({item['source'] for item in evidence}), "retrieval": retrieval, 'generation': generation,

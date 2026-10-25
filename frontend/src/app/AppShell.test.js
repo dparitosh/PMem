@@ -118,3 +118,12 @@ test('a subsequent credential rejection invalidates an earlier verified banner',
   expect(screen.queryByText('Read access verified.')).toBeNull();
   expect(screen.getByText(/A service rejected the current access/)).toBeInTheDocument();
 });
+
+test('expands the Companion table workspace without remounting its input', () => {
+  render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} showChat onToggleChat={vi.fn()} rightDrawer={<input aria-label="Question fixture" defaultValue="Part PMI" />}><div>Page</div></AppShell>);
+  const input=screen.getByRole('textbox',{name:'Question fixture'});
+  fireEvent.click(screen.getByRole('button',{name:'Expand Knowledge Companion'}));
+  expect(screen.getByRole('button',{name:'Expand Knowledge Companion'})).toHaveAttribute('aria-pressed','true');
+  expect(screen.getByRole('textbox',{name:'Question fixture'})).toBe(input);
+  expect(input).toHaveValue('Part PMI');
+});

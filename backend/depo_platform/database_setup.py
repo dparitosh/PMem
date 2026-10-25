@@ -40,6 +40,7 @@ EXPECTED_CONSTRAINTS = {
     'depo_metadata_outbox_event_id_fkey', 'depo_registry_value_object', 'depo_runtime_state_value_object',
 }
 EXPECTED_INDEXES = {
+    'idx_depo_registry_status_recent', 'idx_depo_job_identity',
     'idx_depo_chat_messages', 'idx_depo_rate_limits', 'idx_metadata_pending',
     'idx_depo_pipeline_runnable', 'idx_depo_registry_recent',
     'idx_depo_registry_source_lookup',

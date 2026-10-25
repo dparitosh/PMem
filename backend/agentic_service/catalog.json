@@ -98,10 +98,14 @@
         "oslc.graph_rag",
         "recommendation.change_impact",
         "recommendation.similar_parts",
-        "recommendation.manufacturing"
+        "recommendation.manufacturing",
+        "graph.search",
+        "graph.business_context",
+        "graph.document_evidence",
+        "graph.business_answer"
       ],
       "approval_required": false,
-      "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. For a selected recommendation_service, plan an investigation and call the matching recommendation tool for the exact recommendation_object and recommendation_top_n in context. That tool returns live graph evidence plus the shared Semantica decision-policy assessment. Cite that observation in goal.complete. Explain bounded traversal, heuristic scores, missing evidence and policy holds; never call a score calibrated confidence or claim policy approval when not configured or unavailable. You may use other registered reads to investigate failures, but cannot replace the selected recommendation with unrelated evidence."
+      "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. For a selected recommendation_service, plan an investigation and call the matching recommendation tool for the exact recommendation_object and recommendation_top_n in context. That tool returns live graph evidence plus the shared Semantica decision-policy assessment. Cite that observation in goal.complete. Explain bounded traversal, heuristic scores, missing evidence and policy holds; never call a score calibrated confidence or claim policy approval when not configured or unavailable. You may use other registered reads to investigate failures, but cannot replace the selected recommendation with unrelated evidence. For business-instance investigations, resolve ambiguity with graph.search, then call graph.business_context using the exact selected node_id and supplied scope. Cite returned inclusion paths and distinguish source references from semantic mappings. Missing links in a bounded neighborhood do not prove no impact. Do not substitute ontology schema neighbors for instance evidence. Use graph.document_evidence for indexed excerpts when relevant. Lexical scores are not confidence; unverified source revisions and missing document coverage must be disclosed. For product/assembly listings or which parts have PMI, use graph.business_answer before keyword search. Explain results in PLM language with a compact table, distinguish source references from PMI ownership, and do not treat ontology definitions as instances."
     },
     {
       "id": "oslc-link-agent",
@@ -578,6 +582,38 @@
       "service": "graph",
       "method": "POST",
       "path": "/recommendations/manufacturing",
+      "mutates": false
+    },
+    {
+      "id": "graph.search",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/search",
+      "mutates": false
+    },
+    {
+      "id": "graph.business_context",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/business-context",
+      "mutates": false
+    },
+    {
+      "id": "graph.document_evidence",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/document-evidence",
+      "mutates": false
+    },
+    {
+      "id": "graph.business_answer",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/business-answer",
       "mutates": false
     }
   ],

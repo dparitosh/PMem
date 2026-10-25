@@ -7,8 +7,20 @@ import os
 from pathlib import Path
 
 
+REQUIRED_MODULES = (
+    'backend/agentic_service/context_envelope.py', 'backend/agentic_service/context_scope.py',
+    'backend/agentic_service/memory_maintenance.py', 'backend/agentic_service/source_revisions.py',
+    'backend/depo_platform/cleanup_receipts.py', 'backend/depo_platform/plm_questions.py',
+    'backend/agentic_service/business_answers.py', 'backend/graph_service/plm_answers.py',
+    'backend/graph_service/business_context.py', 'backend/graph_service/document_evidence.py',
+)
+
+
 def check(root):
     root = Path(root)
+    missing=[name for name in REQUIRED_MODULES if not (root/name).is_file()]
+    if missing:
+        raise ValueError('Incomplete backend release; missing required modules: '+', '.join(missing))
     semantics = root/'backend/Services/xsd_semantics.py'
     engine = root/'backend/Services/owl_xsd_engine.py'
     tree = ast.parse(semantics.read_text(encoding='utf-8'))

@@ -1149,6 +1149,8 @@ def _add_xmi_provenance(
         g.add((source_uri, DCTERMS.source, Literal(str(xmi_file))))
 
     provenance = xmi_data.get("provenance", {})
+    if provenance.get("excluded_tool_file_parts"):
+        g.add((source_uri, ont_ns.excludedToolArchiveCount, Literal(provenance["excluded_tool_file_parts"], datatype=XSD.integer)))
     xmi_namespace = provenance.get("xmi_namespace")
     if xmi_namespace:
         g.add((source_uri, ont_ns.hasXMINamespace, Literal(xmi_namespace)))

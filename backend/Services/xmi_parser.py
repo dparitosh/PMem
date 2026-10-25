@@ -92,7 +92,7 @@ class XMIParser:
             root = tree.getroot()
             if tree.docinfo.doctype:
                 raise ValueError('XMI DTD declarations are not supported')
-            validate_xmi_root(root)
+            validation = validate_xmi_root(root)
 
             # Extract nodes and relationships
             nodes = self._extract_nodes(root)
@@ -103,6 +103,7 @@ class XMIParser:
             }
             relationships = self._extract_relationships(root, id_to_label)
             provenance = self._extract_provenance(root)
+            provenance.update(validation)
 
             logger.info(
                 f"Extracted {len(nodes)} nodes and {len(relationships)} relationships"
@@ -974,7 +975,7 @@ class XMIParser:
         return ""
 
     def _normalize_ref(self, value: str) -> str:
-        return local_reference(value)
+        return local_reference(value, standard_primitives=True)
 
     def _first_child_ref(self, element, child_name: str) -> str:
         """Read first referenced id from a child element like <type xmi:idref='...'>."""

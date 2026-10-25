@@ -16,7 +16,7 @@ from .prompt_security import protect
 from .recovery import execution_payload, fingerprint
 
 SCOPE_KEYS = {'ontology_id', 'ontology_prefix', 'source_ontology_id', 'target_ontology_id',
-              'import_task_id', 'source_ontology_ids', 'ontology_path', 'qif_ontology_id', 'ap242_ontology_id'}
+              'node_id', 'import_task_id', 'source_ontology_ids', 'ontology_path', 'qif_ontology_id', 'ap242_ontology_id'}
 PLAN = {'id': 'goal.plan', 'description': 'Decompose or revise the goal into evidence-gathering subtasks.',
         'input_schema': {'type': 'object', 'additionalProperties': False, 'required': ['subtasks'], 'properties': {
             'subtasks': {'type': 'array', 'minItems': 1, 'maxItems': 8, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 400}}}}}

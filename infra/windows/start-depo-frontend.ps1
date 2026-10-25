@@ -78,6 +78,14 @@ foreach ($inputFile in $buildInputs) {
     throw "Frontend build does not match input $relativeInput. Rebuild frontend before starting it."
   }
 }
+function Test-DepoLocalBrowserAccess {
+  if ($values['DEPO_BROWSER_AUTH_MODE'] -ne 'local') { return }
+  Push-Location -LiteralPath $root
+  try { $check = & $python -m backend.depo_platform.frontend_server $Port --bind $probeHost --directory $dist --env-file $envPath --verify-local-access; $checkExit = $LASTEXITCODE }
+  finally { Pop-Location }
+  if ($checkExit -ne 0) { throw 'Local browser access verification failed. Check central credential synchronization and the frontend broker configuration.' }
+  Write-Host 'Local browser authentication and ontology reads verified.'
+}
 $indexContent = Get-Content -LiteralPath $index -Raw
 $bundleMatch = [regex]::Match($indexContent, '<script[^>]+src="(/?assets/index-[^"]+\.js)"')
 if (-not $bundleMatch.Success) { throw "Could not identify the production bundle in $index. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile." }
@@ -104,6 +112,7 @@ if (Test-Path -LiteralPath $pidFile) {
           $details.CommandLine.Contains($envPath) -and $response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
           $response.Content.Contains($bundleMatch.Groups[1].Value) -and
           (Test-DepoListener $recordedPid $python $recordedModule $Port $BindHost)) {
+        Test-DepoLocalBrowserAccess
         Write-Host "DEPO frontend is already ready at http://${probeHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
         return
       }
@@ -135,6 +144,7 @@ do {
     if ($response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
         $response.Content.Contains($bundleMatch.Groups[1].Value) -and
         (Test-DepoListener $process.Id $python $frontendModule $Port $BindHost)) {
+      Test-DepoLocalBrowserAccess
       Write-Host "DEPO frontend is ready at http://${probeHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
       return
     }

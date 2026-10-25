@@ -34,15 +34,28 @@ def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = N
     ontology_id = str(scope.get("ontology_id") or "").strip()
     if not query and not identifier:
         raise HTTPException(status_code=422, detail="A graph term is required")
+    if not identifier:
+        graph=publisher.search(query=query,limit=2,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+        rows=[{'id':n['elementId'],'name':n['properties'].get('label') or n['elementId'],
+               'labels':n.get('labels',[]),'rdf_types':n['properties'].get('rdf_types',[]),
+               'source_tag':n['properties'].get('ontology_id') or 'graph'} for n in graph['nodes']]
+        exact=[row for row in rows if str(row['name']).casefold()==query.casefold()]
+        if (graph.get('view') or {}).get('truncated'):
+            raise HTTPException(409,'Graph search is bounded; select its node_id and ontology scope')
+        if len(exact)==1:
+            return exact[0]
+        if len(rows)>1:
+            raise HTTPException(409,'Graph term is ambiguous; select its node_id and ontology scope')
+        return rows[0] if rows else None
     node_clause = _ontology_node_clause()
     rows = publisher._session_rows(
         f"MATCH (n) WHERE {node_clause} "
         "WITH n, coalesce(n.name, n.label, n.uri, n.iri) AS display "
-        "WHERE ($node_id = '' OR elementId(n) = $node_id) "
-        "AND ($search_text = '' OR toLower(display) CONTAINS toLower($search_text)) "
+        "WHERE elementId(n) = $node_id "
+        "AND ($node_id <> '' OR $search_text = '' OR toLower(display) CONTAINS toLower($search_text)) "
         "AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix OR n.ontology_prefix = $ontology_prefix) "
         "AND ($ontology_id = '' OR n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id) "
-        "RETURN elementId(n) AS id, display AS name, labels(n) AS labels, "
+        "RETURN elementId(n) AS id, display AS name, labels(n) AS labels, coalesce(n.rdf_types,[]) AS rdf_types, "
         "coalesce(n.source_ontology, n.ontology_id, n.prefix, 'graph') AS source_tag "
         "ORDER BY CASE WHEN toLower(display) = toLower($search_text) THEN 0 ELSE 1 END, display LIMIT 2",
         search_text=query, node_id=identifier, ontology_prefix=ontology_prefix, ontology_id=ontology_id,
@@ -88,7 +101,7 @@ def _neighbors(node_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
         "AND NOT root:RetainedOntologyIdentity AND NOT neighbor:RetainedOntologyIdentity "
         "AND NOT neighbor:OntologyPublication AND NOT neighbor:GraphChunk AND NOT neighbor:DatasheetChunk "
         "RETURN elementId(neighbor) AS id, coalesce(neighbor.name, neighbor.label, neighbor.uri, neighbor.iri) AS name, "
-        "labels(neighbor) AS labels, type(r) AS relation_type, "
+        "labels(neighbor) AS labels, coalesce(neighbor.rdf_types,[]) AS rdf_types, type(r) AS relation_type, r.predicate AS predicate, elementId(r) AS relationship_id, "
         "coalesce(neighbor.source_ontology, neighbor.ontology_id, neighbor.prefix, 'graph') AS source_tag "
         "ORDER BY name LIMIT $limit",
         node_id=node_id,
@@ -97,7 +110,33 @@ def _neighbors(node_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
 
 
 def _kind(row: dict[str, Any]) -> str:
-    return " ".join(str(value).lower() for value in [*row.get("labels", []), row.get("name", "")])
+    return " ".join(str(value).lower() for value in [*row.get("labels", []), *row.get('rdf_types',[]), row.get("name", "")])
+
+
+@router.get('/api/v1/graph/business-context', summary='Retrieve connected business instances with inclusion evidence')
+async def business_context(node_id: str = Query(max_length=256), ontology_id: str = Query(default='',max_length=128),
+                           ontology_prefix: str = Query(default='',max_length=128), depth: int = Query(default=1,ge=1,le=2),
+                           limit: int = Query(default=60,ge=20,le=100)):
+    from .business_context import retrieve
+    try:
+        return await run_in_threadpool(retrieve,publisher,node_id=node_id,ontology_id=ontology_id,ontology_prefix=ontology_prefix,depth=depth,limit=limit)
+    except LookupError as exc:
+        raise HTTPException(404,str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503,'Business context is unavailable; check the graph service') from exc
+
+
+@router.get('/api/v1/graph/document-evidence', summary='Read bounded indexed graph and document excerpts')
+async def document_evidence(query: str = Query(min_length=1,max_length=500), ontology_id: str = Query(default='',max_length=128),
+                            ontology_prefix: str = Query(default='',max_length=128),node_id: str = Query(default='',max_length=256),
+                            limit: int = Query(default=6,ge=1,le=10)):
+    from .document_evidence import retrieve
+    try:
+        return await run_in_threadpool(retrieve,publisher,query=query,ontology_id=ontology_id,ontology_prefix=ontology_prefix,node_id=node_id,limit=limit)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @router.get("/api/v1/requirements", summary="List normalized requirement resources from the context graph")
@@ -163,21 +202,24 @@ def _change_impact_result(payload: ContextBody) -> dict:
     for row in neighbors:
         # A reference to a revision, export record or metadata carrier is not
         # evidence of business impact. Require an explicit impact/trace edge.
-        relation = re.sub(r'[^A-Z0-9]', '', str(row.get('relation_type') or '').upper())
+        raw_relation = str(row.get('relation_type') or '')
+        if raw_relation == 'SEMANTIC_RELATION' and row.get('predicate'):
+            raw_relation = str(row['predicate']).rsplit('#',1)[-1].rsplit('/',1)[-1]
+        relation = re.sub(r'[^A-Z0-9]', '', raw_relation.upper())
         if relation not in {'IMPACTS', 'AFFECTS', 'CMHASIMPACTEDITEM', 'CMHASPROBLEMITEM',
                             'CMHASSOLUTIONITEM', 'HASIMPACTEDITEM', 'HASPROBLEMITEM',
                             'HASSOLUTIONITEM', 'SATISFIES', 'SEG0SATISFY', 'FNDTRACELINK',
                             'TRACELINK', 'REALIZES', 'TRACESTO'}:
             continue
         kind = _kind(row)
-        base = {"name": _display_name(row), "source_tag": row.get("source_tag"), "relation_type": row.get("relation_type"), "class_name": ", ".join(row.get("labels") or [])}
+        base = {"name": _display_name(row), "source_tag": row.get("source_tag"), "relation_type": raw_relation, "predicate":row.get("predicate"), "relationship_id":row.get("relationship_id"), "class_name": ", ".join(row.get("labels") or [])}
         if "requirement" in kind:
             requirements.append({"name": base["name"], "catalogue_id": row.get("id"), "linked_part": root["name"]})
         elif "assembly" in kind:
             assemblies.append({"assembly_name": base["name"], "depth": 1, "from_part": root["name"]})
         elif "process" in kind or "manufactur" in kind:
             processes.append({"name": base["name"], "source_tag": base["source_tag"], "from_part": root["name"]})
-        elif any(label.lower() in {'part', 'product', 'productrevision', 'individual', 'namedindividual'} for label in row.get('labels', [])):
+        elif any(label.rsplit('/',1)[-1].lower() in {'part', 'product', 'productrevision', 'individual', 'namedindividual'} for label in [*row.get('labels', []),*row.get('rdf_types',[])]):
             parts.append(base)
         else:
             continue
@@ -204,21 +246,18 @@ def _similar_parts_result(payload: ContextBody) -> dict:
     if root is None:
         return {"message": "No matching graph term was found.", "similar_parts": []}
     top_n = max(1, min(int(payload.get("top_n", 10)), 50))
-    tokens = [token for token in str(root["name"]).lower().replace("_", " ").split() if len(token) > 2][:4]
-    node_clause = _ontology_node_clause()
-    rows = publisher._session_rows(
-        f"MATCH (n) WHERE ({node_clause}) "
-        "AND elementId(n) <> $root_id "
-        "WITH n, coalesce(n.name, n.label, n.uri, n.iri) AS name "
-        "WHERE any(token IN $tokens WHERE toLower(name) CONTAINS token) "
-        "RETURN elementId(n) AS id, name, labels(n) AS labels, coalesce(n.source_ontology, n.ontology_id, n.prefix, 'graph') AS source_tag "
-        "ORDER BY name LIMIT $limit",
-        root_id=root["id"], tokens=tokens or [str(root["name"]).lower()], limit=50,
-    )
-    source_labels = set(root.get("labels") or [])
+    selected_scope=payload.get('scope') or {}
+    graph=publisher.search(query=str(root['name']),limit=50,
+        ontology_id=selected_scope.get('ontology_id',''),
+        ontology_prefix=selected_scope.get('ontology_prefix',selected_scope.get('prefix','')),business_only=True)
+    rows=[{'id':n['elementId'],'name':n['properties'].get('label') or n['elementId'],
+           'labels':n.get('labels',[]),'rdf_types':n['properties'].get('rdf_types',[]),
+           'source_tag':n['properties'].get('ontology_id') or 'graph'} for n in graph['nodes'] if n['elementId']!=root['id']]
+    generic={'OntologyResource','OntologyClass','Individual','NamedIndividual','resource'}
+    source_labels = set(root.get('rdf_types') or root.get("labels") or []) - generic
     candidates = []
     for row in rows:
-        type_match = bool(source_labels.intersection(set(row.get("labels") or [])))
+        type_match = bool(source_labels.intersection(set(row.get('rdf_types') or row.get("labels") or [])-generic))
         source_tokens = set(re.findall(r"[a-z0-9]+", str(root["name"]).casefold()))
         target_tokens = set(re.findall(r"[a-z0-9]+", _display_name(row).casefold()))
         lexical = len(source_tokens & target_tokens) / max(1, len(source_tokens | target_tokens))
@@ -269,3 +308,12 @@ def similar_parts(payload: ContextBody) -> dict:
 @router.post("/api/v1/recommendations/manufacturing", summary="Find process context linked to a graph term")
 def manufacturing_context(payload: ContextBody) -> dict:
     return assess_recommendation(_manufacturing_context_result(payload), "manufacturing", payload.get("scope"))
+
+
+@router.get('/api/v1/graph/business-answer', summary='Read typed PLM product and part-PMI evidence')
+async def business_answer(query: str = Query(min_length=1,max_length=500), ontology_id: str = Query(default='',max_length=128), ontology_prefix: str = Query(default='',max_length=128)):
+    from .plm_answers import retrieve
+    try:
+        return await run_in_threadpool(retrieve,publisher,query=query,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc

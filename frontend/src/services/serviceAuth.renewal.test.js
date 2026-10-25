@@ -143,3 +143,10 @@ test('403 session expired wording invalidates the delegation', () => {
   expect(getBrowserSessionStatus()).toBeNull();
   expect(wasBrowserSessionExpired()).toBe(true);
 });
+
+test('generic credential rejection clears only the presented delegated session for local recovery', () => {
+  connect();
+  handleSessionRejection(403, 'Bearer depo_session_test', 'Required API key is missing or invalid');
+  expect(getBrowserSessionStatus()).toBeNull();
+  expect(wasBrowserSessionExpired()).toBe(true);
+});

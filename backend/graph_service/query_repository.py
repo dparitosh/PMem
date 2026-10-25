@@ -1,5 +1,6 @@
 """Parameterized, read-only Cypher queries used by graph read surfaces."""
 from __future__ import annotations
+from .business_types import business_instance_filter
 
 # Older ingestion writes typed nodes directly, without an OntologyResource
 # projection. Keep its counts distinct from explicit RDF declarations.
@@ -41,6 +42,8 @@ LEGACY_SEARCH = (
     "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, iri, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
     "ORDER BY score DESC, label, id LIMIT $limit"
 )
+IMPORTED_INSTANCE_SEARCH = LEGACY_SEARCH.replace(LEGACY_NODE_FILTER, IMPORTED_INSTANCE_FILTER)
+LEGACY_BUSINESS_SEARCH = LEGACY_SEARCH.replace(LEGACY_NODE_FILTER, '('+LEGACY_NODE_FILTER+') AND ('+business_instance_filter('n')+')')
 LEGACY_OVERVIEW = (
     'MATCH (n) WHERE ' + LEGACY_NODE_FILTER + ' '
     'RETURN elementId(n) AS id, coalesce(n.name, n.label, n.uri, n.iri) AS label, '
@@ -91,15 +94,21 @@ ONTOLOGY_TRAVERSAL_EDGES = (
     "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type, elementId(r) AS edge_id, r.predicate AS predicate LIMIT $limit"
 )
 ONTOLOGY_SEARCH_NODES = (
-    "MATCH (n:OntologyResource) "
-    "WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
+    "UNWIND $terms AS term CALL { WITH term "
+    "MATCH (n:OntologyResource) WHERE n.search_label CONTAINS toString(term) "
+    "AND ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
+    "RETURN n LIMIT $candidate_limit UNION WITH term "
+    "MATCH (n:OntologyResource) WHERE n.search_iri CONTAINS toString(term) "
+    "AND ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
+    "RETURN n LIMIT $candidate_limit } WITH DISTINCT n "
     "WITH n, reduce(score = 0, term IN $terms | score + CASE "
-    "WHEN toLower(coalesce(n.label, '')) = term OR toLower(n.iri) ENDS WITH '/' + term OR toLower(n.iri) ENDS WITH '#' + term THEN 5 "
-    "WHEN toLower(coalesce(n.label, '')) CONTAINS term OR toLower(n.iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
+    "WHEN n.search_label = term OR n.search_iri ENDS WITH '/' + term OR n.search_iri ENDS WITH '#' + term THEN 5 "
+    "WHEN n.search_label CONTAINS term OR n.search_iri CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 "
     "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
     "ORDER BY score DESC, label, id LIMIT $limit"
 )
+ONTOLOGY_BUSINESS_SEARCH = ONTOLOGY_SEARCH_NODES.replace('RETURN n LIMIT $candidate_limit', 'AND ('+business_instance_filter('n')+') RETURN n LIMIT $candidate_limit')
 
 
 # Complete bounded mapping targets; executed only by the Graph data service.

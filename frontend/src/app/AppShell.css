@@ -835,3 +835,5 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 .depo-service-card__link { margin-top: auto; padding-top: 12px; }
 .depo-kpi-cell { min-width: 0; }
 .depo-kpi-cell__label { min-height: 2.8em; }
+
+.depo-ix-drawer--expanded { width: min(1100px, 100%); }

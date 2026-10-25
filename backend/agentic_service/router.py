@@ -368,7 +368,7 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
             except ValueError:
                 # Invalid optional model settings must not suppress retrieval.
                 generation_budget = 0
-        async with asyncio.timeout(3 * bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
+        async with asyncio.timeout(5 * bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
             kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
             if (payload.get('graph_context') or {}).get('ontology_prefix'):
                 kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
@@ -416,6 +416,8 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
                 'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
                 'session_idle_seconds': int(bounded_timeout_seconds('AGENT_SESSION_IDLE_SECONDS', default=1800, maximum=86400)), 'mode': 'evidence-grounded'}
     except BaseException as exc:
+        import traceback
+        logger.error('Companion request failed: type=%s missing_module=%s frames=%s',type(exc).__name__, getattr(exc,'name','') if isinstance(exc,ModuleNotFoundError) else '', [(f.name,f.lineno) for f in traceback.extract_tb(exc.__traceback__)][-8:])
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         await _agent_io(_finish_observation, observation, observed_at, status=status, error_type=type(exc).__name__)
         if isinstance(exc, (asyncio.CancelledError, HTTPException)) or not isinstance(exc, Exception):
@@ -900,6 +902,8 @@ async def run(payload: ToolRunBody, request: Request) -> dict:
         return {**result, 'status': 'completed', 'execution_kind': 'agent',
                 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id']}
     except BaseException as exc:
+        import traceback
+        logger.error('Companion request failed: type=%s missing_module=%s frames=%s',type(exc).__name__, getattr(exc,'name','') if isinstance(exc,ModuleNotFoundError) else '', [(f.name,f.lineno) for f in traceback.extract_tb(exc.__traceback__)][-8:])
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         try:
             await _agent_io(_tool_span, observation, tool_id=str(payload.get('tool_id', '')), attempt=1, status=status, duration_ms=(time.perf_counter()-started)*1000, error_type=type(exc).__name__)

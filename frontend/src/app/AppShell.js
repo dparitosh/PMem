@@ -40,6 +40,7 @@ export default function AppShell({
   onServiceAuthChange,
   children,
 }) {
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   const [verifyingAccess, setVerifyingAccess] = useState(false);
@@ -195,9 +196,10 @@ export default function AppShell({
             <div className="depo-ix-page__body"><RunRecoveryNotice />{children}</div>
           </div>
           {rightDrawer && (
-            <aside id="depo-chat-drawer" className="depo-ix-drawer" aria-label="Knowledge Companion" hidden={!showChat} tabIndex={-1}>
+            <aside id="depo-chat-drawer" className={`depo-ix-drawer${chatExpanded ? ' depo-ix-drawer--expanded' : ''}`} aria-label="Knowledge Companion" hidden={!showChat} tabIndex={-1}>
               <div className="depo-ix-drawer__header">
                 <strong>Knowledge Companion</strong>
+                <button type="button" aria-label="Expand Knowledge Companion" aria-pressed={chatExpanded} onClick={() => setChatExpanded(value => !value)}>{chatExpanded ? 'Compact' : 'Expand'}</button>
                 <button type="button" className="depo-ix-drawer__close" onClick={onToggleChat} aria-label="Close Knowledge Companion">×</button>
               </div>
               <div className="depo-ix-drawer__body">{rightDrawer}</div>
