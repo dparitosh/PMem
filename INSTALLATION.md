@@ -106,6 +106,84 @@ New workstation setup enables the loopback browser broker, so users do not paste
 
 Every guided action starts PowerShell with process-scoped ExecutionPolicy Bypass. Machine policy is unchanged. If organization policy requires signed software, use an approved signed release; do not disable organization policy.
 
+### Public access through APIM or a reverse proxy
+
+Configure this before exposing a workstation installation to remote browsers. A public frontend URL does not automatically provide API routes. `DEPO_ROUTING_MODE=local` sends browser requests directly to the configured service host; a private address such as `10.0.2.16` will time out for clients without network access to it.
+
+1. Identify the **API gateway base URL**, including its configured base path. Obtain this from the APIM/reverse-proxy administrator; the developer portal or frontend URL can be different.
+2. Back up root `.env.local`, then edit these existing settings in place (do not append conflicting duplicates):
+
+   ```dotenv
+   DEPO_ROUTING_MODE=gateway
+   DEPO_API_GATEWAY_URL=https://api.example.com/depo
+   ```
+
+   Keep `DEPO_SERVICE_HOST` as the backend listening address appropriate for the server. `DEPO_LOCAL_SERVICE_HOST` is not used for gateway browser routing. Keep existing authentication and credentials; routing changes do not replace authentication. Never put subscription keys or service keys in `VITE_*` settings.
+3. Configure every public service prefix below. The gateway must remove the service prefix and its own base path while retaining the remaining request path, query, method and body. For example, `/depo/ontology/api/v1/ontologies` forwards to `http://10.0.2.16:8011/api/v1/ontologies`.
+
+   | Default public suffix after gateway base | Private service port |
+   | --- | --- |
+   | `/qif` | 8010 |
+   | `/ontology` | 8011 |
+   | `/agentic` | 8012 |
+   | `/graph` | 8013 |
+   | `/ingestion` | 8014 |
+   | `/oslc` | 8015 |
+   | `/catalog` | 8016 |
+   | `/data-products` | 8017 |
+   | `/ceim` | 8018 |
+   | `/data-pipeline` | 8019 |
+
+   The private host is deployment-specific. Gateway-to-backend connectivity must work, and streaming chat routes must support streaming responses. If APIM uses different suffixes, set the corresponding `DEPO_GATEWAY_<SERVICE>_PATH` overrides documented in the operator reference. Do not expose private backend ports to browsers as a workaround.
+4. Include the exact frontend origin, including scheme and port, in root `ALLOWED_ORIGINS` and in the gateway CORS policy when cross-origin access is used. Allow the authentication headers required by your configured policy. Use HTTPS for customer access; an HTTPS frontend cannot call HTTP APIs.
+5. From the release root, validate routes and restart the application:
+
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-gateway.ps1 -EnvFile .\.env.local
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
+   ```
+
+   The diagnostic checks gateway health/readiness, API contracts and CORS. Entra deployments must supply a valid `-AccessToken` as a SecureString; see the operator reference. The frontend launcher regenerates `frontend/dist/depo-runtime-config.js` from root routing settings. Older releases without runtime routing support require a matching source update and frontend rebuild first.
+6. Hard-refresh the browser, reconnect using the configured authentication flow, and inspect DevTools → Network. Ontology and ingestion requests must target the public gateway prefixes, never `10.0.2.16:8011` or other private service ports. Verify ontology selection, import status and chat through the public URL. A server-side diagnostic alone does not establish remote browser connectivity.
+
+**Example for `http://azdtlabs.southindia.cloudapp.azure.com:2200/`:** use that address as `DEPO_API_GATEWAY_URL` only if the listener on port 2200 actually proxies all service prefixes above. Serving PMem HTML on that port is insufficient; the PMem frontend launcher does not automatically create these gateway routes. If APIM is hosted elsewhere or under a base path, use that API gateway address instead. The actual proxy configuration for this host must be verified by its operator.
+
+#### Worked example: Azure VM public access on port 2200
+
+This example assumes a reverse proxy on `azdtlabs.southindia.cloudapp.azure.com:2200` serves the frontend and forwards API prefixes to the VM at `10.0.2.16`. It is a configuration example, not confirmation that your current listener has these routes. For a separate Azure APIM gateway, replace the API base URL with its actual gateway address and base path.
+
+**Step 1 — Edit the deployed root `.env.local`.** For an installation at `E:\App\PMem`, open `E:\App\PMem\.env.local` and update the existing routing entries:
+
+```dotenv
+DEPO_ROUTING_MODE=gateway
+DEPO_API_GATEWAY_URL=http://azdtlabs.southindia.cloudapp.azure.com:2200
+DEPO_SERVICE_HOST=10.0.2.16
+ALLOWED_ORIGINS=http://azdtlabs.southindia.cloudapp.azure.com:2200,http://127.0.0.1:3000,http://localhost:3000
+```
+
+Retain any other origins your deployment requires and all existing credential/database settings. The HTTP address matches the supplied deployment for diagnosis; use HTTPS and update both URLs/origins before customer rollout. Do not add `/api/v1` to the gateway base URL.
+
+**Step 2 — Have the proxy operator configure and verify the routes.** The same host must serve frontend files at `/` and forward each service prefix from the preceding table. These examples show the required path transformation:
+
+| Browser request | Forwarded backend request |
+| --- | --- |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ontology/api/v1/ontologies?limit=200&offset=0` | `http://10.0.2.16:8011/api/v1/ontologies?limit=200&offset=0` |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/agentic/api/v1/agents` | `http://10.0.2.16:8012/api/v1/agents` |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ingestion/api/v1/engineering-workflows` | `http://10.0.2.16:8014/api/v1/engineering-workflows` |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ontology/readyz` | `http://10.0.2.16:8011/readyz` |
+
+A request to an API route must reach the service, not fall back to the frontend `index.html`. An authentication error is different from a connection timeout; keep the configured authentication policy in place.
+
+**Step 3 — Run the diagnostic and restart from PowerShell on the server.** Replace the installation root if necessary. Run each command in order and resolve diagnostic failures before continuing:
+
+```powershell
+Set-Location -LiteralPath 'E:\App\PMem'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-gateway.ps1 -EnvFile .\.env.local
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
+```
+
+**Step 4 — Verify from the remote user's browser.** Open `http://azdtlabs.southindia.cloudapp.azure.com:2200/`, press Ctrl+F5 and reconnect access. In DevTools → Network, confirm ontology requests use `/ontology/api/v1/ontologies` on the public host and return JSON. Confirm agent and import requests use `/agentic/` and `/ingestion/`. If requests still target `10.0.2.16:8011`, check that the public proxy serves the updated frontend and `depo-runtime-config.js`; a stale public deployment/cache can retain old routing even when the private frontend was restarted.
+
 ### 2.4 Follow the stages and expected results
 
 | Order | Installer action | Expected result |
@@ -191,6 +269,7 @@ Setup retains timestamped `.log` and `.jsonl` files in `logs/installation/runs` 
 | Process inspection or PID identity rejected | Use an account permitted to inspect processes/listeners. Inspect the recorded process; never kill unrelated PIDs or bypass ownership checks. |
 | Installation fails | Correct the first error in the audit log, then rerun the same launcher. Failed preflight leaves PMem running; failures after shutdown can leave it stopped until repaired. |
 | Browser cannot connect | Check frontend/backend readiness and the configured authentication/routing mode. Run diagnostics below. |
+| Public frontend loads but API calls to `10.x.x.x:8011` / `:8012` time out | Browser routing still points at private services. Follow the public gateway procedure above, verify proxy routes, restart the frontend launcher and hard-refresh. Increasing request timeouts or changing database indexes does not repair unreachable routing. |
 | LLM returns 429 | Check provider quota/rate limits or configure another working supported provider. AI acceptance remains incomplete. |
 | STEP import validates but is absent from Neo4j | Open its **View Data Flow** link. Select an approved semantic release in **Approval & publication**, then publish the completed run. Validation is separate from graph publication; check the retained receipt before retrying a write. |
 | CEIM batch exceeds its record bound | Validation and publication accept at most 50,000 entities plus relationships combined per batch. Upload byte limits are separate. Use a supported partitioned workflow or a smaller source export; do not truncate the normalized batch and claim a complete import. |
