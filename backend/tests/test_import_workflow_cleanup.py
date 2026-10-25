@@ -76,7 +76,9 @@ def test_artifact_path_escape_is_rejected(tmp_path):
     outside = tmp_path / 'outside'
     outside.mkdir(); (outside / 'keep').write_text('keep')
     files.task_dir = lambda task: outside
-    assert clear_import_workflows(importer=importer, artifacts=files)['status'] == 'partial'
+    with pytest.raises(ValueError, match='outside storage boundary'):
+        clear_import_workflows(importer=importer, artifacts=files)
+    assert not cleared(identity, importer.TASK_STORE_DIR)
     assert (outside / 'keep').exists()
 
 
@@ -145,13 +147,58 @@ def test_failed_error_receipt_does_not_hide_partial_cleanup(tmp_path, monkeypatc
     from backend.depo_platform import import_cleanup
     importer, files, identity = stores(tmp_path)
     original = import_cleanup._receipt
-    def write(path, task_id, status):
+    def write(path, task_id, status, phases=None):
         if status == 'cleanup_failed':
             raise PermissionError('locked receipt')
-        return original(path, task_id, status)
+        return original(path, task_id, status, phases)
     monkeypatch.setattr(import_cleanup, '_receipt', write)
     monkeypatch.setattr(shutil, 'rmtree', MagicMock(side_effect=PermissionError('locked folder')))
     result = clear_import_workflows(importer=importer, artifacts=files)
     assert result['status'] == 'partial'
     assert result['failed_task_ids'] == [identity]
     assert json.loads((importer.TASK_STORE_DIR / '.cleared' / identity).read_text())['status'] == 'deleting'
+
+
+@pytest.mark.parametrize('dry_run',[False,True])
+def test_legal_hold_prevents_any_deletion_fence(tmp_path,dry_run):
+    importer, files, identity=stores(tmp_path)
+    importer.list_tasks=lambda:[{'task_id':identity,'status':'completed','legal_hold':True}]
+    with pytest.raises(ValueError,match='legal hold'):
+        clear_import_workflows(dry_run=dry_run,importer=importer,artifacts=files)
+    assert files.task_dir(identity).exists()
+    assert not cleared(identity,importer.TASK_STORE_DIR)
+
+
+def test_manifest_hold_protects_hidden_retry_task(tmp_path):
+    registry=MagicMock();registry.get.return_value={'legal_hold':True}
+    importer,files,identity=stores(tmp_path,registry=registry)
+    marker=importer.TASK_STORE_DIR/'.cleared'/identity
+    marker.parent.mkdir();marker.write_text('{"status":"cleanup_failed"}')
+    with pytest.raises(ValueError,match='legal hold'):
+        clear_import_workflows(importer=importer,artifacts=files)
+    assert files.task_dir(identity).exists()
+    registry._connect.assert_not_called()
+
+
+def test_phase_receipt_preserves_progress_after_database_failure(tmp_path):
+    registry=MagicMock();registry.get.return_value=None
+    registry._connect.side_effect=RuntimeError('fixture database unavailable')
+    importer,files,identity=stores(tmp_path,registry=registry)
+    result=clear_import_workflows(importer=importer,artifacts=files)
+    phases=result['task_results'][0]['phases']
+    assert result['status']=='partial'
+    assert phases=={'artifacts':'completed','snapshots':'completed','manifest':'pending'}
+    receipt=json.loads((importer.TASK_STORE_DIR/'.cleared'/identity).read_text())
+    assert receipt['phases']==phases
+    assert receipt['status']=='cleanup_failed'
+
+
+
+def test_retry_receipt_cannot_override_current_active_task_status(tmp_path):
+    importer,files,identity=stores(tmp_path,status='processing')
+    importer.list_tasks=lambda:[{'task_id':identity,'status':'processing'}]
+    marker=importer.TASK_STORE_DIR/'.cleared'/identity
+    marker.parent.mkdir();marker.write_text('{"status":"cleanup_failed"}')
+    with pytest.raises(ValueError,match='active or have an uncertain outcome'):
+        clear_import_workflows(importer=importer,artifacts=files)
+    assert files.task_dir(identity).exists()

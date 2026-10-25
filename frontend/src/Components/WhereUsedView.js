@@ -477,6 +477,9 @@ const WhereUsedView = ({
             id: node.elementId,
             displayName: getNodeDisplayName(node),
             label: nodeLabel,
+            sourceFile: node.properties?.source_filename || '',
+            sourceType: node.properties?.part_type || node.properties?.source_element_name || nodeLabel,
+            revision: node.properties?.revision || '',
             properties: Object.keys(node.properties || node).filter(k => !['elementId', 'labels', 'label'].includes(k)).length,
             node,
         };
@@ -507,6 +510,9 @@ const WhereUsedView = ({
     const searchGridColumns = useMemo(() => [
         { headerName: 'Node', field: 'displayName', flex: 1.5, minWidth: 260, tooltipField: 'displayName' },
         { headerName: 'Label', field: 'label', flex: 0.7, minWidth: 160 },
+        { headerName: 'Source type', field: 'sourceType', minWidth: 180 },
+        { headerName: 'Revision', field: 'revision', width: 100 },
+        { headerName: 'Source file', field: 'sourceFile', minWidth: 240, tooltipField: 'sourceFile' },
         { headerName: 'Properties', field: 'properties', width: 120, type: 'numericColumn' },
         {
             headerName: 'Action',
@@ -538,8 +544,10 @@ const WhereUsedView = ({
         if (!selectedNode || !treeData?.nodes?.length) return '';
 
         const selectedId = selectedNode.elementId;
-        const directParents = (treeData.links || [])
-            .filter((link) => link?.target === selectedId)
+        const incoming = (treeData.links || []).filter((link) => link?.target === selectedId);
+        const usageTypes = new Set(['USES', 'CONTAINS', 'HASCHILD', 'HASCHILDINSTANCE', 'HASCOMPONENT', 'ASSEMBLYCONTAINS', 'PARTREF', 'INSTANCEDREF']);
+        const usageLinks = incoming.filter(link => usageTypes.has(String(link.type || '').toUpperCase().replace(/[^A-Z0-9]/g, '')));
+        const directParents = (usageLinks.length ? usageLinks : incoming)
             .map((link) => treeData.nodes.find((node) => node.elementId === link.source))
             .filter(Boolean);
 
@@ -551,12 +559,14 @@ const WhereUsedView = ({
 
         const selectedName = getNodeDisplayName(selectedNode);
         if (!uniqueParents.length) {
-            return `${selectedName} is not currently shown as used by another loaded business object.`;
+            return `No upstream references were returned for ${selectedName} in this loaded scope. This does not establish that the object is unused.`;
         }
 
         const preview = uniqueParents.slice(0, 3).join(', ');
         const suffix = uniqueParents.length > 3 ? ` and ${uniqueParents.length - 3} more` : '';
-        return `${selectedName} is used in ${preview}${suffix}.`;
+        return usageLinks.length
+            ? `Source-provided usage links connect ${selectedName} to ${preview}${suffix}. Review the relationship types before assessing assembly impact.`
+            : `Upstream source references connect ${selectedName} to ${preview}${suffix}. Revision/master references do not establish physical assembly usage.`;
     }, [selectedNode, treeData, getNodeDisplayName]);
 
     const hierarchyGridColumns = useMemo(() => [
@@ -655,8 +665,8 @@ const WhereUsedView = ({
                             <div style={fieldLabelStyle}>Business object</div>
                             <div style={{ fontSize: 14, color: WU.text, fontWeight: 800, marginTop: 4 }}>{getNodeDisplayName(selectedNode)}</div>
                         </div>
-                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Usage levels {levels.length}</span>
-                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Ancestors {treeData.nodes.length - 1}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Reference levels {levels.length}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Upstream records {treeData.nodes.length - 1}</span>
                         <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Links {treeData.links.length}</span>
                         {isExpandingUpwards && <span style={{ color: WU.primary, fontSize: 12, fontWeight: 700 }}>Expanding...</span>}
                         {expansionError && <span style={{ color: WU.error, fontSize: 12, fontWeight: 700 }}>Error: {expansionError}</span>}

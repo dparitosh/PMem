@@ -157,3 +157,24 @@ The default catalog also declares a Semantica MCP server. An MCP server is a too
 - [Shared decision-policy adapter](../backend/depo_platform/decision_policy.py) and [Semantica intelligence integration](../backend/ontology_service/intelligence.py)
 - [Page task profiles](../frontend/src/services/pageTasks.js)
 - [Existing semantic-agent architecture reference](SEMANTIC_AGENT_ARCHITECTURE.md)
+
+## Local permission, hook and MCP audit — 24 October 2026
+
+This review covers PMem repository implementation, not permissions enforced by the coding assistant host. It reviews the proposed Strict Permission Guard / hook pipeline / local-tool architecture against actual code.
+
+| Proposed capability | Verified implementation | Gap / implication |
+|---|---|---|
+| Interactive approval on every edit | `router.plan` derives required authorization from agent role, tool mutation classification and operation contracts. `_dispatch` checks approval before execution; `approval_identity` validates configured tokens or trusted gateway roles. `AgentProposalPanel` presents the inputs, approver and review checkbox. | This is governed application execution, not a generic per-file-edit prompt. The checkbox is client-side; possession of valid server authorization permits direct API calls. Automatic publication modes are separately authorized and governed. |
+| Mandatory git diff / static lint hook pipeline | Tests and diff checks can be run in the development workflow. | No tracked `.githooks`, `.husky`, pre-commit configuration or `.github` hook pipeline was found, and no `core.hooksPath` was configured. The frontend package has no lint script. Reported manual validation is not an enforced runtime pre-write hook. |
+| Built-in local patch / filesystem reader | Default registered tools are service/OpenAPI contracts. | Generic local patch and workspace file-reader tools are not registered. Artifact-backed engineering reads are not permission to read arbitrary filesystem paths. |
+| Local stdio MCP servers | Operator-configured commands, restricted inherited environment, bounded request/response sizes and deadlines, initialize/discovery validation, per-operation session isolation, progress handling and process teardown. | The default catalog has one Semantica server descriptor and zero MCP-bound tools. Discovery is not proof of successful vendor execution. Child processes run as the application OS user; stdio and environment filtering do not enforce filesystem/network isolation. |
+| Agents | Existing role/tool allowlists, server approval contracts and retained workflow records. | Agents do not independently authorize writes. A scoped service credential is not evidence of a fresh human decision on every operation. |
+
+### Findings and recommended boundaries
+
+1. If the product requirement is strict per-action human approval, bind an approval to a saved action/preview ID, canonical input digest, authenticated principal and expiry; reject modified, expired or consumed approvals at dispatch. Existing publication-specific preview/review controls should be reused. A UI confirmation alone is not a server permission boundary.
+2. If local coding tools are introduced, give them a separate optional execution profile with canonical allowed roots, symlink/junction escape checks, bounded reads, atomic writes and rollback. Add OS-level isolation or a restricted service account for MCP children; restricted environment variables alone are insufficient.
+3. A pre-write validation hook should run fixed allowlisted checks without executing model-provided shell commands. Retain exit codes and redacted diagnostics, and distinguish validation failure from approval. `git diff --check` checks whitespace; it is not static lint, semantic validation or authorization.
+4. MCP `readOnlyHint` is advisory metadata. Current preflight rejects an explicitly mutating native hint when the catalog says read-only; absent hints are not proof of safety. Operator classification remains trusted configuration. Strict local-write profiles need fail-closed tool classification and an explicit downstream approval contract.
+
+Validation: **9 targeted tests and 4 subtests passed** covering scoped stdio reuse/shutdown, diagnostics, progress and Bridge approval contracts. These use synthetic subprocess servers and isolated service boundaries; they do not certify a live Semantica server, OS sandbox, interactive edit guard or hook pipeline. No permission settings, credentials, server bindings or runtime execution policies were changed by this audit.

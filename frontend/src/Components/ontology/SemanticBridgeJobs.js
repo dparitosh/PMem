@@ -1,5 +1,6 @@
 import DecisionPolicyAssessment from '../DecisionPolicyAssessment';
-import MappingExplanation, { explainHoldReason, matchScore } from './MappingExplanation';
+import { matchScore } from './MappingExplanation';
+import MappingReviewTable from './MappingReviewTable';
 import { getCredentialProfile, publicationRecoveryScope } from '../../services/serviceAuth';
 import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
@@ -152,16 +153,16 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
   const hasAutomationAccess = Boolean(getCredentialProfile('AGENTIC_APPROVAL_TOKEN') && getCredentialProfile('GRAPH_READ_TOKEN'));
   const canPublish = hasApproval && preview && selected.length > 0 && confirmed && !busy && (!job || ['approved', 'retryable'].includes(job.status));
   const buttonStyle = { padding: '8px 12px', marginRight: 8, marginTop: 8 };
-  return <section className="depo-bridge-review" aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
-    <h3>Automated instance mapping</h3>
+  return <section className="depo-bridge-review" aria-label="Governed Semantic Bridge jobs">
+    <details className="mapping-run-controls" open={!preview}><summary>Mapping workflow · {automationRun?.status || 'Ready to start'} — controls and policy</summary>
     {(!ontologyId || !importTaskId) && <p role="status">Select both an imported instance and a target ontology to enable agent review and mapping.</p>}
-    <p>Run the governor to propose mappings, the steward to check them, and the governor to publish validated results. Ambiguous or invalid matches are held with reasons.</p>
+    <p className="mapping-review__note">Governor proposes → Steward validates → Governor publishes. Unresolved mappings stay held.</p>
     <ol className="depo-action-steps" aria-label="Mapping automation stages">
       <li><strong>1. Governor</strong><span>Create saved mapping evidence</span></li>
       <li><strong>2. Steward</strong><span>Check validation, confidence and ambiguity</span></li>
       <li><strong>3. Governor</strong><span>Publish policy-approved mappings</span></li>
     </ol>
-    <p>Policy: validated-only-v1. No individual approval clicks are needed for mappings that pass. Starting the run authorizes publication under this policy using your connected governed access.</p>
+    <p className="mapping-review__note">Starting a run authorizes publication of mappings that pass policy validated-only-v1; individual approval is not required for those mappings.</p>
     <button type="button" style={buttonStyle} disabled={busy || !!automationRun || !ontologyId || !importTaskId || !hasAutomationAccess || !api.automate} onClick={() => invoke(async current => {
       const identity = {approved_by: actor.trim() || 'bridge-automation', approval_token:getCredentialProfile('AGENTIC_APPROVAL_TOKEN')};
       setAutomationStage('Governor → steward → governor workflow running');
@@ -207,20 +208,15 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
         const response = await api.automationStatus(recoveryWorkflowId.trim());
         if (current()) adoptAutomation(response.data);
       })}>Inspect retained mapping workflow</button></div>}
+    </details>
     {message && <p role="alert">{message}</p>}
     {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
     {automationStage !== 'idle' && <p role="status" aria-live="polite">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
-    {policyReport && <div role="status"><strong>Steward decision:</strong> {policyReport.accepted_ids?.length || 0} policy-approved; {policyReport.held_count} held. <small>Workflow: {automationRun?.run_id}</small>
+    {preview && <MappingReviewTable candidates={preview.candidates} decisions={policyReport?.decisions || []} />}
+    {policyReport && <details><summary>Steward policy and assessment scope</summary>
       <DecisionPolicyAssessment report={policyReport.decision_policy} />
       {policyReport.governance && <p>Scope: instance classification candidates. This assessment does not establish full ABox SHACL conformance or identity equivalence. Source task: {policyReport.governance.provenance?.import_task_id}. No automatic predicate changes were applied.</p>}
-      <details><summary>Why mappings were held</summary>{policyReport.decisions.filter(item => item.decision === 'hold').map(item => <p key={item.candidate_id}>{preview?.candidates.find(row => row.candidate_id === item.candidate_id)?.source_term || item.candidate_id}: {item.reasons.map(explainHoldReason).join(' ')}</p>)}</details>
-    </div>}
-    {preview && <section aria-label="Mapping guidance">
-      <h4>Understand the proposed mappings</h4>
-      <p>The Governor coordinates the saved preview; the Steward checks publication policy. These explanations use recorded evidence and do not establish semantic equivalence. A high match score can still be held.</p>
-      {preview.candidates.map(candidate => <MappingExplanation key={candidate.candidate_id} candidate={candidate} candidates={preview.candidates} decisions={policyReport?.decisions || []} />)}
-      <p>To select mappings yourself, open Advanced: manual review below. Leave uncertain mappings unselected.</p>
-    </section>}
+    </details>}
     <WorkflowTaskPanel workflowId="ontology-review-and-bridge-plan" inputs={{ ontology_id: ontologyId, import_task_id: importTaskId }} label="Run ontology agent review" disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onResult={run => setAgentReport(bridgeReviewPayload({ steps: run.traces.map(trace => ({ result: trace.result })) }))} />
     <p>The optional ontology agent review explains source alignment; it does not publish mappings. Its retained evidence appears below when the review completes.</p>
     {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}

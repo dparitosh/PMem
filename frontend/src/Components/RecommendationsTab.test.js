@@ -1,7 +1,7 @@
 import React from 'react';
 import {vi} from 'vitest';
 import {fireEvent,render,screen,waitFor} from '@testing-library/react';
-import RecommendationsTab from './RecommendationsTab';
+import RecommendationsTab from "../features/recommendations/RecommendationsWorkspace.js";
 import {agenticClient} from '../services/agenticApi';
 import {API_METHODS} from '../services/apiClient';
 vi.mock('../services/agenticApi',()=>({agenticClient:{get:vi.fn(),post:vi.fn()}}));
@@ -112,4 +112,16 @@ test('legacy backend cannot present agent completion without the new evidence co
  expect(await screen.findByText(/Agent investigation is awaiting the updated PMem backend/)).toBeVisible();
  expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
  expect(agenticClient.post).not.toHaveBeenCalled();
+});
+
+test('session expiry clears direct graph evidence and rechecks service readiness',async()=>{
+ ready();API_METHODS.recommendations.changeImpact.mockResolvedValue({data:{message:'Previous session evidence'}});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Motor'}});
+ direct();fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ await screen.findAllByText('Previous session evidence');
+ const previous=API_METHODS.recommendations.health.mock.calls.length;
+ fireEvent(window,new Event('depo:session-expired'));
+ await waitFor(()=>expect(screen.queryAllByText('Previous session evidence')).toHaveLength(0));
+ await waitFor(()=>expect(API_METHODS.recommendations.health).toHaveBeenCalledTimes(previous+1));
 });

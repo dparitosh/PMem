@@ -11,6 +11,7 @@ import re
 import copy
 from collections import Counter
 from functools import lru_cache
+from threading import RLock
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from xml.etree import ElementTree as ET
@@ -69,6 +70,8 @@ def _definition(graph: Graph, uri: URIRef) -> str:
 
 
 class OntologyTaxonomyService:
+    # Stripe locks bound coordination memory and coalesce concurrent cold reads.
+    _browse_locks = tuple(RLock() for _ in range(16))
     @staticmethod
     def _cache_key_for_path(file_path: Path) -> Tuple[str, float, int]:
         path = file_path.resolve()
@@ -84,7 +87,7 @@ class OntologyTaxonomyService:
         return OwlreadyOntologyRuntime.inspect_ontology(Path(file_path_str), prefix)
 
     @staticmethod
-    @lru_cache(maxsize=32)
+    @lru_cache(maxsize=4)
     def _cached_taxonomy_payload(
         file_path_str: str,
         mtime: float,
@@ -526,14 +529,17 @@ class OntologyTaxonomyService:
         source_key = cls._cache_key_for_path(source_file_path)
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
 
-        return copy.deepcopy(cls._cached_taxonomy_payload(
-            file_key[0], file_key[1], file_key[2],
-            source_key[0], source_key[1], source_key[2],
-            prefix,
-            str(meta.get("ontology_id") or ""),
-            str(meta.get("ontology_name") or ""),
-            str(meta.get("original_filename") or meta.get("stored_filename") or ""),
-        ))
+        lock = cls._browse_locks[hash(file_key) % len(cls._browse_locks)]
+        with lock:
+            return copy.deepcopy(cls._cached_taxonomy_payload(
+                file_key[0], file_key[1], file_key[2],
+                source_key[0], source_key[1], source_key[2],
+                prefix,
+                str(meta.get("ontology_id") or ""),
+                str(meta.get("ontology_name") or ""),
+                str(meta.get("original_filename") or meta.get("stored_filename") or ""),
+            ))
+
 
     @classmethod
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:

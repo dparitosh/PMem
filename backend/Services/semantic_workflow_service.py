@@ -62,7 +62,7 @@ class SemanticWorkflowService:
     AUTO_APPLY_CONFIDENCE = 0.82
     REVIEW_CONFIDENCE = 0.55
     AMBIGUITY_DELTA = 0.08
-    TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type")
+    TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "source_element_name")
     FALLBACK_FIELDS = ("name",)
     METADATA_FIELDS = (
         ("manifest.filename", "filename", 0.55),
@@ -320,6 +320,13 @@ class SemanticWorkflowService:
             for key in ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "name")
             if row.get(key)
         ]
+        # Imported XML entities carry provenance and reference-valued attributes.
+        # Those fields do not turn the entity itself into a relationship or
+        # metadata record. Explicit edge rows still take precedence.
+        if any(value in {"relationship", "relations", "edge", "link"} for value in values):
+            return "Relationship"
+        if row.get("source_element_name") and (row.get("import_row_key") or row.get("id")):
+            return "Entity"
         relationship_markers = (
             "ref",
             "refs",

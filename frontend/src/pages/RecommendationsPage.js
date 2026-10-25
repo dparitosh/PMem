@@ -1,6 +1,6 @@
 import React from 'react';
-import RecommendationsTab from '../Components/RecommendationsTab';
+import RecommendationsWorkspace from "../features/recommendations/RecommendationsWorkspace.js";
 
 export default function RecommendationsPage() {
-  return <RecommendationsTab/>;
+  return <RecommendationsWorkspace/>;
 }

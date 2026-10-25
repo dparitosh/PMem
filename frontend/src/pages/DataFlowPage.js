@@ -58,7 +58,8 @@ function sourceStandard(run) {
 function isPublishableRun(run) {
   return run?.status === 'completed'
     && ['normalize-ceim', 'validate-semantic-batch', 'normalize-unstructured-ceim'].includes(run?.job_type)
-    && run?.output_manifest?.checkpoint_state !== 'advanced';
+    && run?.output_manifest?.checkpoint_state !== 'advanced'
+    && run?.output_manifest?.publication?.status !== 'published';
 }
 
 function Status({ value }) {
@@ -197,7 +198,7 @@ export default function DataFlowPage() {
     const term = filter.trim().toLowerCase();
     const matchingStatus=runs.filter(run=>runStatus==='all'||run.status===runStatus);
     if (!term) return matchingStatus;
-    return matchingStatus.filter((run) => [run.job_id, run.job_type, run.status, run.correlation_id, sourceStandard(run)]
+    return matchingStatus.filter((run) => [run.run_id, run.job_id, run.job_type, run.status, run.correlation_id, sourceStandard(run)]
       .some((value) => String(value || '').toLowerCase().includes(term)));
   }, [filter, runs, runStatus]);
 
@@ -346,7 +347,7 @@ export default function DataFlowPage() {
                     <td><span className="data-flow-source">{sourceStandard(run)}</span></td>
                     <td>{displayTime(run.started_at)}</td>
                     <td>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</td>
-                    <td><Status value={qualityStatus(run)} /></td>
+                    <td><Status value={qualityStatus(run)} />{run.output_manifest?.publication?.status==='published' && <span className="data-flow-status">Published · receipt retained</span>}</td>
                     <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
                   {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
@@ -372,6 +373,8 @@ export default function DataFlowPage() {
               <dt>Attempt</dt><dd>{selectedRun.attempt || 1}</dd>
               <dt>Lease heartbeat</dt><dd>{displayTime(selectedRun.lease?.heartbeat_at)}</dd>
               <dt>Replay lineage</dt><dd>{selectedRun.replay_of || 'Original execution'}</dd>
+              {selectedRun.failure?.message || selectedRun.last_error ? <><dt>Failure</dt><dd>{selectedRun.failure?.message || selectedRun.last_error}</dd></> : null}
+              <dt>Graph publication</dt><dd>{selectedRun.output_manifest?.publication?.status==='published' ? `Receipt retained: ${selectedRun.output_manifest.publication.publication_id}; scope: ${selectedRun.output_manifest.publication.ontology_id}` : 'Not published'}</dd>
               <dt>Output evidence</dt><dd>{selectedRun.output_manifest?.contract || 'Pending output manifest'}</dd>
               <dt>Mapping evidence</dt><dd>{selectedRun.output_manifest?.mapping_digest || 'Not applicable or not recorded'}</dd>
               <dt>Validation</dt><dd>{selectedRun.output_manifest?.validation_status || 'Not applicable or pending'}</dd>

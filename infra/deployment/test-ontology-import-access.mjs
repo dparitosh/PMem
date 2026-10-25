@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const source = fs.readFileSync('frontend/src/Components/DataImportPipeline.js', 'utf8');
+const source = fs.readFileSync('frontend/src/features/import/ImportWorkspace.js', 'utf8');
 const start = source.indexOf('  const startOntologyRegistration = async');
 const end = source.indexOf('  // Map file extension', start);
 const functionSource = source.slice(start, end).trim().replace(/^const startOntologyRegistration = /, '').replace(/;$/, '');
@@ -10,7 +10,10 @@ const file = { fileId: 'one', fileObj: {}, fileType: 'xsd', ontologyName: 'Examp
 async function execute({ publish = false, response, key = 'write-key' } = {}) {
   let statuses = {}, error = '', request;
   const context = {
-    ingestionWriteToken: key, publishOntology: publish, FormData, getCredentialProfile: () => '',
+    ingestionWriteToken: key, publishOntology: publish, FormData, AbortController, CustomEvent, getCredentialProfile: () => '',
+    ontologyRegistrationsRef: { current: new Set() }, xsdFolderBundlesRef: { current: new WeakMap() },
+    importRequestControllersRef: { current: new Set() }, setPublicationPanels: () => {},
+    window: { dispatchEvent: () => {} }, loadOntologyOptions: () => {}, withApiRequestId: message => message,
     API_METHODS: { ontology: { upload: async (...args) => { request = args; return { data: { task_id: 'saved', ontology_id: 'saved' } }; } } },
     apiClient: { post: async (...args) => { request = args; return { data: response }; } },
     buildSemanticServiceUrl: (service, path) => `http://ingestion${path}`,
@@ -36,21 +39,7 @@ assert.equal(blocked.status.error, true);
 assert.match(blocked.error, /Quality failed/);
 assert.equal((await execute({ key: '' })).request, undefined);
 
-const shell = fs.readFileSync('frontend/src/app/AppShell.js', 'utf8');
-const handler = shell.slice(shell.indexOf('onSubmit={async (event) => {') + 'onSubmit={'.length, shell.indexOf('\n                }}', shell.indexOf('onSubmit={async (event) => {')) + '\n                }'.length);
-for (const rejects of [false, true]) {
-  let configured = false, refresh = 0, failure = '';
-  const context = {
-    accessBusy: false, apiKey: 'read-key', subscriptionKey: '', getServiceAuthToken: () => '', getGatewaySubscriptionKey: () => '',
-    setAccessBusy: () => {}, setAccessError: value => { failure = value; },
-    setServiceAuthToken: () => {}, setGatewaySubscriptionKey: () => {}, clearServiceAuthToken: () => {},
-    graphApi: { getOverview: async () => { if (rejects) throw { response: { status: 403 } }; } },
-    setApiAccessConfigured: value => { configured = value; }, setShowApiAccess: () => {},
-    onServiceAuthChange: () => { refresh++; },
-  };
-  await vm.runInNewContext(`(${handler})`, context)({ preventDefault() {} });
-  assert.equal(configured, !rejects);
-  assert.equal(refresh, rejects ? 0 : 1);
-  if (rejects) assert.match(failure, /Graph access rejected/);
-}
-console.log('PASS: actual ontology upload/publication and API access handlers (mocked transports).');
+// Access verification is exercised against the current implementation by
+// frontend/src/services/readAccessVerification.test.js and app/AppShell.test.js.
+// The former AppShell key-entry form no longer exists; do not evaluate its old handler.
+console.log('PASS: actual ontology upload/publication handlers (mocked transports).');

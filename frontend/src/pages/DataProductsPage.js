@@ -183,7 +183,7 @@ export default function DataProductsPage({ mode = 'products' }) {
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}
       <p>Select a row to inspect ownership, readiness, source evidence and delivery.</p>
-      <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={columns} height={320} showFilter={false} onRowClicked={event=>{const row=event.data;if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />
+      <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={columns} height={320} showFilter={false} onRowClicked={row=>{if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />
       <label htmlFor="product-detail">Product details and versions</label>
       <select style={{padding:8,margin:8}} id="product-detail" value={selected} onChange={event=>showDetail(event.target.value)}>
         <option value="">Select a product</option>{keys.map(key=><option key={key} value={key}>{key}</option>)}

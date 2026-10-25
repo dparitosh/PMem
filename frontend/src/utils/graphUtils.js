@@ -101,6 +101,8 @@ const STEP_INSTANCE_LABELS = new Set([
   'surface_texture_representation',
 ]);
 
+const CEIM_INSTANCE_TYPES = new Set(['Product','ProductRevision','Part','Assembly','Requirement','QualityMeasurement','Document','Change','Configuration','Test','Process','Resource','Feature','Characteristic','Datum','DatumReferenceFrame','PMIAnnotation','GeometryBody'].map(name=>'https://depo.example.org/ceim/0.1/'+name));
+
 export const isCadBusinessObjectNode = (node) => {
   if (!node) return false;
   const labels = Array.isArray(node?.labels)
@@ -108,7 +110,8 @@ export const isCadBusinessObjectNode = (node) => {
     : [];
   const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
   const semanticRole = String(props.semantic_role || '').trim().toLowerCase();
-  return Boolean(props.is_cad_business_object)
+  const rdfTypes = Array.isArray(props.rdf_types) ? props.rdf_types : [];
+  return rdfTypes.some(type=>CEIM_INSTANCE_TYPES.has(type)) || (props.is_cad_business_object === true || props.is_cad_business_object === 'true')
     || CAD_SEMANTIC_ROLES.has(semanticRole)
     || labels.some((label) => STEP_INSTANCE_LABELS.has(label));
 };
@@ -376,7 +379,7 @@ const collapseBridgeNodes = (nodes = [], links = [], options = {}) => {
     const sourceId = getLinkEndpointId(link.source);
     const targetId = getLinkEndpointId(link.target);
     if (!sourceId || !targetId || sourceId === targetId) return;
-    const key = `${sourceId}|${targetId}|${link.type}`;
+    const key = buildLinkSignature(link);
     if (seenLinkKeys.has(key)) return;
     seenLinkKeys.add(key);
     projectedLinks.push({
@@ -446,6 +449,13 @@ export const buildLinkSignature = (link) => {
   if (!sourceId || !targetId) return null;
   const type = normalizeRelationshipType(link?.type || link?.properties?.raw_type || '');
   if (!type) return null;
+  // Projected paths are undirected evidence, identified by their carrier record.
+  // Never merge distinct source paths just because their displayed type matches.
+  if (link?.properties?.collapsed) {
+    const endpoints = [sourceId, targetId].sort();
+    return JSON.stringify(['source-path', ...endpoints,
+      link.properties.via_node_id || link.elementId]);
+  }
   return `${sourceId}:${targetId}:${type}`;
 };
 
@@ -627,7 +637,7 @@ export const validateConnectivity = (data = { nodes: [], links: [] }) => {
 };
 
 export const normalizeGraphDataset = (payload, options = {}) => {
-  const { collapseHiddenBridges = false } = options;
+  const { collapseHiddenBridges = false, preserveRelationshipCarriers = false } = options;
   const normalizedRaw = normalizeRawDataset(payload);
   if (collapseHiddenBridges) {
     return { ...normalizedRaw, ...collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
@@ -637,7 +647,7 @@ export const normalizeGraphDataset = (payload, options = {}) => {
   }
 
   const containsRelationshipCarrier = normalizedRaw.nodes.some((node) => isRelationshipCarrierNode(node));
-  if (containsRelationshipCarrier) {
+  if (containsRelationshipCarrier && !preserveRelationshipCarriers) {
     return { ...normalizedRaw, ...collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
       collapseMetadataWrappers: false,
       collapseRelationshipCarriers: true,

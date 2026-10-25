@@ -5,12 +5,14 @@ const state = vi.hoisted(() => ({ rows:[], taxonomy:vi.fn(), dictionary:vi.fn(),
 vi.mock('../services/ontologyMergeAgent',()=>({ontologyMergeAgent:{preview:state.preview,evaluate:state.evaluate,apply:vi.fn()}}));
 vi.mock('../services/serviceAuth',async()=>({...await vi.importActual('../services/serviceAuth'),getCredentialProfile:()=> 'test-token'}));
 vi.mock('../contexts/OntologyContext', () => ({useOntologies:()=>({ontologies:state.rows,loading:false,error:null})}));
-vi.mock('../widgets/DataGridWidget', () => ({default:({title,rows=[]})=><section aria-label={title} data-count={rows.length}/> }));
+vi.mock('../widgets/DataGridWidget', () => ({default:({title,ariaLabel,rows=[]})=><section aria-label={ariaLabel || title} data-count={rows.length}/> }));
 vi.mock('../services/apiClient', async () => {
   const actual = await vi.importActual('../services/apiClient');
   return {...actual, API_METHODS:{...actual.API_METHODS,ontology:{...actual.API_METHODS.ontology,governedMergeStatus:state.status,getTaxonomy:state.taxonomy,getDataDictionary:state.dictionary,getMappings:state.mappings}}};
 });
-import OntologyMapper, {ProtegeOntologyBrowser, collectBridgeTargetOptions, normalizeBridgeMappingRow} from './OntologyMapper';
+import OntologyMapper from "../features/ontology/OntologyWorkspace.js";
+import { ProtegeOntologyBrowser } from '../features/ontology/OntologyBrowser';
+import { collectBridgeTargetOptions, normalizeBridgeMappingRow } from '../features/ontology/services/ontologyBridgePresentation';
 
 test('bridge targets preserve distinct IRIs for duplicate labels',()=>{
  const rows=collectBridgeTargetOptions({classes:[{iri:'urn:a',label:'Part'},{iri:'urn:A',label:'Part'},{iri:'urn:b',label:'Part'}]});
@@ -30,7 +32,7 @@ test('vocabulary timeout does not hide instance agents or the ontology merge wor
  await screen.findByRole('option',{name:/Target.*target-id/});
  fireEvent.click(screen.getByRole('tab',{name:'2. Semantic Bridge'}));
  expect(await screen.findByText(/Vocabulary loading failed/)).toBeVisible();
- expect(screen.getByRole('heading',{name:'Automated instance mapping'})).toBeVisible();
+ expect(screen.getByText(/Mapping workflow ·/)).toBeVisible();
  fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
  expect(await screen.findByRole('combobox',{name:'Source ontology'})).toBeVisible();
  expect(screen.getByRole('region',{name:'Agent mapping proposals'})).toBeVisible();
@@ -96,7 +98,7 @@ test('initial taxonomy loads a visible default without visiting vocabulary and r
   state.taxonomy.mockResolvedValue({data:{nodes:[{term_id:'urn:Part',label:'Part',kind:'class',source:'rdf-class'}],edges:[]}});
   render(<OntologyMapper/>);
   await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active ontology'})).toHaveValue('published-id'));
-  await waitFor(()=>expect(state.taxonomy).toHaveBeenCalledWith('published-id',expect.objectContaining({signal:expect.any(AbortSignal)})));
+  await waitFor(()=>expect(state.taxonomy).toHaveBeenCalledWith('published-id',expect.objectContaining({signal:expect.any(AbortSignal),timeout:120000})));
   expect(await screen.findByRole('region',{name:'Classes (1)'})).toBeInTheDocument();
   expect(state.dictionary).not.toHaveBeenCalled();
   fireEvent.change(screen.getByRole('combobox',{name:'Active ontology'}),{target:{value:''}});
@@ -180,4 +182,27 @@ test('an empty registry gives an import path rather than a service outage warnin
  expect(await screen.findByRole('link',{name:'Import ontology versions'})).toHaveAttribute('href','#/import');
  expect(screen.queryByText('Ontology service unavailable · Show details')).not.toBeInTheDocument();
  expect(screen.getByText(/Register at least two ontology versions/)).toBeVisible();
+});
+
+
+test('an empty registry does not display invented zero-valued OWL inventory',async()=>{
+ state.rows=[];
+ render(<OntologyMapper/>);
+ await screen.findByText('Select an available ontology to inspect its classes, properties and hierarchy.');
+ expect(screen.queryByText('OWL Browser')).toBeNull();
+ expect(screen.getByRole('button',{name:'Refresh ontology'})).toBeEnabled();
+});
+
+test('refresh reloads the active ontology without changing the selected identity',async()=>{
+ window.location.hash='#/ontology?target=target-id';
+ state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[]}});
+ state.dictionary.mockResolvedValue({data:{entities:{},relationships:{},properties:{}}});
+ render(<OntologyMapper/>);
+ const button=await screen.findByRole('button',{name:'Refresh ontology'});
+ await waitFor(()=>expect(button).toBeEnabled());
+ const before=state.taxonomy.mock.calls.length;
+ fireEvent.click(button);
+ await waitFor(()=>expect(state.taxonomy.mock.calls.length).toBeGreaterThan(before));
+ expect(screen.getByRole('combobox',{name:'Active ontology'})).toHaveValue('target-id');
 });

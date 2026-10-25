@@ -5,7 +5,7 @@ import DataProductsPage from './DataProductsPage';
 import { readProductCollection } from '../services/productService';
 import { dataPipelineAPI, apiClient } from '../services/apiClient';
 vi.mock('@siemens/ix-react', () => ({IxButton: ({children, ...props}) => <button {...props}>{children}</button>}));
-vi.mock('../widgets/RegistryWidget', () => ({default: ({title}) => <h3>{title}</h3>}));
+vi.mock('../widgets/RegistryWidget', () => ({default: ({title,rows=[],onRowClicked}) => <><h3>{title}</h3>{rows.map(row=><button key={row.product_id+row.version} onClick={()=>onRowClicked?.(row)}>Open row {row.product_id}</button>)}</>}));
 vi.mock('../contexts/OntologyContext', () => ({useOntologies: () => ({ontologies:[],loading:false})}));
 vi.mock('../services/apiClient', () => ({apiClient:{get:vi.fn()},dataPipelineAPI:{getRun:vi.fn()}}));
 vi.mock('../services/productService', () => ({readProductCollection:vi.fn(),PRODUCT_REFRESH_MS:15000,PRODUCT_CHANGED_EVENT:'depo:products-changed'}));
@@ -81,4 +81,15 @@ it('catalog starts with ingested sources and keeps product creation behind its w
  expect(await screen.findByRole('button',{name:'Browse ingested sources'})).toBeVisible();
  fireEvent.click(screen.getByRole('button',{name:'Browse ingested sources'}));
  expect(screen.getByRole('tab',{name:'Ingested sources'})).toHaveAttribute('aria-selected','true');
+});
+
+
+it.each(['products','catalog'])('table row selection opens %s details using the shared row callback',async mode=>{
+  readProductCollection.mockResolvedValue({rows:[{product_id:'selected',version:'1'}],total:1,warning:''});
+  apiClient.get.mockResolvedValue({data:{name:'Selected product details'}});
+  render(<DataProductsPage mode={mode}/>);
+  if(mode==='catalog') fireEvent.click(screen.getByRole('tab',{name:'Published products'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Open row selected'}));
+  expect(await screen.findByRole('heading',{name:'Selected product details'})).toBeVisible();
+  expect(screen.getByLabelText('Product details and versions')).toHaveValue(mode==='catalog'?'selected':'selected:1');
 });

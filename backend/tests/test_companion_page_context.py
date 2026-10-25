@@ -39,3 +39,15 @@ def test_unsupported_page_does_not_invent_a_service_connector(monkeypatch):
     read=AsyncMock();monkeypatch.setattr(context,'_read_json',read)
     assert asyncio.run(context.page_context('status',page='admin',headers={}))['status']=='not_requested'
     read.assert_not_called()
+
+
+def test_followup_scope_matches_history_scope_and_ignores_display_metadata():
+    from backend.agentic_service.context_scope import same_companion_scope
+    selected = {'ontology':'ap242-v2', 'ontology_prefix':'ap242', 'page':'ontology'}
+    previous = {**selected, 'label':'untrusted display label'}
+    assert same_companion_scope(previous, selected)
+    for key in selected:
+        changed = {**selected, key:'different'}
+        assert not same_companion_scope(previous, changed)
+        assert retrieval_query('its mappings', [{'user_request':'prior question', 'graph_context':previous}], changed) == 'its mappings'
+    assert retrieval_query('its mappings', [{'user_request':'prior question', 'graph_context':previous}], selected) == 'prior question its mappings'

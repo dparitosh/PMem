@@ -6,6 +6,7 @@ not claim geometric-kernel reconstruction or Part-21-to-Part-28 conversion.
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
@@ -21,7 +22,7 @@ def _record(source_type: str, item: Any) -> dict[str, Any]:
     attributes = {
         "name": str(getattr(item, "name", "") or ""),
         "description": str(getattr(item, "description", "") or ""),
-        "external_id": str(getattr(item, "external_id", "") or ""),
+        "external_id": str(getattr(item, "external_id", "") or source_id),
         "source_entity": str(getattr(item, 'entity_type', '') or getattr(item, 'dimension_type', '') or getattr(item, 'tolerance_type', '') or getattr(item, 'annotation_type', '') or getattr(item, 'finish_type', '')),
     }
     if source_type == "dimension":
@@ -133,6 +134,55 @@ def ap242_to_ceim_batch(content: bytes, *, filename: str = "source.stp", ceim: C
     if not entities:
         raise ValueError('AP242 source contains no supported semantic entities')
 
+    # Source references/containment remain TRACE_TO evidence, not inferred semantics.
+    def owner(step_id):
+        visited=set()
+        while step_id and step_id not in visited:
+            if str(step_id) in emitted: return step_id
+            visited.add(step_id)
+            row=document.entity_map.get(step_id)
+            step_id=row.parent_step_id if row else None
+        return None
+
+    for row in document.entities:
+        source=owner(row.step_id)
+        if source:
+            for target in row.ref_ids:
+                if str(target) in emitted and target!=source:
+                    relationships.append(active_contract.normalize_relationship(standard='ap242',record={
+                        'source_type':'source_reference','source_id':str(source),'target_id':str(target),
+                        'source_key':f'STEP:#{row.step_id}:explicit-reference'}))
+        if document.metadata.format=='stpx' and str(row.step_id) in emitted:
+            parent=owner(row.parent_step_id)
+            if parent and parent!=row.step_id:
+                relationships.append(active_contract.normalize_relationship(standard='ap242',record={
+                    'source_type':'source_containment','source_id':str(parent),'target_id':str(row.step_id),
+                    'source_key':f'XML:#{row.step_id}:contained-by:#{parent}'}))
+    if document.metadata.format=='stpx':
+        names={}
+        for row in document.entities:
+            if not row.text_value: continue
+            parent=row.parent_step_id; under_name=False
+            while parent and str(parent) not in emitted:
+                ancestor=document.entity_map.get(parent)
+                if not ancestor: break
+                under_name=under_name or ancestor.entity_type=='NAME'
+                parent=ancestor.parent_step_id
+            if under_name and parent: names.setdefault(str(parent),row.text_value)
+        for entity in entities:
+            source_id=str(entity['provenance']['source_id']); row=document.entity_map[int(source_id)]
+            entity['provenance']['source_identifier']=row.source_identifier
+            entity['provenance']['source_identifier_kind']=row.source_identifier_kind
+            if source_id in names: entity['properties']['name']=names[source_id]
+
+    # Part-21 #numbers and Part-28 synthetic ids are document-local. Content
+    # scope prevents unrelated files from overwriting the same CAD:#number.
+    digest=hashlib.sha256(content).hexdigest()
+    ids={entity['id']:f"ap242:document:{digest}:{entity['id']}" for entity in entities}
+    entities=[{**entity,'id':ids[entity['id']], 'provenance':{
+        **entity['provenance'],'source_document_sha256':digest}} for entity in entities]
+    relationships=[{**edge,'source_id':ids[edge['source_id']], 'target_id':ids[edge['target_id']],
+        'provenance':{**edge['provenance'],'source_document_sha256':digest}} for edge in relationships]
     return {
         "standard": "ap242", "representation": "normalized-ceim-v1",
         "ceim_version": active_contract.version, "entities": entities, "relationships": relationships,

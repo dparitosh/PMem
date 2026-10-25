@@ -298,7 +298,7 @@ export default function MetadataRegistryPage() {
           <button type="button" disabled={transitioningAssetIds.has(governanceAction.asset.asset_id)} onClick={() => setGovernanceAction(null)}>Cancel</button>
         </form>
       </section>}
-      <section className="depo-panel">
+      <section className="depo-panel depo-panel--workspace">
         <div className="depo-panel__header">
           <div>
             <div className="depo-panel__title">Metadata Registry</div>

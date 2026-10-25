@@ -108,6 +108,10 @@ async def enqueue(payload, request, recovery=None):
               'traces': recovery['traces'] if recovery else []}
     from .page_tasks import page_binding
     record.update(page_binding(record['owner'], command.get('page_context')))
+    from .context_envelope import assemble
+    record['context_envelope'] = assemble(owner=record['owner'], run_id=record['run_id'],
+        purpose='approved_workflow', context=command.get('page_context') or {},
+        deadline_at=record['deadline_at'], contract_digest=record['workflow_digest'])
     record.pop('_expected_record',None)
     if recovery:
         if not await routes._agent_io(routes.workflow_store.compare_and_put,record['run_id'],recovery['_expected_record'],record):
@@ -126,6 +130,14 @@ async def execute_candidate(record):
     run_id = record['run_id']
     if record.get('execution_mode') != 'worker' or record.get('status') not in {'queued','running','interrupted'}: return
     if record.get('reconciliation_required') or (record.get('pending_step') or {}).get('mutates') or record.get('compensations'): return
+    from .context_envelope import verify
+    try:
+        verify(record, context=(record.get('execution_payload') or {}).get('page_context') or {},
+               contract_digest=record.get('workflow_digest', ''))
+    except (ValueError, KeyError, TypeError):
+        await routes._agent_io(routes.workflow_store.compare_and_put, run_id, record,
+            {**record, 'status': 'blocked', 'error_type': 'WorkerContextChanged'})
+        return
     if datetime.now(timezone.utc) >= datetime.fromisoformat(record['deadline_at']):
         await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,{**record,'status':'timed_out','error_type':'QueueDeadlineElapsed','updated_at':datetime.now(timezone.utc).isoformat()})
         return

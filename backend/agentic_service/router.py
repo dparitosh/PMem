@@ -65,6 +65,12 @@ async def memory_status(request: Request):
     graph_read_identity(request)
     return await _agent_io(AgentMemoryService.status, probe=True)
 
+
+@router.get('/memory/maintenance', summary='Read the latest bounded memory-maintenance receipt', dependencies=[Depends(graph_read_identity)])
+async def memory_maintenance_status():
+    record = await _agent_io(PostgresRegistry('agentic_memory_maintenance').get, 'latest')
+    return record or {'status': 'not_run', 'steps': []}
+
 class Catalog:
     def __init__(self) -> None:
         configured = os.getenv("AGENTIC_CATALOG_PATH", "")
@@ -328,7 +334,9 @@ async def companion_history(session_id: str, request: Request, ontology_id: str 
     actor = graph_read_identity(request)
     session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
     turns = await run_in_threadpool(_session_turns, session)
-    turns = [turn for turn in turns if (turn.get('graph_context') or {}).get('ontology','') == ontology_id and (turn.get('graph_context') or {}).get('ontology_prefix','') == ontology_prefix and (turn.get('graph_context') or {}).get('page','') == page]
+    from .context_scope import same_companion_scope
+    selected = {'ontology': ontology_id, 'ontology_prefix': ontology_prefix, 'page': page}
+    turns = [turn for turn in turns if same_companion_scope(turn.get('graph_context'), selected)]
     return {'session_id': session_id, 'turns': [
         {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'answerable', 'retrieval', 'graph_context', 'finished_at')}
         for item in reversed(turns)]}
@@ -373,21 +381,39 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
                 or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
                 or not isinstance(result.get('answerable'), bool)):
             raise RuntimeError('Knowledge companion returned an invalid evidence response')
-        await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
-            user_message=message, assistant_response=result['response'], generation=result.get('generation'))
         retained_id = 'companion-turn-' + observation['run_id']
+        from .context_envelope import assemble
+        selected_context = payload.get('graph_context') or {}
+        envelope = assemble(owner=session['owner'] if session.get('owner') else sessions.owner(request, actor),
+            run_id=observation['run_id'], purpose='knowledge_companion',
+            context={'ontology_id': selected_context.get('ontology', ''),
+                     'ontology_prefix': selected_context.get('ontology_prefix', '')},
+            deadline_at=session['expires_at'])
         await _agent_io(companion_job_store.put, retained_id, {
             'job_id': retained_id, 'status': 'completed', 'session_id': session['session_id'],
             'owner': sessions.owner(request, graph_read_identity(request)),
+            'context_envelope': envelope,
             'user_request': message, 'response': result['response'], 'generation': result.get('generation'),
             'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'retrieval': result.get('retrieval'), 'graph_context': payload.get('graph_context') or {}, 'finished_at': _now()})
+        # PostgreSQL evidence is mandatory. Optional graph enrichment must never
+        # prevent retention or turn a completed answer into a failed execution.
+        memory_status = 'disabled'
+        try:
+            if AgentMemoryService.enabled():
+                written = await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
+                    user_message=message, assistant_response=result['response'], generation=result.get('generation'))
+                memory_status = 'available' if written else 'unavailable'
+        except Exception:
+            memory_status = 'unavailable'
         await _agent_io(_finish_observation,
             observation,
             observed_at,
             status="completed",
             evidence_count=len(result.get("evidence") or []),
         )
-        return {**result, 'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
+        return {**result, 'retention': {'status': 'retained', 'backend': 'postgresql', 'record_id': retained_id},
+                'memory_enrichment': {'status': memory_status, 'required': False},
+                'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
                 'session_idle_seconds': int(bounded_timeout_seconds('AGENT_SESSION_IDLE_SECONDS', default=1800, maximum=86400)), 'mode': 'evidence-grounded'}
     except BaseException as exc:
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
@@ -419,7 +445,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
     if record.get('owner') != sessions.owner(request, graph_read_identity(request)):
         raise HTTPException(403, 'Chat job belongs to another identity')
     # Reading an owned retained result does not reopen its conversation session.
-    return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
+    return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'context_envelope'}}
 
 
 @router.get("/chat/health")
@@ -567,6 +593,12 @@ def plan(payload: AgentPlanBody) -> dict:
 def workflow_plan(payload: WorkflowPlanBody) -> dict:
     try:
         workflow = catalog.item("workflows", str(payload["workflow_id"]))
+        governance = workflow.get('governance')
+        if governance is not None:
+            from .catalog_contract import validate_procedure_governance
+            validate_procedure_governance(governance)
+            if governance['status'] != 'approved':
+                raise ValueError('Procedure is proposed or retired; select an approved version')
         steps = []
         for index, step in enumerate(workflow.get("steps", []), start=1):
             result = plan(step)
@@ -1037,7 +1069,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
         record.update(status='completed', finished_at=_now(), updated_at=_now())
         await _persist_workflow(record)
         await _agent_io(_finish_observation, observation, observed_at, status='completed')
-        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}}
+        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints', 'context_envelope'}}
     except BaseException as exc:
         status = 'cancelled' if isinstance(exc, WorkflowCancelled) else 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         if record is not None:
@@ -1071,7 +1103,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
             except Exception:
                 logger.exception('Unable to persist terminal workflow telemetry')
         if isinstance(exc, WorkflowCancelled) and record:
-            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}}
+            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints', 'context_envelope'}}
         if isinstance(exc, (KeyError, ValueError, TypeError)):
             raise HTTPException(422, str(exc), headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
         if isinstance(exc, TimeoutError):

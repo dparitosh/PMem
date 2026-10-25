@@ -45,3 +45,7 @@
   .qif-digital-thread__heading { display: grid; }
   .qif-digital-thread__stages { grid-template-columns: 1fr; }
 }
+
+.qif-digital-thread__guide { margin: 12px 0; border-top: 1px solid var(--ui-border, #d9e2ec); padding-top: 10px; }
+.qif-digital-thread__guide > summary { cursor: pointer; font-weight: 600; }
+.qif-digital-thread__guide > summary:focus-visible { outline: 2px solid var(--ui-primary, #005a9c); outline-offset: 3px; }

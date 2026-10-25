@@ -223,11 +223,26 @@ def data_dictionary(ontology_id: str) -> dict:
             "data": {"entities": entities, "properties": properties, "relationships": relationships}}
 
 
+def bounded_taxonomy(payload: dict, node_limit: int = 10000, edge_limit: int = 20000) -> dict:
+    """Bound only the browser response; retained inventory/mapping stays complete."""
+    nodes, edges = payload.get('nodes', []), payload.get('edges', [])
+    # Keep declared terms ahead of anonymous expression/literal expansion.
+    priority = {'class': 0, 'property': 1, 'datatype': 2, 'individual': 3}
+    kept = sorted(nodes, key=lambda n: priority.get(n.get('kind'), 4))[:node_limit]
+    ids = {n['term_id'] for n in kept}
+    links = [e for e in edges if e.get('source_term') in ids and e.get('target_term') in ids][:edge_limit]
+    summary = {**payload.get('summary', {}), 'terms': len(kept), 'taxonomy_links': len(links),
+               'total_terms': payload.get('summary', {}).get('total_terms', len(nodes)),
+               'total_taxonomy_links': payload.get('summary', {}).get('total_taxonomy_links', len(edges)),
+               'truncated': bool(payload.get('summary', {}).get('truncated') or len(kept)<len(nodes) or len(links)<len(edges))}
+    return {**payload, 'nodes': kept, 'edges': links, 'summary': summary}
+
+
 @router.get("/{ontology_id}/taxonomy")
 def taxonomy(ontology_id: str) -> dict:
     resolved_id = _resolve_ontology_id(ontology_id)
     try:
-        return OntologyTaxonomyService.get_taxonomy(resolved_id)
+        return bounded_taxonomy(OntologyTaxonomyService.get_taxonomy(resolved_id))
     except ValueError:
         # The graph projection is indexed by ontology prefix, whereas the API
         # receives an immutable upload id. Resolve the prefix before falling

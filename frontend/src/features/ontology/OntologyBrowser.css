@@ -1,0 +1,27 @@
+.ontology-browser { min-width: 0; max-width: 100%; }
+.ontology-browser-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ontology-browser-inspector { grid-template-columns: minmax(0, 1.1fr) repeat(2, minmax(80px, 0.4fr)) minmax(0, 1.5fr); }
+.ontology-browser-inspector > * { min-width: 0; }
+@media (max-width: 900px) {
+  .ontology-browser-inspector { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .ontology-browser-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ontology-browser-inspector { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* One surface per work area; grids embedded inside it do not add cards. */
+.owl-browser-layout { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); gap: 16px; min-width: 0; align-items: start; }
+.ontology-browser-pane { min-width: 0; overflow: hidden; border: 1px solid var(--ui-border, #d9e2ec); border-radius: 8px; background: var(--ui-surface, #fff); }
+.ontology-browser-table-tabs { padding: 10px 12px 0; border-bottom: 1px solid var(--ui-border, #d9e2ec); }
+.ontology-browser [hidden] { display: none !important; }
+@media (max-width: 1000px) { .owl-browser-layout { grid-template-columns: minmax(0, 1fr); } }
+.owl-browser-layout { align-items: stretch; grid-template-rows: auto auto; }
+.ontology-browser-pane { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; }
+.ontology-browser-pane-heading { padding: 12px 16px; }
+.ontology-browser-pane-heading h3 { margin: 0; font-size: .9375rem; }
+.ontology-browser-pane-heading p { margin: 6px 0 0; font-size: .8125rem; color: var(--ui-muted, #526176); }
+.ontology-browser-pane-grid { padding: 0 10px 10px; min-width: 0; }
+.ontology-browser-table-tabs { border: 0; padding: 0; display: flex; justify-content: flex-end; }
+.ontology-browser .ag-paging-panel { min-height: 76px; height: 76px; }
+@media (max-width: 1000px) { .ontology-browser-pane { grid-row: auto; grid-template-rows: auto auto; } .ontology-browser-table-tabs { justify-content: flex-start; } }

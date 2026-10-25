@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, patch
 from backend.agentic_service.durable_workflows import credential_snapshot, transport_snapshot, clean_command, execute_candidate, enqueue, _worker_loop
 from backend.agentic_service.recovery import fingerprint, prepare_recovery
 from backend.agentic_service.workflow_receipts import compensation_plan, verify_product_receipt
+# Load real boundary modules before individual fixtures substitute FastAPI.
+# This suite must also pass alone, without another test importing the router.
+from backend.agentic_service import page_tasks, context_envelope
 
 
 class Store:

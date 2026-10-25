@@ -223,8 +223,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const res = await API_METHODS.admin.cleanSchema();
       const metadataCleared = res.data?.metadata_cleared ?? 0;
       const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
-      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Import workflows cleared: ${res.data?.import_cleanup?.deleted_count ?? 0}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
-      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || (res.data?.import_cleanup?.status === 'partial' ? 'Import workflow cleanup is incomplete. Inspect service logs and retry.' : 'Graph reset completed, but cleanup is incomplete.') : '';
+      const receipt = res.data?.cleanup_receipt;
+      const progress = receipt ? ` Cleanup ${receipt.run_id}: ${Object.entries(receipt.phases || {}).map(([phase, status]) => `${phase.replaceAll('_', ' ')}: ${status}`).join('; ')}.` : '';
+      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Import workflows cleared: ${res.data?.import_cleanup?.deleted_count ?? 0}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.${progress}`);
+      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || (res.data?.import_cleanup?.status === 'partial' ? 'Import workflow cleanup is incomplete. Review the cleanup receipt and use Clear Import Workflows to reconcile remaining tasks. Do not repeat the graph reset blindly.' : 'Graph reset completed, but cleanup is incomplete.') : '';
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
       await fetchOntologies(true);
@@ -235,7 +237,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
       if (cleanupWarning) setError(cleanupWarning);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Schema cleanup failed.';
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      const cleanupId = err?.response?.headers?.['x-depo-cleanup-id'];
+      const recovery = cleanupId ? ` Cleanup receipt: ${cleanupId}. Inspect its status before any further destructive action.` : '';
+      setError((typeof detail === 'string' ? detail : JSON.stringify(detail)) + recovery);
     } finally {
       setLoading(false);
     }

@@ -10,17 +10,17 @@ import {
   RotateCcw,
   Loader2,
 } from 'lucide-react';
-import OntologyMetadataForm from './OntologyMetadataForm';
-import OntologyPublicationPanel from './OntologyPublicationPanel';
-import { withApiRequestId } from '../utils/apiErrorMessage';
-import { combineXsdFiles } from './xsdFolderBundle';
-import XsdDependencies, { appendXsdDependencies } from './XsdDependencies';
-import { fileSha256 } from '../utils/fileDigest';
-import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
-import { API_METHODS, apiClient, dataPipelineAPI, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
-import { useOntologies } from '../contexts/OntologyContext';
-import { API, buildUrl, buildSemanticServiceUrl, replaceParams } from '../config';
+import OntologyMetadataForm from "../../Components/OntologyMetadataForm";
+import OntologyPublicationPanel from "../../Components/OntologyPublicationPanel";
+import { withApiRequestId } from "../../utils/apiErrorMessage";
+import { combineXsdFiles } from "../../Components/xsdFolderBundle";
+import XsdDependencies, { appendXsdDependencies } from "../../Components/XsdDependencies";
+import { fileSha256 } from "../../utils/fileDigest";
+import SemanticBridgeJobs from "../../Components/ontology/SemanticBridgeJobs";
+import { API_METHODS, apiClient, dataPipelineAPI, getClientSessionId, setClientSessionId } from "../../services/apiClient";
+import { serviceAuthHeaders, getCredentialProfile } from "../../services/serviceAuth";
+import { useOntologies } from "../../contexts/OntologyContext";
+import { API, buildUrl, buildSemanticServiceUrl, replaceParams } from "../../config";
 import {
   backendToFrontendStage,
   buildWorkflowStages,
@@ -33,22 +33,13 @@ import {
   resolveWorkflow,
   supportedFormats,
   workflowCatalog,
-} from '../workflows/workflowEngine';
-import { requireRunManifest, governedRunStatus, pipelineRunLink } from '../workflows/runTracking';
-import useMountedRef from '../hooks/useMountedRef';
-import usePollerRegistry from '../hooks/usePollerRegistry';
-import {
-  isAwaitingImportApproval,
-  importJobState,
-  getFileExtensionFromName,
-  getWorkflowNote,
-  isOntologySourceFile,
-  isResumablePersistedJob,
-  isTerminalPipelineStatus,
-  requiresOntologyMetadataCapture,
-  serializeFileForPersistence,
-} from '../workflows/importPresentation';
-import { UI_COLORS as C } from '../styles/uiTokens';
+} from "../../workflows/workflowEngine";
+import { requireRunManifest, governedRunStatus, pipelineRunLink } from "../../workflows/runTracking";
+import useMountedRef from "../../hooks/useMountedRef";
+import useImportTaskTracking from "./hooks/useImportTaskTracking";
+import ImportLoadReview from "./ImportLoadReview";
+import { importJobState, getFileExtensionFromName, getWorkflowNote, isOntologySourceFile, isResumablePersistedJob, isTerminalPipelineStatus, requiresOntologyMetadataCapture, serializeFileForPersistence } from "../../workflows/importPresentation";
+import { UI_COLORS as C } from "../../styles/uiTokens";
 
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
@@ -70,7 +61,7 @@ function governedSourceProfile(filename) {
   return profiles[extension] || null;
 }
 
-export default function DataImportPipeline() {
+export default function ImportWorkspace() {
   const [files, setFiles] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState({});
   const [error, setError] = useState(null);
@@ -152,7 +143,7 @@ export default function DataImportPipeline() {
   const fileSelectionGeneration = useRef(0);
   const artifactWorkflowRequest = useRef(null);
   const isMountedRef = useMountedRef();
-  const { activePollersRef, clearPoller, schedulePoller } = usePollerRegistry(isMountedRef);
+  const { pollPipelineProgress, clearPoller } = useImportTaskTracking({ isMountedRef, setPipelineStatus, setPreviewsByTask });
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
     loading: availableOntologies.length === 0,
     stale: false,
@@ -258,8 +249,6 @@ export default function DataImportPipeline() {
   useEffect(() => {
     loadOntologyOptions();
   }, [loadOntologyOptions]);
-
-
 
   useEffect(() => {
     const loadWorkflowOptions = async () => {
@@ -801,7 +790,6 @@ export default function DataImportPipeline() {
     }
   };
 
-
   // Map file extension to ontology id (dynamic, not hardcoded)
   const getOntologyForFile = (fileName) => {
     const fileType = inferFileTypeFromExtension(fileName);
@@ -1000,7 +988,7 @@ export default function DataImportPipeline() {
             // task. Keeping it out of taskId prevents preview/commit/export
             // controls from invoking the legacy direct-to-graph endpoints.
             ...(prev[fileId] || {}), ...governedRunStatus(run),
-            stats: result.source_summary || {}, sourceStandard: result.standard, sourceArtifactId: result.source_artifact_id,
+            stats: {...result.source_summary, ...governedRunStatus(run).stats}, sourceStandard: result.standard, sourceArtifactId: result.source_artifact_id,
           },
         }));
         setStartedFiles(prev => {
@@ -1088,198 +1076,6 @@ export default function DataImportPipeline() {
     setPendingMetadataFileId(nextFileId);
     setShowMetadataForm(true);
   }, [files, isMetadataLoading, pendingMetadataQueue, showMetadataForm]);
-
-  const pollPipelineProgress = useCallback(async (taskId, fileId) => {
-    const pollerKey = `${taskId}:${fileId}`;
-    if (activePollersRef.current.has(pollerKey)) {
-      return;
-    }
-    activePollersRef.current.add(pollerKey);
-    const maxAttempts = 600;
-    let attempts = 0;
-
-    const poll = async (signal) => {
-      try {
-        if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
-          clearPoller(pollerKey);
-          return;
-        }
-        const statusUrl = buildUrl(replaceParams(API.import.status, { task_id: taskId }));
-        const res = await apiClient.get(statusUrl, { signal });
-        if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
-          clearPoller(pollerKey);
-          return;
-        }
-        const data = res.data;
-
-        // Task creation is async in backend; treat not_found as transient instead of hard failure.
-        if (data?.status === 'not_found') {
-          if (attempts < maxAttempts) {
-            attempts++;
-            setPipelineStatus(prev => ({
-              ...prev,
-              [fileId]: {
-                ...(prev[fileId] || {}),
-                taskId,
-                stage: 'upload',
-                progress: 5,
-                status: 'processing',
-                message: 'Initializing task...',
-                lastUpdatedAt: new Date().toISOString()
-              }
-            }));
-            schedulePoller(pollerKey, poll, 2000);
-          }
-          return;
-        }
-
-        const mappedStage = backendToFrontendStage[data.current_stage] || data.current_stage || 'upload';
-
-        // F-NEW-8: normalize stats - backend parsers use different key names for entity/rel counts.
-        const rawStats = data.stats || {};
-        const entities_found =
-          data.result?.nodes_created ??
-          rawStats.entities_found ??
-          rawStats.row_count ??
-          rawStats.total_items ??
-          rawStats.element_count;
-        const relationships_found =
-          data.result?.relationships_created ??
-          rawStats.relationships_found ??
-          rawStats.relationship_count;
-        const normalizedStats = {
-          ...rawStats,
-          entities_found,
-          relationships_found,
-        };
-
-        const shaclConforms = data?.result?.shacl_conforms ?? data?.shacl_conforms ?? null;
-        const shaclFile = data?._shacl_file ?? data?.result?._shacl_file ?? null;
-
-        setPipelineStatus(prev => {
-          const previousStatus = prev[fileId] || {};
-          const nextStatus = {
-            ...previousStatus,
-            taskId,
-            stage: mappedStage,
-            backendStage: data.current_stage,
-            progress: data.progress,
-            message: isAwaitingImportApproval(data) ? 'Parsing complete. Review the preview, then choose Load to Neo4j and enter an approver.' : data.message,
-            stats: normalizedStats,
-            status: data.status,
-            committing: typeof data.committing === 'boolean'
-              ? data.committing
-              : ((data.current_stage === 'ingest' || !!data.commit_phase) && data.status !== 'completed' && data.status !== 'failed'),
-            error: data.error ? true : false,
-            completedAt: data.status === 'completed' ? (previousStatus.completedAt || new Date().toLocaleTimeString()) : null,
-            completedAtIso: data.status === 'completed' ? (previousStatus.completedAtIso || new Date().toISOString()) : null,
-            lastUpdatedAt: new Date().toISOString(),
-            commitPhase: data.commit_phase || null,
-            // A previous commit attempt may have failed in this browser state.
-            // The backend's ready_for_commit state is authoritative: the preview
-            // is valid and a new commit may be started, so do not retain the old
-            // retry banner after polling resumes or the task is restored.
-            commitError: data.status === 'ready_for_commit' || data.status === 'completed'
-              ? null
-              : (data.commit_phase === 'error' ? (data.error || 'Commit failed') : null),
-            batchProgress: data.batch_progress || null,
-            commitMetrics: data.commit_metrics || null,
-            shaclConforms,
-            shaclFile,
-            artifact_manifest: data.artifact_manifest,
-            workflow_id: data.workflow_id,
-            resumeExpired: false,
-          };
-          const previousComparable = { ...previousStatus };
-          const nextComparable = { ...nextStatus };
-          delete previousComparable.lastUpdatedAt;
-          delete nextComparable.lastUpdatedAt;
-          if (JSON.stringify(previousComparable) === JSON.stringify(nextComparable)) return prev;
-          return { ...prev, [fileId]: nextStatus };
-        });
-
-        // Auto-set preview data when preview/verify stage or completed is reached
-        if (data.current_stage === 'preview' || data.current_stage === 'verify' || data.status === 'completed') {
-          const statusPreview = {
-            ...data,
-            row_count: normalizedStats.row_count ?? normalizedStats.entities_found ?? 0,
-            columns: normalizedStats.columns || [],
-            sample_rows: [],
-            auto_schema: data.auto_schema || {},
-          };
-          setPreviewsByTask(prev => ({ ...prev, [taskId]: statusPreview }));
-          // Fetch actual preview rows from the preview endpoint
-          try {
-            const previewUrl = buildUrl(replaceParams(API.import.preview, { task_id: taskId }));
-            const previewRes = await apiClient.get(previewUrl, { signal });
-            if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
-              return;
-            }
-            if (previewRes.data) {
-              // F2 FIX: spread preview endpoint fields directly onto previewData so the
-              // modal can read row_count / columns / sample_rows / auto_schema at the top level.
-              // Previously they were nested under .preview which the modal never read.
-              setPreviewsByTask(previews => ({ ...previews, [taskId]: {
-                ...previews[taskId],
-                row_count:   previewRes.data.row_count   ?? previews[taskId]?.row_count   ?? 0,
-                columns:     previewRes.data.columns     || previews[taskId]?.columns     || [],
-                sample_rows: previewRes.data.sample_rows || previews[taskId]?.sample_rows || [],
-                auto_schema: previewRes.data.auto_schema || previews[taskId]?.auto_schema || {},
-              }}));
-            }
-          } catch (_) { /* preview is optional - continue without it */ }
-        }
-
-        // Preview is a stable user decision point. Stop polling until the
-        // user explicitly starts the Neo4j commit, which starts a new poller.
-        if ((data.status === 'ready_for_commit' && !data.committing && data.current_stage !== 'ingest') || data.status === 'completed' || data.status === 'failed') {
-          clearPoller(pollerKey);
-          return;
-        }
-
-        if (attempts < maxAttempts) {
-          attempts++;
-          const nextDelay =
-            data.current_stage === 'ingest' || data.commit_phase
-              ? 1500
-              : 2500;
-          schedulePoller(pollerKey, poll, nextDelay);
-        } else {
-          clearPoller(pollerKey);
-        }
-      } catch (err) {
-        if (signal?.aborted || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
-          clearPoller(pollerKey);
-          return;
-        }
-        if (attempts < maxAttempts) {
-          attempts++;
-          setPipelineStatus(prev => ({
-            ...prev,
-            [fileId]: {
-              ...(prev[fileId] || {}),
-              taskId,
-              message: `Waiting for service response... ${err.message}`,
-              lastUpdatedAt: new Date().toISOString(),
-            }
-          }));
-          schedulePoller(pollerKey, poll, 3000);
-          return;
-        }
-        clearPoller(pollerKey);
-        setPipelineStatus(prev => ({
-          ...prev,
-          [fileId]: { ...prev[fileId], stage: 'error', message: err.message, error: true }
-        }));
-      }
-    };
-
-    const initialController = new AbortController();
-    importRequestControllersRef.current.add(initialController);
-    poll(initialController.signal).finally(() => {
-      importRequestControllersRef.current.delete(initialController);
-    });
-  }, [activePollersRef, clearPoller, isMountedRef, schedulePoller]);
 
   useEffect(() => {
     if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current || !files.length) return;
@@ -1481,7 +1277,6 @@ export default function DataImportPipeline() {
     const approvalToken = getCredentialProfile('INGESTION_WRITE_TOKEN');
     const approvedBy = commitApprover.trim();
     setConfirmingImport(null);
-
 
     // Mark as "loading to Neo4j" in the file card right away
     setPipelineStatus(prev => {
@@ -1961,13 +1756,13 @@ export default function DataImportPipeline() {
   }, [selectedWorkflow]);
 
   return (
-    <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
-      <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
+    <div className={selectedWorkflow === 'instance.link' ? 'import-link-page' : undefined} style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
+      {selectedWorkflow !== 'instance.link' && <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
         <legend>Workflow access</legend>
         <p>Manage and validate keys in <a href="#/admin">Admin / Service credentials</a> before starting uploads or jobs.</p>
         <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register XSD/XMI or OWL/RDF/TTL and request Neo4j publication after review and approval</label>
         <p>{publishOntology ? 'Create ontology registers a draft. Expand Review, approve and publish this ontology to Neo4j beneath its imported row: Submit for review, Approve ontology, then Publish to Neo4j. Already approved ontologies can publish after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but Neo4j is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
-      </fieldset>
+      </fieldset>}
       {/* Ontology Metadata Form Modal */}
       {showMetadataForm && (
         <OntologyMetadataForm
@@ -2006,7 +1801,7 @@ export default function DataImportPipeline() {
       {!showMetadataForm && (
       <div>
       {/* Compact workflow selector */}
-      <div style={{
+      <div className="import-workflow-selector" style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: '6px',
@@ -2217,6 +2012,7 @@ export default function DataImportPipeline() {
           </>
         )}
 
+        {selectedWorkflow !== 'instance.link' && (<>
         <div style={{
           marginTop: '6px',
           display: 'grid',
@@ -2281,8 +2077,10 @@ export default function DataImportPipeline() {
           </div>
         </div>
 
+        </>)}
+
         {!isImportWorkflow(selectedWorkflow) && (
-          <div style={{
+          <div className={selectedWorkflow === 'instance.link' ? 'import-bridge-workspace' : undefined} style={{
             marginTop: '8px',
             border: `1px solid ${C.border}`,
             borderRadius: '4px',
@@ -3684,252 +3482,7 @@ export default function DataImportPipeline() {
       </div>
       )}
 
-      {confirmingImport && previewData && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            background: C.surface,
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '800px',
-            maxHeight: '80vh',
-            overflow: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: C.textPrimary }}>
-                Preview
-              </h3>
-              <button
-                onClick={() => { setConfirmingImport(null);  }}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: C.textMuted,
-                }}
-              >
-                Close
-              </button>
-            </div>
-
-            {/* Preview stats */}
-            <div style={{
-              background: C.bg,
-              border: `1px solid ${C.border}`,
-              borderRadius: '4px',
-              padding: '12px',
-              marginBottom: '16px',
-            }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', fontSize: '12px' }}>
-                <div>
-                  <div style={{ color: C.textMuted, marginBottom: '4px' }}>Total Rows</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primaryText }}>
-                    {previewData.row_count ?? 0}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ color: C.textMuted, marginBottom: '4px' }}>Columns</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primaryText }}>
-                    {(previewData.columns || []).length}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ color: C.textMuted, marginBottom: '4px' }}>Node Labels</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primaryText }}>
-                    {previewData.auto_schema?.nodes?.length || 1}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Column list */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: C.textPrimary, marginBottom: '8px' }}>
-                Columns
-              </div>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '6px',
-              }}>
-                {(previewData.columns || []).map((col, idx) => (
-                  <span
-                    key={`col-${idx}-${col}`}
-                    style={{
-                      background: C.primaryLight,
-                      color: C.primaryText,
-                      padding: '4px 8px',
-                      borderRadius: '3px',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                    }}
-                  >
-                    {col}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Sample rows */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: C.textPrimary, marginBottom: '8px' }}>
-                Sample Data (First 5 Rows)
-              </div>
-              <div style={{
-                background: C.bg,
-                border: `1px solid ${C.border}`,
-                borderRadius: '4px',
-                overflow: 'auto',
-                maxHeight: '200px',
-              }}>
-                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: `1px solid ${C.border}`, background: C.bg }}>
-                      {(previewData.columns || []).slice(0, 5).map((col, colIdx) => (
-                        <th
-                          key={`header-${colIdx}-${col}`}
-                          style={{
-                            padding: '8px',
-                            textAlign: 'left',
-                            fontWeight: '600',
-                            color: C.textPrimary,
-                            borderRight: colIdx < 4 ? `1px solid ${C.border}` : 'none',
-                          }}
-                        >
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(previewData.sample_rows || []).map((row, rowIdx) => (
-                      <tr key={`row-${rowIdx}`} style={{ borderBottom: `1px solid ${C.border}` }}>
-                        {(previewData.columns || []).slice(0, 5).map((col, colIdx) => (
-                          <td
-                            key={`cell-${rowIdx}-${col}`}
-                            style={{
-                              padding: '8px',
-                              borderRight: colIdx < 4 ? `1px solid ${C.border}` : 'none',
-                              color: C.textPrimary,
-                            }}
-                          >
-                            {String(row[col] || '-').substring(0, 30)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Pre-commit checks */}
-            <div style={{
-              background: preCheck?.ready === false ? '#FFEBEE' : preCheck?.ready === true ? '#E8F5E9' : C.bg,
-              border: `1px solid ${preCheck?.ready === false ? '#FFCDD2' : preCheck?.ready === true ? '#C8E6C9' : C.border}`,
-              borderRadius: '6px',
-              padding: '10px 14px',
-              marginBottom: '12px',
-              fontSize: '12px',
-            }}>
-              {preCheck?.loading && (
-                <div style={{ color: C.textSec, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ display: 'inline-block', width: 12, height: 12, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  Checking status...
-                  <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                </div>
-              )}
-              {!preCheck?.loading && preCheck && (
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 700, color: preCheck.ready ? '#067647' : '#B42318' }}>
-                    {preCheck.ready ? 'Ready to commit' : 'Cannot commit'}
-                  </span>
-                  {preCheck.checks?.neo4j && (
-                    <span style={{ color: preCheck.checks.neo4j.ok ? '#067647' : '#B42318' }}>
-                      {preCheck.checks.neo4j.ok ? 'OK' : 'Failed'} Neo4j: {preCheck.checks.neo4j.message || (preCheck.checks.neo4j.ok ? 'Connected' : 'Unreachable')}
-                    </span>
-                  )}
-                  {preCheck.checks?.task && (
-                    <span style={{ color: preCheck.checks.task.ok ? '#067647' : '#B42318' }}>
-                      {preCheck.checks.task.ok ? 'OK' : 'Failed'} Task: {preCheck.checks.task.status}
-                      {preCheck.checks.task.rows ? `  /  ${preCheck.checks.task.rows.toLocaleString()} rows` : ''}
-                    </span>
-                  )}
-                  {!preCheck.ready && preCheck.reason && (
-                    <span style={{ color: '#B42318', fontStyle: 'italic' }}>{preCheck.reason}</span>
-                  )}
-                </div>
-              )}
-              {!preCheck && (
-                <span style={{ color: C.textMuted }}>Checks run before load.</span>
-              )}
-            </div>
-
-            <details style={{ marginBottom: '12px', fontSize: '12px', color: C.textSec }}>
-              <summary>Approval credentials (required by token authentication for loading)</summary>
-              <p style={{ margin: '8px 0' }}>The key is managed in Admin / Service credentials. Enter the approver here; confirmation is still required.</p>
-              <label style={{ display: 'block', marginBottom: '6px' }}>
-                Approver
-                <input aria-label="Import approver" value={commitApprover} onChange={(event) => setCommitApprover(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
-              </label>
-              <label style={{ display: 'block' }}>
-                Approval API key: configured in Admin / Service credentials
-              </label>
-            </details>
-
-            {/* Actions */}
-            <div style={{
-              display: 'flex',
-              gap: '8px',
-              justifyContent: 'flex-end',
-            }}>
-              <button
-                onClick={() => { setConfirmingImport(null);  }}
-                style={{
-                  padding: '8px 16px',
-                  background: C.border,
-                  color: C.textPrimary,
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => commitImport(confirmingImport)}
-                disabled={preCheck?.loading || preCheck?.ready !== true || (getCredentialProfile('INGESTION_WRITE_TOKEN') && !commitApprover.trim())}
-                style={{
-                  padding: '8px 16px',
-                  background: (preCheck?.loading || preCheck?.ready === false) ? C.textMuted : C.green,
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: (preCheck?.loading || preCheck?.ready === false) ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {preCheck?.loading ? 'Checking...' : 'Load to Neo4j'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ImportLoadReview confirmingImport={confirmingImport} previewData={previewData} setConfirmingImport={setConfirmingImport} preCheck={preCheck} commitApprover={commitApprover} setCommitApprover={setCommitApprover} commitImport={commitImport} />
     </div>
   );
 }

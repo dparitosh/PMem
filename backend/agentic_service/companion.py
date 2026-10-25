@@ -89,8 +89,13 @@ class KnowledgeCompanion:
         identities=[node.get('elementId') for node in nodes]
         if any(not isinstance(value,str) or not value.strip() or len(value)>2000 for value in identities) or len(identities)!=len(set(identities)):
             raise RuntimeError('Graph retrieval returned invalid or duplicate evidence identities')
-        if ontology_id and any((node['properties'].get('ontology_id') not in {ontology_id,ontology_prefix} if ontology_prefix else node['properties'].get('ontology_id')!=ontology_id) for node in nodes):
+        if ontology_id and any(node['properties'].get('ontology_id') != ontology_id for node in nodes):
             raise RuntimeError('Graph retrieval returned evidence outside the selected ontology scope')
+        if ontology_prefix and any(node['properties'].get('prefix') != ontology_prefix for node in nodes):
+            raise RuntimeError('Graph retrieval returned evidence outside the selected prefix scope')
+        if any(not isinstance(edge.get('start'), str) or not isinstance(edge.get('end'), str)
+               or edge['start'] not in identities or edge['end'] not in identities for edge in relationships):
+            raise RuntimeError('Graph retrieval returned a relationship outside its evidence resources')
         query_tokens = self._tokens(query)
         scored: list[tuple[int, dict[str, Any]]] = []
         for node in nodes:
@@ -122,6 +127,9 @@ class KnowledgeCompanion:
         evidence = protect(context['evidence'] + evidence)[:26]
         selection_truncated = len(scored)>len(selected) or len(relationships)>len(selected_edges)
         retrieval = {"nodes_examined": len(nodes), "relationships_examined": len(relationships), "truncated": bool((graph.get("view") or {}).get("truncated")), 'graph_status': graph_status, 'mapping_history_status': context['status'], 'page_evidence_status': page_result['status'], 'page':page, 'selection_truncated': selection_truncated, 'selected_resources': len(selected), 'selected_relationships': len(selected_edges), 'answer_scope': 'bounded_retrieval', 'semantic_entailment_verified': False, 'retrieved_at': datetime.now(timezone.utc).isoformat(), 'evidence_sha256': hashlib.sha256(json.dumps(evidence,sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
+        retrieval['page_representation'] = page_result.get('representation', 'not_available')
+        retrieval['page_coverage'] = page_result.get('coverage')
+        retrieval['source_revision_status'] = 'unverified'
         if not evidence:
             return {
                 "status": "no_evidence", "answerable": False,
@@ -148,6 +156,8 @@ class KnowledgeCompanion:
                 description = props.get('definition') or props.get('description') or props.get('comment')
                 if description: response_text += f"\n- {item['label']}: {str(description)[:500]} [evidence:{item['resource_id']}]"
         if retrieval['truncated'] or selection_truncated: response_text += '\n\nThis answer uses a limited evidence selection; it does not establish whole-graph counts, completeness or absence of other matches.'
+        if page_result.get('representation') == 'postgres_business_context':
+            response_text += '\n\nBusiness-context evidence comes from the PostgreSQL-backed Semantica context graph; synchronization with Neo4j is not established.'
         if page_result['status']=='unavailable': response_text+='\n\nThe current page service could not be checked; this answer does not establish its current state.'
         if graph_status == 'unavailable': response_text += '\n\nGraph retrieval is unavailable; this answer uses owning-service records only.'
         if context['status'] == 'unavailable': response_text += '\n\nSaved mapping history could not be checked. Verify ontology service readiness and read access in Admin.'

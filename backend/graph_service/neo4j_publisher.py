@@ -272,6 +272,7 @@ class Neo4jPublisher:
                 "labels": [str(node.get("type") or "resource")],
                 "properties": {
                     **search_properties(node),
+                    "rdf_types": list(node.get("rdf_types") or []),
                     "iri": str(node.get("iri") or node["id"]),
                     "label": str(node.get("label") or node["id"]),
                     "kind": str(node.get("type") or "resource"),
@@ -361,9 +362,12 @@ class Neo4jPublisher:
     def overview(self, *, limit: int = 900) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(
-            "MATCH (n:OntologyResource) RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id "
-            "ORDER BY n.ontology_id, n.label LIMIT $limit",
-            limit=safe_limit,
+            "MATCH (resource:OntologyResource) WITH DISTINCT resource.ontology_id AS scope ORDER BY scope LIMIT 64 "
+            "CALL (scope) { MATCH (n:OntologyResource {ontology_id:scope}) "
+            "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id, n.rdf_types AS rdf_types "
+            "ORDER BY CASE WHEN n.kind IN ['Class','Individual','NamedIndividual'] THEN 0 ELSE 1 END, n.label, id LIMIT $per_scope } "
+            "RETURN id, iri, label, type, ontology_id, rdf_types",
+            per_scope=min(100,safe_limit),
         )
         # Existing ontologies created before the standalone graph service use
         # the domain labels below.  Read them directly when no published
@@ -371,15 +375,25 @@ class Neo4jPublisher:
         # and avoids forcing a destructive graph migration merely to browse an
         # already-ingested ontology.
         legacy = self._session_rows(cypher.LEGACY_OVERVIEW, limit=safe_limit)
-        combined = sorted(nodes + legacy, key=lambda node: (str(node.get('ontology_id') or ''), str(node.get('label') or ''), node['id']))
-        selected = combined[:safe_limit]
-        selected_ids = {node['id'] for node in selected}
-        edges = self._read_edges([node['id'] for node in nodes if node['id'] in selected_ids], limit=safe_limit * 4)
-        edges += self._read_edges([node['id'] for node in legacy if node['id'] in selected_ids], limit=safe_limit * 4, existing=True)
+        instances = self._session_rows(cypher.IMPORTED_INSTANCE_OVERVIEW, limit=safe_limit)
+        unique = {node['id']: node for node in nodes + legacy + instances}
+        combined = sorted(unique.values(), key=lambda node: (str(node.get('ontology_id') or ''), str(node.get('label') or ''), node['id']))
+        # Round-robin scope candidates instead of letting alphabetically first
+        # ontologies consume the complete visible budget.
+        from collections import defaultdict, deque
+        groups=defaultdict(deque)
+        for node in combined: groups[str(node.get('ontology_id') or '')].append(node)
+        selected=[]
+        while len(selected)<safe_limit and any(groups.values()):
+            for group in groups.values():
+                if group and len(selected)<safe_limit: selected.append(group.popleft())
+        # The common edge adapter also retains typed links between imported
+        # instances and published ontology nodes in this bounded selection.
+        edges = self._read_edges([node['id'] for node in selected], limit=safe_limit * 4, existing=True)
         return self._explorer_payload(
             nodes=selected,
             edges=edges[:safe_limit * 4],
-            view={"type": "overview", "source": "published_and_existing_ontology", "limit": safe_limit, "truncated": len(combined) >= safe_limit},
+            view={"type": "overview", "source": "published_existing_and_imported_instances", "limit": safe_limit, "truncated": len(combined) >= safe_limit, "sampling":"round_robin_scope_candidates", "published_scope_limit":64, "per_scope_candidate_limit":min(100,safe_limit)},
         )
 
     @graph_projection_reader
@@ -434,9 +448,10 @@ class Neo4jPublisher:
 
     def _bounded_walk(self, root_id: str, depth: int, limit: int, *, existing: bool = False):
         """Expand one hop at a time; never enumerate every multi-hop path."""
-        condition = cypher.LEGACY_NODE_FILTER.replace('n:', 'neighbor:') if existing else 'neighbor:OntologyResource'
+        existing_filter = '(' + cypher.LEGACY_NODE_FILTER + ') OR (' + cypher.IMPORTED_INSTANCE_FILTER + ')'
+        condition = ('(' + existing_filter + ')').replace('n:', 'neighbor:').replace('n.', 'neighbor.') if existing else 'neighbor:OntologyResource'
         scope = "coalesce(neighbor.ontology_id,neighbor.source_ontology,neighbor.prefix) = coalesce(root.ontology_id,root.source_ontology,root.prefix)" if existing else 'neighbor.ontology_id = root.ontology_id'
-        roots = self._session_rows("MATCH (n) WHERE elementId(n)=$id AND " + condition.replace("neighbor:", "n:") + " RETURN elementId(n) AS id, coalesce(n.iri,n.uri) AS iri, coalesce(n.label,n.name,n.iri,n.uri) AS label, coalesce(n.kind,head(labels(n))) AS type, n.ontology_id AS ontology_id", id=root_id)
+        roots = self._session_rows("MATCH (n) WHERE elementId(n)=$id AND " + condition.replace("neighbor:", "n:").replace("neighbor.", "n.") + " RETURN elementId(n) AS id, coalesce(n.iri,n.uri) AS iri, coalesce(n.label,n.name,n.iri,n.uri) AS label, coalesce(n.kind,head(labels(n))) AS type, n.ontology_id AS ontology_id, n.rdf_types AS rdf_types", id=root_id)
         if not roots:
             return []
         selected = {root_id: roots[0]}
@@ -448,7 +463,7 @@ class Neo4jPublisher:
             rows = self._session_rows(
                 "MATCH (root), (n) WHERE elementId(root)=$root AND elementId(n) IN $frontier "
                 "MATCH (n)--(neighbor) WHERE " + condition + " AND " + scope + " AND NOT elementId(neighbor) IN $seen "
-                "RETURN DISTINCT elementId(neighbor) AS id, coalesce(neighbor.iri,neighbor.uri) AS iri, coalesce(neighbor.label,neighbor.name,neighbor.iri,neighbor.uri) AS label, coalesce(neighbor.kind,head(labels(neighbor))) AS type, neighbor.ontology_id AS ontology_id LIMIT $limit",
+                "RETURN DISTINCT elementId(neighbor) AS id, coalesce(neighbor.iri,neighbor.uri) AS iri, coalesce(neighbor.label,neighbor.name,neighbor.iri,neighbor.uri) AS label, coalesce(neighbor.kind,head(labels(neighbor))) AS type, neighbor.ontology_id AS ontology_id, neighbor.rdf_types AS rdf_types LIMIT $limit",
                 root=root_id, frontier=frontier, seen=list(selected), limit=remaining)
             frontier = []
             for row in rows:

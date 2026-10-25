@@ -14,7 +14,7 @@ export async function combineXsdFiles(selected, available = selected, preflight 
   const ordered = [...selected].sort((a, b) => a.name.localeCompare(b.name, 'en'));
   const selectedPaths = [];
   const selectedFiles = [];
-  let namespace;
+  const entries = [];
   for (const original of ordered) {
     const candidates = available.map((file, index) => ({ file, path: paths[index] }));
     const originalPath = original.webkitRelativePath ? folderPaths([original])[0] : null;
@@ -30,7 +30,30 @@ export async function combineXsdFiles(selected, available = selected, preflight 
     const xml = new DOMParser().parseFromString(text, 'application/xml');
     if (xml.querySelector('parsererror') || xml.documentElement.namespaceURI !== XSD || xml.documentElement.localName !== 'schema') throw new Error(`Invalid XML Schema: ${file.name}`);
     const ns = xml.documentElement.getAttribute('targetNamespace') || '';
-    if (namespace === undefined) { namespace = ns; if (ns) document.documentElement.setAttribute('targetNamespace', ns); }
+    entries.push({ xml, ns, path });
+  }
+  const referenced = new Set();
+  for (const { xml, path } of entries) {
+    for (const ref of Array.from(xml.documentElement.children).filter(node => node.namespaceURI === XSD && ['include', 'import', 'redefine'].includes(node.localName))) {
+      const location = ref.getAttribute('schemaLocation');
+      if (!location) continue;
+      let dependency;
+      if (/^https?:\/\//i.test(location)) {
+        const basename = decodeURIComponent(new URL(location).pathname.split('/').at(-1));
+        const matches = entries.filter(entry => entry.path.split('/').at(-1) === basename);
+        if (matches.length === 1) dependency = matches[0].path;
+      } else {
+        dependency = resolvePath(path, location);
+      }
+      if (dependency && dependency !== path) referenced.add(dependency);
+    }
+  }
+  const roots = entries.filter(entry => !referenced.has(entry.path));
+  const namespaces = new Set((roots.length ? roots : entries).map(entry => entry.ns));
+  if (namespaces.size !== 1) throw new Error('Selected XSDs have multiple independent root namespaces. Select one root schema and supply the others as companion dependencies.');
+  const namespace = [...namespaces][0];
+  if (namespace) document.documentElement.setAttribute('targetNamespace', namespace);
+  for (const { ns, path } of entries) {
     const reference = document.createElementNS(XSD, ns === namespace ? 'xs:include' : 'xs:import');
     if (ns !== namespace && ns) reference.setAttribute('namespace', ns);
     reference.setAttribute('schemaLocation', path);

@@ -4,6 +4,17 @@ from __future__ import annotations
 # Older ingestion writes typed nodes directly, without an OntologyResource
 # projection. Keep its counts distinct from explicit RDF declarations.
 LEGACY_NODE_FILTER = "(n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:OntologyResource AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity"
+# Structural imports are business records even before ontology linking. Require
+# both ingestion identity markers; never broaden overview to every Neo4j node
+# (which would expose worker, memory, credential and audit records).
+IMPORTED_INSTANCE_FILTER = "(n.import_id IS NOT NULL AND n.import_row_key IS NOT NULL) AND NOT (n:OntologyResource OR n:StagedOntologyResource OR n:RetainedOntologyIdentity OR n:OntologyPublication OR n:GraphChunk OR n:DatasheetChunk)"
+IMPORTED_INSTANCE_OVERVIEW = (
+    'MATCH (n) WHERE ' + IMPORTED_INSTANCE_FILTER + ' '
+    'RETURN elementId(n) AS id, coalesce(n.name, n.label, n.iri, n.uri) AS label, '
+    "coalesce(n.element_type, head(labels(n)), 'Individual') AS type, "
+    'n.iri AS iri, coalesce(n.ontology_id, n.source_ontology, n.ontology_prefix) AS ontology_id '
+    'ORDER BY label, id LIMIT $limit'
+)
 LEGACY_SCOPE_FILTER = "(($ontology_id = '' AND $ontology_prefix = '') OR ($ontology_id <> '' AND (n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id)) OR ($ontology_prefix <> '' AND (n.prefix = $ontology_prefix OR n.source_ontology = $ontology_prefix) AND ($ontology_id = '' OR (n.ontology_id IS NULL AND (n.source_ontology IS NULL OR n.source_ontology = $ontology_prefix)))))"
 LEGACY_METRICS = (
     "CALL { MATCH (n) WHERE " + LEGACY_NODE_FILTER + " AND " + LEGACY_SCOPE_FILTER + " "

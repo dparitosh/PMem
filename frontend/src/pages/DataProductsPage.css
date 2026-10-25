@@ -1,5 +1,6 @@
 .product-overview {display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0;}
-.product-overview article,.product-evidence-card {padding:14px;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;background:var(--ui-surface,#fff);}
+.product-overview article {padding:4px 14px;border-left:2px solid var(--ui-border,#d9e2ec);}
+.product-evidence-card {padding:14px;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;background:var(--ui-surface,#fff);}
 .product-overview strong {display:block;font-size:24px;color:var(--ui-primary,#005a9c);}
 .product-evidence-card dl {display:grid;grid-template-columns:minmax(120px,1fr) 2fr;gap:8px;margin:8px 0;}
 .product-evidence-card dt {text-transform:capitalize;color:var(--ui-muted,#66788a);}

@@ -451,10 +451,9 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 .depo-panel {
   background: var(--depo-surface);
   border: 1px solid rgba(139, 160, 184, 0.18);
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 8px 22px rgba(8, 26, 47, 0.05);
-  backdrop-filter: blur(16px);
+  box-shadow: none;
 }
 
 .depo-panel__header {
@@ -479,14 +478,14 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 }
 
 .depo-panel__body {
-  padding: 20px;
+  padding: 16px;
 }
 
 /* Shared workspace rhythm: readable controls, concise headers and bounded copy. */
-.depo-page { gap: 20px; }
+.depo-page { gap: 16px; }
 .depo-widget-grid { gap: 16px; }
 .depo-panel { border-color: var(--ui-border); background: var(--ui-surface); }
-.depo-panel__header { padding: 16px 20px; flex-wrap: wrap; }
+.depo-panel__header { padding: 12px 16px; flex-wrap: wrap; }
 .depo-panel__header :is(h2, h3) { margin: 0; font-size: 18px; line-height: 1.35; }
 .depo-panel__body > p { max-width: 78ch; line-height: 1.65; color: var(--ui-muted); }
 .depo-panel__meta { display: inline; }
@@ -826,3 +825,13 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 .depo-first-product-guide { padding: 1rem; border: 1px solid var(--theme-color-soft-bdr, #c8d3df); border-radius: 8px; overflow-wrap: anywhere; }
 .depo-service-integrations > .depo-first-product-guide { grid-column: 1 / -1; }
 .depo-first-product-guide li { margin: .65rem 0; }
+
+/* Page workspaces use the page surface; reserve cards for independent tasks. */
+.depo-panel--workspace { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.depo-panel--workspace > .depo-panel__header { padding: 0 0 12px; }
+.depo-panel--workspace > .depo-panel__body { padding: 16px 0 0; }
+.depo-registry-widget input:focus-visible { outline: 2px solid var(--ui-primary, #005a9c); outline-offset: 2px; }
+.depo-service-card { display: flex; flex-direction: column; }
+.depo-service-card__link { margin-top: auto; padding-top: 12px; }
+.depo-kpi-cell { min-width: 0; }
+.depo-kpi-cell__label { min-height: 2.8em; }

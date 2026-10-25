@@ -37,8 +37,12 @@ def model_contract():
 
 
 def public(record):
-    return {key: value for key, value in record.items() if key not in
+    result = {key: value for key, value in record.items() if key not in
             {'owner', 'page_owner', 'submission_fingerprint', 'execution_id', 'contract_digest', 'credential_fingerprints', 'transport_fingerprint', 'model_contract'}}
+    if 'context_envelope' in result:
+        from .context_envelope import public as public_context
+        result['context_envelope'] = public_context(result['context_envelope'])
+    return result
 
 
 def owned(run_id, request):
@@ -138,6 +142,16 @@ async def create_goal(agent_id: str, payload: ToolSuggestionBody, request: Reque
               'credential_fingerprints': grant, 'transport_fingerprint': transport_snapshot(),
               'memory_backend': 'postgresql', 'execution_mode': 'worker', 'read_only': True,
               'provider': provider, 'model': model, 'model_contract': model_binding}
+    from .context_envelope import assemble
+    record['context_envelope'] = assemble(owner=owner, run_id=run_id, purpose='read_goal',
+        context=context, deadline_at=record['deadline_at'], contract_digest=record['contract_digest'])
+    from .source_revisions import capture
+    try:
+        record['source_revisions'] = await capture(scope, dict(request.headers))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, 'Ontology revision verification unavailable; no goal was queued') from exc
     retained = await asyncio.to_thread(enqueue, record)
     return public(retained or record)
 
@@ -181,6 +195,8 @@ async def execute_candidate(record):
         await asyncio.to_thread(store.compare_and_put, record['run_id'], record, {**record, 'status': 'timed_out'})
         return
     try:
+        from .context_envelope import verify
+        verify(record, context=record.get('context') or {}, contract_digest=record.get('contract_digest', ''))
         agent, tools = await asyncio.to_thread(selected, record['agent_id'])
         binding = model_contract()
     except (ValueError, KeyError):
@@ -235,6 +251,8 @@ async def execute_candidate(record):
         'Preserve the selected ontology/source scope. Complete using goal.complete with a restrained summary citing '
         'completed observation IDs; report missing evidence and limitations. Do not claim a write or publication.')}
     async def propose(available, scratchpad):
+        from .source_revisions import verify as verify_sources
+        await verify_sources(claimed, dict(request.headers))
         if claimed['model_contract'] != model_contract():
             raise ValueError('Read goal model recipient changed')
         # _proposal_tools supplies the registered service schemas before inference.
@@ -246,6 +264,11 @@ async def execute_candidate(record):
         if engine.contract(current_agent, current_tools) != claimed['contract_digest']:
             raise HTTPException(403, 'Read goal tool contract changed')
         await asyncio.to_thread(verify_grant, claimed['credential_fingerprints'])
+        from .source_revisions import verify as verify_sources
+        try:
+            await verify_sources(claimed, dict(request.headers))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         if claimed['credential_fingerprints'] != credential_snapshot(claimed['credential_fingerprints'].keys()) or claimed['transport_fingerprint'] != transport_snapshot():
             raise HTTPException(403, 'Read goal authorization changed')
         from backend.depo_platform.operations import OperationContext, operation_scope

@@ -1,5 +1,5 @@
 .data-journey {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0;}
-.data-journey a {display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;background:var(--ui-surface,#fff);color:var(--ui-text,#263747);text-decoration:none;min-width:0;}
+.data-journey a {display:flex;align-items:center;gap:10px;padding:10px 8px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--ui-text,#263747);text-decoration:none;min-width:0;}
 .data-journey a:hover {border-color:var(--ui-primary,#006f87);}
 .data-journey a[aria-current="step"] {border-color:var(--ui-primary,#006f87);background:var(--ui-selected,#e9f5f8);}
 .data-journey__number {display:grid;place-items:center;flex:0 0 28px;height:28px;border-radius:50%;background:var(--ui-background,#eef2f6);font-weight:700;}
@@ -10,7 +10,7 @@
 .data-workspace__tabs button[aria-selected="true"] {border-bottom-color:var(--ui-primary,#006f87);color:var(--ui-primary,#006f87);background:var(--ui-surface,#fff);}
 .data-workspace__panel {padding:20px 0;min-width:0;}.data-workspace [hidden] {display:none!important;}
 .data-workspace button:focus-visible,.data-workspace__panel:focus-visible,.data-journey a:focus-visible {outline:2px solid var(--ui-primary,#006f87);outline-offset:3px;}
-.data-cockpit {padding:20px!important;max-width:1600px;margin:0 auto;}
+.data-cockpit {padding:20px!important;max-width:none;margin:0;}
 .data-cockpit__intro {display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--ui-border,#d9e2ec);}
 .data-cockpit__intro h2 {margin:2px 0 6px;font-size:26px;}.data-cockpit__intro p {margin:0;max-width:800px;line-height:1.5;color:var(--ui-muted,#526679);}
 .data-cockpit__eyebrow {font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--ui-primary,#006f87);}
@@ -22,3 +22,13 @@
 .data-cockpit__empty {padding:24px;background:var(--ui-surface,#fff);border:1px dashed var(--ui-border,#b8c7d5);border-radius:8px;}
 @media(max-width:1000px){.data-journey {grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:620px){.data-cockpit {padding:12px!important;}.data-journey {grid-template-columns:1fr;}.data-cockpit__intro,.data-cockpit__guidance {align-items:stretch;flex-direction:column;}.data-workspace__tabs button {flex:1;padding:12px 8px;}.data-journey small {display:none;}}
+/* Equal peer-card rhythm without imposing a fixed page height. */
+.data-journey { align-items: stretch; }
+.data-journey a { align-items: flex-start; }
+.data-journey__number { margin-top: 2px; }
+.data-journey a > span:last-child { min-width: 0; }
+.data-cockpit { min-width: 0; width: 100%; box-sizing: border-box; }
+.data-cockpit__intro { flex-wrap: wrap; }
+.product-overview article { display: flex; flex-direction: column; min-width: 0; }
+.product-overview article > span:first-child { min-height: 2.8em; }
+.product-overview article > a, .product-overview article > button { margin-top: auto; }

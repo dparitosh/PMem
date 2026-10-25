@@ -21,6 +21,8 @@ export default function QifDigitalThreadOverview({ task }) {
         </div>
         <a className="depo-button depo-button--secondary" href="#/graph">Explore connected graph</a>
       </div>
+      <details className="qif-digital-thread__guide">
+        <summary>How QIF connects the digital thread</summary>
       <div className="qif-digital-thread__stages">
         {stages.map((stage, index) => (
           <article key={stage.title} className="qif-digital-thread__stage">
@@ -29,6 +31,7 @@ export default function QifDigitalThreadOverview({ task }) {
           </article>
         ))}
       </div>
+      </details>
       <div className="qif-digital-thread__evidence" aria-label="Selected QIF ontology evidence">
         <span><strong>{summary?.files_processed ?? '—'}</strong> QIF schemas</span>
         <span><strong>{summary?.classes_created ?? '—'}</strong> ontology classes</span>

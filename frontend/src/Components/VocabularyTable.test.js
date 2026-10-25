@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { VocabularyTable } from './OntologyMapper';
+import { VocabularyTable } from '../features/ontology/OntologyVocabularyPanel';
 
 const edges = Array.from({length: 60}, (_, i) => ({
   source_term: `source:Term${i + 1}`, target_term: `target:Term${i + 1}`,

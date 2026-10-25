@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.artifact_store import ArtifactStore
+from backend.ceim.limits import MAX_BATCH_RECORDS
 from backend.data_pipeline_service import postgres_jdbc
 
 
@@ -35,7 +36,7 @@ class SparkJobRunner:
     validation/publication APIs.
     """
 
-    max_records = 50_000
+    max_records = MAX_BATCH_RECORDS
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -583,16 +584,25 @@ class SparkJobRunner:
         else:
             raise ValueError("representation must be source-records-v1 or normalized-ceim-v1")
         with self._work():
-            spark = self._spark_session()
-            summary_rows = [row.asDict() for row in spark.createDataFrame(
-                [{"ceim_type": item["ceim_type"]} for item in normalized_entities] or [{"ceim_type": "relationship-only"}]
-            ).groupBy("ceim_type").count().orderBy("ceim_type").collect()]
+            if self._enabled():
+                spark = self._spark_session()
+                summary_rows = [row.asDict() for row in spark.createDataFrame(
+                    [{"ceim_type": item["ceim_type"]} for item in normalized_entities] or [{"ceim_type": "relationship-only"}]
+                ).groupBy("ceim_type").count().orderBy("ceim_type").collect()]
+            else:
+                # Bounded local semantic validation does not require a Spark JVM
+                # merely to count types. Limits, mapping evidence, SHACL and the
+                # separate publication approval boundary apply identically.
+                from collections import Counter
+                counts = Counter(item["ceim_type"] for item in normalized_entities) or Counter({'relationship-only':1})
+                summary_rows = [{"ceim_type":key,"count":counts[key]} for key in sorted(counts)]
         validation = contract.validate_projection(entities=normalized_entities, relationships=normalized_relationships) if validate else None
         normalized_batch = {
             "contract": "normalized-ceim-batch-v1",
             "representation": "normalized-ceim-v1",
             "standard": standard,
             "input_representation": representation,
+            "summary_engine": "spark" if self._enabled() else "python-bounded",
             "ceim_version": contract.version,
             "mapping_digest": contract.mapping_pack(standard)["digest"],
             "mapping_pack": contract.mapping_pack(standard)["id"],

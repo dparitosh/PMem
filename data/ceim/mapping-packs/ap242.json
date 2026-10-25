@@ -1,6 +1,6 @@
 {
   "id": "ap242-core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "ceim_version": "0.1.0",
   "entities": {
     "product_definition": {
@@ -159,6 +159,12 @@
     },
     "product_definition_relationship": {
       "relationship": "DERIVED_FROM"
+    },
+    "source_reference": {
+      "relationship": "TRACE_TO"
+    },
+    "source_containment": {
+      "relationship": "TRACE_TO"
     }
   }
 }

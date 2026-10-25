@@ -73,3 +73,29 @@ test('changing the selected source clears the previous task view', async () => {
   await waitFor(()=>expect(screen.queryByText('Original work')).not.toBeInTheDocument());
   expect(screen.getByRole('button',{name:'Start read-only investigation'})).toBeEnabled();
 });
+
+test('poll cleanup does not abort cancellation and late reads cannot overwrite it', async () => {
+  let resolveRead, resolveCancel;
+  const running = {run_id:'goal-race',goal:'Inspect',status:'running',plans:[],observations:[]};
+  agenticClient.get.mockImplementation(() => new Promise(resolve => { resolveRead = resolve; }));
+  agenticClient.post.mockImplementation(() => new Promise(resolve => { resolveCancel = resolve; }));
+  render(<ReadGoalPanel agent="reviewer" task="Inspect" initialRunId="goal-race" />);
+  await waitFor(() => expect(agenticClient.get).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button',{name:'Cancel investigation'}));
+  const signal = agenticClient.post.mock.calls[0][2].signal;
+  await waitFor(() => expect(screen.getByRole('button',{name:'Cancel investigation'})).toBeDisabled());
+  expect(signal.aborted).toBe(false);
+  resolveRead({data:running});
+  resolveCancel({data:{...running,status:'cancelled'}});
+  await screen.findByText(/Status: cancelled/);
+  expect(signal.aborted).toBe(false);
+});
+
+test('rejects cancellation results for a different retained goal', async () => {
+  agenticClient.get.mockImplementation(() => new Promise(() => {}));
+  agenticClient.post.mockResolvedValue({data:{run_id:'goal-other',status:'cancelled',goal:'Other user work'}});
+  render(<ReadGoalPanel agent="reviewer" task="Inspect" initialRunId="goal-original" />);
+  fireEvent.click(screen.getByRole('button',{name:'Cancel investigation'}));
+  await screen.findByRole('alert');
+  expect(screen.queryByText('Other user work')).not.toBeInTheDocument();
+});

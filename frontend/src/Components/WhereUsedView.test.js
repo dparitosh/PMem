@@ -32,3 +32,13 @@ test('upward traversal stops at the depth budget and shows partial evidence', as
  await waitFor(() => expect(screen.queryByText(/Partial hierarchy: reached/)).toBeNull());
 });
 
+test('revision references are not described as physical assembly usage', async () => {
+ const parent={elementId:'master',labels:['Part'],properties:{name:'Root master'}};
+ graphApi.getTraversal.mockResolvedValue({data:{nodes:[root,parent],links:[{elementId:'revision-ref',source:'master',target:'root',type:'MASTER_REF'}]}});
+ render(<WhereUsedView data={{nodes:[root],links:[]}} />);
+ fireEvent.change(screen.getByRole('textbox'), {target:{value:'Root'}});
+ fireEvent.click(screen.getByRole('button',{name:'Search'}));
+ expect(await screen.findByText(/Upstream source references connect/)).toHaveTextContent('do not establish physical assembly usage');
+ expect(screen.queryByText(/is used in/)).toBeNull();
+});
+

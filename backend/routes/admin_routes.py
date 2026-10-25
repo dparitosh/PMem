@@ -629,6 +629,7 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             detail=f"Confirmation token required: confirm='{CLEAN_SCHEMA_CONFIRM_TOKEN}'",
         )
     
+    receipt = None
     try:
         from backend.depo_platform.import_cleanup import clear_import_workflows
         # Reject active/uncertain imports before any graph data is removed.
@@ -638,6 +639,10 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             raise HTTPException(409, str(exc)) from exc
         # 1. Clean database and schema. The UI action is a destructive full schema clean,
         # so leave indexes/constraints empty instead of recreating default indexes.
+        from backend.depo_platform.cleanup_receipts import CleanupReceipt
+        from backend.mesh_store import PostgresRegistry
+        receipt = CleanupReceipt(PostgresRegistry('admin_cleanup_runs_v1'))
+        receipt.phase('graph', 'running', required=True)
         cleaner = Neo4jSchemaCleaner()
         try:
             result = cleaner.reset_database(recreate_indexes=False)
@@ -645,14 +650,22 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             cleaner.close()
 
         graph_complete = result.get("status") == "SUCCESS"
+        receipt.phase('graph', 'completed' if graph_complete else 'partial')
         if not graph_complete and not result.get('data_deleted'):
             raise HTTPException(status_code=500, detail=result.get("message", "Schema cleanup failed"))
         # Once graph data has been deleted, complete metadata cleanup even when
         # dropping constraints/indexes failed. Preserve that failure in the result.
         reconciliation = _reconcile_reset()
+        receipt.phase('reconciliation', 'partial' if reconciliation['status'] == 'partial' else 'completed')
         from backend.depo_platform.ontology_cleanup import clear_ontology_registrations
         metadata_result = clear_ontology_registrations()
-        import_result = clear_import_workflows()
+        receipt.phase('ontology_metadata', 'completed' if metadata_result.get('status') == 'success' else 'partial')
+        try:
+            import_result = clear_import_workflows()
+        except Exception as exc:
+            logger.exception('Graph reset completed but Import cleanup failed')
+            import_result = {'status': 'partial', 'error_type': type(exc).__name__}
+        receipt.phase('import_workflows', 'completed' if import_result.get('status') == 'success' else 'partial')
         metadata_cleared = metadata_result['cleared']
         # Publish again after file deletion so peers cannot retain a list cached
         # between graph reset and the filesystem cleanup.
@@ -661,6 +674,7 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             invalidate_shared_caches()
         except Exception:
             reconciliation = {'status': 'partial', 'message': 'Files were processed, but shared cache invalidation failed; check PostgreSQL connectivity.'}
+            receipt.phase('reconciliation', 'partial')
         
         try:
             OSLCTRSService.publish_event(
@@ -672,9 +686,12 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         except Exception as exc:
             logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
 
+        cleanup_receipt = receipt.finish()
+        complete = cleanup_receipt['status'] == 'completed'
         return {
-            "success": graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' and import_result['status'] == 'success',
-            "status": "SUCCESS" if graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' and import_result['status'] == 'success' else 'partial',
+            'cleanup_receipt': cleanup_receipt,
+            "success": complete,
+            "status": "SUCCESS" if complete else 'partial',
             "registry_reconciliation": reconciliation,
             "graph_cleanup_status": result.get("status"),
             "graph_cleanup_message": result.get("message") if not graph_complete else None,
@@ -689,12 +706,34 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             "metadata_cleanup_message": 'Ontology registry cleanup is incomplete or unverified; inspect registry_verification and server logs.' if metadata_result.get('status') != 'success' else None,
         }
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
+        raise HTTPException(status_code=400, detail=str(e),
+            headers={'X-DEPO-Cleanup-ID': receipt.record['run_id']} if receipt is not None else None)
+    except HTTPException as exc:
+        if receipt is not None:
+            exc.headers = {**(exc.headers or {}), 'X-DEPO-Cleanup-ID': receipt.record['run_id']}
         raise
     except Exception as e:
         logger.exception("Failed to clean schema")
-        raise HTTPException(status_code=500, detail="Unable to clean the Neo4j schema") from e
+        raise HTTPException(status_code=500, detail="Unable to clean the Neo4j schema",
+            headers={'X-DEPO-Cleanup-ID': receipt.record['run_id']} if receipt is not None else None) from e
+    finally:
+        if receipt is not None and receipt.record['status'] == 'running':
+            for phase, status in list(receipt.record['phases'].items()):
+                if status == 'running':
+                    receipt.record['phases'][phase] = 'outcome_unverified'
+            receipt.finish()
+
+
+@router.get('/cleanup-runs/{run_id}', dependencies=[Depends(require_admin_api_key)])
+def cleanup_run_status(run_id: str):
+    import re
+    from backend.mesh_store import PostgresRegistry
+    if not re.fullmatch(r'cleanup-[0-9a-f]{32}', run_id):
+        raise HTTPException(422, 'Invalid cleanup run identity')
+    record = PostgresRegistry('admin_cleanup_runs_v1').get(run_id)
+    if record is None:
+        raise HTTPException(404, 'Cleanup receipt not found')
+    return record
 
 
 @router.post("/delete-data", dependencies=[Depends(require_admin_api_key)])

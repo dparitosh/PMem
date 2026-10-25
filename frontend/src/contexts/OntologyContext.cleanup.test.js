@@ -58,3 +58,13 @@ test('cleanup aborts a registry request that started before deletion', async () 
   expect(signals[1].aborted).toBe(true);
   expect(signals[2].aborted).toBe(false);
 });
+
+test('session expiry removes previously visible ontology registrations', async () => {
+  mocks.get.mockResolvedValue({data:{ontologies:[{ontology_id:'private',name:'Previous session ontology'}]}});
+  render(<OntologyProvider><Registry /></OntologyProvider>);
+  await screen.findByText('Previous session ontology');
+  mocks.get.mockRejectedValue(new Error('Access expired'));
+  act(() => window.dispatchEvent(new Event('depo:session-expired')));
+  await screen.findByText('Empty registry');
+  expect(screen.queryByText('Previous session ontology')).not.toBeInTheDocument();
+});

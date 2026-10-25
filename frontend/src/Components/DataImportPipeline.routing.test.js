@@ -3,7 +3,7 @@ import React from 'react';
 import { act } from 'react';
 import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import DataImportPipeline from './DataImportPipeline';
+import DataImportPipeline from "../features/import/ImportWorkspace.js";
 import { fileSha256 } from '../utils/fileDigest';
 import { apiClient, API_METHODS } from '../services/apiClient';
 

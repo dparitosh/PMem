@@ -1,10 +1,10 @@
 import React from 'react';
-import OntologyMapper from '../Components/OntologyMapper';
+import OntologyWorkspace from "../features/ontology/OntologyWorkspace.js";
 
 export default function OntologyJunctionPage() {
   return (
     <div className="depo-page depo-ontology-workspace">
-      <OntologyMapper />
+      <OntologyWorkspace />
     </div>
   );
 }

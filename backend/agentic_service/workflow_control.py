@@ -49,6 +49,10 @@ async def checkpoint(store, run_id):
 def workflow_snapshot(record, control=None, heartbeat=None):
     """One public state projection for UI control eligibility and heartbeat age."""
     control = control or {}
+    # Internal ownership references are not part of the browser handoff.
+    if 'context_envelope' in record:
+        from .context_envelope import public as public_context
+        record = {**record, 'context_envelope': public_context(record['context_envelope'])}
     now = datetime.now(timezone.utc)
     deadline_open = now < datetime.fromisoformat(record['deadline_at'])
     activity = last_activity(record, heartbeat)

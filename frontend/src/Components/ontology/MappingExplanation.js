@@ -18,7 +18,7 @@ const sourceKey = row => row.import_id && row.import_row_key
   ? JSON.stringify([row.import_id, row.import_row_key, row.source_type, row.source_term]) : null;
 const targetName = row => `${row.ontology_term || 'Unnamed target'} (${row.target_ontology_type || 'type not recorded'})`;
 const evidenceText = value => typeof value === 'string'
-  ? (value === 'element_type' ? 'The source element type contributed to this match.' : value)
+  ? (value === 'element_type' || value === 'source_element_name' ? 'The source element type contributed to this match.' : value)
   : 'Structured evidence is retained in the downloaded report.';
 
 export default function MappingExplanation({ candidate, candidates, decisions = [] }) {
@@ -34,7 +34,7 @@ export default function MappingExplanation({ candidate, candidates, decisions = 
   const iri = candidate.target_ontology_iri || candidate.ontology_iri;
   return <article aria-label={`Mapping explanation ${candidate.candidate_id}`} style={{border:'1px solid var(--ui-border,#d5dfe9)',borderRadius:6,padding:12,margin:'8px 0',background:'var(--ui-surface,#fff)'}}>
     <strong>{candidate.source_label || candidate.source_term || candidate.import_row_key || 'Unnamed source'} → {targetName(candidate)}</strong>
-    <p><strong>{needsReview ? 'Review needed' : 'Policy validation recorded'}</strong> · Recorded match score: {matchScore(candidate)}. This score is not a probability of semantic correctness.</p>
+    <p><strong>{decision?.decision === 'publish' ? 'Policy-approved' : needsReview ? 'Review needed' : 'Policy validation recorded'}</strong> · Recorded match score: {matchScore(candidate)}. This score is not a probability of semantic correctness.</p>
     <dl>
       <dt><strong>What is being mapped</strong></dt><dd>Source type: {candidate.source_type || 'not recorded'}; row: {candidate.import_row_key || 'not recorded'}. {iri && <span>Target IRI: {iri}.</span>}</dd>
       <dt><strong>Why this target was suggested</strong></dt><dd>{evidence.length ? evidence.map(evidenceText).join(' ') : 'No supporting rationale was recorded. Do not infer a semantic match from the score alone.'}</dd>

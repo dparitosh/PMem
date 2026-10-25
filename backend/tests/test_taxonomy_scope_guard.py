@@ -11,7 +11,7 @@ class TaxonomyScopeTests(unittest.TestCase):
             def __init__(self,status_code,detail):self.status_code=status_code
         def unavailable(*args):raise ValueError('No artifact')
         calls=[]
-        scope={'_resolve_ontology_id':lambda value:value,'OntologyTaxonomyService':SimpleNamespace(get_taxonomy=unavailable),
+        scope={'bounded_taxonomy':lambda value:value,'_resolve_ontology_id':lambda value:value,'OntologyTaxonomyService':SimpleNamespace(get_taxonomy=unavailable),
                '_taxonomy_from_dictionary':lambda value:{'nodes':[]},'OntologyUploadManager':SimpleNamespace(get_ontology=lambda value:{'metadata':{'prefix':'shared'}}),
                '_taxonomy_from_graph':lambda value:calls.append(value) or {},'HTTPException':HTTPException}
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<taxonomy>','exec'),scope)

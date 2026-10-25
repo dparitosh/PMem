@@ -28,6 +28,23 @@ test('combined schema identity is independent of selection order', async () => {
   const read = blob => new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(blob); });
   expect(await read(first.root)).toBe(await read(second.root));
 });
+
+test('the dependency root determines namespace instead of alphabetical companion order', async () => {
+  const root = file('PLMXMLSchema.xsd', '');
+  root.text = async () => '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:product"><xs:import namespace="urn:classification" schemaLocation="PLMXMLClassificationSchema.xsd"/></xs:schema>';
+  const companion = file('PLMXMLClassificationSchema.xsd', '');
+  companion.text = async () => '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:classification"/>';
+  const bundle = await combineXsdFiles([companion, root]);
+  const xml = await new Promise(resolve => { const r = new FileReader(); r.onload=()=>resolve(r.result); r.readAsText(bundle.root); });
+  expect(new DOMParser().parseFromString(xml,'application/xml').documentElement.getAttribute('targetNamespace')).toBe('urn:product');
+});
+
+test('unrelated namespaces require an explicit root instead of silently choosing one', async () => {
+  const a=file('a.xsd',''), b=file('b.xsd','');
+  a.text=async()=>'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:a"/>';
+  b.text=async()=>'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:b"/>';
+  await expect(combineXsdFiles([a,b])).rejects.toThrow('independent root namespaces');
+});
 test('multiple direct selections resolve sibling companions from an optional folder', async () => {
   const roots = [file('Apps/one.xsd', '<xs:include schemaLocation="../Library/part.xsd"/>'), file('Apps/two.xsd', '')];
   const bundle = await combineXsdFiles(roots, [...roots, file('Library/part.xsd', '')], true);

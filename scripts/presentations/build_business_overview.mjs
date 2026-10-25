@@ -105,7 +105,7 @@ function steps(s,items){
  takeaway(s,'DEPO connects the evidence; it does not replace the authoring systems or certify the product.');
 }
 {
- const s=slide('The end-user workflow','Each stage produces something the next user can inspect.',['frontend/src/Components/DataImportPipeline.js','frontend/src/Components/OntologyPublicationPanel.js','backend/agentic_service/bridge_jobs.py']);
+ const s=slide('The end-user workflow','Each stage produces something the next user can inspect.',['frontend/src/features/import/ImportWorkspace.js','frontend/src/Components/OntologyPublicationPanel.js','backend/agentic_service/bridge_jobs.py']);
  table(s,['Sequence','User activity','Retained output'],[
   ['1  Capture','Select source files and their dependencies','Original source and import identity'],
   ['2  Understand','Review vocabulary, classes and source metadata','Registered ontology or parsed instances'],

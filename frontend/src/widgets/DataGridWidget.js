@@ -42,6 +42,9 @@ export default function DataGridWidget({
   paginationPageSize = 20,
   minGridHeight = null,
   onRowClicked = null,
+  appearance = 'standalone',
+  ariaLabel,
+  emptyHeight = 128,
 }) {
   const usePagination = pagination ?? rows.length > paginationPageSize;
   const gridHeight = Math.max(Number(height) || 320, usePagination ? 360 : 320);
@@ -66,15 +69,18 @@ export default function DataGridWidget({
   }), [rows.length]);
 
   return (
-    <section style={{ ...widgetCardStyle, overflow: 'hidden', minWidth: 0 }}>
+    <section aria-label={ariaLabel || title} className={`depo-grid-widget depo-grid-widget--${appearance}`} style={{
+      ...(appearance === 'embedded' ? { background: 'transparent', border: 0, borderRadius: 0, boxShadow: 'none' } : widgetCardStyle),
+      overflow: 'hidden', minWidth: 0,
+    }}>
       {(title || subtitle) && (
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${widgetColors.border}` }}>
-          {title && <div style={{ fontSize: 13, fontWeight: 800, color: widgetColors.text }}>{title}</div>}
+          {title && <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: widgetColors.text }}>{title}</h3>}
           {subtitle && <div style={{ marginTop: 4, fontSize: 11, color: widgetColors.muted }}>{subtitle}</div>}
         </div>
       )}
       {rows.length === 0 ? (
-        <div style={{ height: gridHeight, display: 'grid', placeItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
+        <div style={{ minHeight: emptyHeight, padding: 16, display: 'grid', placeItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
           {emptyLabel}
         </div>
       ) : (

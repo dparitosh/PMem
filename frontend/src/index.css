@@ -16,6 +16,14 @@ html[data-ix-color-schema='dark'] { color-scheme: dark; }
   --ui-primary: #005a9c;
   --ui-primary-dark: #003f73;
   --ui-primary-soft: #e8f1fc;
+  --ui-on-primary: #ffffff;
+  --ui-success: #176b45;
+  --ui-success-soft: #e5f3eb;
+  --ui-danger-soft: #fcebea;
+  --ui-warning-soft: #fff3d6;
+  --ui-surface-alt: #edf2f7;
+  --ui-selected: var(--ui-primary-soft);
+  --ui-warning-text: var(--ui-warning);
   --ui-danger: #b42318;
   --ui-warning: #8a5a00;
   --ui-surface: #ffffff;
@@ -31,6 +39,12 @@ html[data-ix-color-schema='dark'] {
   --ui-primary: #4db3ff;
   --ui-primary-dark: #8acbff;
   --ui-primary-soft: #203b50;
+  --ui-on-primary: #102330;
+  --ui-success: #8cddb5;
+  --ui-success-soft: #193e30;
+  --ui-danger-soft: #492b30;
+  --ui-warning-soft: #43381e;
+  --ui-surface-alt: #263441;
   --ui-danger: #ff8a80;
   --ui-warning: #ffd166;
   --ui-surface: #1f2933;

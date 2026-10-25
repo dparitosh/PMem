@@ -1,3 +1,4 @@
+import GraphLegend from './GraphLegend';
 import React from 'react';
 import {
   Database,
@@ -12,15 +13,14 @@ import {
   X,
 } from 'lucide-react';
 
-
 const VIEW_MODES = [
-  { id: 'full', label: 'Full Graph', Icon: Globe },
-  { id: 'ontology', label: 'Ontology Schema', Icon: Workflow },
-  { id: 'architecture', label: 'Architecture Process', Icon: Network },
-  { id: 'individual', label: 'Contextual Instances', Icon: Network },
+  { id: 'full', label: 'Full Graph', caption: 'Overview', Icon: Globe },
+  { id: 'ontology', label: 'Ontology Schema', caption: 'Ontology', Icon: Workflow },
+  { id: 'architecture', label: 'Architecture Process', caption: 'Processes', Icon: Workflow },
+  { id: 'individual', label: 'Contextual Instances', caption: 'Instances', Icon: Network },
 ];
 
-function GraphExplorerToolbar({
+function GraphFilters({
   theme,
   graphViewMode,
   selectedOntology,
@@ -86,6 +86,7 @@ function GraphExplorerToolbar({
             type="button"
             title={mode.label}
             aria-label={mode.label}
+            aria-pressed={viewModeState[mode.id]}
             onClick={() => {
               if (mode.id === 'full') return onOpenFullGraph?.();
               if (mode.id === 'architecture') return onOpenArchitectureGraph?.();
@@ -93,7 +94,7 @@ function GraphExplorerToolbar({
               return onOpenOntologyGraph?.();
             }}
             style={{
-              width: 38,
+              gap: 6,
               height: 34,
               display: 'inline-flex',
               alignItems: 'center',
@@ -103,9 +104,9 @@ function GraphExplorerToolbar({
               background: viewModeState[mode.id] ? theme.primary : 'transparent',
               color: viewModeState[mode.id] ? '#fff' : theme.inkSoft,
               cursor: 'pointer',
-              padding: 0,
+              padding: '0 8px',
               fontWeight: 800,
-              lineHeight: 0,
+              lineHeight: 1.2,
               overflow: 'hidden',
             }}
           >
@@ -116,6 +117,7 @@ function GraphExplorerToolbar({
               className="graph-toolbar-icon"
               style={{ display: 'block', flex: '0 0 auto' }}
             />
+            <span>{mode.caption}</span>
           </button>
         ))}
       </div>
@@ -243,7 +245,7 @@ function GraphExplorerToolbar({
               <option value="archimate" style={{ color: '#333', fontWeight: 600 }}>[archimate] ArchiMate process model</option>
               {ontologyOptions.filter((option) => option.value !== 'ALL' && option.value !== 'archimate').map((option, index) => (
                 <option key={option.value || `ontology-opt-${index}`} value={option.value} style={{ color: '#333' }}>
-                  {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.type ? ` · ${option.type}` : ''}{option.graph_available === false ? ' · registered only' : Number(option.relationship_count || 0) === 0 ? ' · classes only' : ''}
+                  {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.type ? ` · ${option.type}` : ''}{option.graph_available === false ? ' · graph status unverified' : ''}
                 </option>
               ))}
             </select>
@@ -312,99 +314,7 @@ function GraphExplorerToolbar({
         </div>
       )}
 
-      {ontologySliceSummary && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: `1px solid ${theme.border}`,
-            background: '#ffffff',
-            color: theme.ink,
-            maxWidth: '100%',
-          }}
-        >
-          <span style={{ fontSize: 12, fontWeight: 700, color: theme.ink }}>{ontologySliceSummary.modeLabel || 'Current schema slice'}</span>
-          <span style={{ fontSize: 12, color: theme.inkSoft }}>{ontologySliceSummary.nodeCount} nodes</span>
-          <span style={{ fontSize: 12, color: theme.inkSoft }}>{ontologySliceSummary.relationshipCount} links</span>
-          {ontologySliceSummary.totalCounts && (
-            <span style={{ fontSize: 12, color: theme.primary, fontWeight: 700 }}>
-              Total ontology: {ontologySliceSummary.totalCounts.nodes} nodes / {ontologySliceSummary.totalCounts.relationships} links
-            </span>
-          )}
-          {ontologySliceSummary.isCapped && (
-            <span style={{ fontSize: 11, color: '#8a5a00', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: 999, padding: '3px 8px', fontWeight: 700 }}>
-              Showing capped slice
-            </span>
-          )}
-          {ontologySliceSummary.visibleSchemaLabels.map((entry) => (
-            <span
-              key={entry.label}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: theme.ink,
-                background: theme.surfaceAccent,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 999,
-                padding: '3px 8px',
-              }}
-            >
-              {entry.label}: {entry.count}
-            </span>
-          ))}
-          {ontologySliceSummary.visibleRelationships.map((entry) => {
-            const visual = getRelationshipVisual(entry.type);
-            return (
-              <span
-                key={entry.type}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: theme.ink,
-                  background: '#f8fafc',
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 999,
-                  padding: '3px 8px',
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 16,
-                    height: 0,
-                    borderTop: `${Math.max(2, Math.round(visual.width))}px ${visual.dasharray ? 'dashed' : 'solid'} ${visual.color}`,
-                    display: 'inline-block',
-                  }}
-                />
-              {entry.type}: {entry.count}
-              </span>
-            );
-          })}
-          {ontologySliceSummary.visibleFamilies?.map((entry) => (
-            <span
-              key={entry.label}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: theme.ink,
-                background: '#f8fafc',
-                border: `1px solid ${theme.border}`,
-                borderRadius: 999,
-                padding: '3px 8px',
-              }}
-            >
-              {entry.label}: {entry.count}
-            </span>
-          ))}
-        </div>
-      )}
+      <GraphLegend theme={theme} ontologySliceSummary={ontologySliceSummary} getRelationshipVisual={getRelationshipVisual} />
 
       <button
         type="button"
@@ -428,4 +338,4 @@ function GraphExplorerToolbar({
   );
 }
 
-export default GraphExplorerToolbar;
+export default GraphFilters;

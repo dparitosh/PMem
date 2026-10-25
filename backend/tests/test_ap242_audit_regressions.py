@@ -1,5 +1,6 @@
 """AP242 correctness regressions runnable without database/service dependencies."""
 import ast
+import hashlib
 import json
 import tempfile
 import unittest
@@ -30,11 +31,11 @@ class MappingContract:
             value = record['source_id'] if source == '$source_id' else record['attributes'].get(source)
             if value not in (None, ''):
                 properties[target] = value
-        return {'id': f"{standard}:{record['source_id']}", 'ceim_type': mapping['ceim_type'], 'properties': properties}
+        return {'id': f"{standard}:{record['source_id']}", 'ceim_type': mapping['ceim_type'], 'properties': properties, 'provenance': {'source_id':record['source_id'], 'source_standard':standard}}
 
     def normalize_relationship(self, *, standard, record):
         return {'source_id': f"{standard}:{record['source_id']}", 'target_id': f"{standard}:{record['target_id']}",
-                'relationship': self.pack['relationships'][record['source_type']]['relationship']}
+                'relationship': self.pack['relationships'][record['source_type']]['relationship'], 'provenance': {'source_key':record.get('source_key','')}}
 
 
 def adapter():
@@ -42,7 +43,7 @@ def adapter():
     path = Path(__file__).resolve().parents[1] / 'ceim/ap242_adapter.py'
     tree = ast.parse(path.read_text())
     tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
-    scope = dict(Path=Path, NamedTemporaryFile=NamedTemporaryFile, Any=Any, CEIMContract=MappingContract,
+    scope = dict(hashlib=hashlib, Path=Path, NamedTemporaryFile=NamedTemporaryFile, Any=Any, CEIMContract=MappingContract,
                  contract=MappingContract(), parse_step_with_pmi=parse_step_with_pmi, is_ap242=is_ap242,
                  extract_step_strings=extract_step_strings)
     exec(compile(tree, str(path), 'exec'), scope)
@@ -81,16 +82,16 @@ class AP242AuditTests(unittest.TestCase):
         dim = self.parse(body).dimensions[0]
         self.assertEqual((dim.unit, dim.lower_tolerance, dim.upper_tolerance), ('mm', -0.2, 0.05))
         batch = adapter()((HEADER + body + 'ENDSEC;END-ISO-10303-21;').encode())
-        props = next(row['properties'] for row in batch['entities'] if row['id'] == 'ap242:2')
+        props = next(row['properties'] for row in batch['entities'] if row['id'].endswith(':ap242:2'))
         self.assertEqual(props['lower_tolerance'], -0.2)
         self.assertNotIn('lower_limit', props)
 
     def test_assembly_direction_and_business_identifier_survive(self):
         body = "#1=PRODUCT_DEFINITION('parent','',#3,#4);#2=PRODUCT_DEFINITION('child','',#3,#4);#3=PRODUCT_DEFINITION_FORMATION('rev','',#5);#4=PRODUCT_DEFINITION_CONTEXT('ctx',#6,'design');#5=PRODUCT('business-part','Part','',());#6=APPLICATION_CONTEXT('ctx');#7=NEXT_ASSEMBLY_USAGE_OCCURRENCE('occ','child','',#1,#2,$);"
         batch = adapter()((HEADER + body + 'ENDSEC;END-ISO-10303-21;').encode())
-        self.assertEqual([r for r in batch['relationships'] if r['relationship'] == 'HAS_PART'], [{'source_id': 'ap242:1', 'target_id': 'ap242:2', 'relationship': 'HAS_PART'}])
-        self.assertIn({'source_id': 'ap242:3', 'target_id': 'ap242:5', 'relationship': 'DERIVED_FROM'}, batch['relationships'])
-        self.assertEqual(next(row['properties']['external_id'] for row in batch['entities'] if row['id'] == 'ap242:5'), 'business-part')
+        self.assertEqual([(r['source_id'].split(':')[-1],r['target_id'].split(':')[-1]) for r in batch['relationships'] if r['relationship']=='HAS_PART'], [('1','2')])
+        self.assertIn(('3','5'),[(r['source_id'].split(':')[-1],r['target_id'].split(':')[-1]) for r in batch['relationships'] if r['relationship']=='DERIVED_FROM'])
+        self.assertEqual(next(row['properties']['external_id'] for row in batch['entities'] if row['id'].endswith(':ap242:5')), 'business-part')
 
     def test_empty_semantic_batch_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -103,7 +104,7 @@ class AP242AuditTests(unittest.TestCase):
     def test_annotation_text_and_surface_finish_are_retained(self):
         body = "#1=ANNOTATION_TEXT_OCCURRENCE('note','Machined','Ra 1.6');#2=SURFACE_FINISH(1.6,#3);#3=SI_UNIT(.MICRO.,.METRE.);"
         batch = adapter()((HEADER + body + 'ENDSEC;END-ISO-10303-21;').encode())
-        props = {row['id']: row['properties'] for row in batch['entities']}
+        props = {'ap242:'+row['provenance']['source_id']: row['properties'] for row in batch['entities']}
         self.assertEqual(props['ap242:1']['text'], 'Ra 1.6')
         self.assertEqual(props['ap242:2']['unit'], 'um')
 

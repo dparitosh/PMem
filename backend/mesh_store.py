@@ -139,11 +139,11 @@ class PostgresRegistry:
 
     def prune_completed(self, retention_days: int) -> int:
         """Expire completed records in this namespace, using database timestamps."""
-        if not 1 <= retention_days <= 3650:
+        if type(retention_days) is not int or not 1 <= retention_days <= 3650:
             raise ValueError('Retention must be between 1 and 3650 days')
         ensure_execution_allowed()
         with self._connect() as connection, connection.cursor() as cursor:
-            cursor.execute("DELETE FROM depo_registry WHERE namespace=%s AND value->>'status'='completed' AND updated_at < now() - %s * interval '1 day'",
+            cursor.execute("DELETE FROM depo_registry WHERE namespace=%s AND value->>'status'='completed' AND coalesce(value->>'legal_hold', 'false')='false' AND updated_at < now() - %s * interval '1 day'",
                            (self.namespace, retention_days))
             return cursor.rowcount
 

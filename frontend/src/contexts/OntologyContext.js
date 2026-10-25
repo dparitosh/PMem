@@ -102,7 +102,7 @@ export const OntologyProvider = ({ children }) => {
         }
         return ontologyList;
       } catch (err) {
-        if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
+        if (controller.signal.aborted || abortRef.current !== controller || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
           return [];
         }
         const errorMsg = apiErrorMessage(err, 'Failed to load ontology registries.');
@@ -131,11 +131,13 @@ export const OntologyProvider = ({ children }) => {
     const changed = () => fetchOntologies(true);
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:session-expired', refresh);
     window.addEventListener('depo:ontologies-changed', changed);
     window.addEventListener('dt-schema-cleaned', refresh);
     return () => {
       window.removeEventListener('depo:credentials-changed', refresh);
       window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:session-expired', refresh);
       window.removeEventListener('depo:ontologies-changed', changed);
       window.removeEventListener('dt-schema-cleaned', refresh);
     };

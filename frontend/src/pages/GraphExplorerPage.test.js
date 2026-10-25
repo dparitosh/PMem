@@ -8,7 +8,7 @@ vi.mock('../services/apiClient', () => ({
   platformAPI: { health },
 }));
 
-vi.mock('../Components/GraphHEB', () => ({ default: () => <div>Graph canvas</div> }));
+vi.mock('../features/graph/GraphWorkspace.js', () => ({ default: () => <div>Graph canvas</div> }));
 
 test('does not mount the legacy graph view when graph storage is not configured', async () => {
   health.mockResolvedValueOnce({ data: { status: 'not_configured' } });

@@ -96,6 +96,7 @@ test('saves manual drafts as visible recommendations without selecting publicati
   await create();
   expect(api.preview).toHaveBeenCalledWith('ontology', 'import', { approved_by: 'reviewer', approval_token: 'supervisor' }, manual, 0);
   expect(screen.getByText(/2 mapping recommendations; 1 eligible/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name:/Evidence for part to Part/}));
   expect(screen.getByText('server-resolved source and target')).toBeInTheDocument();
   expect(screen.getByText('Preview agent run: agent-run-1')).toBeInTheDocument();
   expect(screen.getByLabelText('Approve part to Part')).not.toBeChecked();
@@ -252,7 +253,8 @@ test('mapping guidance remains visible when manual approval controls are collaps
  const manual=screen.getByText('Advanced: manual review, approval and saved-preview recovery').closest('details');
  manual.open=false;
  expect(screen.getByRole('region',{name:'Mapping guidance'})).toBeVisible();
- expect(screen.getByText('Understand the proposed mappings')).toBeVisible();
- expect(screen.getAllByText(/No supporting rationale was recorded/)[0]).toBeVisible();
+ expect(screen.getByText('Mapping review')).toBeVisible();
+ expect(screen.getAllByText('No supporting rationale recorded')[0]).toBeVisible();
+ expect(screen.queryByText('What is being mapped')).not.toBeInTheDocument();
  expect(api.publish).not.toHaveBeenCalled();
 });

@@ -7,12 +7,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import TestCase, main
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from tempfile import TemporaryDirectory
 from backend.mesh_store import InMemoryRegistry, PostgresRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
 def load(relative, names, scope):
+    scope.setdefault('__name__', relative.removesuffix('.py').replace('/', '.'))
+    scope.setdefault('__package__', scope['__name__'].rsplit('.', 1)[0])
     nodes = [n for n in ast.parse((ROOT/relative).read_text(encoding='utf-8-sig')).body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
     for node in nodes: node.decorator_list = []
     exec(compile(ast.Module(body=nodes, type_ignores=[]), relative, 'exec', flags=__future__.annotations.compiler_flag), scope)
@@ -38,9 +40,9 @@ class WorkflowTests(TestCase):
             def failed(self,*a): self.state='failed'
             def complete(self,*a): raise OSError('storage unavailable')
         runs=Runs()
-        handler=SimpleNamespace(execute=lambda *a,**kw:{'status':'completed'})
-        scope=load('backend/data_pipeline_service/router.py',{'execute_configured_job'}, {'Any':object,'run_records':runs,'runner':None,'handler_registry':SimpleNamespace(get=lambda _:handler)})
-        with self.assertRaises(OSError):scope['execute_configured_job']({'job_type':'example'}, {}, 'correlation')
+        scope=load('backend/data_pipeline_service/router.py',{'execute_configured_job'}, {'Any':object,'run_records':runs})
+        with patch('backend.data_pipeline_service.execution.execute_immediate_job', side_effect=OSError('storage unavailable')):
+            with self.assertRaises(OSError):scope['execute_configured_job']({'job_type':'example'}, {}, 'correlation')
         self.assertEqual(runs.state,'failed')
 
     def test_heartbeat_rejects_old_attempt_and_expired_lease(self):
@@ -101,7 +103,7 @@ class WorkflowTests(TestCase):
         routes={d.args[0].value for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) for d in n.decorator_list if isinstance(d,ast.Call)}
         self.assertEqual(routes,{'/upload','/status/{task_id}','/preview/{task_id}','/pre-commit/{task_id}','/commit/{task_id}','/cancel/{task_id}', '/owl/{task_id}/export'})
         app=(ROOT/'backend/ingestion_service/app.py').read_text();self.assertIn('app.include_router(tracked_import_router',app)
-        ui=(ROOT/'frontend/src/Components/DataImportPipeline.js').read_text()
+        ui=(ROOT/'frontend/src/features/import/ImportWorkspace.js').read_text(encoding='utf-8')
         self.assertIn('<SemanticBridgeJobs ',ui);self.assertIn('apply_links: false',ui);self.assertNotIn('workflowApplyLinks',ui)
 
     def test_cadence_is_below_stale_threshold_and_scheduler_is_job_scoped(self):

@@ -16,7 +16,14 @@ def _digest(value: Any) -> str:
 
 def _key(entity: dict[str, Any]) -> tuple[str, str, str]:
     properties = dict(entity.get("properties") or {})
-    return str((entity.get("provenance") or {}).get("identity_scope") or ""), str(entity.get("ceim_type") or ""), str(properties.get("external_id") or entity.get("id") or "")
+    provenance = dict(entity.get("provenance") or {})
+    # STEP instance numbers identify separate records even when display/external
+    # values repeat (e.g. thousands of "affected area" representation items).
+    # Repeated facts for the same record still produce a blocking conflict.
+    record_identity = (str(provenance.get("source_standard") or "").lower() == "ap242"
+                       and bool(provenance.get("source_id")))
+    identity = entity.get("id") if record_identity else properties.get("external_id") or entity.get("id")
+    return str(provenance.get("identity_scope") or ""), str(entity.get("ceim_type") or ""), str(identity or "")
 
 
 def _without_provenance(entity: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,41 @@
+/* One flat review surface; only the results region scrolls. */
+.import-bridge-workspace { border: 0 !important; border-radius: 0 !important; padding: 0 !important; min-width: 0; }
+.depo-bridge-review { flex: 1 0 100%; width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-radius: 0; padding: 0; margin-top: 8px; color: var(--ui-text, #253746); }
+.mapping-run-controls { border-bottom: 1px solid var(--ui-border, #d5dfe9); padding: 8px 0; font-size: .875rem; }
+.mapping-run-controls > summary { cursor: pointer; font-weight: 600; }
+.mapping-run-controls p { margin-block: 8px; }
+.mapping-review { width: 100%; min-width: 0; margin-block: 12px; color: var(--ui-text, #253746); }
+.mapping-review__summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mapping-review__summary h4 { margin: 0; font-size: 1.125rem; }
+.mapping-review__summary p { margin: 0; font-size: .875rem; }
+.mapping-review__toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-block: 10px; }
+.mapping-review__toolbar label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: .875rem; }
+.mapping-review__group-actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.mapping-review__scope, .mapping-review__note { color: var(--ui-muted, #526176); font-size: .8125rem; margin-block: 4px 8px; }
+.mapping-review__scroll { width: 100%; max-height: 65vh; overflow: auto; border-block: 1px solid var(--ui-border, #d5dfe9); }
+.mapping-review table { width: 100%; min-width: 720px; table-layout: fixed; border-collapse: separate; border-spacing: 0; text-align: left; font-size: .875rem; }
+.mapping-review caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.mapping-review th, .mapping-review td { padding: 8px 10px; border-bottom: 1px solid var(--ui-border, #d5dfe9); vertical-align: top; overflow-wrap: anywhere; }
+.mapping-review thead th { position: sticky; top: 0; z-index: 1; background: var(--ui-surface-alt, #edf2f7); }
+.mapping-review thead th:nth-child(1) { width: 36%; }
+.mapping-review thead th:nth-child(2) { width: 11%; }
+.mapping-review thead th:nth-child(3) { width: 16%; }
+.mapping-review thead th:nth-child(4) { width: 27%; }
+.mapping-review thead th:nth-child(5) { width: 10%; }
+.mapping-review td small { display: block; margin-top: 3px; color: var(--ui-muted, #526176); }
+.mapping-review__iri { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; }
+.mapping-review__status { font-weight: 600; }
+.mapping-review__status--held { color: var(--ui-warning-text, #805400); }
+.mapping-review__category th { background: var(--ui-surface-alt, #edf2f7); font-size: .8125rem; }
+.mapping-review__source th { background: var(--ui-surface, #fff); border-left: 3px solid var(--ui-primary, #007e9e); }
+.mapping-review__source small { display: block; font-weight: 400; margin-top: 4px; color: var(--ui-muted, #526176); font-size: .75rem; }
+.depo-bridge-review button { border: 1px solid var(--ui-border, #b9c8d5); background: var(--ui-surface, #fff); color: var(--ui-text, #253746); border-radius: 4px; padding: 6px 10px; cursor: pointer; font: inherit; min-height: 32px; }
+.depo-bridge-review button:hover:not(:disabled) { border-color: var(--ui-primary, #007e9e); background: var(--ui-surface-alt, #edf2f7); }
+.depo-bridge-review button:focus-visible, .mapping-review select:focus-visible, .mapping-review__scroll:focus-visible { outline: 2px solid var(--ui-primary, #007e9e); outline-offset: 2px; }
+.depo-bridge-review button:disabled { cursor: default; opacity: .55; }
+.mapping-review select { min-height: 32px; border: 1px solid var(--ui-border, #b9c8d5); border-radius: 4px; padding: 6px 10px; background: var(--ui-surface, #fff); color: var(--ui-text, #253746); }
+.depo-bridge-review .mapping-review__source-toggle { border: 0; padding: 0; text-align: left; width: 100%; font-weight: 600; background: transparent; }
+.mapping-review__source-count { float: right; font-weight: 400; font-size: .8rem; }
+.mapping-review nav { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+@media (max-width: 760px) { .mapping-review__group-actions { margin-left: 0; } .mapping-review__toolbar { gap: 8px; } .mapping-review__toolbar label { flex-wrap: wrap; } }
+.import-link-page .import-workflow-selector { border: 0 !important; padding: 0 !important; background: transparent !important; }

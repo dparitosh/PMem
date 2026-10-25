@@ -104,6 +104,7 @@ class RetainedResultTests(unittest.TestCase):
             self.assertEqual(registry.prune_completed(30), 2)
         sql, args = cursor.execute.call_args.args
         self.assertIn("value->>'status'='completed'", sql)
+        self.assertIn("coalesce(value->>'legal_hold', 'false')='false'", sql)
         self.assertIn('namespace=%s', sql)
         self.assertEqual(args, ('agentic_companion_jobs', 30))
         with self.assertRaises(ValueError): registry.prune_completed(0)

@@ -393,7 +393,8 @@ async def publish_job_run(run_id: str, payload: JobPublicationBody, request: Req
             if metadata.get("kind") != "accepted-semantic-partition":
                 raise ValueError("Run does not reference an accepted semantic partition")
             batch = json.loads(path.read_text(encoding="utf-8"))
-            ontology_id = str(payload.get("ontology_id") or f"ceim-{batch.get('standard') or record.get('source_standard') or 'batch'}").strip().lower()
+            from .publication_scope import publication_scope
+            ontology_id = publication_scope(payload, record, batch)
             publication_payload = {
                 **batch,
                 "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),

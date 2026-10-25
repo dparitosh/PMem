@@ -249,6 +249,8 @@ class GraphViewService:
 
     @staticmethod
     def _run(cypher: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        from backend.graph_service.business_types import include_canonical_business_types
+        cypher = include_canonical_business_types(cypher)
         config = get_config()
         driver = get_driver()
         with driver.session(database=config.database, default_access_mode=READ_ACCESS) as session:
@@ -436,13 +438,15 @@ class GraphViewService:
 
     @staticmethod
     def _is_metadata_like_node(node: Dict[str, Any]) -> bool:
+        from backend.graph_service.business_types import is_canonical_business_instance
+        if is_canonical_business_instance(node): return False
         props = node.get("properties") or {}
         labels = {str(label or "").lower() for label in (node.get("labels") or [])}
         if labels.intersection({'stagedontologyresource', 'ontologypublication'}):
             return True
         element_type = str(props.get("element_type") or "").strip().lower()
         semantic_role = str(props.get("semantic_role") or "").strip().lower()
-        is_cad_business_object = bool(props.get("is_cad_business_object"))
+        is_cad_business_object = props.get("is_cad_business_object") in (True, "true")
         display_name = _first_text_value(
             props,
             ("name", "title", "label", "display_name", "displayName", "id", "uid"),
@@ -481,10 +485,12 @@ class GraphViewService:
 
     @staticmethod
     def _is_individual_node(node: Dict[str, Any]) -> bool:
+        from backend.graph_service.business_types import is_canonical_business_instance
+        if is_canonical_business_instance(node): return True
         labels = {str(label or "") for label in (node.get("labels") or [])}
         props = node.get("properties") or {}
         semantic_role = str(props.get("semantic_role") or "").strip().lower()
-        is_cad_business_object = bool(props.get("is_cad_business_object"))
+        is_cad_business_object = props.get("is_cad_business_object") in (True, "true")
         if labels.intersection(set(GraphViewService.RELATIONSHIP_NODE_LABELS)) or semantic_role == 'relationship':
             return False
         if labels and labels.intersection(GraphViewService.INSTANCE_NODE_LABELS):

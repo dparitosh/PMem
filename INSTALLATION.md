@@ -192,6 +192,10 @@ Setup retains timestamped `.log` and `.jsonl` files in `logs/installation/runs` 
 | Installation fails | Correct the first error in the audit log, then rerun the same launcher. Failed preflight leaves PMem running; failures after shutdown can leave it stopped until repaired. |
 | Browser cannot connect | Check frontend/backend readiness and the configured authentication/routing mode. Run diagnostics below. |
 | LLM returns 429 | Check provider quota/rate limits or configure another working supported provider. AI acceptance remains incomplete. |
+| STEP import validates but is absent from Neo4j | Open its **View Data Flow** link. Select an approved semantic release in **Approval & publication**, then publish the completed run. Validation is separate from graph publication; check the retained receipt before retrying a write. |
+| CEIM batch exceeds its record bound | Validation and publication accept at most 50,000 entities plus relationships combined per batch. Upload byte limits are separate. Use a supported partitioned workflow or a smaller source export; do not truncate the normalized batch and claim a complete import. |
+| STEP DATA section is missing ENDSEC | Check the original source ends with `ENDSEC;` and `END-ISO-10303-21;`. A truncated export requires re-export from the source application. |
+| Governed source import times out before returning a run ID | Inspect retained Data Flow runs and source artifacts before retrying. Very large synchronous STEP parsing remains a scalability constraint; a timeout is not evidence of a successful or failed graph write. |
 
 Read-only diagnostics from the release root:
 
@@ -201,6 +205,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 -Pha
 ```
 
 `Package` validates files offline. `All` also requires configured dependencies and running services. Readiness does not establish that every business workflow passed.
+
+Bounded semantic-source validation can run with `DEPO_SPARK_ENABLED=false`; Spark-specific distributed jobs still require the optional Spark runtime. Canonical publications use document-specific snapshot scopes by default, so separate component files do not replace each other. Existing publication intents retain their original destination. Ontology registration/publication and linking source instances to ontology classes are separate workflows; an AP242 filename alone does not establish semantic alignment.
 
 Root update and diagnostic commands retain audit logs under `logs/installation/runs`, use process-scoped execution-policy handling and preserve their selected environment/Python arguments. When using a custom `-EnvFile`, early audit messages redact secrets from that file as well as the default server file. These logs are operational evidence; maintenance does not automatically erase them.
 
@@ -332,3 +338,37 @@ Before changing a running deployment, the lifecycle command checks tracked-proce
 If UAC is cancelled or cannot be displayed, no lifecycle action is started by this preflight. Open PowerShell using **Run as administrator** and rerun the same command. If metadata is hidden even after elevation, investigate Windows CIM/WMI/process-access policy with the administrator. Do not delete PID files, kill arbitrary Python processes or disable ownership checks. A visible but unrelated/reused PID is still handled by the normal process-ownership guard.
 
 Frontend diagnostics now distinguish missing metadata from an executable/module mismatch. The lifecycle preflight runs before frontend shutdown and backend shutdown, preventing partial restarts caused solely by missing process visibility. This does not change machine execution policy or stop PostgreSQL/Neo4j.
+
+
+### Agent context, ontology revisions and memory maintenance
+
+Deploy the ontology and agentic services from the same release. New ontology-scoped read goals require the authenticated owning-service endpoint `GET /api/v1/ontologies/{ontology_id}/revision`. It returns an artifact SHA-256 digest and lifecycle state under the ontology lock. The agentic service verifies those receipts before queueing and during planning/tool execution. An unavailable authority returns HTTP 503 before queueing; a changed/retired source requires a new review. Do not disable authorization or remove the source binding to resume a stale investigation. Existing retained runs without revision receipts keep their previous checks. This contract verifies ontology artifacts, not every mutable instance node in Neo4j.
+
+Revision reads share the bounded `COMPANION_RETRIEVAL_TIMEOUT_SECONDS` budget (default 15 seconds, maximum 120) for the complete selected ontology set, up to ten distinct IDs. Ensure the configured ontology URL and gateway permit that route; do not increase a provider timeout to work around a rejected local service request.
+
+When optional conversation memory is enabled, `AGENT_MEMORY_RETENTION_DAYS` controls existing conversation cleanup. Completed Companion records and expired graph conversations respect stored legal holds. `GET /api/v1/memory/maintenance` on the agentic service returns the latest operational receipt, including per-store status and counts. `partial`, `unavailable`, or `disabled` is not proof that all stores were cleared. The receipt is bounded latest-run state, not a permanent business audit ledger. It does not purge ontology facts, workflow approvals, source files or backups. Existing artifact retention remains owned by the Catalog service.
+
+Optional workflow `governance` metadata in the configured agent catalog must contain `version` (for example `1.0.0`) and `status` (`proposed`, `approved`, or `retired`). An approved entry additionally requires `approved_by` and `evaluation_sha256` referencing its reviewed evaluation artifact. Proposed and retired entries cannot produce executable workflow plans. This is trusted deployment configuration; it does not replace operation-level approval credentials or cryptographically certify an evaluation. Existing bundled definitions without this metadata retain release-controlled compatibility. No agent automatically promotes its execution trace into a trusted procedure.
+
+
+### Admin full-cleanup receipts and recovery
+
+`Clean schema` remains a destructive action requiring the existing Admin maintenance credential and explicit confirmation. The Import preflight now checks active/uncertain tasks, stored task/manifest legal holds, artifact/snapshot storage boundaries and deletion-fence boundaries before the graph reset starts. A cleanup retry receipt cannot override a currently active task's status. These checks do not constitute a universal graph-node or backup legal-hold policy.
+
+Before deletion the service creates a receipt in PostgreSQL namespace `admin_cleanup_runs_v1`. If that initial receipt cannot be saved, the graph reset does not start. The response includes `cleanup_receipt` with separate graph, reconciliation, ontology-metadata and Import-workflow phases. An interrupted error response can include the `X-DEPO-Cleanup-ID` header. Read that receipt through authenticated `GET /api/v1/admin/cleanup-runs/{run_id}` using the existing Admin maintenance access; do not paste credentials into commands or chat. A pending/running phase after a service crash is not evidence that the operation failed or that it is safe to repeat.
+
+There is no automatic graph-reset replay. Inspect graph state and the per-store receipt before deciding whether any further destructive action is required. Import task deletion fences retain per-task `artifacts`, `snapshots` and `manifest` progress; the existing Clear Import Workflows action reconciles remaining files/records under its normal activity and hold checks. A failed registry delete cannot be reported as complete merely because its files are gone. These receipts cover the named cleanup operation, not backups, all application data, or a legal/compliance deletion certification.
+
+
+### Customer acceptance and backup/restore gate
+
+After deploying matching service/frontend code, run the maintained deployment and browser-session diagnostics from the repository root:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .\.env.local
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-browser-session.ps1 -EnvFile .\.env.local
+```
+
+These verify connectivity/configuration/access; they do not certify ontology mapping or generated answer accuracy. Do not use the removed `backend/tests/customer_acceptance_test.py` legacy script. Use the domain fixtures and live matrix in [release acceptance](docs/architecture-review-2026-10-24/DEPO_RELEASE_ACCEPTANCE.md).
+
+Customer release also requires a real backup/restore drill into disposable PostgreSQL, Neo4j and artifact stores. Identify the backup set and separate restore target before running any restore. Record release/database versions, a consistent recovery point, trusted checksums, schema verification, source/publication identity checks and measured recovery results. An installation backup of source code is not a database backup, and a passing schema check is not proof that a backup can be restored. The linked acceptance document specifies the required sequence and evidence without issuing an unsafe overwrite command against the current environment.

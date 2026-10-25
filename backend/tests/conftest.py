@@ -18,7 +18,6 @@ import pytest
 
 
 _MANUAL_LIVE_TESTS = [
-    "customer_acceptance_test.py",
     "integration_test.py",
     "test_api_smoke.py",
     "test_e2e_ontology.py",

@@ -134,3 +134,14 @@ test('quality does not claim a healthy outcome before any run exists',async()=>{
  expect(screen.getByText('unknown')).toBeVisible();
  expect(screen.queryByText('ok')).toBeNull();
 });
+
+
+test('run-id search retains published receipt and removes repeat publication action',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[{run_id:'exact-run',job_id:'semantic-source-validation',status:'completed',job_type:'validate-semantic-batch',output_manifest:{publication:{status:'published',publication_id:'receipt',ontology_id:'ceim-document'}}}]}});
+ render(<DataFlowPage/>);
+ expect(await screen.findByText('Published · receipt retained')).toBeInTheDocument();
+ fireEvent.change(screen.getByRole('textbox',{name:'Find a run'}),{target:{value:'exact-run'}});
+ expect(screen.getByText('Published · receipt retained')).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Publish',exact:true})).toBeNull();
+});

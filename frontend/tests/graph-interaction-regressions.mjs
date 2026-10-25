@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const babelParse = process.env.DEPO_TEST_BABEL_BUNDLE
   ? require(process.env.DEPO_TEST_BABEL_BUNDLE).babelParse
   : (source => require('@babel/parser').parse(source, { sourceType: 'module', plugins: ['jsx'] }));
-const component = readFileSync(new URL('../src/Components/GraphHEB.js', import.meta.url), 'utf8');
+const component = readFileSync(new URL('../src/features/graph/GraphWorkspace.js', import.meta.url), 'utf8');
 const tree = babelParse(component, 'GraphHEB.js');
 const callbacks = new Map();
 function visit(node) {
@@ -21,7 +21,7 @@ visit(tree);
 const utilities = readFileSync(new URL('../src/utils/graphUtils.js', import.meta.url), 'utf8')
   .replace(/export \{[^}]*\};?/g, '').replace(/export /g, '');
 const interactions = readFileSync(new URL('../src/utils/graphInteractionState.js', import.meta.url), 'utf8')
-  .replace(/^import .*\n/, '').replace(/export /g, '');
+  .replace(/^import [^\r\n]*(?:\r?\n|$)/gm, '').replace(/export /g, '');
 const node = id => ({ elementId: id, labels: ['Individual'], properties: { name: id } });
 const link = (a, b) => ({ elementId: `${a}-${b}`, source: a, target: b, type: 'LINK' });
 const base = { nodes: [node('a'), node('b')], links: [] };

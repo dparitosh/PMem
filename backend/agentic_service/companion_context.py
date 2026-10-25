@@ -72,4 +72,8 @@ async def page_context(query, *, page, headers, ontology_id='', ontology_prefix=
     total=body.get('total')
     evidence.insert(0,{'evidence_type':'application_record','resource_id':'page:'+page,'label':page+' service evidence',
         'description':f"{page}: the service returned {len(rows)} {collection} on this page"+(f" out of {total} retained records" if type(total) is int and total>=0 else '')+'. This is a bounded listing; it does not establish relevance, semantic equivalence or whole-graph completeness.', 'source':endpoint})
-    return {'evidence':evidence[:8],'status':'available'}
+    return {'evidence':evidence[:8],'status':'available',
+            'representation': 'postgres_business_context' if collection == 'business objects' else 'owning_service_records',
+            'source_revision_status': 'unverified',
+            'coverage': {'returned_records': len(rows), 'selected_evidence': min(len(evidence), 8),
+                         'bounded_listing': True, 'whole_graph_complete': False}}

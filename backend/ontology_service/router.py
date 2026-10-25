@@ -604,6 +604,18 @@ def get_ontology(ontology_id: str) -> dict:
     return ontology
 
 
+@router.get('/{ontology_id}/revision', summary='Read authoritative ontology revision for a bounded agent review')
+@ontology_writer
+def ontology_revision(ontology_id: str) -> dict:
+    def snapshot():
+        metadata = catalog.get(ontology_id)
+        if metadata is None:
+            raise HTTPException(404, 'Ontology artifact not found')
+        return {'ontology_id': ontology_id, 'artifact_sha256': catalog.artifact_digest(ontology_id),
+                'lifecycle_status': metadata.get('lifecycle_status'), 'status': metadata.get('status')}
+    return catalog.with_publication_lock(ontology_id, snapshot)
+
+
 @router.post("/register", status_code=201, summary="Register an OWL/RDF artifact")
 async def register_ontology(
     artifact: Annotated[UploadFile, File(description="TTL, RDF/XML, OWL or JSON-LD ontology artifact")],

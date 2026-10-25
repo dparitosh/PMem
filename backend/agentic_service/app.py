@@ -20,13 +20,19 @@ async def lifecycle():
             retention = int(bounded_timeout_seconds('AGENT_MEMORY_RETENTION_DAYS', default=30, maximum=3650))
             for cleanup, args in ((sessions.prune, ()),
                                   (AgentMemoryService.ensure_schema, ()),
-                                  (AgentMemoryService.ensure_schema, (os.getenv('NEO4J_DATABASE', 'neo4j'),)),
-                                  (companion_job_store.prune_completed, (retention,)),
-                                  (AgentMemoryService.prune_expired_sessions, ())):
+                                  (AgentMemoryService.ensure_schema, (os.getenv('NEO4J_DATABASE', 'neo4j'),))):
                 try:
                     await run_in_threadpool(cleanup, *args)
                 except Exception:
                     logging.getLogger(__name__).exception('Agent maintenance failed: %s', cleanup.__name__)
+            from .memory_maintenance import run_steps, prune_graph
+            from backend.mesh_store import PostgresRegistry
+            try:
+                await run_steps(PostgresRegistry('agentic_memory_maintenance'), [
+                    ('completed_companion_turns', companion_job_store.prune_completed, (retention,)),
+                    ('expired_graph_conversations', prune_graph, (AgentMemoryService,))])
+            except Exception:
+                logging.getLogger(__name__).exception('Memory maintenance receipt persistence failed; remaining cleanup stopped')
             await asyncio.sleep(bounded_timeout_seconds('DEPO_AGENT_MAINTENANCE_SECONDS', default=300, maximum=3600))
     from .mcp_transport import start_pool, close_pool
     start_pool()

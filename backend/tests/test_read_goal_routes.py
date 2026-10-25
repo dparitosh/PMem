@@ -30,7 +30,8 @@ class Store:
 @pytest.fixture
 def setup(monkeypatch):
     from backend.agentic_service import router as control
-    from backend.agentic_service import execution_grants, local_llm
+    from backend.agentic_service import execution_grants, local_llm, source_revisions
+    monkeypatch.setattr(source_revisions, 'capture', AsyncMock(return_value=[]))
     monkeypatch.setattr(local_llm, 'settings', lambda: ('ollama', 'fixture-model', 'http://localhost', 10, {}))
     monkeypatch.setenv('AUTH_MODE', 'token')
     monkeypatch.setenv('AGENTIC_EXECUTION_MODE', 'worker')
@@ -62,6 +63,9 @@ def test_goal_is_durable_owned_and_does_not_persist_credentials(setup):
     record = response.json()
     assert record['status'] == 'queued' and record['read_only'] is True
     assert 'owner' not in record and 'credential_fingerprints' not in record
+    assert record['context_envelope']['schema_version'] == 1
+    assert 'owner_ref' not in record['context_envelope']
+    assert store.get(record['run_id'])['context_envelope']['owner_ref']
     assert 'server-read-fixture' not in str(store.records) and 'owner-one' not in str(store.records)
     assert client.get('/api/v1/goals/' + record['run_id'], headers={'Authorization':'Bearer owner-two'}).status_code == 403
 
@@ -158,3 +162,27 @@ def test_recommendation_goal_validates_selection_and_registered_binding_before_e
  response=client.post(f'/api/v1/agents/{agent}/goals',json={'task':'Investigate Motor','context':context},headers={'Authorization':'Bearer owner-one'})
  assert response.status_code==status
  assert not store.records
+
+
+
+@pytest.mark.asyncio
+async def test_source_revision_change_stops_goal_before_model_or_tool(setup, monkeypatch):
+    client, store, control = setup
+    identifier = create(client).json()['run_id']
+    from backend.agentic_service import source_revisions, local_llm
+    monkeypatch.setattr(source_revisions, 'capture', AsyncMock(return_value=[{'ontology_id':'changed'}]))
+    model=AsyncMock()
+    monkeypatch.setattr(local_llm, 'suggest_tool', model)
+    await routes.execute_candidate(store.get(identifier))
+    assert store.get(identifier)['status'] != 'completed'
+    model.assert_not_awaited()
+    control._dispatch.assert_not_awaited()
+
+
+
+def test_unavailable_source_authority_does_not_queue_goal(setup, monkeypatch):
+    client, store, _ = setup
+    from backend.agentic_service import source_revisions
+    monkeypatch.setattr(source_revisions, 'capture', AsyncMock(side_effect=RuntimeError('fixture unavailable')))
+    assert create(client).status_code == 503
+    assert not store.records

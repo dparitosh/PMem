@@ -21,8 +21,9 @@ def _display_name(row: dict[str, Any]) -> str:
 
 
 def _ontology_node_clause() -> str:
-    """Select both native and legacy terms in a mixed industrial graph."""
-    return "((n:OntologyResource OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity)"
+    """Select published terms and retained source records for business analysis."""
+    from .query_repository import IMPORTED_INSTANCE_FILTER
+    return "(((n:OntologyResource OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity) OR (" + IMPORTED_INSTANCE_FILTER + "))"
 
 
 def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -160,6 +161,14 @@ def _change_impact_result(payload: ContextBody) -> dict:
     neighbors = _neighbors(str(root["id"]))
     parts, assemblies, requirements, processes, realization = [], [], [], [], []
     for row in neighbors:
+        # A reference to a revision, export record or metadata carrier is not
+        # evidence of business impact. Require an explicit impact/trace edge.
+        relation = re.sub(r'[^A-Z0-9]', '', str(row.get('relation_type') or '').upper())
+        if relation not in {'IMPACTS', 'AFFECTS', 'CMHASIMPACTEDITEM', 'CMHASPROBLEMITEM',
+                            'CMHASSOLUTIONITEM', 'HASIMPACTEDITEM', 'HASPROBLEMITEM',
+                            'HASSOLUTIONITEM', 'SATISFIES', 'SEG0SATISFY', 'FNDTRACELINK',
+                            'TRACELINK', 'REALIZES', 'TRACESTO'}:
+            continue
         kind = _kind(row)
         base = {"name": _display_name(row), "source_tag": row.get("source_tag"), "relation_type": row.get("relation_type"), "class_name": ", ".join(row.get("labels") or [])}
         if "requirement" in kind:
@@ -168,13 +177,19 @@ def _change_impact_result(payload: ContextBody) -> dict:
             assemblies.append({"assembly_name": base["name"], "depth": 1, "from_part": root["name"]})
         elif "process" in kind or "manufactur" in kind:
             processes.append({"name": base["name"], "source_tag": base["source_tag"], "from_part": root["name"]})
-        else:
+        elif any(label.lower() in {'part', 'product', 'productrevision', 'individual', 'namedindividual'} for label in row.get('labels', [])):
             parts.append(base)
+        else:
+            continue
         realization.append({"name": base["name"], "link_type": base["relation_type"], "from_part": root["name"]})
-    impact_count = len(neighbors)
+    impact_count = len(realization)
     return {
         "change_entity": {"name": root["name"], "source_tag": root.get("source_tag", "graph"), "revision": None},
-        "impact_score": min(100, impact_count * 10),
+        "impact_score": min(100, impact_count * 10) if impact_count else None,
+        "evidence_status": "linked_candidates" if impact_count else "insufficient",
+        "message": ("Linked records are review candidates; the indicator measures graph evidence, not impact severity or confidence."
+                    if impact_count else "The selected record was found, but no explicit impact or traceability links were found in its bounded neighborhood. Impact is unknown; review and link the affected business records before making a change decision."),
+        "context_relationships_examined": len(neighbors),
         "impacted_parts": parts,
         "assembly_impact": assemblies,
         "impacted_requirements": requirements,

@@ -158,7 +158,8 @@ def _publish_transaction(tx, command):
         facts = [AgentMemoryService._mapping_fact_row(command['ontology_id'], row['import_id'], row, publication_id) for row in command['rows']]
         tx.run('''UNWIND $rows AS row
             MERGE (f:AgentMemoryFact {fact_id:row.fact_id})
-            ON CREATE SET f.created_at=$completed
+            ON CREATE SET f.created_at=$completed, f.memory_schema_version=1,
+                f.lifecycle_status='approved', f.valid_from=$completed
             SET f.kind='semantic_bridge_mapping', f.scope=row.scope, f.source=row.source,
                 f.source_type=row.source_type, f.target=row.target,
                 f.target_iri=row.target_iri, f.generic_match=row.generic_match,

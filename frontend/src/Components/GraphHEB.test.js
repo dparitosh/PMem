@@ -53,16 +53,16 @@ test('normalizeGraphDataset preserves top-level can_traverse from record-shaped 
   expect(result.nodes[0].properties.name).toBe('Seed 2');
 });
 
-test('node labels are enabled for all graph view modes', () => {
-  expect(shouldRenderNodeLabels(900, 1200, false, 'ontology')).toBe(true);
-  expect(shouldRenderNodeLabels(900, 1200, false, 'individual')).toBe(true);
+test('dense graphs suppress bulk labels in every view mode', () => {
+  expect(shouldRenderNodeLabels(900, 1200, false, 'ontology')).toBe(false);
+  expect(shouldRenderNodeLabels(900, 1200, false, 'individual')).toBe(false);
   expect(shouldRenderNodeLabels(900, 1200, false, 'full')).toBe(false);
   expect(shouldRenderNodeLabels(20, 12, true, 'ontology')).toBe(true);
 });
 
 test('dense overview graphs hide labels while search keeps them visible', () => {
   expect(shouldRenderNodeLabels(385, 375, false, 'full')).toBe(false);
-  expect(shouldRenderNodeLabels(385, 375, false, 'ontology')).toBe(true);
+  expect(shouldRenderNodeLabels(385, 375, false, 'ontology')).toBe(false);
   expect(shouldRenderRelationshipLabels(385, 375, false, 'ontology')).toBe(false);
 });
 
@@ -77,7 +77,7 @@ test('dense graph labels are compact but not blank', () => {
 
 test('relationship labels are visible in focused graph modes and compact in dense graphs', () => {
   expect(shouldRenderRelationshipLabels(900, 1200, true, 'ontology')).toBe(false);
-  expect(shouldRenderRelationshipLabels(900, 1200, false, 'individual')).toBe(true);
+  expect(shouldRenderRelationshipLabels(900, 1200, false, 'individual')).toBe(false);
   expect(shouldRenderRelationshipLabels(80, 120, false, 'ontology')).toBe(true);
   expect(shouldRenderRelationshipLabels(40, 50, false, 'ontology')).toBe(true);
   expect(shouldRenderRelationshipLabels(40, 100, true, 'ontology')).toBe(true);
