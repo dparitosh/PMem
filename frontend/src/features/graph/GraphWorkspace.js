@@ -514,7 +514,18 @@ const GraphWorkspace = ({
     return undefined;
   }, []);
 
+  const recommendationRequest = useRef({generation: 0, controller: null});
+  useEffect(() => {
+    const cancel=()=>{recommendationRequest.current.controller?.abort();recommendationRequest.current.generation+=1;setRecPanel(prev=>({...prev,open:false,result:null,loading:false,error:''}));};
+    const events=['depo:credentials-changed','depo:credentials-cleared','depo:session-expired'];
+    events.forEach(event=>window.addEventListener(event,cancel));
+    return()=>{events.forEach(event=>window.removeEventListener(event,cancel));recommendationRequest.current.controller?.abort();recommendationRequest.current.generation+=1;};
+  }, []);
   const openTooltipRecommendation = useCallback((service, nodeName, context = {}) => {
+    recommendationRequest.current.controller?.abort();
+    const generation = ++recommendationRequest.current.generation;
+    const controller = new AbortController();
+    recommendationRequest.current.controller = controller;
     const normalizedName = String(nodeName || '').trim();
     if (!service) return;
     if (!normalizedName) {
@@ -530,7 +541,7 @@ const GraphWorkspace = ({
       return;
     }
 
-    setRecPanel({ open: true, service, nodeName: normalizedName, loading: true, result: null, error: '' });
+    setRecPanel({ open: true, service, nodeName: normalizedName, context, loading: true, result: null, error: '' });
     hideAllTooltips();
 
     const endpoint = service === 'change-impact'
@@ -541,7 +552,6 @@ const GraphWorkspace = ({
     const scope = {
       ...(context.ontologyPrefix ? { prefix: context.ontologyPrefix } : {}),
       ...(context.ontologyId ? { ontology_id: context.ontologyId } : {}),
-      ...(context.nodeId ? { node_id: context.nodeId } : {}),
     };
     const body = service === 'change-impact'
       ? { change_name: normalizedName, node_id: context.nodeId, scope }
@@ -549,30 +559,39 @@ const GraphWorkspace = ({
       ? { part_name: normalizedName, top_n: 10, node_id: context.nodeId, scope }
       : { part_name: normalizedName, node_id: context.nodeId, scope };
 
-    apiClient.post(buildUrl(endpoint), body)
+    apiClient.post(buildUrl(endpoint), body, {signal: controller.signal, timeout:60000})
       .then(resp => {
+        if (controller.signal.aborted || recommendationRequest.current.generation !== generation) return;
         const payload = resp.data;
         const hasVisibleResult = payload && (
           (Array.isArray(payload) && payload.length > 0) ||
           (typeof payload === 'object' && Object.keys(payload).length > 0)
         );
-        setRecPanel(prev => ({
+        setRecPanel(prev => !prev.open ? prev : ({
           ...prev,
           loading: false,
           result: hasVisibleResult ? payload : null,
           error: hasVisibleResult ? '' : 'No recommendation data returned for this selection.',
         }));
       })
-      .catch(err => setRecPanel(prev => ({
+      .catch(err => { if (controller.signal.aborted || recommendationRequest.current.generation !== generation) return; setRecPanel(prev => !prev.open ? prev : ({
         ...prev,
         loading: false,
         error: err.response?.data?.detail || err.message || 'Request failed',
-      })));
+      })); });
   }, [hideAllTooltips]);
 
   // Listen for "View in Graph" highlight requests from RecommendationsTab
   React.useEffect(() => {
     const handler = (e) => {
+      const ids = e.detail?.ids;
+      if (Array.isArray(ids) && ids.length > 0) {
+        setHighlightedNodeNames(new Set());
+        setHighlightedNodeIds(new Set(ids));
+        const timeoutId=setTimeout(()=>{setHighlightedNodeIds(new Set());timeoutsRef.current.delete(timeoutId);},HIGHLIGHT_AUTO_CLEAR_MS);
+        timeoutsRef.current.add(timeoutId);
+        return;
+      }
       const names = e.detail?.names;  // array of node names to highlight
       if (Array.isArray(names) && names.length > 0) {
         const nameSet = new Set(names.map(n => (n || '').toLowerCase()));

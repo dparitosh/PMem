@@ -46,15 +46,15 @@ const Badge = ({ color = C.primary, children }) => (
 const ScoreBar = ({ score, max = 100 }) => {
   if(typeof score!=='number'||!Number.isFinite(score))return <span>Impact score not recorded</span>;
   const pct = Math.max(0, Math.min((score / max) * 100, 100));
-  const barColor = score > 70 ? C.red : score > 40 ? C.amber : C.green;
-  const label = score > 70 ? 'High Impact' : score > 40 ? 'Medium Impact' : 'Low Impact';
+  const barColor = C.primary;
+  const label = 'Evidence indicator; severity not assessed';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
       <div style={{ flex: 1, height: '8px', background: C.border, borderRadius: '4px', overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '4px', transition: 'width .4s ease' }} />
       </div>
       <span style={{ fontSize: '12px', fontWeight: 700, color: barColor, minWidth: '100px', whiteSpace: 'nowrap' }}>
-        {score} Ã¢â‚¬â€ {label}
+        {score} · {label}
       </span>
     </div>
   );

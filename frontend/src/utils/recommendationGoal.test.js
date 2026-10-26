@@ -4,6 +4,8 @@ const run={status:'completed',context,result:{recommendation_observation_id:'obs
 test('only selected, cited, untruncated server evidence is displayed',()=>{
  expect(recommendationGoalEvidence(run,context).decision_policy.status).toBe('blocked');
  expect(recommendationGoalEvidence(run,{...context,recommendation_object:'Other'})).toBeNull();
+ expect(recommendationGoalEvidence(run,{...context,node_id:'different-revision'})).toBeNull();
+ expect(recommendationGoalEvidence(run,{...context,ontology_id:'different-scope'})).toBeNull();
  expect(recommendationGoalEvidence({...run,status:'running'},context)).toBeNull();
  expect(recommendationGoalEvidence({...run,result:{summary:'Uncited claim'}},context)).toBeNull();
  expect(recommendationGoalEvidence({...run,observations:[{...run.observations[0],result:{truncated:true,decision_policy:{status:'passed'}}}]},context)).toBeNull();

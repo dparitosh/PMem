@@ -238,6 +238,8 @@ class BridgeJobs:
                 receipt['applied_links'] != len(job['approved_ids']) or
                 receipt.get('approved_by') != job['approved_by']):
             raise BridgeConflict('Graph receipt does not match the approved publication.')
+        if job.get('status') == 'published' and job.get('receipt') == receipt:
+            return job
         job.update(status='published', receipt=receipt, updated_at=now())
         job.pop('error', None)
         self.store.put(job['job_id'], job)

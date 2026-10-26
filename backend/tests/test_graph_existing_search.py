@@ -96,24 +96,22 @@ class ExistingSearchTests(unittest.TestCase):
         self.assertEqual(lookup.call_args.kwargs['node_id'], 'instance-1')
 
     def test_metadata_references_cannot_create_a_false_high_impact_score(self):
-        tree = ast.parse((Path(__file__).resolve().parents[1] / 'graph_service/context_router.py').read_text(encoding='utf-8'))
-        functions = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ('_kind', '_display_name', '_change_impact_result')]
-        rows = [{'name': 'id1', 'labels': ['ApplicationRef'], 'relation_type': 'MASTERREF'} for _ in range(11)]
-        scope = {'Any': Any, 'ContextBody': dict, 're': re,
-                 '_find_node': lambda *a, **kw: {'id': 'issue-1', 'name': 'Bearing noise'},
-                 '_neighbors': lambda *a, **kw: rows}
-        exec(compile(ast.Module(body=functions, type_ignores=[]), '<impact-evidence>', 'exec'), scope)
-        result = scope['_change_impact_result']({'change_name': 'Bearing noise'})
+        from backend.tests.test_recommendation_customer_audit import Graph, record
+        from backend.graph_service.recommendation_engine import RecommendationEngine
+        from unittest.mock import patch
+        rows = [record('issue','Bearing noise','Change'), record('ref','Reference','ApplicationRef'), record('part','Bearing assembly','Assembly')]
+        graph = Graph(rows,[('issue','ref','MASTERREF','reference')])
+        with patch.dict('os.environ', {'DEPO_DATABASE_URL':'','DATABASE_URL':''}):
+            result = RecommendationEngine(graph).impact('issue')
+            self.assertIsNone(result['impact_score'])
+            self.assertEqual(result['evidence_status'], 'insufficient')
+            self.assertEqual(result['impacted_parts'], [])
+            self.assertIn('Impact is unknown', result['message'])
+            graph.links.append(('issue','part','IMPACTS','impact'))
+            result = RecommendationEngine(graph).impact('issue')
         self.assertIsNone(result['impact_score'])
-        self.assertEqual(result['evidence_status'], 'insufficient')
-        self.assertEqual(result['impacted_parts'], [])
-        self.assertIn('Impact is unknown', result['message'])
-        rows.append({'name': 'Bearing assembly', 'labels': ['Part'], 'relation_type': 'IMPACTS'})
-        result = scope['_change_impact_result']({'change_name': 'Bearing noise'})
-        self.assertEqual(result['impact_score'], 10)
-        self.assertEqual(len(result['assembly_impact']), 1)
+        self.assertEqual(result['assembly_impact'][0]['path'][0]['relationship_id'],'impact')
         self.assertEqual(result['evidence_status'], 'linked_candidates')
-
     def test_search_keeps_publication_barrier_across_all_queries(self):
         from contextlib import contextmanager
         from unittest.mock import patch

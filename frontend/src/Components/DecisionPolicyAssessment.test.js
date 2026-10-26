@@ -17,4 +17,9 @@ describe('Shared decision policy evidence', () => {
     render(<DecisionPolicyAssessment report={{status:'unavailable'}} />);
     expect(screen.getByText(/Publication is held/)).toBeInTheDocument();
   });
+  it('explains advisory uncertainty without suggesting a publication was requested',()=>{
+    render(<DecisionPolicyAssessment report={{operation:'recommendations',status:'unavailable'}}/>);
+    expect(screen.getByText(/Treat this advice as unverified/)).toBeVisible();
+    expect(screen.queryByText(/Publication is held/)).toBeNull();
+  });
 });

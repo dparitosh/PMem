@@ -41,6 +41,14 @@ class ImportStatusRecoveryTests(unittest.TestCase):
         self.assertIsNone(self.service.get_status('task'))
         self.assertEqual(self.service.list_tasks(),[])
 
+    def test_persistence_warning_surfaces_without_overwriting_saved_state(self):
+        self.service._task_snapshot_path('task').write_text(json.dumps(self.old))
+        # Use the method's globals to exercise the same in-memory task store.
+        store = self.service._read_status_task.__func__.__globals__['import_tasks']
+        store['task']['_persistence_error'] = 'Status could not be saved'
+        result = self.service.get_status('task')
+        self.assertEqual(result['persistence_warning'], 'Status could not be saved')
+
     def test_debug_snapshot_cannot_override_completed_task(self):
         done={**self.old,'status':'completed','committing':False}
         self.service._task_snapshot_path('task').write_text(json.dumps(done))

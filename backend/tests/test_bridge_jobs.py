@@ -149,8 +149,10 @@ class BridgeJobTests(unittest.TestCase):
         self.assertEqual(len(self.graph.calls), 1)
 
     def test_completed_retry_is_idempotent(self):
+        from unittest.mock import patch
         first = self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
-        self.assertEqual(first, self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer'))
+        with patch('backend.agentic_service.bridge_jobs.now', return_value='a later reconciliation time'):
+            self.assertEqual(first, self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer'))
         self.assertEqual(len(self.graph.calls), 1)
 
     def test_tampered_preview_denied(self):

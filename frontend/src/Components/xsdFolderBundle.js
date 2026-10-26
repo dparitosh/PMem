@@ -26,7 +26,7 @@ export async function combineXsdFiles(selected, available = selected, preflight 
     selectedPaths.push(path);
     selectedFiles.push(file);
     const text = await readText(file);
-    if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error('DTD/entities are not permitted in schemas.');
+    if (/<!DOCTYPE|<!ENTITY/i.test(text.replace(/<!--[\s\S]*?-->/g, ''))) throw new Error('DTD/entities are not permitted in schemas.');
     const xml = new DOMParser().parseFromString(text, 'application/xml');
     if (xml.querySelector('parsererror') || xml.documentElement.namespaceURI !== XSD || xml.documentElement.localName !== 'schema') throw new Error(`Invalid XML Schema: ${file.name}`);
     const ns = xml.documentElement.getAttribute('targetNamespace') || '';
@@ -92,7 +92,7 @@ export async function prepareXsdFolder(files, rootPath) {
     size += file.size;
     if (documents.size >= 64 || size > 25 * 1024 * 1024) throw new Error('Schema set exceeds 64 files or 25 MiB.');
     const text = await readText(file);
-    if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error('DTD/entities are not permitted in schemas.');
+    if (/<!DOCTYPE|<!ENTITY/i.test(text.replace(/<!--[\s\S]*?-->/g, ''))) throw new Error('DTD/entities are not permitted in schemas.');
     const xml = new DOMParser().parseFromString(text, 'application/xml');
     if (xml.querySelector('parsererror') || xml.documentElement.namespaceURI !== XSD || xml.documentElement.localName !== 'schema') throw new Error(`Invalid XML Schema: ${path}`);
     const refs = [];
@@ -103,7 +103,10 @@ export async function prepareXsdFolder(files, rootPath) {
         const url = new URL(location);
         const name = decodeURIComponent(url.pathname.split('/').at(-1));
         const matches = paths.filter(candidate => candidate.split('/').at(-1) === name && candidate !== path);
-        if (!name.endsWith('.xsd') || matches.length !== 1) throw new Error(`Select exactly one local companion XSD named ${name || '(missing filename)'} for ${path}. External schemas are not downloaded.`);
+        // Keep unresolved URLs for the bounded server resolver. Browsers must
+        // not download schema closures (CORS, credentials and inconsistent limits).
+        if (!matches.length) continue;
+        if (!name.toLowerCase().endsWith('.xsd') || matches.length !== 1) throw new Error(`Select exactly one local companion XSD named ${name || '(missing filename)'} for ${path}.`);
         dependency = matches[0];
         if (size + source.get(dependency).size > 25 * 1024 * 1024) throw new Error('Schema set exceeds 25 MiB.');
         const companion = new DOMParser().parseFromString(await readText(source.get(dependency)), 'application/xml');

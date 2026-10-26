@@ -1,4 +1,4 @@
-import { RadialImpactGraph } from "./RecommendationVisuals.js";
+import DependencyPathGraph from './DependencyPathGraph';
 import { CARD, TH, TD, TABLE, Badge, ScoreBar, ResultTabBar } from "./RecommendationPrimitives.js";
 import React, { useState } from "react";
 import { Zap } from "lucide-react";
@@ -46,10 +46,24 @@ const ChangeImpactResult = ({ data }) => {
         </div>
       </div>
 
+      <section aria-label="Dependency path evidence" style={CARD}>
+        <h3>Why these records need review</h3>
+        <p>{data.traceability}</p>
+        {data.coverage?.limit_reached && <p role="status">The traversal limit was reached. Narrow the selected scope and assess remaining dependencies before approving the change.</p>}
+        <table style={TABLE}><thead><tr><th style={TH}>Business record</th><th style={TH}>Dependency path</th><th style={TH}>Configuration and effectivity</th></tr></thead>
+          <tbody>{(data.realization_chain || []).map((item,index)=><tr key={item.node_id || index}>
+            <td style={TD}>{item.name}</td><td style={TD}>{item.path_names?.join(' → ') || item.link_type}
+              <details><summary>Path evidence</summary><ol>{(item.path || []).map(edge=><li key={edge.relationship_id}>{edge.predicate || edge.relationship_type} · reference {edge.relationship_id}</li>)}</ol></details>
+            </td><td style={TD}>{item.review_status === 'configuration_conflict' ? 'Conflicting configuration evidence; review required' : 'Effectivity review required'}
+              {item.configuration_review?.map(entry=><p key={entry.property}>{entry.property}: {entry.source.join('; ') || 'Not recorded'} / {entry.candidate.join('; ') || 'Not recorded'} — {entry.status}</p>)}
+            </td></tr>)}</tbody>
+        </table>
+      </section>
+
       {/* Result sub-tabs */}
       <ResultTabBar tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'overview' && <RadialImpactGraph data={data} />}
+      {tab === 'overview' && <DependencyPathGraph data={data} />}
 
       {tab === 'parts' && (
         data.impacted_parts?.length > 0 ? (

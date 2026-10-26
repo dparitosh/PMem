@@ -73,14 +73,15 @@ def test_canonical_rdf_process_is_not_hidden_by_storage_label():
     assert result['direct_processes'][0]['process_name'] == 'Manufacture'
 
 
-def test_generic_storage_labels_do_not_boost_similarity():
-    with patch.object(context_router, '_find_node', return_value={'id': 'part', 'name': 'Motor', 'labels': ['OntologyResource']}), patch.object(
-        context_router.publisher, 'search', return_value={'nodes':[{'elementId': 'other', 'properties':{'label':'Motor'}, 'labels': ['OntologyResource']}]}
-    ):
-        result = context_router._similar_parts_result({'node_id': 'part'})
-    assert result['similar_parts'][0]['score_evidence']['graph_type_match'] is False
-    assert result['similar_parts'][0]['similarity_score'] == 75
-
+def test_generic_storage_labels_do_not_boost_similarity(monkeypatch):
+    from fastapi import HTTPException
+    from backend.tests.test_recommendation_customer_audit import Graph, record
+    from backend.graph_service.recommendation_engine import RecommendationEngine
+    monkeypatch.delenv('DEPO_DATABASE_URL', raising=False)
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    with pytest.raises(HTTPException) as error:
+        RecommendationEngine(Graph([record('root','Motor','Unknown')])).similar('root')
+    assert error.value.status_code == 422
 
 def test_document_query_uses_safe_tokens_and_explicit_scope(monkeypatch):
     monkeypatch.delenv('DEPO_DATABASE_URL', raising=False)

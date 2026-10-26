@@ -308,12 +308,16 @@ class OntologyUploadManager:
         """
         lock_acquired = False
         try:
+            if file_type == 'xsd' and generation_type != 'as_is':
+                from .schema_dependencies import resolve_schema_dependencies
+                file_content, schema_files = resolve_schema_dependencies(filename, file_content, schema_files)
+            elif schema_files:
+                from .schema_upload_paths import validate_schema_upload
+                validate_schema_upload(filename, file_content, schema_files, require_dependencies=generation_type != 'as_is')
+            # Do not hold the catalog metadata lock while resolving network dependencies.
             cls._metadata_lock.acquire()
             lock_acquired = True
             cls.initialize()
-            if schema_files:
-                from .schema_upload_paths import validate_schema_upload
-                validate_schema_upload(filename, file_content, schema_files, require_dependencies=generation_type != 'as_is')
 
             user_prefix = str(prefix or "").strip()
             if file_type == "xsd" and file_content:

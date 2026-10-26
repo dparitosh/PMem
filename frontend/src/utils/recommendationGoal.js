@@ -2,6 +2,7 @@ export const recommendationTools = {'change-impact':'recommendation.change_impac
 export function recommendationGoalEvidence(run,context){
  if(!run||run.status!=='completed'||!run.result?.recommendation_observation_id)return null;
  if(['recommendation_service','recommendation_object','recommendation_top_n'].some(key=>run.context?.[key]!==context[key]))return null;
+ if(['node_id','ontology_id','ontology_prefix'].some(key=>(run.context?.[key]||'')!==(context[key]||'')))return null;
  const observation=(run.observations||[]).find(item=>item.id===run.result.recommendation_observation_id);
  const result=observation?.result;
  if(observation?.status!=='completed'||observation.tool_id!==recommendationTools[context.recommendation_service]||!result||result.truncated||!result.decision_policy)return null;

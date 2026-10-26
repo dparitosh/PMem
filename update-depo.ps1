@@ -5,6 +5,10 @@ migrations and indexes, provisions Neo4j search indexes/backfills, rebuilds the 
 and restarts application services. Reports retained AP242 mapping changes for review;
 does not regenerate source instances or approve/publish PMI associations automatically.
 Use -PreflightOnly to validate without applying migrations or stopping services.
+Deploy the complete matching release first. This includes schema dependency
+resolution, agent workflow access, business answers and graph view fixes.
+Updates retain workflow history and approvals; they do not replay failed imports
+or publish pending graph changes. Review those operations after the update.
 #>
 [CmdletBinding()]
 param(

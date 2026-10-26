@@ -142,8 +142,8 @@ class OWLGenerationService:
     @staticmethod
     def generate_owl(file_content: bytes, filename: str, *, schema_files: dict[str, bytes] | None = None) -> Tuple[str, Dict[str, Any]]:
         """Route to the format-specific engine based on filename extension."""
-        from backend.Services.schema_upload_paths import validate_schema_upload
-        validate_schema_upload(filename, file_content, schema_files)
+        from backend.Services.schema_dependencies import resolve_schema_dependencies
+        file_content, schema_files = resolve_schema_dependencies(filename, file_content, schema_files)
         ext = Path(filename).suffix.lower().lstrip(".")
         dispatch = {
             "exp":     OWLGenerationService.generate_owl_from_express,
@@ -271,8 +271,8 @@ class OWLGenerationService:
         """XSD schema -> OWL2/Turtle with full SKOS/SHACL/OSLC via owl_xsd_engine."""
         tmp_dir: Optional[Path] = None
         try:
-            from backend.Services.schema_upload_paths import validate_schema_upload
-            dependencies = validate_schema_upload(filename, file_content, schema_files)
+            from backend.Services.schema_dependencies import resolve_schema_dependencies
+            file_content, dependencies = resolve_schema_dependencies(filename, file_content, schema_files)
             tmp_dir = Path(tempfile.mkdtemp())
             for name, data in dependencies.items():
                 dependency = tmp_dir / name

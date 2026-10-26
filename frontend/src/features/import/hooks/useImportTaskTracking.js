@@ -86,7 +86,8 @@ export default function useImportTaskTracking({ isMountedRef, setPipelineStatus,
             stage: mappedStage,
             backendStage: data.current_stage,
             progress: data.progress,
-            message: isAwaitingImportApproval(data) ? 'Parsing complete. Review the preview, then choose Load to knowledge graph and enter an approver.' : data.message,
+            message: data.persistence_warning || (isAwaitingImportApproval(data) ? 'Parsing complete. Review the preview, then choose Load to knowledge graph and enter an approver.' : data.message),
+            persistenceWarning: data.persistence_warning || null,
             stats: normalizedStats,
             status: data.status,
             committing: typeof data.committing === 'boolean'
@@ -121,7 +122,7 @@ export default function useImportTaskTracking({ isMountedRef, setPipelineStatus,
         });
 
         // Auto-set preview data when preview/verify stage or completed is reached
-        if (data.current_stage === 'preview' || data.current_stage === 'verify' || data.status === 'completed') {
+        if (!data.persistence_warning && (data.current_stage === 'preview' || data.current_stage === 'verify' || data.status === 'completed')) {
           const statusPreview = {
             ...data,
             row_count: normalizedStats.row_count ?? normalizedStats.entities_found ?? 0,
@@ -158,7 +159,7 @@ export default function useImportTaskTracking({ isMountedRef, setPipelineStatus,
 
         // Preview is a stable user decision point. Stop polling until the
         // user explicitly starts the knowledge graph commit, which starts a new poller.
-        if ((data.status === 'ready_for_commit' && !data.committing && data.current_stage !== 'ingest') || data.status === 'completed' || data.status === 'failed') {
+        if (!data.persistence_warning && ((data.status === 'ready_for_commit' && !data.committing && data.current_stage !== 'ingest') || data.status === 'completed' || data.status === 'failed')) {
           clearPoller(pollerKey);
           return;
         }

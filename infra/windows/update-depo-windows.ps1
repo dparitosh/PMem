@@ -86,3 +86,4 @@ Invoke-DepoUpgradeStep 'Migration, installation and service verification' {
 }
 Write-Host 'Review logs/installation/ceim-upgrade-review/plan.json. New PMI rules require source regeneration and governed publication; existing graph publications were not replaced.'
 Write-Host 'DEPO redeployment completed: database schema/indexes verified and services restarted. Existing credentials and configuration were preserved except explicitly requested timeout updates.' -ForegroundColor Green
+Write-Host 'Refresh the browser and revalidate access. Review retained workflow status before retrying imports or publication; this update does not replay or approve pending operations.'

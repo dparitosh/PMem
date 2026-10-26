@@ -2,11 +2,12 @@ import React from 'react';
 import {act,render,screen,fireEvent,waitFor} from '@testing-library/react';
 import GraphHEB, {sanitizeContextualGraph, normalizeGraphDataset} from "../features/graph/GraphWorkspace.js";
 import {graphApi} from '../services/graphApi';
+import {apiClient} from '../services/apiClient';
 // This suite exercises request and display-state ownership. D3/SVG lifecycle is
 // covered in GraphCanvas.test.js; jsdom does not implement SVG viewBox.baseVal.
 vi.mock('../features/graph/GraphCanvas.js',async()=>{
  const {forwardRef}=await import('react');
- return {default:forwardRef(({model})=><output data-testid="rendered-node-count">{model.activeDisplayData.nodes.length}</output>)};
+ return {default:forwardRef(({model,actions},ref)=><><output data-testid="rendered-node-count">{model.activeDisplayData.nodes.length}</output><button onClick={()=>actions.openTooltipRecommendation('change-impact','Motor',{nodeId:'revision-a',ontologyId:'selected'})}>Test impact A</button><button onClick={()=>actions.openTooltipRecommendation('change-impact','Motor',{nodeId:'revision-b',ontologyId:'selected'})}>Test impact B</button></>)};
 });
 const catalog = vi.hoisted(()=>({rows:[]}));
 vi.mock('../contexts/OntologyContext',()=>({useOntologies:()=>({ontologies:catalog.rows,loading:false,error:null})}));
@@ -30,6 +31,24 @@ test('overview search keeps the query visible and requests connected business co
  fireEvent.click(screen.getByRole('button',{name:'Search'}));
  await waitFor(()=>expect(graphApi.getContextualSubgraph).toHaveBeenCalledWith(expect.objectContaining({search:'PART_OF',searchMode:'best',limit:24}),expect.anything()),{timeout:2000});
  expect(input).toHaveValue('PART_OF');
+});
+
+test('graph recommendation requests preserve identity without invalid nested scope and ignore late results',async()=>{
+ graphApi.getOverview.mockResolvedValue({data:{nodes:[{elementId:'node',labels:['Part'],properties:{name:'Motor'}}],relationships:[],view:{}}});
+ let resolveA,resolveB;
+ apiClient.post.mockImplementationOnce(()=>new Promise(resolve=>{resolveA=resolve;})).mockImplementationOnce(()=>new Promise(resolve=>{resolveB=resolve;}));
+ render(<GraphHEB setData={vi.fn()} setSearchResults={vi.fn()} setActiveTab={vi.fn()} setVisibleRelationships={vi.fn()}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Entity graph'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Test impact A'}));
+ const first=apiClient.post.mock.calls.at(-1);
+ expect(first[1]).toMatchObject({node_id:'revision-a',scope:{ontology_id:'selected'}});
+ expect(first[1].scope).not.toHaveProperty('node_id');
+ fireEvent.click(screen.getByRole('button',{name:'Test impact B'}));
+ expect(first[2].signal.aborted).toBe(true);
+ await act(async()=>resolveB({data:{message:'Evidence for revision B'}}));
+ await screen.findByText('Evidence for revision B');
+ await act(async()=>resolveA({data:{message:'Wrong revision A'}}));
+ expect(screen.queryByText('Wrong revision A')).toBeNull();
 });
 
 test('search legend describes the visible result instead of the background overview',async()=>{

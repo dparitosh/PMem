@@ -33,6 +33,17 @@ test('credential changes abort readiness and fetch a current session result', as
 const ready=()=>API_METHODS.recommendations.health.mockResolvedValue({data:{status:'ok',readiness:{scenario_ready:true,message:'Graph available',service_readiness:{'change-impact':true,'similar-parts':true,manufacturing:true}}}});
 beforeEach(()=>{vi.clearAllMocks();sessionStorage.clear();agenticClient.get.mockResolvedValue({data:{read_goal_capabilities:{recommendation_evidence:1},tools:[{id:'recommendation.change_impact'},{id:'recommendation.similar_parts'},{id:'recommendation.manufacturing'}]}});});
 const direct=()=>fireEvent.change(screen.getByLabelText('Analysis method'),{target:{value:'graph'}});
+
+test('graph prefill retains identity and scope until the user edits the object',async()=>{
+ ready(); API_METHODS.recommendations.changeImpact.mockResolvedValue({data:{message:'No linked evidence'}});
+ render(<RecommendationsTab/>); await screen.findByText('Graph available'); direct();
+ fireEvent(window,new CustomEvent('dt-rec-prefill',{detail:{service:'change-impact',name:'Motor',node_id:'revision-2',scope:{ontology_id:'plant'}}}));
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ await waitFor(()=>expect(API_METHODS.recommendations.changeImpact).toHaveBeenCalledWith('Motor',{node_id:'revision-2',ontology_id:'plant'},expect.anything()));
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ await waitFor(()=>expect(API_METHODS.recommendations.changeImpact).toHaveBeenLastCalledWith('Bearing',{},expect.anything()));
+});
 test('one service selector and input replace duplicate scenarios and misrouted sample prompts',async()=>{
  ready();render(<RecommendationsTab/>);
  await screen.findByText('Graph available');

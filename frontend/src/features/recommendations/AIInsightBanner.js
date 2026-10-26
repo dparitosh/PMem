@@ -1,6 +1,6 @@
 import { MetricChip } from "./RecommendationPrimitives.js";
 import React from "react";
-import { AlertTriangle, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { UI_COLORS as C } from "../../styles/uiTokens";
 
 const AIInsightBanner = ({ service, data }) => {
@@ -11,15 +11,10 @@ const AIInsightBanner = ({ service, data }) => {
     const asmCount  = data.assembly_impact?.length || 0;
     const procCount = data.process_impacts?.length || 0;
     const reqCount  = data.impacted_requirements?.length || 0;
-    const score     = data.impact_score;
-    const hasScore=typeof score==='number'&&Number.isFinite(score);
-    const sev = score > 70 ? 'high' : score > 40 ? 'medium' : 'low';
-    const color = sev === 'high' ? C.red : sev === 'medium' ? C.amber : C.green;
-    const bg    = sev === 'high' ? C.redLight : sev === 'medium' ? C.amberLight : C.greenLight;
-    const Icon  = sev === 'high' ? AlertTriangle : Info;
-    const headline = !hasScore?'Impact evidence (score not recorded)':sev === 'high' ? 'High impact'
-      : sev === 'medium' ? 'Moderate impact'
-      : 'Low impact';
+    const color = C.primaryText;
+    const bg = C.primaryLight;
+    const Icon = Info;
+    const headline = data.evidence_status === 'insufficient' ? 'Impact is not established' : 'Linked impact candidates for review';
     insight = {
       color, bg, Icon, headline,
       chips: [
@@ -28,7 +23,7 @@ const AIInsightBanner = ({ service, data }) => {
         { value: reqCount,  label: 'Requirements' },
         { value: procCount, label: 'Processes' },
       ],
-      cta: 'Check impacted areas before approval.',
+      cta: 'Direct links support investigation. Impact severity and indirect effects have not been assessed.',
     };
   } else if (service === 'similar-parts' && data?.source_part) {
     const count = data.similar_parts?.length || 0;

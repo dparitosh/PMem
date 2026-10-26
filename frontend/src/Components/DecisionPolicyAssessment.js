@@ -9,6 +9,12 @@ export default function DecisionPolicyAssessment({ report }) {
     blocked: 'Decision policy holds this proposal. Review the findings before proceeding.',
     unavailable: 'Decision policy could not be assessed. Publication is held; check the policy service and retry.',
   };
+  if (report.operation === 'recommendations') {
+    labels.not_configured='No shared decision policy is configured. Review engineering evidence and missing information before acting.';
+    labels.passed='Configured decision policies passed. Engineering review is still required before acting.';
+    labels.blocked='Decision policy holds this advice. Review the engineering findings before acting.';
+    labels.unavailable='Decision policy could not be assessed. Treat this advice as unverified and retry after checking the policy service.';
+  }
   return <section aria-label="Shared decision policy" role="status">
     <strong>Decision policy</strong><p>{labels[report.status] || 'Unrecognized policy result; refresh and reassess.'}</p>
     {report.checks?.length > 0 && <details><summary>Policy findings and evidence</summary>

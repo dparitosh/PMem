@@ -1,3 +1,4 @@
+import {recommendationIdentity} from './recommendationScope';
 import { applyRequestDeadline, abortableDelay, retryFitsDeadline } from './requestPolicy';
 import { apiRequestId, apiErrorMessage } from '../utils/apiErrorMessage';
 /**
@@ -692,18 +693,18 @@ export const recommendationsAPI = {
   changeImpact: (changeName, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.changeImpact), {
       change_name: changeName,
-      ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
+      ...recommendationIdentity(scope),
     }, options),
   similarParts: (partName, topN = 10, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.similarParts), {
       part_name: partName,
       top_n: topN,
-      ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
+      ...recommendationIdentity(scope),
     }, options),
   manufacturing: (partName, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.manufacturing), {
       part_name: partName,
-      ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
+      ...recommendationIdentity(scope),
     }, options),
   health: (options = {}) => apiClient.get(buildUrl(API.recommendations.health), options),
 };

@@ -82,7 +82,8 @@ class SemanticIntelligence:
 
     @staticmethod
     def _validate_rules(rules):
-        allowed = {"min_confidence", "required_outcomes", "required_metadata", "max_reasoning_length"}
+        allowed = {"min_confidence", "required_outcomes", "required_metadata", "max_reasoning_length",
+                   "max_conflicts", "min_evidence_coverage", "require_complete_coverage", "require_effectivity_verified", "allowed_evidence_statuses"}
         if not rules or set(rules) - allowed:
             raise ValueError("Unsupported or empty Semantica decision rules")
         confidence = rules.get("min_confidence", .7)
@@ -94,6 +95,15 @@ class SemanticIntelligence:
                 raise ValueError(key + " must be a list of nonempty strings")
         if type(rules.get("max_reasoning_length", 1000)) is not int or rules.get("max_reasoning_length", 1000) < 1:
             raise ValueError("max_reasoning_length must be a positive integer")
+        if 'max_conflicts' in rules and (type(rules['max_conflicts']) is not int or rules['max_conflicts'] < 0):
+            raise ValueError('max_conflicts must be a nonnegative integer')
+        if 'min_evidence_coverage' in rules and (type(rules['min_evidence_coverage']) not in (int,float) or not math.isfinite(rules['min_evidence_coverage']) or not 0 <= rules['min_evidence_coverage'] <= 1):
+            raise ValueError('min_evidence_coverage must be between 0 and 1')
+        for key in ('require_complete_coverage', 'require_effectivity_verified'):
+            if key in rules and type(rules[key]) is not bool:
+                raise ValueError(key + ' must be a boolean')
+        if 'allowed_evidence_statuses' in rules and (not isinstance(rules['allowed_evidence_statuses'],list) or not rules['allowed_evidence_statuses'] or any(not isinstance(item,str) or not item for item in rules['allowed_evidence_statuses'])):
+            raise ValueError('allowed_evidence_statuses must be a nonempty list of statuses')
 
     def evaluate_decisions(self, operation, decisions):
         """One policy snapshot for the entire bounded batch; retain evidence separately."""
@@ -119,13 +129,31 @@ class SemanticIntelligence:
             self._validate_rules(policy["rules"])
             # Native Semantica requires the defaults to be supplied when any rules exist.
             rules = {"min_confidence": .7, "required_outcomes": ["approved", "rejected", "flagged"],
-                     "required_metadata": ["decision_maker"], "max_reasoning_length": 1000, **policy["rules"]}
+                     "required_metadata": ["decision_maker"], "max_reasoning_length": 1000,
+                     **{key:value for key,value in policy['rules'].items() if key in {'min_confidence','required_outcomes','required_metadata','max_reasoning_length'}}}
             for index, decision in enumerate(decisions):
                 result = serialise(engine.enforce_decision_policy(decision, rules))
                 result.pop("policy_rules", None)
+                violations = list(result.get('violations') or [])
+                engineering = policy['rules']
+                if 'max_conflicts' in engineering and (not isinstance(decision.get('conflicts'),list) or len(decision['conflicts']) > engineering['max_conflicts']):
+                    violations.append('Engineering conflicts exceed the policy limit or were not assessed')
+                coverage = decision.get('evidence_coverage')
+                if 'min_evidence_coverage' in engineering and (type(coverage) not in (int,float) or not math.isfinite(coverage) or not 0 <= coverage <= 1 or coverage < engineering['min_evidence_coverage']):
+                    violations.append('Engineering evidence coverage is below the policy minimum or unknown')
+                coverage_report = decision.get('coverage')
+                if engineering.get('require_complete_coverage') and (not isinstance(coverage_report,dict) or coverage_report.get('whole_graph_complete') is not True):
+                    violations.append('Complete dependency or candidate coverage has not been established')
+                if engineering.get('require_effectivity_verified') and decision.get('effectivity_verified') is not True:
+                    violations.append('Configuration effectivity requires verification')
+                if 'allowed_evidence_statuses' in engineering and decision.get('evidence_status') not in engineering['allowed_evidence_statuses']:
+                    violations.append('Engineering evidence status is held by policy')
+                if violations:
+                    result.update(compliant=False, violations=violations)
                 checks.append({"policy_id": policy["policy_id"], "decision_index": index, "subject": str(decision.get("candidate_label") or decision.get("kind") or "Reviewed ontology artifact")[:500], **result})
         from backend.depo_platform.bridge_contract import digest
         report = {"engine": "semantica.ContextGraph.enforce_decision_policy", "operation": operation,
+            "engineering_rules_engine": "depo.engineering-evidence-rules-v1",
             "status": "not_configured" if not policies else ("passed" if all(c["compliant"] for c in checks) else "blocked"),
             "compliant": all(c["compliant"] for c in checks) if policies else None,
             "blocking": any(not c["compliant"] for c in checks), "checks": checks[:200],

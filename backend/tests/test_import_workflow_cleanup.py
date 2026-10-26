@@ -16,6 +16,8 @@ def stores(tmp_path, status='completed', committing=False, registry=None):
     task = {'task_id': identifier, 'status': status, 'committing': committing}
     (snapshots / f'{identifier}.json').write_text(json.dumps(task))
     (snapshots / f'{identifier}.json.parsed_rows.json').write_text('[]')
+    (snapshots / f'{identifier}.json.parsed_rows.abc123.json').write_text('[]')
+    (snapshots / f'{identifier}.lock').write_bytes(b'0')
     directory = artifacts / identifier
     directory.mkdir(); (directory / 'source.xml').write_text('<test/>')
     importer = SimpleNamespace(TASK_STORE_DIR=snapshots, list_tasks=lambda: [] if cleared(identifier, snapshots) else [task])

@@ -2445,144 +2445,13 @@ class UnifiedDataImportService:
         task = import_tasks.get(task_id)
         if not task:
             return
+        from .import_task_persistence import persist_task, TaskPersistenceError
         try:
-            snapshot = cls._build_persistable_task(task)
-            # Add writer metadata to help diagnose race/overwrite issues
-            ver = int(snapshot.get('_persist_version', 0) or 0) + 1
-            snapshot['_persisted_by'] = {
-                'pid': os.getpid(),
-                'time': datetime.now().isoformat(),
-                'version': ver,
-            }
-            snapshot['_persist_version'] = ver
-            # Diagnostic: log which keys are being persisted and parsed_rows size
-            try:
-                keys = list(snapshot.keys())
-                parsed_rows_info = None
-                if 'parsed_rows' in snapshot:
-                    try:
-                        parsed_rows_info = len(snapshot.get('parsed_rows') or [])
-                    except Exception:
-                        parsed_rows_info = 'unlenable'
-                # Surface this at INFO level so it's always visible in dev logs
-                logger.info(f"Persisting snapshot for {task_id} keys={keys} parsed_rows={parsed_rows_info}")
-                # Note: debug copy will be written after path is resolved below
-            except Exception:
-                # swallow logging diagnostics to avoid breaking persist
-                pass
-            path = cls._task_snapshot_path(task_id)
-            # Ensure directory exists before writing
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # Acquire a lightweight per-task lock to avoid overlapping persists
-            lock_path = path.with_suffix('.lock')
-            lock_acquired = False
-            try:
-                attempts = 0
-                while attempts < 10:
-                    try:
-                        # Use exclusive create to acquire lock; will fail if exists
-                        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                        os.close(fd)
-                        lock_acquired = True
-                        break
-                    except FileExistsError:
-                        attempts += 1
-                        time.sleep(0.02)
-                if not lock_acquired:
-                    # If we couldn't acquire lock, proceed but log a warning
-                    logger.warning(f"Task {task_id}: couldn't acquire persist lock after {attempts} attempts")
-                # Proceed with writing while holding the lock (if acquired)
-                
-                # If parsed_rows present, write them to a separate file atomically to
-                # avoid large-list overwrite races and to make persistence robust.
-                parsed_rows = None
-                try:
-                    if 'parsed_rows' in snapshot:
-                        parsed_rows = snapshot.pop('parsed_rows')
-                        parsed_path = path.with_name(path.name + ".parsed_rows.json")
-                        parsed_tmp = parsed_path.with_suffix('.json.tmp')
-                        # Write parsed rows using default=str to tolerate odd values
-                        parsed_tmp.write_text(json.dumps(parsed_rows, ensure_ascii=True, default=str), encoding='utf-8')
-                        try:
-                            logger.info(f"Task {task_id}: about to atomically replace parsed_rows tmp -> {parsed_path.name} (pid={os.getpid()} v={ver})")
-                            parsed_tmp.replace(parsed_path)
-                            logger.info(f"Task {task_id}: parsed_rows replace completed -> {parsed_path.name} (size={parsed_path.stat().st_size} bytes)")
-                        except Exception as e_replace:
-                            logger.exception(f"Task {task_id}: failed atomic replace for parsed_rows: {e_replace}")
-                        # add pointer to snapshot for restore
-                        snapshot['_parsed_rows_file'] = parsed_path.name
-                        # Persist pointer into the in-memory task as well so concurrent
-                        # persists will include the pointer and not overwrite it.
-                        try:
-                            task['_parsed_rows_file'] = parsed_path.name
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.exception('Failed to persist parsed_rows separately')
-
-                # If a SHACL report is present in the snapshot (from OWL generation/validation),
-                # persist it separately to avoid bloating the snapshot and to make reports
-                # available for downstream inspection.
-                try:
-                    if 'shacl_report' in snapshot:
-                        shacl_report = snapshot.pop('shacl_report')
-                        shacl_path = path.with_name(path.name + ".shacl_report.json")
-                        shacl_tmp = shacl_path.with_suffix('.json.tmp')
-                        shacl_tmp.write_text(json.dumps(shacl_report, ensure_ascii=True, default=str), encoding='utf-8')
-                        try:
-                            logger.info(f"Task {task_id}: about to atomically replace shacl tmp -> {shacl_path.name} (pid={os.getpid()} v={ver})")
-                            shacl_tmp.replace(shacl_path)
-                            logger.info(f"Task {task_id}: shacl replace completed -> {shacl_path.name} (size={shacl_path.stat().st_size} bytes)")
-                        except Exception as e_sh:
-                            logger.exception(f"Task {task_id}: failed atomic replace for shacl_report: {e_sh}")
-                        # add pointer to snapshot and in-memory task
-                        snapshot['_shacl_file'] = shacl_path.name
-                        try:
-                            task['_shacl_file'] = shacl_path.name
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.exception('Failed to persist shacl_report separately')
-                # Ensure any shacl_report pointer present in-memory is reflected
-                try:
-                    if '_shacl_file' not in snapshot and task.get('_shacl_file'):
-                        snapshot['_shacl_file'] = task.get('_shacl_file')
-                except Exception:
-                    pass
-
-                # Ensure any parsed_rows pointer present in-memory is reflected
-                # in the snapshot before writing to avoid losing the pointer when
-                # another writer started earlier.
-                try:
-                    if '_parsed_rows_file' not in snapshot and task.get('_parsed_rows_file'):
-                        snapshot['_parsed_rows_file'] = task.get('_parsed_rows_file')
-                except Exception:
-                    pass
-
-                # Also write a per-write debug copy to help diagnose overwrite/race issues
-                try:
-                    debug_path = path.with_name(path.name + f".writer_{os.getpid()}_v{ver}.json")
-                    debug_path.write_text(json.dumps(snapshot, ensure_ascii=True, default=str), encoding='utf-8')
-                except Exception:
-                    logger.debug("Failed to write debug snapshot copy", exc_info=True)
-                tmp_path = path.with_suffix('.json.tmp')
-                # Use default=str to tolerate any non-serializable values (best-effort)
-                tmp_path.write_text(json.dumps(snapshot, ensure_ascii=True, default=str), encoding='utf-8')
-                try:
-                    logger.info(f"Task {task_id}: about to atomically replace snapshot tmp -> {path.name} (pid={os.getpid()} v={ver})")
-                    tmp_path.replace(path)
-                    logger.info(f"Task {task_id}: snapshot replace completed -> {path.name} (size={path.stat().st_size} bytes)")
-                except Exception as e_replace:
-                    logger.exception(f"Task {task_id}: failed atomic replace for snapshot: {e_replace}")
-            finally:
-                try:
-                    if lock_acquired and lock_path.exists():
-                        lock_path.unlink()
-                except Exception:
-                    logger.debug("Failed to remove persist lock", exc_info=True)
-            
+            persist_task(cls._task_snapshot_path(task_id), task, cls._build_persistable_task)
         except Exception as exc:
-            logger.exception(f"Task {task_id}: failed to persist snapshot: {exc}")
+            task['_persistence_error'] = 'Import status could not be saved. Check task-storage permissions and file locks; refresh status before retrying this operation.'
+            logger.exception('Task %s: snapshot persistence failed; previous snapshot retained', task_id)
+            raise TaskPersistenceError(task['_persistence_error']) from exc
 
     @classmethod
     def _restore_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
@@ -2821,11 +2690,8 @@ class UnifiedDataImportService:
 
             task_info['parsed_rows'] = rows
             # Persist parsed rows immediately to survive worker/process restarts
-            try:
-                cls._persist_task(task_id)
-                logger.info(f"Task {task_id}: persisted parsed_rows ({len(rows)} rows)")
-            except Exception:
-                logger.exception(f"Task {task_id}: failed to persist parsed_rows")
+            cls._persist_task(task_id)
+            logger.debug("Task %s: persisted parsed_rows (%s rows)", task_id, len(rows))
             # Merge stats — preserve ontology_mapping set during init
             task_info['stats'] = {**task_info.get('stats', {}), **stats}
 
@@ -2964,6 +2830,9 @@ class UnifiedDataImportService:
         try:
             task = json.loads(cls._task_snapshot_path(task_id).read_text(encoding='utf-8'))
             if isinstance(task, dict) and task.get('task_id') == task_id:
+                warning = (import_tasks.get(task_id) or {}).get('_persistence_error')
+                if warning:
+                    task['persistence_warning'] = warning
                 return task
         except (OSError, ValueError, TypeError):
             pass
@@ -2992,6 +2861,7 @@ class UnifiedDataImportService:
             'status': task['status'],
             'committing': task.get('committing', False),
             'error': task.get('error'),
+            'persistence_warning': task.get('persistence_warning') or task.get('_persistence_error'),
             'stats': task.get('stats'),
             'result': task.get('result'),
             'commit_phase': task.get('commit_phase'),
@@ -3765,6 +3635,19 @@ class UnifiedDataImportService:
                 )
                 logger.info(f"Task {task_id}: Neo4j commit finished in background: {result}")
             except Exception as e:
+                from .import_task_persistence import TaskPersistenceError
+                if isinstance(e, TaskPersistenceError):
+                    # A write may already have reached the graph. Never advertise
+                    # a retry based on a snapshot that could not be committed.
+                    task.update(status='outcome_unknown', current_stage='ingest', committing=False,
+                                commit_phase='outcome_unknown',
+                                message='Import outcome needs review because status could not be saved. Restore task storage and inspect graph results before retrying.',
+                                error=str(e))
+                    try:
+                        cls._persist_task(task_id)
+                    except TaskPersistenceError:
+                        pass  # original persistence error is already logged and visible
+                    return
                 # Revert to an explicit preview-ready state so the user can retry.
                 task.pop('file_content', None)
                 task['committing'] = False

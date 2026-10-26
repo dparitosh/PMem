@@ -35,7 +35,7 @@ def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = N
     if not query and not identifier:
         raise HTTPException(status_code=422, detail="A graph term is required")
     if not identifier:
-        graph=publisher.search(query=query,limit=2,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+        graph=publisher.search(query=query,limit=2,ontology_id=ontology_id,ontology_prefix=ontology_prefix,business_only=True)
         rows=[{'id':n['elementId'],'name':n['properties'].get('label') or n['elementId'],
                'labels':n.get('labels',[]),'rdf_types':n['properties'].get('rdf_types',[]),
                'source_tag':n['properties'].get('ontology_id') or 'graph'} for n in graph['nodes']]
@@ -47,7 +47,8 @@ def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = N
         if len(rows)>1:
             raise HTTPException(409,'Graph term is ambiguous; select its node_id and ontology scope')
         return rows[0] if rows else None
-    node_clause = _ontology_node_clause()
+    from backend.graph_service.business_types import business_instance_filter
+    node_clause = '(' + _ontology_node_clause() + ') AND (' + business_instance_filter('n') + ')'
     rows = publisher._session_rows(
         f"MATCH (n) WHERE {node_clause} "
         "WITH n, coalesce(n.name, n.label, n.uri, n.iri) AS display "
@@ -181,98 +182,42 @@ def list_requirements(source: str = Query(default="all"), limit: int = Query(def
 
 @router.get("/recommendations/health", summary="Check graph-backed recommendation readiness")
 def recommendation_health() -> dict:
-    node_count = int(publisher.overview(limit=1).get("counts", {}).get("nodes", 0))
-    ready = node_count > 0
+    from .recommendation_engine import EXCLUDED
+    rows = publisher._session_rows(
+        '/* recommendation-readiness */ MATCH (n) '
+        'WHERE none(label IN labels(n) WHERE label IN $excluded) '
+        "AND (any(label IN labels(n) WHERE toLower(label) IN $roles) "
+        "OR any(t IN coalesce(n.rdf_types,[]) WHERE toLower(last(split(last(split(t,'#')),'/'))) IN $roles) "
+        "OR toLower(coalesce(n.semantic_role,n.element_type,'')) IN $roles "
+        "OR EXISTS { MATCH (n)-[:INSTANCE_OF|TYPED_BY|SEMANTICALLY_MAPPED_TO]->(cls) "
+        "WHERE NOT cls:StagedOntologyResource AND toLower(last(split(last(split(coalesce(cls.iri,cls.name,cls.label), '#')), '/'))) IN $roles }) "
+        'RETURN elementId(n) AS id LIMIT 1', excluded=EXCLUDED,
+        roles=['part','product','productrevision','productinstance','assembly','component','item','itemrevision','change','changerequest','changenotice'])
+    ready = bool(rows)
     return {
         "status": "ok",
         "readiness": {
             "scenario_ready": ready,
-            "message": "Graph context is ready for recommendation queries." if ready else "Load graph context before running recommendation queries.",
+            "message": "Typed business records are available. Each analysis reports its own evidence coverage; model availability is checked separately for agent mode." if ready else "Map or ingest typed parts, assemblies or changes before running recommendation queries.",
             "service_readiness": {"change-impact": ready, "similar-parts": ready, "manufacturing": ready},
         },
     }
 
 
 def _change_impact_result(payload: ContextBody) -> dict:
-    root = _find_node(str(payload.get("change_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
+    from .recommendation_engine import RecommendationEngine
+    root = _find_node(str(payload.get('change_name') or payload.get('part_name') or ''), node_id=str(payload.get('node_id') or ''), scope=payload.get('scope'))
     if root is None:
-        return {"message": "No matching graph term was found.", "impacted_parts": [], "assembly_impact": [], "impacted_requirements": [], "process_impacts": [], "realization_chain": []}
-    neighbors = _neighbors(str(root["id"]))
-    parts, assemblies, requirements, processes, realization = [], [], [], [], []
-    for row in neighbors:
-        # A reference to a revision, export record or metadata carrier is not
-        # evidence of business impact. Require an explicit impact/trace edge.
-        raw_relation = str(row.get('relation_type') or '')
-        if raw_relation == 'SEMANTIC_RELATION' and row.get('predicate'):
-            raw_relation = str(row['predicate']).rsplit('#',1)[-1].rsplit('/',1)[-1]
-        relation = re.sub(r'[^A-Z0-9]', '', raw_relation.upper())
-        if relation not in {'IMPACTS', 'AFFECTS', 'CMHASIMPACTEDITEM', 'CMHASPROBLEMITEM',
-                            'CMHASSOLUTIONITEM', 'HASIMPACTEDITEM', 'HASPROBLEMITEM',
-                            'HASSOLUTIONITEM', 'SATISFIES', 'SEG0SATISFY', 'FNDTRACELINK',
-                            'TRACELINK', 'REALIZES', 'TRACESTO'}:
-            continue
-        kind = _kind(row)
-        base = {"name": _display_name(row), "source_tag": row.get("source_tag"), "relation_type": raw_relation, "predicate":row.get("predicate"), "relationship_id":row.get("relationship_id"), "class_name": ", ".join(row.get("labels") or [])}
-        if "requirement" in kind:
-            requirements.append({"name": base["name"], "catalogue_id": row.get("id"), "linked_part": root["name"]})
-        elif "assembly" in kind:
-            assemblies.append({"assembly_name": base["name"], "depth": 1, "from_part": root["name"]})
-        elif "process" in kind or "manufactur" in kind:
-            processes.append({"name": base["name"], "source_tag": base["source_tag"], "from_part": root["name"]})
-        elif any(label.rsplit('/',1)[-1].lower() in {'part', 'product', 'productrevision', 'individual', 'namedindividual'} for label in [*row.get('labels', []),*row.get('rdf_types',[])]):
-            parts.append(base)
-        else:
-            continue
-        realization.append({"name": base["name"], "link_type": base["relation_type"], "from_part": root["name"]})
-    impact_count = len(realization)
-    return {
-        "change_entity": {"name": root["name"], "source_tag": root.get("source_tag", "graph"), "revision": None},
-        "impact_score": min(100, impact_count * 10) if impact_count else None,
-        "evidence_status": "linked_candidates" if impact_count else "insufficient",
-        "message": ("Linked records are review candidates; the indicator measures graph evidence, not impact severity or confidence."
-                    if impact_count else "The selected record was found, but no explicit impact or traceability links were found in its bounded neighborhood. Impact is unknown; review and link the affected business records before making a change decision."),
-        "context_relationships_examined": len(neighbors),
-        "impacted_parts": parts,
-        "assembly_impact": assemblies,
-        "impacted_requirements": requirements,
-        "process_impacts": processes,
-        "realization_chain": realization,
-        "traceability": "Live Neo4j neighborhood; results are read-only and bounded.",
-    }
+        return {'message': 'No matching business record was found.', 'impacted_parts': [], 'assembly_impact': [], 'impacted_requirements': [], 'process_impacts': [], 'realization_chain': []}
+    return RecommendationEngine(publisher).impact(root['id'], payload.get('scope'))
 
 
 def _similar_parts_result(payload: ContextBody) -> dict:
-    root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
+    from .recommendation_engine import RecommendationEngine
+    root = _find_node(str(payload.get('part_name') or ''), node_id=str(payload.get('node_id') or ''), scope=payload.get('scope'))
     if root is None:
-        return {"message": "No matching graph term was found.", "similar_parts": []}
-    top_n = max(1, min(int(payload.get("top_n", 10)), 50))
-    selected_scope=payload.get('scope') or {}
-    graph=publisher.search(query=str(root['name']),limit=50,
-        ontology_id=selected_scope.get('ontology_id',''),
-        ontology_prefix=selected_scope.get('ontology_prefix',selected_scope.get('prefix','')),business_only=True)
-    rows=[{'id':n['elementId'],'name':n['properties'].get('label') or n['elementId'],
-           'labels':n.get('labels',[]),'rdf_types':n['properties'].get('rdf_types',[]),
-           'source_tag':n['properties'].get('ontology_id') or 'graph'} for n in graph['nodes'] if n['elementId']!=root['id']]
-    generic={'OntologyResource','OntologyClass','Individual','NamedIndividual','resource'}
-    source_labels = set(root.get('rdf_types') or root.get("labels") or []) - generic
-    candidates = []
-    for row in rows:
-        type_match = bool(source_labels.intersection(set(row.get('rdf_types') or row.get("labels") or [])-generic))
-        source_tokens = set(re.findall(r"[a-z0-9]+", str(root["name"]).casefold()))
-        target_tokens = set(re.findall(r"[a-z0-9]+", _display_name(row).casefold()))
-        lexical = len(source_tokens & target_tokens) / max(1, len(source_tokens | target_tokens))
-        candidates.append({
-            "name": _display_name(row),
-            "similarity_score": round(100 * (.75 * lexical + .25 * int(type_match)), 2),
-            "score_evidence": {"token_jaccard": lexical, "graph_type_match": type_match,
-                               "weights": {"token_jaccard": .75, "graph_type_match": .25}},
-            "source_tag_match": row.get("source_tag") == root.get("source_tag"),
-            "rflp_layer_match": False,
-            "shared_assembly": False,
-            "traceability_link": "lexical + graph-type match",
-        })
-    return {"source_part": {"name": root["name"], "source_tag": root.get("source_tag", "graph"), "rflp_layer": None}, "similar_parts": sorted(candidates, key=lambda c: (-c["similarity_score"], c["name"]))[:top_n], "ranking_scope": "At most 50 lexical graph candidates; score is a heuristic, not probability."}
-
+        return {'message': 'No matching business record was found.', 'similar_parts': []}
+    return RecommendationEngine(publisher).similar(root['id'], payload.get('scope'), max(1, min(int(payload.get('top_n', 10)), 50)))
 
 def _manufacturing_context_result(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))

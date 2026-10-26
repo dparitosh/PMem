@@ -70,8 +70,9 @@ class EngineeringSchemaConverter:
         return None
 
     def convert(self, *, filename: str, content: bytes, schema_files: dict[str, bytes] | None = None) -> dict[str, Any]:
-        from backend.Services.schema_upload_paths import validate_schema_upload
-        schema_files = validate_schema_upload(filename, content, schema_files)
+        from backend.Services.schema_dependencies import resolve_schema_dependencies
+        original_content = content
+        content, schema_files = resolve_schema_dependencies(filename, content, schema_files)
         file_type = FileFormatDetector.detect(filename)
         if file_type not in _SOURCE_KINDS:
             raise ValueError("Supported conversion formats are .exp, .stp, .step, .stpx, .xmi, and .xsd")
@@ -97,10 +98,16 @@ class EngineeringSchemaConverter:
         # release. Conversion itself deliberately has no product/publication
         # authority.
         store = ArtifactStore()
+        original_artifact = None
+        if original_content != content:
+            original_artifact = store.ingest_bytes(original_content, filename=filename,
+                kind="engineering-schema-original", media_type="application/xml",
+                provenance={"format": file_type.value, "source_kind": source_kind})
         source_artifact = store.ingest_bytes(
             content, filename=filename, kind="engineering-schema-source",
             media_type="application/xml" if file_type == FileType.XSD else "text/plain",
-            provenance={"format": file_type.value, "source_kind": source_kind},
+            provenance={"format": file_type.value, "source_kind": source_kind,
+                        **({"original_source_artifact_id": original_artifact['artifact_id']} if original_artifact else {})},
         )
         turtle_bytes = turtle.encode("utf-8") if isinstance(turtle, str) else bytes(turtle)
         turtle_artifact = store.ingest_bytes(

@@ -47,21 +47,18 @@ class DependencyAuditTests(unittest.TestCase):
     def test_peer_data_read_uses_configured_service_and_private_credential(self):
         from backend.depo_platform.graph_data_client import GraphDataClient
         response = MagicMock()
-        response.iter_bytes.return_value = [b'{"terms":[{"kind":"Class","element_id":"graph-id","name":"Part"}]}']
-        client = MagicMock()
-        client.stream.return_value.__enter__.return_value = response
-        http = types.ModuleType('httpx')
-        http.Client = MagicMock(); http.Client.return_value.__enter__.return_value = client
+        response.content = b'{"terms":[{"kind":"Class","element_id":"graph-id","name":"Part"}]}'
         for base in ('http://graph:8013', 'http://graph:8013/api/v1'):
-            with patch.dict(os.environ, {'GRAPH_SERVICE_URL': base}), patch.dict(sys.modules, {'httpx': http}), patch('backend.depo_platform.graph_data_client.service_bearer_headers', return_value={'Authorization': 'Bearer server-test'}) as auth:
+            with patch.dict(os.environ, {'GRAPH_SERVICE_URL': base}), patch('backend.depo_platform.peer_http.peer_response', return_value=response) as peer, patch('backend.depo_platform.graph_data_client.service_bearer_headers', return_value={'Authorization': 'Bearer server-test'}) as auth:
                 result = GraphDataClient().mapping_terms('parts')
                 self.assertEqual(result[0]['element_id'], 'graph-id')
-                self.assertEqual(client.stream.call_args.args, ('GET', 'http://graph:8013/api/v1/graph/mapping-terms'))
+                self.assertEqual(peer.call_args.args, ('GET', 'http://graph:8013/api/v1/graph/mapping-terms'))
                 self.assertEqual(auth.call_args.args[0], 'GRAPH_PUBLICATION_TOKEN')
-                self.assertFalse(http.Client.call_args.kwargs['trust_env'])
+                self.assertEqual(peer.call_args.kwargs['headers'], {'Authorization': 'Bearer server-test'})
+                self.assertEqual(peer.call_args.kwargs['response_limit'], 16 * 1024 * 1024)
                 response.raise_for_status.assert_called()
-        response.iter_bytes.return_value = [b'{"terms":null}']
-        with patch.dict(sys.modules, {'httpx': http}), patch('backend.depo_platform.graph_data_client.service_bearer_headers', return_value={}):
+        response.content = b'{"terms":null}'
+        with patch('backend.depo_platform.peer_http.peer_response', return_value=response), patch('backend.depo_platform.graph_data_client.service_bearer_headers', return_value={}):
             with self.assertRaisesRegex(RuntimeError, 'invalid mapping terms'):
                 GraphDataClient().mapping_terms('parts')
 

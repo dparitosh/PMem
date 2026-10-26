@@ -52,8 +52,15 @@ test('multiple direct selections resolve sibling companions from an optional fol
   expect(bundle.paths.split('\n')).toEqual(['Apps/one.xsd', 'Apps/two.xsd', 'Library/part.xsd']);
   expect(bundle.sources).toEqual(roots);
 });
-test.each(['../../outside.xsd', 'https://example.test/a.xsd'])('unsafe reference %s fails preflight', async location => {
+test.each(['../../outside.xsd', 'file:///outside.xsd'])('unsafe reference %s fails preflight', async location => {
   await expect(prepareXsdFolder([file('Apps/root.xsd', `<xs:include schemaLocation="${location}"/>`)], 'Apps/root.xsd')).rejects.toThrow();
+});
+
+test('unresolved public schema URL is retained for server dependency resolution', async () => {
+  const result = await prepareXsdFolder([file('root.xsd', '<xs:include schemaLocation="https://example.test/a.xsd"/>')], 'root.xsd');
+  const text = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(result.root); });
+  expect(text).toContain('https://example.test/a.xsd');
+  expect(result.files).toEqual([]);
 });
 
 test('external import resolves a supplied local companion without altering originals', async () => {
@@ -94,4 +101,11 @@ test('oversized external companion is rejected before reading it', async () => {
 test('empty sources and case-colliding paths fail before upload', async () => {
   await expect(combineXsdFiles([])).rejects.toThrow('at least one');
   await expect(combineXsdFiles([file('part.xsd', ''), file('PART.xsd', '')])).rejects.toThrow('unique');
+});
+
+test('commented-out legacy DTD is inert; active declarations still fail', async () => {
+  await expect(prepareXsdFolder([file('root.xsd', '<!-- removed legacy <!DOCTYPE schema> <!ENTITY old "value"> -->')], 'root.xsd')).resolves.toBeTruthy();
+  const active = file('root.xsd', '');
+  active.text = async () => '<!DOCTYPE schema [<!ENTITY old "value">]><xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>';
+  await expect(prepareXsdFolder([active], 'root.xsd')).rejects.toThrow('DTD/entities');
 });

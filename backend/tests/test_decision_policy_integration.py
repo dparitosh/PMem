@@ -84,24 +84,48 @@ def test_manual_merge_rechecks_shared_policy_after_local_checks(monkeypatch):
     service.catalog.register.assert_not_called()
 
 
-def test_recommendation_rank_uses_evidence_not_alphabetical_position():
-    import ast, re
-    from pathlib import Path
-    from types import SimpleNamespace
-    tree = ast.parse(Path('backend/graph_service/context_router.py').read_text(encoding='utf-8'))
-    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_similar_parts_result')
-    rows = [dict(name='Wheel spare unrelated',labels=['Class'],source_tag='other'),
-            dict(name='Wheel',labels=['Class'],source_tag='same')]
-    scope = dict(re=re, ContextBody=dict, _find_node=lambda *args,**kwargs: dict(id='one', name='Wheel',labels=['Class'],source_tag='same'),
-        _ontology_node_clause=lambda: 'true', _display_name=lambda row: row['name'],
-        publisher=SimpleNamespace(_session_rows=lambda *args,**kwargs: rows))
-    exec(compile(ast.Module(body=[fn],type_ignores=[]),'<recommendation>','exec'),scope)
-    first = scope['_similar_parts_result']({'part_name':'Wheel'})
+def test_recommendation_rank_uses_evidence_not_alphabetical_position(monkeypatch):
+    from backend.tests.test_recommendation_customer_audit import Graph, record
+    from backend.graph_service.recommendation_engine import RecommendationEngine
+    monkeypatch.delenv('DEPO_DATABASE_URL', raising=False)
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    rows = [record('root','Wheel',material='Steel',diameter='1 in'),
+            record('two','A very different wheel'), record('three','Replacement',material='Steel',diameter='25.4 mm')]
+    first = RecommendationEngine(Graph(rows)).similar('root')
     rows.reverse()
-    assert first == scope['_similar_parts_result']({'part_name':'Wheel'})
-    assert first['similar_parts'][0]['similarity_score'] == 100
-    assert first['similar_parts'][1]['similarity_score'] == 50
+    assert first == RecommendationEngine(Graph(rows)).similar('root')
+    assert first['similar_parts'][0]['node_id'] == 'three'
+    assert first['similar_parts'][0]['score_evidence']['engineering_matches'] == 2
+    assert first['similar_parts'][0]['similarity_score'] > first['similar_parts'][1]['similarity_score']
 
+
+def test_engineering_policy_holds_conflicts_and_missing_coverage():
+    service = intelligence()
+    service.add_policy({'policy_id':'engineering-review','operations':['recommendations'],
+        'rules':{'min_confidence':0,'max_conflicts':0,'min_evidence_coverage':.6,
+                 'allowed_evidence_statuses':['requires_engineering_review']}})
+    subjects = [decision(candidate_id='bad', conflicts=['diameter'], evidence_coverage=.8,evidence_status='conflicting_evidence'),
+                decision(candidate_id='missing',conflicts=[], evidence_coverage=None,evidence_status='requires_engineering_review'),
+                decision(candidate_id='reviewable',conflicts=[],evidence_coverage=.7,evidence_status='requires_engineering_review')]
+    report=service.evaluate_decisions('recommendations',subjects)
+    assert report['blocked_decision_indices'] == [0,1]
+    assert report['checks'][2]['compliant'] is True
+    assert service.evidence[report['assessment_id']]['decisions'] == subjects
+    assert report['engineering_rules_engine'] == 'depo.engineering-evidence-rules-v1'
+
+
+def test_engineering_policy_never_accepts_unknown_effectivity_or_truncated_coverage():
+    service=intelligence()
+    service.add_policy({'policy_id':'effectivity','operations':['recommendations'],
+        'rules':{'min_confidence':0,'require_effectivity_verified':True,'require_complete_coverage':True}})
+    result=service.evaluate_decisions('recommendations',[decision(effectivity_verified=False,coverage={'whole_graph_complete':False})])
+    assert result['blocking']
+    assert len(result['checks'][0]['violations']) >= 2
+
+
+@pytest.mark.parametrize('rules',[{'max_conflicts':True},{'min_evidence_coverage':float('nan')},{'require_complete_coverage':'yes'},{'allowed_evidence_statuses':[]}])
+def test_invalid_engineering_policy_settings_are_rejected(rules):
+    with pytest.raises(ValueError): intelligence().add_policy({'policy_id':'invalid','rules':rules})
 
 def test_automatic_bridge_cannot_bypass_native_policy():
     service = intelligence()

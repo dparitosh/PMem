@@ -58,3 +58,14 @@ test('an aborted preview cannot stop the replacement poller for the same task', 
   await act(async()=>reads[1].reject(Object.assign(new Error('Aborted'),{name:'AbortError'})));
   expect(reads[2].options.signal.aborted).toBe(false);
 });
+
+test('a persistence warning is visible and keeps polling without loading an unsafe preview', async()=>{
+  api.get.mockResolvedValue({data:{status:'completed',current_stage:'verify',message:'Completed',persistence_warning:'Status could not be saved; check storage.'}});
+  render(<Workspace/>);
+  fireEvent.click(screen.getByText('Resume'));
+  await act(async()=>vi.advanceTimersByTimeAsync(0));
+  expect(screen.getByText('Status could not be saved; check storage.')).toBeVisible();
+  expect(api.get.mock.calls.every(([url])=>url==='/tasks/task')).toBe(true);
+  await act(async()=>vi.advanceTimersByTimeAsync(5000));
+  expect(api.get.mock.calls.length).toBeGreaterThan(1);
+});

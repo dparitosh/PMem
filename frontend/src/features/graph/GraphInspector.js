@@ -1,14 +1,15 @@
 import React from 'react';
 import { UI_COLORS } from '../../styles/uiTokens';
+import DecisionPolicyAssessment from '../../Components/DecisionPolicyAssessment';
 
 const _PILL = (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: c, color: '#fff', marginRight: '4px', marginBottom: '3px' });
 
 const _ROW  = { padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontSize: '12px' };
 
 function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
-  const viewBtn = (names) => (
+  const viewBtn = (names, ids = []) => (
     <button
-      onClick={() => { window.dispatchEvent(new CustomEvent('dt-highlight-nodes', { detail: { names } })); setRecPanel(p => ({ ...p, open: false })); }}
+      onClick={() => { window.dispatchEvent(new CustomEvent('dt-highlight-nodes', { detail: ids.filter(Boolean).length ? {ids:ids.filter(Boolean)} : {names} })); setRecPanel(p => ({ ...p, open: false })); }}
       style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', border: `1px solid ${UI_COLORS.primary}`, borderRadius: '5px', background: UI_COLORS.primaryLight, color: UI_COLORS.primaryText, fontSize: '11px', fontWeight: 600, cursor: 'pointer', marginTop: '8px' }}
     >
       Highlight in graph
@@ -22,12 +23,14 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
     return (
       <div>
         {data.message && <p role="status">{data.message}</p>}
+        {data.coverage?.limit_reached && <p>Traversal limit reached; further dependency review is required.</p>}
+        {(data.realization_chain || []).slice(0,8).map(item=><p key={item.node_id}>{item.path_names?.join(' → ')}{item.review_status === 'configuration_conflict' ? ' · Configuration conflict' : ''}</p>)}
         {typeof data.impact_score === 'number' && Number.isFinite(data.impact_score) && <div style={{ fontWeight: 700, marginBottom: '8px' }}>Linked evidence indicator: {data.impact_score}/100 <small>(heuristic)</small></div>}
         {data.impacted_parts?.length > 0 && <div style={{ marginBottom: '8px' }}><strong>Impacted Parts ({data.impacted_parts.length})</strong>{data.impacted_parts.slice(0, 8).map((p, i) => <div key={i} style={_ROW}><span style={_PILL('#3498db')}>{p.source_tag || '?'}</span> {p.name}</div>)}</div>}
         {data.assembly_impact?.length > 0 && <div style={{ marginBottom: '8px' }}><strong>Assemblies ({data.assembly_impact.length})</strong>{data.assembly_impact.slice(0, 6).map((a, i) => <div key={i} style={_ROW}>{a.assembly_name} <em style={{ color: '#999' }}>depth {a.depth}</em></div>)}</div>}
         {data.process_impacts?.length > 0 && <div style={{ marginBottom: '8px' }}><strong>Processes ({data.process_impacts.length})</strong></div>}
         {data.realization_chain?.length > 0 && <div style={{ marginBottom: '8px' }}><strong>Realization ({data.realization_chain.length})</strong></div>}
-        {allNames.length > 0 && viewBtn(allNames)}
+        {allNames.length > 0 && viewBtn(allNames,[ce.node_id,...(data.realization_chain || []).map(item=>item.node_id)])}
       </div>
     );
   }
@@ -40,11 +43,12 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
         {(data.similar_parts || []).slice(0, 10).map((p, i) => (
           <div key={i} style={_ROW}>
             <strong>{p.name}</strong> \u2014 <span style={{ color: UI_COLORS.primaryText, fontWeight: 600 }}>{p.similarity_score}</span>
+            <p>{p.conflicts?.length ? `Conflicts: ${p.conflicts.join(', ')}` : 'Engineering review required'} · {p.score_evidence?.engineering_assessed ?? 0} properties assessed</p>
             {p.shared_assembly && <span style={_PILL('#27ae60')}>Assembly</span>}
             {p.traceability_link && <span style={_PILL('#e67e22')}>{p.traceability_link}</span>}
           </div>
         ))}
-        {allNames.length > 1 && viewBtn(allNames)}
+        {allNames.length > 1 && viewBtn(allNames,[data.source_part.node_id,...(data.similar_parts || []).map(item=>item.node_id)])}
       </div>
     );
   }
@@ -89,6 +93,12 @@ export default function GraphInspector({ recPanel, setRecPanel, setActiveTab }) 
             <div style={{ color: '#7f8c8d', marginBottom: '10px' }}>
               Node: <strong style={{ color: '#2c3e50' }}>{recPanel.nodeName}</strong>
             </div>
+            <a href="#/recommendations" onClick={()=>{
+              const selected=recPanel.context || {};
+              window.__dt_rec_prefill={service:recPanel.service,nodeName:recPanel.nodeName,
+                node_id:selected.nodeId || recPanel.result?.source_part?.node_id || recPanel.result?.change_entity?.node_id,
+                ontology_id:selected.ontologyId,ontology_prefix:selected.ontologyPrefix};
+            }}>Open full engineering review</a>
             {recPanel.loading && (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#7f8c8d' }}>
                 <div style={{ width: 28, height: 28, border: '3px solid #eee', borderTop: `3px solid ${UI_COLORS.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 10px' }} />
@@ -96,7 +106,7 @@ export default function GraphInspector({ recPanel, setRecPanel, setActiveTab }) 
               </div>
             )}
             {recPanel.error && <div style={{ color: '#e74c3c', padding: '10px', background: '#fdf2f2', borderRadius: '6px' }}>{recPanel.error}</div>}
-            {recPanel.result && <RecPanelResult service={recPanel.service} data={recPanel.result} setRecPanel={setRecPanel} setActiveTab={setActiveTab} />}
+            {recPanel.result && <><DecisionPolicyAssessment report={recPanel.result.decision_policy}/><RecPanelResult service={recPanel.service} data={recPanel.result} setRecPanel={setRecPanel} setActiveTab={setActiveTab} /></>}
           </div>
         </div>
       ));

@@ -236,6 +236,22 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-de
 
 Dependency receipts in `logs/installation/checkpoints` let setup reuse verified installations and retry failed stages. Configuration checks, imports, migrations and readiness still run; frontend source is rebuilt. Do not delete configuration or databases to retry installation.
 
+For an existing customer deployment, run these commands **in sequence** from `E:\App\PMem` after placing the complete matching release:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local -PreflightOnly
+```
+
+Continue only after preflight passes:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local
+```
+
+Use `-InstallDependencies` on the second command when dependency files changed. Do not use `-SkipFrontend` for this release's import, workflow-access or graph-display fixes. The updater validates agentic settings before shutdown, applies pending database migrations/indexes, rebuilds the UI and restarts services. It retains credentials, artifacts, workflow history and publication decisions. It does not replay failed imports or approve pending mappings.
+
+After success, press Ctrl+F5, choose **Revalidate access**, then check Import, Ontology Junction's Semantic Bridge, all four Graph Explorer views, Knowledge Companion and Recommendations. Confirm pending publication is distinguished from completed validation. Review a retained workflow before retrying an uncertain write. Customer acceptance requires these checks against the customer's URLs, credentials and data; an offline regression pass does not replace them.
+
 For dependency corruption requiring a forced reinstall:
 
 ```powershell
@@ -250,7 +266,35 @@ This preserves configuration and data. Review migration history and backups afte
 
 Generated RDF can be much larger than its source. `ONTOLOGY_MAX_UPLOAD_BYTES` defaults to 25 MiB and controls downstream artifact registration/publication as well as uploads; `ENGINEERING_CONVERSION_MAX_RESULT_BYTES` defaults to 256 MiB and controls the worker's complete generated result. Raising only the latter does not raise the former. Configure root `.env.local` consistently for ingestion, ontology and graph processes, then rerun setup to restart them. A root-plus-dependency XSD bundle still has a separate 25 MiB ceiling. Merge source limits apply to the combined inputs. Do not equate these byte limits with supported server memory capacity. See the [large-ontology audit](docs/audits/extra-large-ontologies-2026-10-21.md) for measured smoke tests and unresolved scale risks.
 
-### Error recovery
+### XSD schemas with remote dependencies
+
+An HTTP(S) `schemaLocation` no longer fails merely because it is a URL. Import resolves a matching uploaded companion first (filename and namespace), otherwise retrieves the remote schema on the server, resolves its nested references and validates the complete local schema set before conversion. Multiple selected XSD sources remain one schema-set registration. XML namespace prefixes used in type references are preserved.
+
+Example root (replace the example URL with your supplier's schema URL):
+
+```xml
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:product">
+  <xs:import namespace="urn:common"
+             schemaLocation="https://schemas.example.com/product/common.xsd"/>
+</xs:schema>
+```
+
+If internet access is unavailable, select the schema folder containing `common.xsd` and its dependencies with the root. Customer input files are not edited. Engineering conversion retains the original root when rewritten, plus the resolved dependency bytes used by conversion and analytics. Retrying from those retained local bytes does not require another download.
+
+Optional settings in the **root `.env.local`**:
+
+```dotenv
+XSD_REMOTE_SCHEMA_ENABLED=true
+XSD_REMOTE_SCHEMA_HOSTS=www.w3.org,standards.iso.org
+```
+
+The enable flag defaults to `true`; the host list is optional and, when provided, applies to every redirect and dependency. Set the flag to `false` for offline installations and supply companions. Requests use public addresses on ports 80/443, with no PMem keys or browser credentials. Private/loopback addresses, unsafe XML/DTD declarations, namespace mismatches and ambiguous mirrors are rejected. Limits are 64 files including the root, 25 MiB combined (or the smaller configured upload limit), 5 MiB per downloaded file, three redirects and a 60-second resolution budget with bounded socket waits. Customer DNS resolution remains subject to the operating system resolver. Unreachable or invalid schemas require a local companion; PMem must not silently publish an incomplete ontology.
+
+### Installation and service error recovery
+
+**Import task snapshot reports `WinError 5` / access denied:** this release uses unique temporary files, OS-managed task locks and bounded sharing retries. It retains the last committed snapshot and its matching parsed rows if replacement fails. Persistent failures are reported as a storage warning; a failure during graph loading leaves the outcome requiring review rather than automatically offering a duplicate load. Existing task snapshots and legacy parsed-row pointers remain readable; no history reset is required.
+
+If the error persists after update, check **Modify** permission on `E:\App\PMem\uploads\.import_tasks` for the account actually running ingestion, including its existing files. Check antivirus/backup/file-viewer locks using your Windows administration tools. Do not delete task JSON or lock files to bypass an active operation, grant access to Everyone, or rerun an uncertain graph commit. OS locks release when the owning process exits; an old lock-file name alone does not indicate an active lock. Review the retained task and graph outcome after storage is repaired. Full Import cleanup still removes task-owned sidecars after its normal quiescence checks.
 
 Setup retains timestamped `.log` and `.jsonl` files in `logs/installation/runs` and reports the exact log path. Dependency and service startup logs are retained under `logs/installation`; consult the reported paths. Installation logging redacts credentials; still review diagnostic bundles before sharing externally.
 
@@ -294,5 +338,7 @@ The [operator reference](docs/installation/OPERATOR_REFERENCE.md) covers manual/
 Build releases from the reviewed commit and validate the actual artifact. Before customer rollout, test a clean Windows machine, paths with spaces, execution policy, first install, unchanged rerun, interrupted installation/resume, rejected upgrade without shutdown, credential retention, backup/restore, restart and import-to-publication. Record separate database, browser and LLM acceptance evidence. Local regression tests alone do not certify a customer release.
 
 ## Feature-specific verification
+
+For engineering similarity, change-dependency paths and decision-policy examples, follow the [engineering recommendation review](docs/recommendation-engineering-review.md). The complete release must include `backend/graph_service/recommendation_engine.py`, `backend/graph_service/engineering_comparison.py` and `backend/Services/recommendation_compat.py`; the normal updater verifies them and rebuilds the customer UI. Domain policies are reviewed configuration and are not installed automatically. Direct graph analysis can run while the configured language model is unavailable; agent investigation requires the model.
 
 After installation, use the [operator reference](docs/installation/OPERATOR_REFERENCE.md) for ontology governance, microservice checks, credentials, browser access, XMI import and PLM Companion acceptance. The [PLM response contract](docs/PLM_COMPANION_RESPONSE_CONTRACT.md) contains the implemented system instructions and evidence rules. For the optional separate AOI provider, follow [AOI adapter configuration from PMem](docs/installation/AOI_GATEWAY.md).

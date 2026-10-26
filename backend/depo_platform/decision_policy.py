@@ -63,8 +63,16 @@ def assess_recommendation(result, kind, scope):
     allowed_scope = {key: value for key, value in (scope or {}).items()
                      if key in {'ontology_id', 'prefix', 'ontology_prefix', 'node_id', 'element_id', 'import_id'}
                      and isinstance(value, str) and len(value) <= 500} if isinstance(scope, dict) else {}
-    report = assess_decisions("recommendations", [decision(kind=kind, result_digest=digest(result), scope=allowed_scope,
-        decision_maker="recommendation-service", reasoning="Graph-derived advisory result; impact and similarity are not calibrated confidence.")])
+    candidates = result.get('similar_parts') if kind == 'similar-parts' else result.get('realization_chain') if kind == 'change-impact' else None
+    subjects = candidates if isinstance(candidates, list) and candidates else [result]
+    result_digest = digest(result)
+    report = assess_decisions("recommendations", [decision(kind=kind, result_digest=result_digest, scope=allowed_scope,
+        candidate_id=subject.get('node_id'), candidate_label=subject.get('name'),
+        evidence_status=subject.get('compatibility') or subject.get('review_status') or result.get('evidence_status', 'unassessed'),
+        evidence_coverage=subject.get('evidence_coverage'), conflicts=subject.get('conflicts', []),
+        effectivity_verified=subject.get('effectivity_verified', False),
+        coverage=result.get('coverage', {}), decision_maker="recommendation-service",
+        reasoning="Graph-derived advisory result; impact and similarity are not calibrated confidence.") for subject in subjects])
     return {**result, "decision_policy": report, "advisory_only": True}
 
 

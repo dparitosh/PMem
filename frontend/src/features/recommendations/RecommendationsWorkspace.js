@@ -27,6 +27,7 @@ const RecommendationsWorkspace = () => {
   const serviceTabs=useRef([]);
   const tabId=useId();
   const [inputValue, setInputValue] = useState('');
+  const [objectContext, setObjectContext] = useState({});
   const analysisGeneration = useRef(0);
   const analysisController = useRef(null);
 
@@ -43,7 +44,7 @@ const RecommendationsWorkspace = () => {
   const [agentError,setAgentError]=useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setAgentRun(null); setError(''); setLoading(false); }, [activeService, inputValue, topN]);
+  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setAgentRun(null); setError(''); setLoading(false); }, [activeService, inputValue, topN, objectContext]);
 
   useEffect(()=>{
     const controller=new AbortController();setAgentTools(null);setAgentContract(false);setAgentError('');
@@ -52,7 +53,7 @@ const RecommendationsWorkspace = () => {
     }).catch(failure=>{if(!controller.signal.aborted)setAgentError(apiErrorMessage(failure,'Agent tools are unavailable.'));});
     return()=>controller.abort();
   },[healthRevision]);
-  const goalContext={page:'quality',recommendation_service:activeService,recommendation_object:inputValue.trim(),recommendation_top_n:topN};
+  const goalContext={page:'recommendations',...objectContext,recommendation_service:activeService,recommendation_object:inputValue.trim(),recommendation_top_n:topN};
   const result=executionMode==='agent'?recommendationGoalEvidence(agentRun,goalContext):quickResult;
   const recommendationReady = !healthLoading && health?.status === 'ok' && health?.readiness?.scenario_ready === true;
   const readinessMessage = health?.readiness?.message || health?.error || (
@@ -117,6 +118,8 @@ const RecommendationsWorkspace = () => {
       if (['change-impact','similar-parts','manufacturing'].includes(service) && input) {
         setActiveService(service);
         setInputValue(input);
+        const context = {...(detail.scope || {}), ...detail};
+        setObjectContext(Object.fromEntries(['node_id','ontology_id','ontology_prefix'].map(key => [key, context[key] || (key === 'node_id' ? context.elementId : key === 'ontology_prefix' ? context.prefix : '')]).filter(([,value]) => typeof value === 'string' && value.length > 0 && value.length <= 256)));
         setResult(null);
         setError('');
       }
@@ -147,11 +150,11 @@ const RecommendationsWorkspace = () => {
     try {
       let resp;
       if (activeService === 'change-impact') {
-        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), {}, { signal: controller.signal, timeout:60000 });
+        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), objectContext, { signal: controller.signal, timeout:60000 });
       } else if (activeService === 'similar-parts') {
-        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, {}, { signal: controller.signal, timeout:60000 });
+        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, objectContext, { signal: controller.signal, timeout:60000 });
       } else if (activeService === 'manufacturing') {
-        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {}, { signal: controller.signal, timeout:60000 });
+        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), objectContext, { signal: controller.signal, timeout:60000 });
       }
       if (generation === analysisGeneration.current) setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {
@@ -159,7 +162,7 @@ const RecommendationsWorkspace = () => {
     } finally {
       if (generation === analysisGeneration.current) setLoading(false);
     }
-  }, [activeService, inputValue, topN, recommendationReady, activeServiceReadiness]);
+  }, [activeService, inputValue, topN, objectContext, recommendationReady, activeServiceReadiness]);
 
   useEffect(() => () => { analysisGeneration.current += 1; }, []);
 
@@ -186,11 +189,11 @@ const RecommendationsWorkspace = () => {
     <div className="recommendation-readiness" role="status"><span className={`recommendation-readiness__badge ${recommendationReady?'is-ready':''}`}>{healthLoading?'Checking':recommendationReady?'Graph ready':'Needs attention'}</span><span>{readinessMessage}</span>{!healthLoading&&!recommendationReady&&<a href="#/import">Review source imports</a>}</div>
     <div className="recommendation-services" role="tablist" aria-label="Recommendation analyses">{services.map((service,index)=><button key={service.id} type="button" role="tab" id={`${tabId}-${service.id}`} aria-controls={`${tabId}-analysis`} aria-selected={activeService===service.id} tabIndex={activeService===service.id?0:-1} ref={node=>{serviceTabs.current[index]=node;}} onClick={()=>handleSelect(service.id)} onKeyDown={event=>navigate(event,index)}><service.Icon size={17} aria-hidden="true"/>{service.label}</button>)}</div>
     <section role="tabpanel" id={`${tabId}-analysis`} aria-labelledby={`${tabId}-${activeService}`} tabIndex={0}>
-      <p className="recommendation-purpose">{activeService==='change-impact'?'Trace downstream parts, assemblies, requirements and processes affected by a change.':activeService==='similar-parts'?'Compare an existing part with graph candidates to assess possible reuse.':'Inspect process links and operational context around a part or assembly.'}</p>
+      <p className="recommendation-purpose">{activeService==='change-impact'?'Review dependency paths across parts, assemblies, requirements and processes, including configuration and effectivity questions.':activeService==='similar-parts'?'Compare typed parts using engineering properties, units and name similarity. Inspect conflicts and missing evidence before deciding on reuse.':'Inspect process links and operational context around a part or assembly.'}</p>
       {recommendationReady&&(activeServiceReadiness===false||activeServiceReadiness?.ready===false)&&<p role="status" className="recommendation-notice">{activeServiceReadiness?.message||'This analysis is not ready. Review source graph data and retry readiness.'}</p>}
       <div className="recommendation-mode"><label>Analysis method<select value={executionMode} onChange={event=>{analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setExecutionMode(event.target.value);}}><option value="agent">Agent investigation + Semantica review</option><option value="graph">Direct graph analysis</option></select></label><p>{executionMode==='agent'?'The existing Graph Analyst plans read steps, retains observations and explains graph evidence with the shared decision-policy assessment.':'Run the bounded graph query directly, with the same shared decision-policy assessment.'}</p></div>
       <form className="recommendation-query" onSubmit={event=>{event.preventDefault();if(executionMode==='graph')handleAnalyse();}}>
-        <label>{activeService==='change-impact'?'Changed item':activeService==='similar-parts'?'Reference part':'Part or assembly'}<input value={inputValue} onChange={event=>setInputValue(event.target.value)} placeholder="Enter an existing graph object name" autoComplete="off"/></label>
+        <label>{activeService==='change-impact'?'Changed item':activeService==='similar-parts'?'Reference part':'Part or assembly'}<input value={inputValue} onChange={event=>{setObjectContext({});setInputValue(event.target.value);}} placeholder="Enter an existing graph object name" autoComplete="off"/></label>
         {activeService==='similar-parts'&&<label className="recommendation-query__limit">Results<input type="number" min="1" max="50" step="1" value={topN} onChange={event=>setTopN(event.target.value===''?'':Number(event.target.value))}/></label>}
         {executionMode==='graph'&&<button type="submit" disabled={loading||!inputValue.trim()||!canAnalyse}>{loading?'Analysing…':'Analyse'}</button>}
       </form>

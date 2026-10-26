@@ -1454,6 +1454,7 @@ export default function ImportWorkspace() {
   };
 
   const getStatusBadge = (stage, progress, error, backendStage, committing, commitError, commitPhase, status) => {
+    if (status?.persistenceWarning) return { text: 'Status not saved', bg: '#FFF8E1', color: '#805500' };
     if (committing || (commitPhase && commitPhase !== 'complete' && commitPhase !== 'error')) {
       const phaseLabel = getCommitPhaseLabel(commitPhase);
       return { text: phaseLabel ? `Loading  /  ${phaseLabel}` : 'Loading to knowledge graph...', bg: '#FFF8E1', color: '#F57F17' };
@@ -1545,7 +1546,7 @@ export default function ImportWorkspace() {
   };
 
   const isCommitInFlight = (status = {}) =>
-    !!(status.committing || (status.commitPhase && status.commitPhase !== 'complete' && status.commitPhase !== 'error'));
+    !!(status.persistenceWarning || status.committing || (status.commitPhase && status.commitPhase !== 'complete' && status.commitPhase !== 'error'));
 
   const isReadyToLoad = (status = {}) =>
     !!(

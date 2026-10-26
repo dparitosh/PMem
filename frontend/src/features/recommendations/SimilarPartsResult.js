@@ -1,6 +1,6 @@
-import { CARD, TH, TD, TABLE, Badge, SimilarityBar, CheckCell, ResultTabBar } from "./RecommendationPrimitives.js";
+import { CARD, TH, TD, TABLE, Badge, SimilarityBar, ResultTabBar } from "./RecommendationPrimitives.js";
 import React, { useState } from "react";
-import { Search, Minus, Info } from "lucide-react";
+import { Search, Info } from "lucide-react";
 import { UI_COLORS as C } from "../../styles/uiTokens";
 
 const SimilarPartsResult = ({ data }) => {
@@ -43,13 +43,13 @@ const SimilarPartsResult = ({ data }) => {
             </div>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.bg, textAlign: 'center' }}>
               <div style={{ fontSize: '28px', fontWeight: 800, color: C.orange }}>
-                {data.similar_parts?.filter(p => p.shared_assembly).length || 0}
+                {data.similar_parts?.some(p => typeof p.shared_assembly === 'boolean') ? data.similar_parts.filter(p => p.shared_assembly).length : 'Not assessed'}
               </div>
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Shared assembly</div>
             </div>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.bg, textAlign: 'center' }}>
               <div style={{ fontSize: '28px', fontWeight: 800, color: C.green }}>
-                {data.similar_parts?.filter(p => p.source_tag_match).length || 0}
+                {data.similar_parts?.filter(p => p.type_match ?? p.score_evidence?.graph_type_match).length || 0}
               </div>
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Type match</div>
             </div>
@@ -60,27 +60,20 @@ const SimilarPartsResult = ({ data }) => {
       {tab === 'results' && (
         data.similar_parts?.length > 0 ? (
           <div style={CARD}>
+            <p>{data.ranking_scope}</p>
+            {data.coverage?.limit_reached && <p role="status">The candidate limit was reached. Narrow the ontology scope before deciding on reuse.</p>}
             <table style={TABLE}>
-              <thead><tr>
-                <th style={TH}>Part Name</th>
-                <th style={TH}>Score</th>
-                <th style={TH}>Type Match</th>
-                <th style={TH}>RFLP Match</th>
-                <th style={TH}>Assembly</th>
-                <th style={TH}>Traceability</th>
-              </tr></thead>
-              <tbody>
-                {data.similar_parts.map((p, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{p.name}</span></td>
-                    <td style={TD}><SimilarityBar score={p.similarity_score} /></td>
-                    <td style={TD}><CheckCell value={p.source_tag_match} /></td>
-                    <td style={TD}><CheckCell value={p.rflp_layer_match} /></td>
-                    <td style={TD}><CheckCell value={p.shared_assembly} /></td>
-                    <td style={TD}>{p.traceability_link ? <Badge color={C.orange}>{p.traceability_link}</Badge> : <Minus size={13} color={C.textMuted} />}</td>
-                  </tr>
-                ))}
-              </tbody>
+              <thead><tr><th style={TH}>Part</th><th style={TH}>Match score</th><th style={TH}>Engineering review</th><th style={TH}>Assessed properties</th><th style={TH}>Comparison evidence</th></tr></thead>
+              <tbody>{data.similar_parts.map((p,i)=><tr key={p.node_id || i}>
+                <td style={TD}>{p.name}</td>
+                <td style={TD}><SimilarityBar score={p.similarity_score}/></td>
+                <td style={TD}>{p.conflicts?.length ? `Conflicts: ${p.conflicts.join(', ')}` : 'Review required; substitution is not approved'}</td>
+                <td style={TD}>{p.score_evidence?.engineering_assessed ?? 0} of {p.engineering_comparisons?.length ?? 0}</td>
+                <td style={TD}><details><summary>Review properties and missing evidence</summary><p>{p.comparison_basis}</p>
+                  {p.engineering_comparisons?.length ? <table style={TABLE}><thead><tr><th style={TH}>Property</th><th style={TH}>Reference part</th><th style={TH}>Candidate</th><th style={TH}>Finding</th></tr></thead><tbody>{p.engineering_comparisons.map(item=><tr key={item.property}><td style={TD}>{item.property}</td><td style={TD}>{item.source.join('; ') || 'Not recorded'}</td><td style={TD}>{item.candidate.join('; ') || 'Not recorded'}</td><td style={TD}>{item.status}: {item.reason}</td></tr>)}</tbody></table> : <p>Not assessed</p>}
+                  <p>Assembly compatibility: {p.shared_assembly == null ? 'Not assessed' : String(p.shared_assembly)}. RFLP compatibility: {p.rflp_layer_match == null ? 'Not assessed' : String(p.rflp_layer_match)}. Traceability: {p.traceability_link || 'Not assessed'}.</p>
+                </details></td>
+              </tr>)}</tbody>
             </table>
           </div>
         ) : (
