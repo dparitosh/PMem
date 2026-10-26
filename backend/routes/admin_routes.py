@@ -354,7 +354,7 @@ def _llm_settings() -> dict:
     model, model_source = _env_lookup("LLM_MODEL_NAME", "AZURE_OPENAI_DEPLOYMENT")
     endpoint, endpoint_source = _env_lookup("OLLAMA_BASE_URL", "AZURE_OPENAI_ENDPOINT")
     provider = (os.getenv("USE_LLM") or provider or "ollama").strip().lower()
-    if provider in {'openai', 'mistral'}:
+    if provider in {'openai', 'mistral', 'aoi'}:
         from backend.core.llm_providers import cloud_settings
         try:
             selected = cloud_settings(provider)

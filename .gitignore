@@ -125,3 +125,7 @@ backend/ttl_cache/
 backend/.dt_venv-*/
 deliverables/.env-reference-review/
 release-dist/
+
+# Optional AOI gateway private runtime and unchanged licensed wrapper copies
+.aoi_venv/
+data/aoi-gateway/

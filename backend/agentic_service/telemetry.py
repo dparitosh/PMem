@@ -22,7 +22,7 @@ class AgentTelemetry:
     def start(self, *, operation: str, request_id: str = "", session_id: str = "", workflow_id: str = "", workflow_run_id: str = "") -> tuple[dict[str, Any], float]:
         run_id = f"agent-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{uuid4().hex[:8]}"
         provider=os.getenv('USE_LLM','ollama').strip().lower()
-        selected_model=(os.getenv(provider.upper()+'_MODEL') if provider in {'openai','mistral'}
+        selected_model=(os.getenv(provider.upper()+'_MODEL') if provider in {'openai','mistral','aoi'}
                         else os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or os.getenv('LLM_MODEL') or os.getenv('AZURE_OPENAI_DEPLOYMENT'))
         record = {
             "run_id": run_id,

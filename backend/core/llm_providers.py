@@ -5,7 +5,7 @@ import json
 import os
 from urllib.parse import urlsplit
 
-CLOUD_PROVIDERS = ('openai', 'mistral')
+CLOUD_PROVIDERS = ('openai', 'mistral', 'aoi')
 PROVIDERS = ('ollama', 'azure', *CLOUD_PROVIDERS)
 DEFAULT_BASES = {'openai': 'https://api.openai.com/v1', 'mistral': 'https://api.mistral.ai/v1'}
 
@@ -20,13 +20,15 @@ class CloudSettings:
 
 def cloud_settings(provider, *, embeddings=False, unstructured=False):
     if provider not in CLOUD_PROVIDERS:
-        raise ValueError('Select openai or mistral')
+        raise ValueError('Select openai, mistral, or aoi')
+    if provider == 'aoi' and unstructured:
+        raise ValueError('AOI gateway supports text only; select another unstructured provider')
     prefix = provider.upper()
     model_key = prefix + ('_EMBED_MODEL' if embeddings else '_MODEL')
     if unstructured:
         model_key = 'UNSTRUCTURED_' + model_key
     model = os.getenv(model_key, '').strip()
-    key_name = prefix + '_API_KEY'
+    key_name = 'AOI_GATEWAY_TOKEN' if provider == 'aoi' else prefix + '_API_KEY'
     key = os.getenv(key_name, '').strip()
     missing = [name for name, value in ((model_key, model), (key_name, key)) if not value or '<' in value]
     if missing:
@@ -34,16 +36,25 @@ def cloud_settings(provider, *, embeddings=False, unstructured=False):
     if any(ord(char) < 32 for char in key):
         raise ValueError('Invalid ' + key_name)
     base_key = prefix + '_BASE_URL'
-    base = os.getenv(base_key, DEFAULT_BASES[provider]).strip().rstrip('/')
+    base = os.getenv(base_key, DEFAULT_BASES.get(provider, '')).strip().rstrip('/')
     try:
         parsed = urlsplit(base)
-        valid = (parsed.scheme == 'https' and parsed.hostname and not parsed.username
+        loopback = parsed.hostname in {'127.0.0.1', 'localhost', '::1'}
+        valid = ((parsed.scheme == 'https' or (provider == 'aoi' and parsed.scheme == 'http' and loopback)) and parsed.hostname and not parsed.username
                  and not parsed.password and not parsed.query and not parsed.fragment)
         parsed.port
     except ValueError:
         valid = False
     if not valid:
-        raise ValueError('Invalid ' + base_key + ': an HTTPS API root is required')
+        raise ValueError('Invalid ' + base_key + ': an HTTPS API root is required (AOI also permits HTTP on loopback)')
+    if provider == 'aoi' and (len(key) < 32 or any(c.isspace() for c in key)):
+        raise ValueError('Invalid AOI_GATEWAY_TOKEN')
+    if provider == 'aoi' and embeddings:
+        try:
+            dimensions = int(os.getenv('EMBEDDING_VECTOR_DIMENSIONS', ''))
+            if not 1 <= dimensions <= 8192: raise ValueError()
+        except ValueError:
+            raise ValueError('Set EMBEDDING_VECTOR_DIMENSIONS to the AOI embedding space') from None
     return CloudSettings(provider, model, base, key)
 
 
@@ -55,6 +66,9 @@ def cloud_chat(provider, *, unstructured=False):
                   timeout=ollama_timeout(), max_retries=0)
     # Responses is the OpenAI interface; Mistral exposes Chat Completions.
     kwargs['use_responses_api'] = provider == 'openai'
+    if provider == 'aoi':
+        import httpx
+        kwargs.update(http_client=httpx.Client(trust_env=False), http_async_client=httpx.AsyncClient(trust_env=False))
     return ChatOpenAI(**kwargs)
 
 
@@ -63,7 +77,11 @@ def cloud_embeddings(provider):
     from backend.core.ollama_auth import ollama_timeout
     settings = cloud_settings(provider, embeddings=True)
     # Send the original strings, not OpenAI tokenizer IDs, to Mistral.
-    return OpenAIEmbeddings(model=settings.model, api_key=settings.api_key,
+    clients = {}
+    if provider == 'aoi':
+        import httpx
+        clients = {'http_client': httpx.Client(trust_env=False), 'http_async_client': httpx.AsyncClient(trust_env=False), 'chunk_size': 32, 'dimensions': int(os.environ['EMBEDDING_VECTOR_DIMENSIONS'])}
+    return OpenAIEmbeddings(**clients, model=settings.model, api_key=settings.api_key,
         base_url=settings.base_url, check_embedding_ctx_length=False,
         request_timeout=ollama_timeout(), max_retries=0,
         model_kwargs={"encoding_format": "float"})

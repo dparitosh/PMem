@@ -282,7 +282,7 @@ if USE_UNSTRUCTURED_LLM:
         elif UNSTRUCTURED_LLM_TYPE == "azure":
             unstructured_llm = _init_unstructured_azure_llm()
             unstructured_provider = "azure"
-        elif UNSTRUCTURED_LLM_TYPE in {"openai", "mistral"}:
+        elif UNSTRUCTURED_LLM_TYPE in {"openai", "mistral", "aoi"}:
             from backend.core.llm_providers import cloud_chat
             unstructured_llm = cloud_chat(UNSTRUCTURED_LLM_TYPE, unstructured=True)
             unstructured_provider = UNSTRUCTURED_LLM_TYPE
@@ -292,7 +292,7 @@ if USE_UNSTRUCTURED_LLM:
         else:
             raise ValueError(f"Unknown UNSTRUCTURED_LLM_TYPE: {UNSTRUCTURED_LLM_TYPE}")
     except Exception as exc:
-        if UNSTRUCTURED_LLM_TYPE in {'openai', 'mistral'}:
+        if UNSTRUCTURED_LLM_TYPE in {'openai', 'mistral', 'aoi'}:
             exc = ValueError('Check unstructured cloud model, key, and HTTPS base URL')
         unstructured_llm_error = exc
         unstructured_llm = UnavailableLLM(f"Unstructured LLM unavailable: {exc}")
@@ -317,7 +317,7 @@ elif USE_LLM == "ollama":
     if llm_ollama_error:
         LLM_AVAILABLE = False
         llm_error = llm_ollama_error
-elif USE_LLM in {"openai", "mistral"}:
+elif USE_LLM in {"openai", "mistral", "aoi"}:
     try:
         from backend.core.llm_providers import cloud_chat
         llm = cloud_chat(USE_LLM)
@@ -327,13 +327,16 @@ elif USE_LLM in {"openai", "mistral"}:
         llm = UnavailableLLM(str(llm_error))
 else:
     LLM_AVAILABLE = False
-    llm_error = ValueError("USE_LLM must be ollama, azure, openai, or mistral")
+    llm_error = ValueError("USE_LLM must be ollama, azure, openai, mistral, or aoi")
     llm = UnavailableLLM(str(llm_error))
 
 # Never bind tools to the text-generation client. A generate-only deployment
 # remains usable for summaries while tool workflows report their missing route.
 tool_llm = llm
 TOOL_LLM_AVAILABLE = LLM_AVAILABLE
+if USE_LLM == 'aoi':
+    TOOL_LLM_AVAILABLE = False
+    tool_llm = UnavailableLLM('AOI gateway uses structured proposals; native tool calling is unsupported')
 if USE_LLM == 'ollama':
     try:
         tool_llm = _init_ollama_tool_llm()
@@ -356,7 +359,7 @@ elif USE_EMBEDDER == "ollama":
     if embeddings_ollama_error:
         EMBEDDER_AVAILABLE = False
         embeddings_error = embeddings_ollama_error
-elif USE_EMBEDDER in {"openai", "mistral"}:
+elif USE_EMBEDDER in {"openai", "mistral", "aoi"}:
     try:
         from backend.core.llm_providers import cloud_embeddings
         embeddings = cloud_embeddings(USE_EMBEDDER)
@@ -366,7 +369,7 @@ elif USE_EMBEDDER in {"openai", "mistral"}:
         embeddings = UnavailableEmbeddings(str(embeddings_error))
 else:
     EMBEDDER_AVAILABLE = False
-    embeddings_error = ValueError("USE_EMBEDDER must be ollama, azure, openai, or mistral")
+    embeddings_error = ValueError("USE_EMBEDDER must be ollama, azure, openai, mistral, or aoi")
     embeddings = UnavailableEmbeddings(str(embeddings_error))
 
 if not LLM_AVAILABLE or not EMBEDDER_AVAILABLE:

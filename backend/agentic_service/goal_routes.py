@@ -31,7 +31,7 @@ def selected(agent_id):
 def model_contract():
     from .local_llm import settings
     provider, model, endpoint, _, _ = settings()
-    if provider not in {'openai', 'mistral', 'ollama'}:
+    if provider not in {'openai', 'mistral', 'ollama', 'aoi'}:
         raise ValueError('Unsupported goal model provider')
     return engine.fingerprint({'provider': provider, 'model': model, 'endpoint': endpoint})
 
