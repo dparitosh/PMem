@@ -51,8 +51,8 @@ def test_missing_evidence_index_is_explicit(monkeypatch):
 
 
 def test_wrong_index_type_cannot_pass_bootstrap_validation():
-    rows = [{'name': name, 'type': 'TEXT' if 'resource_search' in name else 'RANGE',
-             'state': 'ONLINE', 'labelsOrTypes': [label], 'properties': properties}
+    rows = [{'name': name, 'type': 'FULLTEXT' if isinstance(label,tuple) else 'TEXT' if 'resource_search' in name else 'RANGE',
+             'state': 'ONLINE', 'labelsOrTypes': list(label) if isinstance(label,tuple) else [label], 'properties': properties}
             for name, (label, properties) in REQUIRED_INDEXES.items()]
     verify_indexes(rows)
     rows[0]['type'] = 'RANGE'

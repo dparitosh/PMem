@@ -50,3 +50,21 @@ The configured provider on this machine is OpenAI, and a minimal live request re
 Frontend regression selection: 51 tests passed. Backend regression selection: 104 tests passed. All ten backend readiness endpoints returned HTTP 200; local operational logs and screenshots are outside the source repository. Code backups are retained under `logs/xmi-plm-repair-backup/20261026-005001` in the installed application.
 
 Final deployed frontend bundle: `index-TKKx3M8h.js`. Browser acceptance verified a product/assembly table and an explicit unknown part–PMI ownership answer, with numbered evidence. The latest typed-answer path omits unrelated keyword matches. Backend and frontend were restarted through tracked-process launchers; PostgreSQL and Neo4j were preserved.
+
+
+## Offline follow-up: authentication and part–PMI associations
+
+An HTTP 401 requires correcting the selected provider credential or endpoint; increasing timeouts or bypassing authentication cannot repair it. The Companion uses the shared failure classifier and provides distinct advice for 401, 403 and 429. It retains the evidence table without exposing upstream error bodies, retrying rejected credentials or silently switching providers. Live inference acceptance remains pending a working provider.
+
+PMI retrieval now includes AP242 dimensional/toleranced characteristic types, as well as PMI annotations. It excludes generic quality characteristics from this expansion. Previously, checking only PMIAnnotation missed AP242 dimensions and geometric tolerances stored as characteristics.
+
+Mapping pack ap242-core@0.4.0 adds verified_pmi_characteristic → HAS_CHARACTERISTIC. The Part-21 adapter requires an explicit dimension/tolerance → shape aspect → product-definition shape → product-definition chain, with exactly one product-definition owner. The relationship source_key retains supporting STEP identities. Ambiguous owners, arbitrary paths, shared files, compound records and Part-28 containment are not promoted to ownership by this rule. Other references remain TRACE_TO.
+
+Existing published graphs are unchanged. Regenerate the normalized batch from the complete original source, review its new mapping evidence and publish through the governed workflow. Old retained batches must pass mapping-version/digest checks; do not overwrite their provenance to force replay. Only a publication receipt and subsequent graph read establish availability of the updated links.
+
+
+### Follow-up audit safeguards
+
+Association rules now read declared attribute positions rather than searching arbitrary references. A two-feature dimension must resolve both features to the same product definition; a missing second owner blocks the association. Unsupported layouts remain held. Against the original rotor-shaft records, 28 of the earlier 30 candidates pass these stricter checks; two five-attribute total-runout records are unsupported by this conservative rule. This is a source check, not a Neo4j publication receipt.
+
+Graph retrieval respects outgoing hasPMI/hasCharacteristic and incoming annotates direction. An explicit RDF predicate takes precedence over a storage relationship label. Recorded associations rank before TRACE_TO candidates within the bounded result. A trace-only answer explicitly states that ownership is unverified. Non-object retained property JSON no longer breaks business-name rendering. The package gate requires the new AP242 PMI helper so partial file deployment is rejected before startup.

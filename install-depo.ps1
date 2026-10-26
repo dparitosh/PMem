@@ -256,6 +256,14 @@ if ($script:depoDetectedMode -eq 'existing') {
       Write-Host 'Review logs/installation/ontology-upgrade-v2/plan.json. Corrected drafts require lifecycle approval and publication through Ontology Junction. Existing publications are retained until that review.'
     } finally { Pop-Location }
   }
+Invoke-DepoStage 'AP242 PMI mapping upgrade review (no graph publication)' {
+  Import-DepoEnvironment -Root $root -EnvFile $envPath
+  Push-Location -LiteralPath $root
+  try {
+    $reviewPython = Get-DepoServicePython -Root $root -ServiceId 'ingestion' -Mode $settings.DEPO_SERVICE_RUNTIME_MODE
+    Invoke-DepoNativeCommand -Executable $reviewPython -NativeArguments @('-m','backend.depo_platform.ontology_upgrade','--root',$root,'--ceim-review')
+  } finally { Pop-Location }
+}
 } else { Write-Host 'First deployment: legacy ontology upgrades skipped.' }
 
 Write-Host "`nDEPO Windows installation completed successfully." -ForegroundColor Green

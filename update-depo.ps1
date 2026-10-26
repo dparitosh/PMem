@@ -1,4 +1,11 @@
-<# .SYNOPSIS Upgrades an existing customer deployment using its retained configuration. #>
+<#
+.SYNOPSIS Upgrades an existing customer deployment using its retained configuration.
+.DESCRIPTION Run after placing a complete matching release. Applies pending PostgreSQL
+migrations and indexes, provisions Neo4j search indexes/backfills, rebuilds the frontend
+and restarts application services. Reports retained AP242 mapping changes for review;
+does not regenerate source instances or approve/publish PMI associations automatically.
+Use -PreflightOnly to validate without applying migrations or stopping services.
+#>
 [CmdletBinding()]
 param(
   [string]$EnvFile = '.env.local',

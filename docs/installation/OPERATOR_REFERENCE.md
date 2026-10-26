@@ -4880,3 +4880,49 @@ See [business-context audit and measured database plans](../business-context-aud
 5. Ask “Find product and assembly information with source references” and “Which parts have PMI?” in Knowledge Companion. Expect business-instance rows and numbered evidence, or an explicit missing-association answer. A schema definition is not an instance. Check generation status separately: an unavailable/invalid LLM does not turn metadata matches into a supported PLM answer.
 
 See [PLM Companion response contract](../PLM_COMPANION_RESPONSE_CONTRACT.md) for the implemented system instructions, Semantica boundaries and acceptance checks.
+
+
+## Existing customer update: indexes and PMI rules
+
+The exact root filename is **update-depo.ps1** (PowerShell), not update-depo.psl. This command updates the installation on the machine where it runs; it does not upload code to another customer host or pull a new Git branch automatically.
+
+1. Back up both databases, the deployed environment files and durable artifacts. Verify the restore procedure. Place the complete matching release in the customer's application directory, retaining its configuration and data. Partial copies of the PMI helper, mapping pack or index scripts are not a supported release.
+2. From the installation root, run the read-only preflight while the application is still running:
+
+   ```powershell
+   Set-Location -LiteralPath 'E:\App\PMem'
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local -PreflightOnly
+   ```
+
+3. Resolve preflight errors, then update in a maintenance window:
+
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local
+   ```
+
+   Add `-InstallDependencies` when the matching release changes dependency locks or the required runtime is missing. The default reuses existing dependencies and rebuilds the frontend against the customer's own `.env`/`.env.local` inputs. Use an account allowed to inspect tracked processes and listeners. Keys are validated and retained; this update path does not silently rotate them. Do not use an environment copied from another deployment to bypass a mismatch.
+4. Confirm the migration and schema stages succeeded. Pending PostgreSQL SQL migrations include version 013 registry lookup indexes. Existing applied migrations and their checksums are preserved; changed historical SQL is rejected. Neo4j provisioning creates missing search/scope/fulltext indexes, backfills derived lowercase search fields in bounded transactions and verifies index definitions/ONLINE state. These schema/index operations do not republish ontology or instance content. Large backfills can extend the maintenance window.
+5. Review both retained reports:
+
+   | Report | Operator action |
+   | --- | --- |
+   | `logs/installation/ontology-upgrade-v2/plan.json` | Review corrected ontology drafts through Ontology Junction. Existing publications remain until reviewed replacements are published. |
+   | `logs/installation/ceim-upgrade-review/plan.json` | Review retained AP242 job mapping digests against the installed mapping pack. Outdated output requires regeneration from the complete original source; missing digest evidence requires manual review. |
+
+   The CEIM inventory reads at most 5,000 retained job records and explicitly reports truncation; it is not an atomic snapshot of active job history. Running/queued and unsuccessful AP242 jobs are counted separately and skipped; failed executions without normalized output are not presented as mapping upgrade tasks. Legacy graph imports without retained run metadata require manual reconciliation. No report approves, replays or publishes data.
+6. For the PMI update, regenerate a new normalized batch using `ap242-core@0.4.0`, review source-defined associations and use the governed publication workflow. Keep the original run and graph publication for reconciliation. Do not edit mapping provenance or replay an old normalized batch to force compatibility. Compound, Part-28 and unsupported tolerance layouts remain held; generic TRACE_TO links are not ownership. Batches over 50,000 entities plus relationships require supported partitioning and must not be truncated to obtain a successful receipt.
+7. Verify `/readyz` for all services, refresh the public frontend and check its runtime routing. Verify model/memory diagnostics separately from live inference, then verify a newly published PMI association and its source evidence. The updater cannot certify an unavailable LLM or an unreachable APIM route.
+
+To repeat only the read-only CEIM inventory after services start, run the existing helper with the same selected environment already loaded by the installer:
+
+```powershell
+Set-Location -LiteralPath 'E:\App\PMem'
+. .\infra\windows\runtime-config.ps1
+Import-DepoEnvironment -Root (Get-Location).Path -EnvFile .\.env.local
+. .\infra\windows\service-runtimes.ps1
+$values = Read-DepoEnvironment -Root (Get-Location).Path -EnvFile .\.env.local
+$reviewPython = Get-DepoServicePython -Root (Get-Location).Path -ServiceId 'ingestion' -Mode $values.DEPO_SERVICE_RUNTIME_MODE
+& $reviewPython -m backend.depo_platform.ontology_upgrade --root (Get-Location).Path --ceim-review
+```
+
+If a review step fails after services start, inspect the reported audit log and rerun the review after correcting connectivity. Preserve the installed schema and existing publications; do not downgrade or delete databases to clear the review.

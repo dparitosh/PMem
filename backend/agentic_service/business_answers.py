@@ -13,7 +13,8 @@ def render(items):
         citation='[evidence:'+item['resource_id']+']'
         rows=item.get('rows') or []
         if item['intent']=='parts_with_pmi':
-            output.append(('Found recorded part–PMI associations in this bounded view.' if rows else
+            trace_only=bool(rows) and all(row.get('association_status')=='source_reference' for row in rows)
+            output.append(('Only source-reference candidates were returned; part–PMI ownership is unverified.' if trace_only else 'Found recorded part–PMI associations in this bounded view.' if rows else
                 'I could not verify which parts have PMI from the retained business links in this scope. PMI annotations alone do not establish which part owns them. Review the source part-to-annotation association and publish its approved mapping.')+' '+citation)
             if rows:
                 output.append('| Part | PMI | Association | Source |\n|---|---|---|---|\n'+'\n'.join('| '+' | '.join(cell('Published model; see evidence' if k=='source' else row.get(k)) for k in ('part','pmi','association','source'))+' |' for row in rows))

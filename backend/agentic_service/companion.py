@@ -231,12 +231,10 @@ class KnowledgeCompanion:
                 response_text = summary
                 generation = {'enabled': True, 'status': 'completed', 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'prompt_details': prompt_details, 'grounding': 'citation-identifiers-checked', 'semantic_entailment_verified': False}
             except Exception as failure:
-                code = getattr(getattr(failure, 'response', None), 'status_code', None)
-                status = ('authentication_rejected' if code in (401, 403) else 'route_missing' if code == 404
-                          else 'rate_limited' if code == 429 else 'timeout' if isinstance(failure, (TimeoutError, httpx.TimeoutException))
-                          else 'invalid_response' if isinstance(failure, ValueError) else 'unavailable')
+                from .local_llm import failure_status, failure_action
+                status = failure_status(failure)
                 logging.getLogger(__name__).warning('Companion generation failed: stage=generation status=%s error_type=%s', status, type(failure).__name__)
-                generation = {'enabled': True, 'status': status, 'prompt_details': prompt_details, 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'action': 'The provider returned HTTP 429. Check its quota, billing and rate limits before retrying.' if code == 429 else 'Check the selected provider configuration and capability diagnostics in Admin, and the agentic service logs.'}
+                generation = {'enabled': True, 'status': status, 'prompt_details': prompt_details, 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'action': failure_action(failure, os.getenv('USE_LLM', 'ollama').strip().lower())}
                 response_text += '\n\nThe configured language model is unavailable; the retrieved evidence above remains available.'
         if on_token:
             await on_token(response_text)

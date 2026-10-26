@@ -186,3 +186,18 @@ def test_manager_orders_frontend_and_backend_and_stops_on_failure(tmp_path):
     result=subprocess.run(args+['-Action','Start'],capture_output=True,text=True)
     assert result.returncode != 0
     assert trace.read_text().splitlines() == ['backend-failed']
+
+
+def test_customer_update_retains_shared_migrations_and_adds_nonpublishing_pmi_review():
+    wrapper=(ROOT/'update-depo.ps1').read_text(encoding='utf-8')
+    update=(ROOT/'infra/windows/update-depo-windows.ps1').read_text(encoding='utf-8')
+    assert 'update-depo-windows.ps1' in wrapper
+    assert update.index('if ($PreflightOnly)') < update.index('Backend shutdown')
+    installer=(ROOT/'install-depo.ps1').read_text(encoding='utf-8')
+    assert '--ceim-review' in installer
+    assert installer.index("if ($script:depoDetectedMode -eq 'existing')") < installer.index('--ceim-review')
+    assert 'install-depo.ps1' in update and '-SkipBaselineProvisioning' in update
+    assert 'AP242 PMI mapping upgrade review (no graph publication)' in installer
+    assert '--stage' not in update
+    gate=(ROOT/'infra/deployment/test-installation-package.ps1').read_text(encoding='utf-8')
+    assert 'verified_pmi_characteristic.relationship' in gate

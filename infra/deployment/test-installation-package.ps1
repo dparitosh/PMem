@@ -23,6 +23,7 @@ $requiredFiles = @(
   'backend/agentic_service/memory_maintenance.py', 'backend/agentic_service/source_revisions.py',
   'backend/depo_platform/cleanup_receipts.py', 'backend/depo_platform/plm_questions.py',
   'backend/agentic_service/business_answers.py', 'backend/graph_service/plm_answers.py',
+  'backend/ceim/ap242_pmi.py', 'data/ceim/mapping-packs/ap242.json',
   'backend/graph_service/business_context.py', 'backend/graph_service/document_evidence.py',
   'infra/postgres/migrations/013_registry_workflow_lookup.sql',
   'INSTALLATION.md', 'configure-depo.ps1', 'install-depo.ps1', 'diagnose-depo.ps1',
@@ -39,6 +40,11 @@ $requiredFiles = @(
 )
 foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
+}
+
+$ap242Pack = Get-Content -LiteralPath (Join-Path $root 'data/ceim/mapping-packs/ap242.json') -Raw | ConvertFrom-Json
+if ($ap242Pack.relationships.verified_pmi_characteristic.relationship -ne 'HAS_CHARACTERISTIC') {
+  throw 'Outdated AP242 mapping pack. Deploy the complete matching release with the PMI adapter and mapping pack before upgrading.'
 }
 
 $excludedDirectories = @('.git', '.codex', 'logs', 'ontology_uploads', 'uploads', 'release-dist', 'node_modules', '.release-test-tmp', '.pytest_cache',

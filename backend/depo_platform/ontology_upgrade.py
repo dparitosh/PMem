@@ -188,6 +188,62 @@ def run(root, *, stage=False):
     print(json.dumps({'mode':'existing_deployment','review_items':len(report['items']),'plan':str(target),'manual_review_items':sum(item['status']=='manual_review_required' for item in report['items']),'published':False}))
     return report
 
+def review_ceim_mappings(root, *, store=None, limit=5000):
+    """Inventory retained AP242 run digests; never replay, approve or publish."""
+    from backend.ceim.contract import contract
+    from backend.mesh_store import PostgresRegistry
+    if not 1 <= limit <= 5000:
+        raise ValueError('CEIM upgrade inventory limit must be between 1 and 5000')
+    selected = contract.mapping_pack('ap242')
+    registry = store if store is not None else PostgresRegistry('data_job_runs')
+    items, seen, scanned, total, active, failed = [], set(), 0, 0, 0, 0
+    while scanned < limit:
+        total, rows = registry.page(limit=min(100, limit-scanned), offset=scanned)
+        if not rows:
+            break
+        scanned += len(rows)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            output = row.get('output_manifest') if isinstance(row.get('output_manifest'), dict) else {}
+            if str(row.get('source_standard') or output.get('source_standard') or '').lower() != 'ap242':
+                continue
+            if row.get('status') in {'queued', 'running'}:
+                active += 1
+                continue
+            if row.get('status') in {'failed', 'cancelled', 'canceled', 'timed_out', 'interrupted'}:
+                failed += 1
+                continue
+            identifier = str(row.get('run_id') or '')[:256]
+            if not identifier or identifier in seen:
+                continue
+            seen.add(identifier)
+            old = output.get('mapping_digest')
+            if old == selected['digest']:
+                continue
+            items.append({'run_id': identifier, 'run_status': str(row.get('status') or 'unknown')[:64],
+                'status': 'regeneration_required' if isinstance(old, str) and old.startswith('sha256:') else 'manual_review_required',
+                'action': 'Retain the original run and publication. Regenerate from the complete original AP242 source, review new PMI associations and publish through the governed workflow. Do not replay old normalized output or edit mapping provenance.',
+                'publication': 'not_attempted'})
+        if scanned >= total:
+            break
+    report = {'status': 'review_required' if items else 'no_mismatches_in_scanned_records',
+        'mapping_pack': selected['id'], 'mapping_version': selected['version'], 'mapping_digest': selected['digest'],
+        'coverage': {'scanned_runs': scanned, 'total_runs_observed': total, 'limit': limit,
+                     'truncated': scanned < total, 'atomic_snapshot': False, 'active_ap242_runs_skipped': active, 'unsuccessful_ap242_runs_skipped': failed},
+        'items': items, 'published': False,
+        'limitations': 'Retained data-job metadata only; legacy imports and graphs without run metadata require manual review. Concurrent run updates can change this bounded inventory. Large batches still require supported partitioning.'}
+    folder = Path(root).resolve() / 'logs/installation/ceim-upgrade-review'
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / 'plan.json'
+    temporary = target.with_suffix('.tmp')
+    temporary.write_text(json.dumps(report, indent=2), encoding='utf-8')
+    temporary.replace(target)
+    print(json.dumps({'mapping_version': selected['version'], 'review_items': len(items),
+                      'plan': str(target), 'coverage': report['coverage'], 'published': False}))
+    return report
+
+
 def detect_deployment(root=None):
     import psycopg
     from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds
@@ -210,6 +266,8 @@ if __name__ == '__main__':
     parser.add_argument('--root',required=True)
     parser.add_argument('--stage',action='store_true')
     parser.add_argument('--detect',action='store_true')
+    parser.add_argument('--ceim-review',action='store_true')
     args=parser.parse_args()
     if args.detect: print(json.dumps(detect_deployment(args.root)))
+    elif args.ceim_review: review_ceim_mappings(args.root)
     else: run(args.root,stage=args.stage)

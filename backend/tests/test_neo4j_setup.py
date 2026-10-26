@@ -54,3 +54,20 @@ def test_token_auth_requires_both_credential_parts(monkeypatch):
 
 def test_schema_parser_ignores_comments_and_empty_fragments():
     assert neo4j_setup._statements("// comment\nRETURN 1;\n;\n// ignored\nRETURN 2;") == ["RETURN 1", "RETURN 2"]
+
+
+@pytest.mark.parametrize('bad', ['missing','wrong_type','wrong_labels','populating'])
+def test_context_fulltext_index_is_verified(bad):
+    rows=[{'name':name,'state':'ONLINE',
+           'type':'FULLTEXT' if isinstance(label,tuple) else 'TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE',
+           'labelsOrTypes':list(reversed(label)) if isinstance(label,tuple) else [label],
+           'properties':properties} for name,(label,properties) in neo4j_setup.REQUIRED_INDEXES.items()]
+    neo4j_setup.verify_indexes(rows)
+    fulltext=next(row for row in rows if row['name']=='idx_depo_context_evidence')
+    if bad=='missing':rows.remove(fulltext)
+    elif bad=='wrong_type':fulltext['type']='RANGE'
+    elif bad=='wrong_labels':fulltext['labelsOrTypes']=['GraphChunk']
+    else:fulltext['state']='POPULATING'
+    with pytest.raises(RuntimeError,match='idx_depo_context_evidence'):
+        neo4j_setup.verify_indexes(rows)
+    if bad=='missing':neo4j_setup.verify_indexes(rows,allow_missing=True)

@@ -281,3 +281,21 @@ class AdminProviderAuditTests(unittest.TestCase):
                 provider = values.get('USE_LLM', 'ollama')
                 self.assertEqual(keys, ['USE_LLM', 'OLLAMA_BASE_URL', 'LLM_MODEL_NAME'] if provider == 'ollama'
                                  else ['USE_LLM', provider.upper()+'_BASE_URL', provider.upper()+'_MODEL'])
+
+
+class CapabilityDiagnosticDeadlineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_probe_deadlines_bound_stalled_requests_without_live_provider(self):
+        async def stalled(*args, **kwargs):
+            await asyncio.sleep(1)
+        with patch.dict(os.environ,ENV,clear=True), patch.object(local_llm,'settings',return_value=('openai','fixture','https://api.openai.com/v1',.01,{})), patch.object(local_llm,'_post_json',unittest.mock.AsyncMock(side_effect=stalled)):
+            result=await local_llm.probe_capabilities()
+        self.assertEqual(result['probe_timeout_seconds'],.01)
+        self.assertEqual([result[k] for k in ('generation','structured_outputs','native_tool_calling')],['timeout']*3)
+        self.assertEqual(result['provider'],'openai')
+
+
+    async def test_discovery_disabled_invalid_generation_route_is_configuration_error(self):
+        with patch.dict(os.environ,{'OLLAMA_DISCOVERY_ENABLED':'false'},clear=True), patch.object(local_llm,'settings',return_value=('ollama','fixture','http://localhost:11434',30,{})), patch('backend.core.ollama_auth.ollama_generation_route',side_effect=ValueError('PRIVATE-INVALID-URL')):
+            result=await local_llm.health()
+        self.assertEqual(result['status'],'invalid_configuration')
+        self.assertNotIn('PRIVATE-INVALID-URL',str(result))

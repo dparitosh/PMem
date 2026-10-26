@@ -131,6 +131,24 @@ def ap242_to_ceim_batch(content: bytes, *, filename: str = "source.stp", ceim: C
                                      'source_key': f'STEP:#{source_id}:relating/related_product_definition'},
         ))
 
+    # Resolve only an explicit Part-21 PMI -> shape aspect -> product shape
+    # -> product definition chain. Shared files/geometry are never ownership.
+    if document.metadata.format != 'stpx':
+        from .ap242_pmi import owner_paths
+        for characteristic in [*document.dimensions, *document.geometric_tolerances]:
+            item_id = str(characteristic.id)
+            row = document.entity_map.get(characteristic.id)
+            paths = owner_paths(row, document.entity_map, emitted) if row else []
+            if not paths or item_id not in emitted:
+                continue
+            product_id = paths[0][0]
+            edge = active_contract.normalize_relationship(standard='ap242', record={
+                'source_type': 'verified_pmi_characteristic', 'source_id': str(product_id),
+                'target_id': item_id, 'source_key': ';'.join(
+                    f'STEP:#{characteristic.id}->#{feature_id}->#{shape_id}->#{owner_id}'
+                    for owner_id, feature_id, shape_id in sorted(set(paths)))})
+            relationships.append(edge)
+
     if not entities:
         raise ValueError('AP242 source contains no supported semantic entities')
 

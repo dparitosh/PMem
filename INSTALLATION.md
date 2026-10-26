@@ -68,7 +68,7 @@ Expected: `True`, Python 3.12.x, Node v24.x or newer, npm 10.2 or newer. Portabl
 4. Wait for setup to finish. It validates the release, configuration, prerequisites and artifact storage before stopping application processes. Existing deployments also receive read-only database upgrade checks before shutdown.
 5. Confirm **DEPO Windows installation completed successfully**, then open the frontend URL reported by the installer. The default workstation address is `http://127.0.0.1:3000/`.
 
-From PowerShell, the equivalent setup command is:
+Choose one method and wait for completion; do not run concurrent installers. From PowerShell, the equivalent setup command is:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-depo.ps1 -Action Setup
@@ -80,8 +80,6 @@ From Command Prompt, change both drive and directory before running the menu:
 cd /d E:\App\PMem
 Setup-DEPO.cmd
 ```
-
-Choose one method and wait for completion. Do not run concurrent installers.
 
 ### 2.3 Review configuration and credential policy
 
@@ -234,7 +232,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-de
 1. Back up PostgreSQL, Neo4j, durable artifacts and configuration. Confirm the restore procedure for the current schema version.
 2. Place the complete matching release in the application directory, preserving root `.env.local`, `frontend\.env.local`, customer uploads and durable data. Use a maintenance window when replacing a running release. Review intentional credential changes before setup; guided synchronization applies them to PostgreSQL.
 3. Run **Setup-DEPO.cmd → Install / update / repair**. Do not manually stop services before its preflight.
-4. Verify services and the browser workflow again. Review any staged ontology upgrades separately.
+4. Verify services and the browser workflow again. Review ontology upgrades and `logs/installation/ceim-upgrade-review/plan.json` separately. For `update-depo.ps1` commands, index updates and PMI regeneration, follow the [existing-customer procedure](docs/installation/OPERATOR_REFERENCE.md#existing-customer-update-indexes-and-pmi-rules).
 
 Dependency receipts in `logs/installation/checkpoints` let setup reuse verified installations and retry failed stages. Configuration checks, imports, migrations and readiness still run; frontend source is rebuilt. Do not delete configuration or databases to retry installation.
 
@@ -294,7 +292,6 @@ Root update and diagnostic commands retain audit logs under `logs/installation/r
 The [operator reference](docs/installation/OPERATOR_REFERENCE.md) covers manual/gateway setup, schema maintenance, service isolation, Linux, optional Spark/OCR and detailed verification. Operator entry points are root `configure-depo.ps1`, `install-depo.ps1`, `update-depo.ps1`, `manage-depo.ps1`, `diagnose-depo.ps1` and `certify-depo-release.ps1`. Scripts under `infra` implement supported stages and optional features.
 
 Build releases from the reviewed commit and validate the actual artifact. Before customer rollout, test a clean Windows machine, paths with spaces, execution policy, first install, unchanged rerun, interrupted installation/resume, rejected upgrade without shutdown, credential retention, backup/restore, restart and import-to-publication. Record separate database, browser and LLM acceptance evidence. Local regression tests alone do not certify a customer release.
-
 
 ## Feature-specific verification
 

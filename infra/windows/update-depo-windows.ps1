@@ -65,4 +65,5 @@ Invoke-DepoUpgradeStep 'Backend shutdown' { & (Join-Path $PSScriptRoot 'stop-dep
 Invoke-DepoUpgradeStep 'Migration, installation and service verification' {
   & (Join-Path $root 'install-depo.ps1') -Python $Python -EnvFile $envPath -Profile $Profile -ServiceStartupTimeoutSeconds $ServiceStartupTimeoutSeconds -SkipFrontend:$SkipFrontend -SkipDependencyInstall:(!$InstallDependencies) -EnableOcr:$EnableOcr -SkipBaselineProvisioning
 }
+Write-Host 'Review logs/installation/ceim-upgrade-review/plan.json. New PMI rules require source regeneration and governed publication; existing graph publications were not replaced.'
 Write-Host 'DEPO redeployment completed: database schema/indexes verified and services restarted. Existing credentials and configuration were preserved except explicitly requested timeout updates.' -ForegroundColor Green

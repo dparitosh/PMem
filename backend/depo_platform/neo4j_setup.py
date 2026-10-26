@@ -18,6 +18,7 @@ REQUIRED_INDEXES = {
     'idx_depo_resource_search_iri': ('OntologyResource', ['search_iri']),
     'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
     'idx_depo_ontologyresource_scope': ('OntologyResource', ['ontology_id']),
+    'idx_depo_context_evidence': (('GraphChunk', 'DatasheetChunk'), ['content']),
 }
 
 
@@ -49,7 +50,9 @@ def verify_indexes(records, *, allow_missing=False):
         row = indexed.get(name)
         if row is None and allow_missing:
             continue
-        if not row or row.get('type') != ('TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE') or row.get('state') != 'ONLINE' or row.get('labelsOrTypes') != [label] or row.get('properties') != properties:
+        labels = list(label) if isinstance(label, tuple) else [label]
+        index_type = 'FULLTEXT' if isinstance(label, tuple) else ('TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE')
+        if not row or row.get('type') != index_type or row.get('state') != 'ONLINE' or sorted(row.get('labelsOrTypes') or []) != sorted(labels) or row.get('properties') != properties:
             invalid.append(name)
     if invalid:
         raise RuntimeError('Missing or unavailable Neo4j performance indexes: ' + ', '.join(sorted(invalid)))

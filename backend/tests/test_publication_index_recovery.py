@@ -23,7 +23,7 @@ class IndexRecoveryTests(unittest.TestCase):
         self.assertIn(11, [v for v, _, _ in MIGRATIONS])
 
     def test_neo4j_indexes_must_be_online_with_expected_properties(self):
-        rows=[{'name':name,'state':'ONLINE','type':'TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE','labelsOrTypes':[label],'properties':properties} for name,(label,properties) in REQUIRED_INDEXES.items()]
+        rows=[{'name':name,'state':'ONLINE','type':'FULLTEXT' if isinstance(label,tuple) else 'TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE','labelsOrTypes':list(label) if isinstance(label,tuple) else [label],'properties':properties} for name,(label,properties) in REQUIRED_INDEXES.items()]
         self.assertEqual(verify_indexes(rows),sorted(REQUIRED_INDEXES))
         rows[0]['state']='POPULATING'
         with self.assertRaises(RuntimeError): verify_indexes(rows)

@@ -47,7 +47,15 @@ def test_source_trace_is_not_presented_as_pmi_ownership(monkeypatch):
     result=retrieve(publisher,query='Which parts have PMI?',ontology_id='selected')
     assert result['rows'][0]['association']=='Source reference; ownership unverified'
     assert publisher._session_rows.call_args.kwargs['scope']=='selected'
+    pmi_types=publisher._session_rows.call_args.kwargs['pmi_types']
+    assert any(t.endswith('/TolerancedCharacteristic') for t in pmi_types)
+    assert not any(t.endswith('/0.1/Characteristic') for t in pmi_types)
     assert '| Part | PMI |' in render([result])
+    assert 'Only source-reference candidates' in render([result])
+    cypher=publisher._session_rows.call_args.args[0]
+    assert 'CASE WHEN predicate=' in cypher
+    assert 'startNode(r)=p' in cypher and 'startNode(r)=a' in cypher
+    assert 'r.predicate IS NULL' in cypher
 
 
 def test_factual_summary_table_rows_need_citations():
@@ -76,3 +84,49 @@ async def test_business_reply_prefers_table_and_emits_one_answer(monkeypatch):
     assert result['response']=='Motor is a retained part. [evidence:business-answer:test]'
     assert messages==[result['response']]
     assert 'Matching graph resources' not in result['response']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [401, 403, 429])
+async def test_provider_failure_retains_business_table_and_emits_no_secret(monkeypatch, status):
+    import httpx
+    from unittest.mock import AsyncMock
+    from backend.agentic_service import companion, companion_context, local_llm
+    monkeypatch.setenv('COMPANION_LLM_ENABLED','true')
+    monkeypatch.setenv('USE_LLM','openai')
+    monkeypatch.setattr(companion_context,'mapping_context',AsyncMock(return_value={'status':'not_requested','evidence':[]}))
+    monkeypatch.setattr(companion_context,'document_context',AsyncMock(return_value={'status':'no_evidence','evidence':[]}))
+    monkeypatch.setattr(companion_context,'plm_context',AsyncMock(return_value={'evidence_type':'business_answer',
+        'resource_id':'business-answer:test','intent':'product_assembly','label':'Product evidence',
+        'rows':[{'name':'Housing','kind':'Part','source':'selected'}],'source':'graph-service:typed-business-read'}))
+    request=httpx.Request('POST','https://api.openai.com/v1/chat/completions')
+    response=httpx.Response(status,request=request,json={'error':{'message':'SECRET-UPSTREAM-CONTENT'}})
+    error=httpx.HTTPStatusError('SECRET-UPSTREAM-CONTENT',request=request,response=response)
+    summary=AsyncMock(side_effect=error)
+    monkeypatch.setattr(local_llm,'summarize',summary)
+    real=httpx.AsyncClient
+    monkeypatch.setattr(companion.httpx,'AsyncClient',lambda **kw:real(transport=httpx.MockTransport(lambda req:httpx.Response(200,json={'nodes':[],'relationships':[]})),**kw))
+    messages=[]
+    async def emit(text):messages.append(text)
+    result=await companion.KnowledgeCompanion().ask('Find products',headers={},on_token=emit)
+    assert '| Housing | Part |' in result['response']
+    assert messages==[result['response']]
+    assert summary.await_count==1
+    assert result['generation']['status']==('rate_limited' if status==429 else 'authentication_rejected')
+    assert str(status) in result['generation']['action']
+    assert 'SECRET-UPSTREAM-CONTENT' not in str(result)
+    if status==401:assert 'OPENAI_API_KEY' in result['generation']['action']
+
+
+def test_non_object_retained_properties_do_not_break_business_names():
+    from backend.graph_service.plm_answers import name
+    for raw in ('[]','null','42','"text"','{invalid'):
+        assert name('Housing',raw)=='Housing'
+
+
+def test_explicit_predicate_takes_precedence_over_storage_label(monkeypatch):
+    monkeypatch.delenv('DEPO_DATABASE_URL',raising=False);monkeypatch.delenv('DATABASE_URL',raising=False)
+    publisher=Mock(_session_rows=Mock(return_value=[{'part':'Housing','pmi':'Diameter',
+        'relationship':'TRACE_TO','predicate':'https://depo.example.org/ceim/0.1/hasCharacteristic'}]))
+    result=retrieve(publisher,query='Which parts have PMI?')
+    assert result['rows'][0]['association_status']=='recorded_association'

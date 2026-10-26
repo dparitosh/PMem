@@ -10,6 +10,7 @@ CEIM='https://depo.example.org/ceim/0.1/'
 def name(label, raw):
     try: properties=json.loads(raw or '{}')
     except (ValueError,TypeError): properties={}
+    if not isinstance(properties,dict): properties={}
     for key in ('name','title','partNumber','sourceId'):
         for iri,values in properties.items():
             if iri.rsplit('/',1)[-1].rsplit('#',1)[-1]==key and isinstance(values,list):
@@ -33,17 +34,25 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix=''):
         rows=publisher._session_rows(
             'MATCH(p:OntologyResource)-[r]-(a:OntologyResource) WHERE p.ontology_id=a.ontology_id '
             'AND any(t IN coalesce(p.rdf_types,[]) WHERE t IN $part_types) '
-            'AND $annotation IN coalesce(a.rdf_types,[]) '+scope+
-            "AND (type(r) IN ['HAS_PMI','ANNOTATES','HAS_CHARACTERISTIC','TRACE_TO'] OR r.predicate IN $predicates) "
+            'AND any(t IN coalesce(a.rdf_types,[]) WHERE t IN $pmi_types) '+scope+
+            "AND ((startNode(r)=p AND (r.predicate IN $outgoing OR (r.predicate IS NULL AND type(r) IN ['HAS_PMI','HAS_CHARACTERISTIC']))) "
+            "OR (startNode(r)=a AND (r.predicate=$annotates OR (r.predicate IS NULL AND type(r)='ANNOTATES'))) "
+            "OR r.predicate=$trace_predicate OR (r.predicate IS NULL AND type(r)='TRACE_TO')) "
             'RETURN elementId(p) AS part_id,p.label AS part,p.rdf_properties AS part_props, '
             'elementId(a) AS pmi_id,a.label AS pmi,a.rdf_properties AS pmi_props, '
             'elementId(r) AS relationship_id,type(r) AS relationship,r.predicate AS predicate,p.ontology_id AS source,p.prefix AS prefix '
-            'ORDER BY part_id,pmi_id,relationship_id LIMIT 21',
-            **common,part_types=[CEIM+k for k in ('Part','Product','ProductRevision','Assembly')],annotation=CEIM+'PMIAnnotation',
-            predicates=[CEIM+'hasPMI',CEIM+'annotates',CEIM+'hasCharacteristic',CEIM+'traceTo'])
+            "ORDER BY CASE WHEN predicate=$trace_predicate OR (predicate IS NULL AND relationship='TRACE_TO') THEN 1 ELSE 0 END,part_id,pmi_id,relationship_id LIMIT 21",
+            trace_predicate=CEIM+'traceTo',
+            **common,part_types=[CEIM+k for k in ('Part','Product','ProductRevision','Assembly')],pmi_types=[CEIM+'PMIAnnotation',
+                'https://depo.example.org/ontology/bill-of-characteristics/1.0/DimensionalCharacteristic',
+                'https://depo.example.org/ontology/bill-of-characteristics/1.0/TolerancedCharacteristic'],
+            outgoing=[CEIM+'hasPMI',CEIM+'hasCharacteristic'],annotates=CEIM+'annotates')
         for row in rows:
             row['part']=name(row['part'],row.pop('part_props',None));row['pmi']=name(row['pmi'],row.pop('pmi_props',None))
-            row['association']='Source reference; ownership unverified' if row['relationship']=='TRACE_TO' or row.get('predicate')==CEIM+'traceTo' else 'Recorded typed relationship; review source'
+            predicate=row.get('predicate')
+            trace=predicate==CEIM+'traceTo' if predicate is not None else row['relationship']=='TRACE_TO'
+            row['association_status']='source_reference' if trace else 'recorded_association'
+            row['association']='Source reference; ownership unverified' if trace else 'Recorded typed association; see source evidence'
     else:
         rows=publisher._session_rows(
             'CALL { MATCH(p:OntologyResource) WHERE any(t IN coalesce(p.rdf_types,[]) WHERE t IN $types) RETURN p '

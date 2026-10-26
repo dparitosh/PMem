@@ -71,3 +71,33 @@ class OntologyUpgradeTests(unittest.TestCase):
                 self.assertTrue(cursor.execute.call_args.args[0].startswith('SELECT'))
 
 if __name__=='__main__': unittest.main()
+
+
+class CeimUpgradeReviewTests(unittest.TestCase):
+    def test_review_reports_old_and_unknown_mapping_without_writes(self):
+        from backend.ceim.contract import contract
+        from backend.depo_platform.ontology_upgrade import review_ceim_mappings
+        registry=MagicMock()
+        rows=[{'run_id':'old','status':'completed','source_standard':'ap242','output_manifest':{'mapping_digest':'sha256:old'}},
+              {'run_id':'current','status':'completed','source_standard':'ap242','output_manifest':{'mapping_digest':contract.mapping_pack('ap242')['digest']}},
+              {'run_id':'unknown','status':'completed','output_manifest':{'source_standard':'ap242'}},
+              {'run_id':'active','status':'running','source_standard':'ap242'},
+              {'run_id':'qif','status':'completed','source_standard':'qif'},
+              {'run_id':'failed','status':'failed','source_standard':'ap242'}]
+        registry.page.return_value=(len(rows),rows)
+        with tempfile.TemporaryDirectory() as folder:
+            report=review_ceim_mappings(folder,store=registry)
+            self.assertTrue((Path(folder)/'logs/installation/ceim-upgrade-review/plan.json').is_file())
+        self.assertEqual({item['run_id']:item['status'] for item in report['items']},{'old':'regeneration_required','unknown':'manual_review_required'})
+        self.assertFalse(report['published'])
+        self.assertEqual(report['coverage']['active_ap242_runs_skipped'],1)
+        self.assertEqual(report['coverage']['unsuccessful_ap242_runs_skipped'],1)
+        registry.put.assert_not_called();registry.delete.assert_not_called()
+
+    def test_inventory_cap_is_explicit(self):
+        from backend.depo_platform.ontology_upgrade import review_ceim_mappings
+        registry=MagicMock();registry.page.return_value=(1000,[{'run_id':'a','source_standard':'qif'}])
+        with tempfile.TemporaryDirectory() as folder:
+            report=review_ceim_mappings(folder,store=registry,limit=1)
+        self.assertTrue(report['coverage']['truncated'])
+        self.assertEqual(report['coverage']['scanned_runs'],1)

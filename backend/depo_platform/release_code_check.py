@@ -12,6 +12,7 @@ REQUIRED_MODULES = (
     'backend/agentic_service/memory_maintenance.py', 'backend/agentic_service/source_revisions.py',
     'backend/depo_platform/cleanup_receipts.py', 'backend/depo_platform/plm_questions.py',
     'backend/agentic_service/business_answers.py', 'backend/graph_service/plm_answers.py',
+    'backend/ceim/ap242_pmi.py',
     'backend/graph_service/business_context.py', 'backend/graph_service/document_evidence.py',
 )
 

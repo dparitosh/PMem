@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { IxButton } from '@siemens/ix-react';
 import { agenticClient } from '../services/agenticApi';
-import { config, buildSemanticServiceUrl } from '../config';
+import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 
 export default function AgentControlPanel() {
@@ -22,6 +22,7 @@ export default function AgentControlPanel() {
   const [compensationReason, setCompensationReason] = useState('');
   const [memoryHealth, setMemoryHealth] = useState(null);
   const [memoryError, setMemoryError] = useState('');
+  const [memoryBusy, setMemoryBusy] = useState(false);
   const memoryRequest = useRef(null);
   const [llmHealth, setLlmHealth] = useState(null);
   const [llmCapabilities, setLlmCapabilities] = useState(null);
@@ -30,7 +31,7 @@ export default function AgentControlPanel() {
   const llmRequest = useRef(null);
   const request = useRef(null);
   useEffect(() => {
-    const clear = () => { setCompensationPlan(null); setCompensationReason(''); listRequest.current?.abort(); setRecentRuns([]); setListBusy(false); setListError(''); llmRequest.current?.abort(); setLlmHealth(null); memoryRequest.current?.abort(); setMemoryHealth(null); setMemoryError(''); setLlmCapabilities(null); setLlmError(''); setLlmBusy(false); request.current?.abort(); setRun(null); setMessage(''); setError(''); setBusy(false); setReconciliationEvidence(''); setReconciliationResult(''); setExecutorStopped(false); };
+    const clear = () => { setCompensationPlan(null); setCompensationReason(''); listRequest.current?.abort(); setRecentRuns([]); setListBusy(false); setListError(''); llmRequest.current?.abort(); setLlmHealth(null); memoryRequest.current?.abort(); setMemoryHealth(null); setMemoryError(''); setMemoryBusy(false); setLlmCapabilities(null); setLlmError(''); setLlmBusy(false); request.current?.abort(); setRun(null); setMessage(''); setError(''); setBusy(false); setReconciliationEvidence(''); setReconciliationResult(''); setExecutorStopped(false); };
     const inspectAgent = event => { clear(); setRunKind(event.detail.execution_kind === 'workflow' ? 'workflow' : 'agent'); setRunId(event.detail.run_id); setRun(event.detail); };
     window.addEventListener('depo:inspect-agent-run', inspectAgent);
     window.addEventListener('depo:credentials-changed', clear);
@@ -154,7 +155,7 @@ export default function AgentControlPanel() {
     <div className="depo-panel__body">
     <IxButton disabled={llmBusy} onClick={async () => {
       llmRequest.current?.abort(); const controller = new AbortController(); llmRequest.current = controller;
-      setLlmBusy(true); setLlmHealth(null); memoryRequest.current?.abort(); setMemoryHealth(null); setMemoryError(''); setLlmCapabilities(null); setLlmError('');
+      setLlmBusy(true); setLlmHealth(null); setLlmCapabilities(null); setLlmError('');
       try {
         const response = await agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/llm/health'), { signal: controller.signal, timeout: 10000 });
         if (!controller.signal.aborted) setLlmHealth(response.data);
@@ -163,28 +164,32 @@ export default function AgentControlPanel() {
     }}>Check model configuration</IxButton>
     <IxButton disabled={llmBusy} onClick={async () => {
       llmRequest.current?.abort(); const controller = new AbortController(); llmRequest.current = controller;
-      setLlmBusy(true); setLlmCapabilities(null); setLlmError('');
+      setLlmBusy(true); setLlmHealth(null); setLlmCapabilities(null); setLlmError('');
       try {
         const supervisor = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
         if (!supervisor) throw new Error('Connect agent supervision access before probing model capabilities.');
         const response = await agenticClient.post(buildSemanticServiceUrl('agentic', '/api/v1/llm/probe'),
-          {approved_by:'agent-supervisor',approval_token:supervisor}, {signal:controller.signal,timeout:Math.max(config.chatStreamTimeout || 1200000, 1200000),headers:{Authorization:`Bearer ${supervisor}`}});
+          {approved_by:'agent-supervisor',approval_token:supervisor}, {signal:controller.signal,timeout:210000,headers:{Authorization:`Bearer ${supervisor}`}});
         if (!controller.signal.aborted) setLlmCapabilities(response.data);
       } catch (failure) { if (!controller.signal.aborted) setLlmError(typeof failure.response?.data?.detail === 'string' ? failure.response.data.detail : failure.message); }
       finally { if (!controller.signal.aborted) setLlmBusy(false); }
     }}>Verify model capabilities</IxButton>
-    <IxButton onClick={async () => {
+    <IxButton disabled={memoryBusy} onClick={async () => {
       memoryRequest.current?.abort(); const controller = new AbortController(); memoryRequest.current = controller;
+      setMemoryBusy(true); setMemoryHealth(null); setMemoryError('');
       try {
-        const response = await agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/memory/status'), {signal:controller.signal});
+        const response = await agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/memory/status'), {signal:controller.signal,timeout:180000});
         if (!controller.signal.aborted) { setMemoryHealth(response.data); setMemoryError(''); }
       } catch { if (!controller.signal.aborted) setMemoryError('Memory health could not be verified.'); }
+      finally { if (!controller.signal.aborted) setMemoryBusy(false); }
     }}>Check agent memory</IxButton>
-    {memoryHealth && <p role="status">Optional graph memory: {memoryHealth.enabled ? memoryHealth.status : 'disabled'}. Workflow and read-goal scratchpads use PostgreSQL independently.</p>}
+    {memoryHealth && <p role="status">Optional graph memory: {memoryHealth.status || 'not_verified'}. Workflow and read-goal scratchpads use PostgreSQL independently; this action does not verify them.</p>}
+    {memoryHealth && <p>Last recorded schema: {memoryHealth.schema_status || 'not_verified'}. Last recorded writes: {memoryHealth.write_status || 'not_verified'}. Approved-fact storage: {memoryHealth.facts_status || 'not_verified'}.{memoryHealth.invalid_setting && <> Check setting: {memoryHealth.invalid_setting}.</>}</p>}
+    {memoryHealth && <p>This read/connectivity check does not write a test memory or verify recall quality.</p>}
     {memoryError && <p role="alert">{memoryError}</p>}
-    <p>Capability verification sends up to three small inference requests. It does not execute a tool.</p>
+    <p>Capability verification sends up to three small inference requests (up to 60 seconds each). It does not execute a tool or verify embeddings.</p>
     {llmCapabilities && <div role="status"><p>Capability model: {llmCapabilities.model || 'unverified'}.</p><p>Generation: {llmCapabilities.generation || 'unverified'}. Structured output: {llmCapabilities.structured_outputs || 'unverified'}. Native tool calling: {llmCapabilities.native_tool_calling || 'unverified'}.</p></div>}
-    {llmHealth && <div role="status"><p>Provider {llmHealth.provider || 'configured'}: <strong>{llmHealth.status}</strong>. Model: {llmHealth.model || 'not selected'}.</p><p>{llmHealth.action}</p>{llmHealth.endpoint && <p>{llmHealth.discovery_enabled === false ? 'Configured generation endpoint' : 'Checked endpoint'}: {llmHealth.endpoint}.{llmHealth.probe_timeout_seconds != null && <> Probe deadline: {llmHealth.probe_timeout_seconds} seconds.</>}</p>}<p>Ontology agents: {llmHealth.ontology_agent_enabled ? 'enabled' : 'disabled'}. Companion generation: {llmHealth.companion_enabled ? 'enabled' : 'disabled'}.</p></div>}
+    {llmHealth && <div role="status"><p>Provider {llmHealth.provider || 'configured'}: <strong>{llmHealth.status}</strong>. Model: {llmHealth.model || 'not selected'}.</p><p>{llmHealth.action}</p>{llmHealth.endpoint && <p>{llmHealth.probe_timeout_seconds != null ? 'Checked discovery endpoint' : 'Configured endpoint (not generation-verified)'}: {llmHealth.endpoint}.{llmHealth.probe_timeout_seconds != null && <> Probe deadline: {llmHealth.probe_timeout_seconds} seconds.</>}</p>}<p>Ontology agents: {llmHealth.ontology_agent_enabled ? 'enabled' : 'disabled'}. Companion generation: {llmHealth.companion_enabled ? 'enabled' : 'disabled'}.</p></div>}
     {llmError && <p role="alert">{typeof llmError === 'string' ? llmError : 'LLM diagnostic failed.'}</p>}
     <p>Select a recent workflow or enter its ID. Status refreshes every three seconds while this page is visible. Pause and cancel take effect between tools; they do not interrupt an active tool or undo completed writes. The original execution deadline still applies.</p>
     <p>These controls apply to multi-step agent workflows. Standalone ontology intake, review and bridge planning remain single operations.</p>

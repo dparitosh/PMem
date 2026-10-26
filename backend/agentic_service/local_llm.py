@@ -41,7 +41,11 @@ async def _health():
         return {'status': 'invalid_configuration', 'action': 'OLLAMA_DISCOVERY_ENABLED must be true or false.'}
     if not discovery:
         from backend.core.ollama_auth import ollama_generation_route
-        endpoint, operation = ollama_generation_route()
+        try:
+            endpoint, operation = ollama_generation_route()
+        except ValueError:
+            return {'status': 'invalid_configuration', 'provider': provider, 'model': model,
+                    'action': 'Check the configured Ollama generation route in root .env.local.'}
         return {'status': 'generation_unverified', 'provider': provider, 'model': model,
                 'endpoint': endpoint, 'discovery_enabled': False, 'generation_operation': operation,
                 'action': 'Model discovery is disabled because this REST contract does not expose GET /api/tags. Test generation separately with test-depo-ollama.ps1 -ProbeGeneration; chat/tool capability is separate.'}
@@ -63,7 +67,7 @@ async def _health():
         models = {item.get('name') or item.get('model') for item in body['models']}
         found = model in models or (':' not in model and model + ':latest' in models)
         return {**diagnostic, 'status': 'ready' if found else 'model_missing',
-                'action': 'Ollama model is installed.' if found else 'Install or transfer the configured model to this Ollama server; .env.local does not install models.',
+                'action': 'Ollama model is installed; generation and tool calling have not been verified. Use Verify model capabilities.' if found else 'Install or transfer the configured model to this Ollama server; .env.local does not install models.',
                 'ontology_agent_enabled': os.getenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false').lower() == 'true',
                 'companion_enabled': os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true'}
     except httpx.HTTPStatusError as failure:
@@ -256,7 +260,8 @@ async def probe_capabilities():
     from backend.core.ollama_auth import ollama_generation_route, ollama_tool_chat_root
     provider, model, _, timeout, headers = settings()
     if provider not in {'ollama', 'openai', 'mistral'}: raise ValueError('Select ollama, openai, or mistral before probing')
-    results = {'model': model, 'generation': 'unverified', 'structured_outputs': 'unverified', 'native_tool_calling': 'unverified'}
+    probe_timeout = min(timeout, 60)
+    results = {'provider': provider, 'model': model, 'probe_timeout_seconds': probe_timeout, 'generation': 'unverified', 'structured_outputs': 'unverified', 'native_tool_calling': 'unverified'}
     endpoint, operation = ollama_generation_route() if provider == 'ollama' else (_tool_endpoint(provider), 'chat')
     schema = {'type': 'object', 'properties': {'ok': {'type': 'boolean', 'enum': [True]}}, 'required': ['ok'], 'additionalProperties': False}
     probes = [('generation', endpoint, {'prompt': 'Reply OK', 'system': 'Reply briefly.'} if operation == 'generate' else {'messages': [{'role': 'user', 'content': 'Reply OK'}]})]
@@ -270,7 +275,7 @@ async def probe_capabilities():
     from .input_contracts import validate
     for name, url, payload in probes:
         try:
-            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+            async with asyncio.timeout(probe_timeout), httpx.AsyncClient(timeout=probe_timeout, trust_env=False) as client:
                 result = await _post_json(client, url, headers, {'model': model, 'stream': False, 'options': {'temperature': 0, 'num_predict': 64}, **payload})
             if result.get('done') is not True: raise ValueError('Incomplete response')
             if name == 'generation':
@@ -331,3 +336,17 @@ def _tool_endpoint(provider):
         return cloud_settings(provider).base_url + '/chat/completions'
     from backend.core.ollama_auth import ollama_tool_chat_root
     return ollama_tool_chat_root() + '/api/chat'
+
+
+def failure_action(exc, provider):
+    """Credential-safe recovery advice; never retry authentication as a timeout."""
+    code = getattr(getattr(exc, 'response', None), 'status_code', None)
+    if code == 401:
+        setting = {'openai': 'OPENAI_API_KEY', 'mistral': 'MISTRAL_API_KEY'}.get(provider, 'the selected provider credential')
+        return ('The provider rejected authentication (HTTP 401). Check ' + setting +
+                ' and the selected provider base URL in the deployed root .env.local. Replace an invalid or revoked key, restart the backend, then run the capability check. Keep keys out of chat. Retrieved evidence remains available.')
+    if code == 403:
+        return 'The provider denied access (HTTP 403). Check project/model permissions and any gateway policy for the selected provider. Retrieved evidence remains available.'
+    if code == 429:
+        return 'The provider returned HTTP 429. Check its quota, billing and rate limits before retrying.'
+    return 'Check the selected provider configuration and capability diagnostics in Admin, and the agentic service logs.'
