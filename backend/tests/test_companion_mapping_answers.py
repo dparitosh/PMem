@@ -78,7 +78,7 @@ def test_no_evidence_provides_recovery_instead_of_claiming_answer(monkeypatch):
     monkeypatch.setattr(module.httpx,'AsyncClient',lambda **kw:real(transport=httpx.MockTransport(lambda request:httpx.Response(200,json={'nodes':[],'relationships':[]})),**kw))
     result=asyncio.run(module.KnowledgeCompanion().ask('unfindable product',headers={}))
     assert result['answerable'] is False
-    assert 'check its Neo4j publication' in result['response']
+    assert 'verify its graph publication' in result['response']
 
 
 def test_mapping_history_route_requires_read_access_before_loading_records(monkeypatch):

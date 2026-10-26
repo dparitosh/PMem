@@ -446,7 +446,7 @@ describe('DataImportPipeline workflow routing', () => {
       await flushAsyncEffects();
     });
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
-    fireEvent.click(screen.getByRole('button', {name:/^Start$/i}));
+    fireEvent.click(await screen.findByRole('button', {name:/^Start$/i}));
     await screen.findByText(/Document processing did not complete successfully/);
     expect(screen.queryByText('Document retained and indexed for GraphRAG search.')).not.toBeInTheDocument();
   });
@@ -522,4 +522,18 @@ test('restored errors count as attention and instance jobs stay off ontology sta
   expect(screen.getByRole('group',{name:'Generate ontology preview: 0 files'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Import instance graph',exact:true}));
   expect(screen.getByRole('group',{name:'Review and approve load: 1 files'})).toBeInTheDocument();
+});
+
+test('retained STEP validation does not claim graph loading completed', async () => {
+  localStorage.setItem('depo.import.jobs.v2', JSON.stringify({
+    files:[{fileId:'step-review',name:'Assembly.stp',workflowId:'instance.import',persisted:true}],
+    pipelineStatus:{'step-review':{governedImport:true,status:'completed',backendStage:'completed',stage:'complete',progress:100,committed:false}},
+    startedFiles:[],
+  }));
+  mockListRegistered.mockResolvedValue({data:{ontologies:[]}});
+  mockWorkflowOptions.mockResolvedValue({data:{workflows:[]}});
+  apiClient.get.mockResolvedValue({data:{}});
+  await renderPipeline();
+  expect(screen.getByText('Validated — awaiting publication')).toBeInTheDocument();
+  expect(screen.getByText('Publication pending')).toBeInTheDocument();
 });

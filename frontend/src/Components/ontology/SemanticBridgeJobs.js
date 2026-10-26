@@ -16,6 +16,7 @@ class PreviewInputError extends Error {}
 function errorMessage(error) {
   if (error instanceof PreviewInputError) return error.message;
   const detail = error.response?.data?.detail;
+  if ([401, 403].includes(error.response?.status)) return 'Access to this workflow was rejected. Reconnect API access in Admin, then refresh the retained result. This is application access, not a model-provider key; do not start another run until its outcome is verified.';
   if (typeof detail === 'string') return detail;
   // FastAPI validation details contain objects (and can contain submitted input).
   // Never render the raw response or echo credential-bearing input fields.

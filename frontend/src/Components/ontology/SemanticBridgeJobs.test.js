@@ -34,6 +34,13 @@ const mount = () => {
   fireEvent.change(screen.getByLabelText('Approver'), {target: {value: 'reviewer'}});
   return view;
 };
+test('rejected workflow access explains reconnection without suggesting another run', async () => {
+  api.automate = vi.fn().mockRejectedValue({response:{status:403,data:{detail:'Required API key is missing or invalid'}}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  expect(await screen.findByText(/Access to this workflow was rejected/)).toHaveTextContent('not a model-provider key');
+  expect(api.automate).toHaveBeenCalledTimes(1);
+});
 async function create() { fireEvent.click(screen.getByText('Create preview')); await screen.findByLabelText('Approve part to Part'); }
 
 test('automated workflow publishes validated results without individual approval clicks', async () => {

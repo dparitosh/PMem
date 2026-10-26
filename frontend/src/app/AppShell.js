@@ -44,6 +44,7 @@ export default function AppShell({
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   const [verifyingAccess, setVerifyingAccess] = useState(false);
+  const [accessState, setAccessState] = useState('unverified');
   const [accessMessage, setAccessMessage] = useState(() => wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : '');
   const accessRequest = useRef(null);
   useEffect(() => () => { accessRequest.current?.abort(); accessRequest.current = null; }, []);
@@ -61,19 +62,21 @@ export default function AppShell({
       const result = await verifyStoredAccess({ signal: controller.signal });
       if (!controller.signal.aborted) {
         setAccessMessage(result.message);
+        setAccessState(result.status);
       }
       if (result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
-    } catch { if (!controller.signal.aborted) setAccessMessage('Access could not be verified. Try again.'); }
+    } catch { if (!controller.signal.aborted) { setAccessState('unverified'); setAccessMessage('Access could not be verified. Try again.'); } }
     finally {
       clearTimeout(timeout);
       if (accessRequest.current === controller) {
         accessRequest.current = null; setVerifyingAccess(false);
-        if (controller.signal.aborted) setAccessMessage('Verification timed out. Retry when services are reachable.');
+        if (controller.signal.aborted) { setAccessState('unverified'); setAccessMessage('Verification timed out. Retry when services are reachable.'); }
       }
     }
   };
   useEffect(() => {
     const rejected = () => {
+      setAccessState('reconnect_required');
       accessRequest.current?.abort(); accessRequest.current = null; setVerifyingAccess(false);
       setAccessMessage('A service rejected the current access. Revalidate access to check service configuration or reconnect; background jobs are retained.');
     };
@@ -81,7 +84,7 @@ export default function AppShell({
     return () => window.removeEventListener('depo:access-rejected', rejected);
   }, []);
   useEffect(() => {
-    const changed = event => { setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
+    const changed = event => { setAccessState('unverified'); setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);
     window.addEventListener('depo:session-expired', changed);
@@ -134,7 +137,7 @@ export default function AppShell({
             onClick={openAccess}
             aria-label="Configure API access"
           >
-            API access{apiAccessConfigured ? ' configured' : ''}
+            {accessState === 'reconnect_required' ? 'API access needs attention' : accessState === 'verified' ? 'API access verified' : apiAccessConfigured ? 'API access not verified' : 'API access'}
           </IxButton>
           <IxButton type="button" variant="tertiary" disabled={verifyingAccess} onClick={revalidateAccess} aria-label="Revalidate or reconnect API access">
             {verifyingAccess ? 'Checking access…' : apiAccessConfigured ? 'Revalidate access' : 'Reconnect access'}

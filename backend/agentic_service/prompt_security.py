@@ -51,6 +51,8 @@ def evidence_ids(evidence):
 
 
 def validate_summary(text, identifiers):
+    if re.search(r'<\/?[A-Za-z_][\w:.-]*(?:\s[^<>]*|\s*)/?>|```\s*(?:xml|json)\b|\b(?:minOccurs|maxOccurs)\s*=', text, re.I) or text.lstrip().startswith(('{','[')) and not text.lstrip().startswith('[evidence:'):
+        raise ValueError('Companion business answers must not contain XML, JSON or schema serialization')
     citations = re.findall(r'\[evidence:([^\]\n]+)\]', text)
     if not identifiers or not citations or any(value not in identifiers for value in citations):
         raise ValueError('Companion summary requires citations to supplied evidence identifiers')

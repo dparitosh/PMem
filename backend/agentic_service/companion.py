@@ -79,6 +79,15 @@ class KnowledgeCompanion:
             logging.getLogger(__name__).warning('Companion indexed excerpt retrieval unavailable')
         endpoint = f"{self._graph_root()}/graph/search"
         typed_answer=next((item for item in context['evidence'] if item.get('evidence_type')=='business_answer'),None)
+        if business_intent and typed_answer is None:
+            text = ('I could not verify the requested business associations because the business-instance evidence service could not be checked. '
+                    'Check graph-service readiness and API access, then retry this question. Schema definitions and matching words are not evidence that a product has an associated requirement or PMI.')
+            if on_token:
+                await on_token(text)
+            return {'status':'unavailable', 'answerable':False, 'response':text, 'evidence':[], 'sources':[],
+                    'retrieval':{'answer_scope':'business_instance_associations', 'business_answer_status':'unavailable',
+                                 'semantic_entailment_verified':False},
+                    'generation':{'enabled':False,'status':'not_requested'}}
         graph_status = 'not_requested' if typed_answer else 'available'
         try:
             if typed_answer:
@@ -90,7 +99,7 @@ class KnowledgeCompanion:
                     from backend.depo_platform.network import gateway_subscription_headers
                     headers = {**headers, **gateway_subscription_headers(endpoint)}
                     from .response_limits import read_bounded_response
-                    async with client.stream('GET', endpoint, params={"query": query, "limit": self.max_nodes, "ontology_id": ontology_id, "ontology_prefix": ontology_prefix, "business_only": bool(business_intent) or page == 'graph'}, headers=headers) as response:
+                    async with client.stream('GET', endpoint, params={"query": query, "limit": self.max_nodes, "ontology_id": ontology_id, "ontology_prefix": ontology_prefix, "business_only": True}, headers=headers) as response:
                         response.raise_for_status()
                         graph = json.loads(await read_bounded_response(response))
         except (httpx.HTTPError, TimeoutError, ValueError) as exc:
@@ -116,6 +125,12 @@ class KnowledgeCompanion:
                or edge['start'] not in identities or edge['end'] not in identities for edge in relationships):
             raise RuntimeError('Graph retrieval returned a relationship outside its evidence resources')
         query_tokens = self._tokens(query)
+        # Do not turn a legacy/unfiltered search response into a business fact.
+        schema_kinds = {'class','objectproperty','datatypeproperty','annotationproperty','restriction','property'}
+        nodes = [node for node in nodes if str((node.get('properties') or {}).get('kind') or '').lower() not in schema_kinds
+                 and not set(node.get('labels') or []) & {'OntologyClass','ObjectProperty','DatatypeProperty','Restriction'}]
+        business_ids = {node['elementId'] for node in nodes}
+        relationships = [edge for edge in relationships if edge.get('start') in business_ids and edge.get('end') in business_ids]
         scored: list[tuple[int, dict[str, Any]]] = []
         for node in nodes:
             properties = dict(node.get("properties") or {})
@@ -182,7 +197,7 @@ class KnowledgeCompanion:
                              + ("No saved mapping reviews matched either. " if context['status'] == 'available' else
                                 "Saved mapping history could not be checked; verify ontology service readiness and read access in Admin. " if context['status'] == 'unavailable' else '')
                              + ("Indexed document coverage is unavailable. " if document_result['status'] in {'not_indexed','unavailable'} else "No indexed excerpts matched this bounded search. ")
-                             + "For data questions, select the relevant ontology and check its Neo4j publication. Try a specific class, property or instance name. The Companion cannot infer facts from data it cannot retrieve."),
+                             + "Select the relevant business scope and verify its graph publication. Try a specific product, requirement or process name. The Companion cannot infer facts from data it cannot retrieve."),
                 "evidence": [], "sources": [endpoint], "retrieval": retrieval,
             }
         labels = [item["label"] for item in evidence if item["evidence_type"] == "graph_resource"]
@@ -202,12 +217,13 @@ class KnowledgeCompanion:
             from .business_answers import render
             response_text=render(business_items)
         if labels and not business_items:
-            response_text += ("\n\n" if response_text else '') + f"Matching graph resources: {', '.join(labels[:6])}."
+            from .business_answers import cell
+            response_text += ("\n\n" if response_text else '') + 'Retrieved business records:\n\n| Name | Description / value | Evidence |\n|---|---|---|'
             for item in evidence:
                 if item['evidence_type'] != 'graph_resource': continue
                 props = item.get('properties') or {}
-                description = props.get('definition') or props.get('description') or props.get('comment')
-                if description: response_text += f"\n- {item['label']}: {str(description)[:500]} [evidence:{item['resource_id']}]"
+                description = props.get('description') or props.get('value') or props.get('comment')
+                response_text += f"\n| {cell(item['label'])} | {cell(description)} | [evidence:{item['resource_id']}] |"
         if retrieval['truncated'] or selection_truncated: response_text += '\n\nThis answer uses a limited evidence selection; it does not establish whole-graph counts, completeness or absence of other matches.'
         if page_result.get('representation') == 'postgres_business_context':
             response_text += '\n\nBusiness-context evidence comes from the PostgreSQL-backed Semantica context graph; synchronization with Neo4j is not established.'
@@ -217,7 +233,7 @@ class KnowledgeCompanion:
         if document_result['status'] in {'unavailable','not_indexed'}:
             response_text += '\n\nIndexed document evidence could not be checked; this answer does not establish document coverage.'
         if relation_types and not business_items:
-            response_text += f" Connected relationship types: {', '.join(relation_types[:6])}."
+            response_text += f" {len(selected_edges)} recorded connections are included in the evidence."
         if business_status=='available':
             response_text += '\n\nConnected objects are included through recorded graph paths. Source references do not by themselves establish business impact or semantic equivalence.'
         elif business_status=='ambiguous':

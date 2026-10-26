@@ -120,6 +120,7 @@ const fetchArchitectureGraph = useCallback(async (prefix = 'archimate') => {
     });
     try {
       const response = await graphApi.getArchitectureGraph(prefix, limit, controller.signal);
+      if (response.data?.status === 'unavailable') throw new Error('Process graph unavailable. Retry when the graph service is ready.');
       const dataSet = normalizeGraphDataset(response.data);
       if (controller.signal.aborted || requestId !== graphScopeRequestIdRef.current) return;
       if (dataSet.nodes.length > 0) {
@@ -132,7 +133,7 @@ const fetchArchitectureGraph = useCallback(async (prefix = 'archimate') => {
         });
         logger.render(`[ARCHIMATE] Loaded ${prefix}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
-        setOntologyGraphMessage(response.data?.message || 'No ArchiMate process model graph is loaded yet. Import an ArchiMate Model Exchange XML file first.');
+        setOntologyGraphMessage('No process entities were found in this scope. Check the selected import and its publication status.');
         commitRef.current({ nodes: [], links: [] }, {
           updateGraphData: true,
           updateFullDataset: true,

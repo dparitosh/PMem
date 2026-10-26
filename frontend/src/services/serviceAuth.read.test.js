@@ -12,6 +12,19 @@ const reads = [
   ['dataProducts', 'http://vm:8017', '/api/v1/data-products'],
 ];
 
+test('workflow status keeps a credential after discovery reports reader and supervisor alternatives', () => {
+  setCredentialProfile('GRAPH_READ_TOKEN','fixture-reader');
+  registerServiceContract('agentic','http://vm:8012',{openapi:'3.0.3',paths:{
+    '/api/v1/workflow-runs/{run_id}':{get:{security:[{BearerKey:[]}],
+      'x-depo-authorization':{credential_profiles:['AGENTIC_APPROVAL_TOKEN','GRAPH_READ_TOKEN']}}},
+  }});
+  const url='http://vm:8012/api/v1/workflow-runs/run-retained';
+  expect(serviceAuthHeaders(url,'get').Authorization).toBe('Bearer fixture-reader');
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN','fixture-supervisor');
+  expect(serviceAuthHeaders(url,'get').Authorization).toBe('Bearer fixture-supervisor');
+  expect(serviceAuthHeaders('http://untrusted.test/api/v1/workflow-runs/run-retained','get')).toEqual({});
+});
+
 test('administrator rotation expires delegation while a missing write scope preserves reads', () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_rotated');
   setBrowserSessionExpiry('depo_session_rotated', new Date(Date.now() + 600000).toISOString());

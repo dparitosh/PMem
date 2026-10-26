@@ -31,9 +31,21 @@ PostgreSQL connections used for advisory locks are dedicated autocommit sessions
 5. Verify browser identity separately from service credentials. A browser 403, transport timeout, filesystem failure and quality rejection require different remedies.
 6. Test database unavailability, response loss after registration, service restart, disk permission failure, concurrent conversion and interrupted publication in a disposable customer-like environment. Confirm bounded failures, retry identity and retained graph receipts. No live customer failure injection was performed here.
 
+## Follow-up: customer UI and Companion defects
+
+Customer screenshots exposed integration gaps that unit-level checks missed:
+
+- Processes called `/graph/ontologies/archimate/projection`, which reads registered ontology resources. It now calls the authenticated graph-service `/graph/view/architecture/archimate` route for imported process instances. Database failures return 503 rather than a successful empty model. Endpoint and frontend routing tests cover this distinction.
+- Workflow status accepts reader or supervisor credentials. OpenAPI discovery correctly reported both, but frontend credential selection treated two profiles as unresolved and omitted authorization. The exact workflow-read alternative is now resolved to an available supervisor credential or reader credential. Other unresolved operations retain their existing restrictions. The header shows rejected/unverified access explicitly.
+- STEP job validation completion previously inherited the generic import completion badge. Pending graph publication now has an explicit validation/awaiting-publication badge and stage.
+- The requirements-association question did not enter typed business retrieval. Keyword fallback returned schema properties named Specification. It now selects business instances and recorded requirement paths, uses available published vocabulary labels, renders names/descriptions/values in tables, and excludes schema-only fallback evidence. XML/JSON model output is rejected before display. Missing business-service evidence does not fall back to schema word matches.
+- Historical agent statistics are collapsed and explicitly labeled as including earlier deployments. No deployment-specific rate is claimed and retained audit evidence is preserved.
+
+The earlier tests mocked graph API results and checked evidence/citation structure without exercising these routing and credential-alternative boundaries. New tests cover those boundaries and the exact customer question. They still do not certify a live customer database, gateway, model or deployment; customer acceptance must check the matching backend/frontend release together.
+
 ## Validation and remaining limits
 
-The combined backend regression run passed 90 tests. Earlier frontend runs passed 34 import/schema-bundle tests and 16 publication-panel tests, and the production frontend build passed. These are local automated checks; the database failure cases use injected faults rather than customer database outages.
+The follow-up regression selection passed 112 backend tests (one platform-dependent test skipped), 73 frontend workflow/access/graph tests and eight Admin tests. The production frontend build and updater PowerShell syntax check passed. Earlier import-resilience tests passed 90 backend checks, 34 import/schema-bundle checks and 16 publication-panel checks. These are local automated checks; database failure cases use injected faults rather than customer database outages.
 
 Regression coverage includes distinct/repeated RDF identities, URN inclusion, PostgreSQL failure, successful commit with mirror failure, atomic mirror replacement, conversion admission/release, multi-XSD one-request behavior, dependency closure, stale file-read cancellation, native-catalog reasoning and publication verification without artifact/receipt mutation. Existing provider/startup tests and the production frontend build are also checked.
 

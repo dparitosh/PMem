@@ -123,4 +123,4 @@ async def plm_context(query, *, headers, ontology_id='', ontology_prefix=''):
         raise ValueError('Invalid PLM evidence')
     if any(not isinstance(row,dict) or (ontology_id and row.get('source')!=ontology_id) or (ontology_prefix and row.get('prefix')!=ontology_prefix) for row in body['rows']):
         raise ValueError('PLM evidence changed selected source')
-    return {key:body.get(key) for key in ('evidence_type','resource_id','label','intent','rows','description','source','coverage')}
+    return {key:body.get(key) for key in ('evidence_type','resource_id','label','intent','rows','description','source','coverage','vocabulary')}

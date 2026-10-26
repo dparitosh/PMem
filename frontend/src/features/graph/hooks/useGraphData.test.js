@@ -6,6 +6,14 @@ vi.mock('../../../utils/logger',()=>({logger:{render:vi.fn(),ontology:vi.fn(),er
 function options(){return {initialData:{nodes:[],links:[]},commitGraphSlice:vi.fn(),searchModeRef:{current:false},setStepParts:vi.fn(),setSelectedStepPart:vi.fn(),scopeKey:'ontology:A',limit:100};}
 const payload=id=>({data:{nodes:[{elementId:id,labels:['Class'],properties:{name:id}}],relationships:[]}});
 beforeEach(()=>vi.clearAllMocks());
+
+test('an unavailable process response is not presented as an empty model', async()=>{
+ api.getArchitectureGraph.mockResolvedValue({data:{status:'unavailable',nodes:[],relationships:[]}});
+ const props=options(),view=renderHook(()=>useGraphData(props));
+ await act(async()=>{await view.result.current.fetchArchitectureGraph();});
+ expect(view.result.current.ontologyGraphMessage).toContain('Process graph unavailable');
+ expect(view.result.current.ontologyGraphMessage).not.toContain('Import an ArchiMate');
+});
 test('new graph scope aborts old reads and only the current scope commits',async()=>{
  const pending=[];api.getOntologyGraph.mockImplementation((id,limit,signal)=>new Promise(resolve=>pending.push({id,signal,resolve})));
  const props=options(),view=renderHook(p=>useGraphData(p),{initialProps:props});

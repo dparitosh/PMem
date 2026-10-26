@@ -117,6 +117,8 @@ test('a subsequent credential rejection invalidates an earlier verified banner',
   fireEvent(window, new Event('depo:access-rejected'));
   expect(screen.queryByText('Read access verified.')).toBeNull();
   expect(screen.getByText(/A service rejected the current access/)).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Configure API access'})).toHaveTextContent('API access needs attention');
+  expect(screen.queryByText('API access configured')).not.toBeInTheDocument();
 });
 
 test('expands the Companion table workspace without remounting its input', () => {

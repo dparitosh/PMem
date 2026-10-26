@@ -270,7 +270,14 @@ export function serviceAuthHeaders(endpoint = '', method = 'get', subscription =
   checkBrowserSessionExpiry();
   if (!isConfiguredServiceEndpoint(endpoint)) return {};
   const operation = operationForUrl(endpoint, method);
-  const profile = isServiceRead(endpoint, method) ? 'GRAPH_READ_TOKEN' : operation?.profiles.length === 1 ? operation.profiles[0] : null;
+  // Workflow status accepts either its reader/owner or an agent supervisor.
+  // Discovery reports both profiles; treating that as unresolved stripped all
+  // credentials after discovery, even though the same read worked beforehand.
+  const workflowRead = String(method).toLowerCase() === 'get' && operation?.service === 'agentic' &&
+    /^\/api\/v1\/workflow-runs(?:\/\{[^}]+\})?\/?$/.test(operation.path) &&
+    operation.profiles.length === 2 && operation.profiles.includes('GRAPH_READ_TOKEN') && operation.profiles.includes('AGENTIC_APPROVAL_TOKEN');
+  const profile = workflowRead ? (getCredentialProfile('AGENTIC_APPROVAL_TOKEN') ? 'AGENTIC_APPROVAL_TOKEN' : 'GRAPH_READ_TOKEN')
+    : isServiceRead(endpoint, method) ? 'GRAPH_READ_TOKEN' : operation?.profiles.length === 1 ? operation.profiles[0] : null;
   const token = profile ? getCredentialProfile(profile) : (operation && (operation.profiles.length || operation.secured) ? '' : serviceToken);
   let subscriptionAllowed = false;
   if (subscription && config.gatewayUrl) {

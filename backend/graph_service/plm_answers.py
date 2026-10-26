@@ -2,7 +2,7 @@
 import hashlib
 import json
 from backend.depo_platform.graph_access import graph_projection_reader
-from backend.depo_platform.plm_questions import intent
+from backend.depo_platform.plm_questions import intent, requirement_subject
 
 CEIM='https://depo.example.org/ceim/0.1/'
 
@@ -30,7 +30,39 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix=''):
     if not selected:raise ValueError('Use a product, assembly or part–PMI question')
     scope="AND ($scope='' OR p.ontology_id=$scope) AND ($prefix='' OR p.prefix=$prefix) "
     common=dict(scope=ontology_id,prefix=ontology_prefix)
-    if selected=='parts_with_pmi':
+    if selected == 'associated_requirements':
+        subject = requirement_subject(query)
+        rows = []
+        if subject:
+            rows = publisher._session_rows(
+                'MATCH (p) WHERE NOT (p:StagedOntologyResource OR p:OntologyPublication) '
+                'AND (any(t IN coalesce(p.rdf_types,[]) WHERE t IN $business_types) '
+                'OR (p.import_id IS NOT NULL AND p.import_row_key IS NOT NULL AND any(l IN labels(p) WHERE l IN $business_labels))) '
+                "AND ($scope='' OR p.ontology_id=$scope OR p.source_ontology=$scope) "
+                "AND ($prefix='' OR p.prefix=$prefix OR p.ontology_prefix=$prefix) "
+                "AND toLower(coalesce(p.name,p.label,p.title,'')) CONTAINS toLower($subject) "
+                'WITH p ORDER BY elementId(p) LIMIT 20 '
+                'MATCH path=(p)-[*1..3]-(q) WHERE p<>q '
+                'AND all(n IN nodes(path) WHERE NOT (n:StagedOntologyResource OR n:OntologyPublication OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty) '
+                "AND NOT any(t IN coalesce(n.rdf_types,[]) WHERE t IN $schema_types) "
+                "AND ($scope='' OR n.ontology_id=$scope OR n.source_ontology=$scope) "
+                "AND ($prefix='' OR n.prefix=$prefix OR n.ontology_prefix=$prefix)) "
+                'AND (any(t IN coalesce(q.rdf_types,[]) WHERE t IN $requirement_types) '
+                'OR (q.import_id IS NOT NULL AND q.import_row_key IS NOT NULL '
+                "AND (any(l IN labels(q) WHERE l IN $requirement_labels) OR toLower(coalesce(q.name,q.label,q.title,'')) CONTAINS 'requirement'))) "
+                'RETURN DISTINCT elementId(p) AS subject_id,coalesce(p.name,p.label,p.title) AS subject, '
+                'elementId(q) AS requirement_id,coalesce(q.name,q.label,q.title) AS requirement, '
+                "coalesce(q.description,q.text,q.value,'') AS detail, "
+                "[r IN relationships(path) | {id:elementId(r),type:type(r),predicate:r['predicate']}] AS path, "
+                'coalesce(q.ontology_id,q.source_ontology,q.import_id) AS source,coalesce(q.prefix,q.ontology_prefix) AS prefix '
+                'ORDER BY subject_id,requirement_id LIMIT 21',
+                **common, subject=subject,
+                business_types=[CEIM+k for k in ('Product','ProductRevision','Part','Assembly','Requirement','Specification')],
+                business_labels=['Product','ProductRevision','Part','Assembly','ProductInstance','Requirement','Specification','RequirementRevision'],
+                requirement_types=[CEIM+k for k in ('Requirement','Specification','RequirementRevision')],
+                requirement_labels=['Requirement','Specification','RequirementRevision'],
+                schema_types=['http://www.w3.org/2002/07/owl#Class','http://www.w3.org/2002/07/owl#ObjectProperty','http://www.w3.org/2002/07/owl#DatatypeProperty'])
+    elif selected=='parts_with_pmi':
         rows=publisher._session_rows(
             'MATCH(p:OntologyResource)-[r]-(a:OntologyResource) WHERE p.ontology_id=a.ontology_id '
             'AND any(t IN coalesce(p.rdf_types,[]) WHERE t IN $part_types) '
@@ -65,7 +97,19 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix=''):
             **common,types=[CEIM+k for k in ('Product','ProductRevision','Part','Assembly')],labels=['Product','ProductRevision','Part','Assembly','ProductInstance'])
         for row in rows:
             row['name']=name(row['name'],row.pop('props',None));row['kind']=', '.join(t.rsplit('/',1)[-1] for t in row.pop('types') if t.startswith(CEIM)) or ', '.join(t for t in row.pop('labels',[]) if t in {'Product','ProductRevision','Part','Assembly','ProductInstance'})
-    identity=hashlib.sha256(json.dumps([selected,ontology_id,ontology_prefix,rows[:20]],sort_keys=True).encode()).hexdigest()
+    vocabulary = []
+    predicates = sorted({edge['predicate'] for row in rows[:20] for edge in row.get('path', []) if edge.get('predicate')})
+    if predicates:
+        vocabulary = publisher._session_rows(
+            'MATCH (term:OntologyResource) WHERE term.iri IN $predicates '
+            'RETURN term.iri AS iri,term.label AS label,term.definition AS description '
+            'ORDER BY iri,label LIMIT 100', predicates=predicates[:60])
+        # Conflicting labels from different releases are not resolved by order.
+        for row in rows[:20]:
+            for edge in row.get('path', []):
+                labels = {item.get('label') for item in vocabulary if item.get('iri') == edge.get('predicate') and item.get('label')}
+                edge['business_label'] = next(iter(labels)) if len(labels) == 1 else None
+    identity=hashlib.sha256(json.dumps([selected,ontology_id,ontology_prefix,rows[:20],vocabulary],sort_keys=True).encode()).hexdigest()
     return {'evidence_type':'business_answer','resource_id':'business-answer:'+identity,'label':'Product-development evidence',
-        'intent':selected,'rows':rows[:20],'description':'Bounded typed Neo4j business-instance read; source references are not semantic ownership.',
+        'intent':selected,'rows':rows[:20],'vocabulary':vocabulary,'description':'Bounded typed business-instance read; source references are not semantic ownership.',
         'source':'graph-service:typed-business-read','coverage':{'limit':20,'has_more':len(rows)>20,'whole_graph_complete':False}}

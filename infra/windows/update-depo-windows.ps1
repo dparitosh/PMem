@@ -23,6 +23,7 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw 'Existing env
 if (-not (Test-Path -LiteralPath (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -PathType Leaf)) { throw 'Existing backend runtime is absent. Use Setup-DEPO.cmd for a first installation.' }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
+. (Join-Path $PSScriptRoot 'process-control.ps1')
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
 function Invoke-DepoUpgradeStep([string]$Name, [scriptblock]$Action) {
   Write-Host "Upgrade: $Name"
@@ -43,6 +44,24 @@ if (-not $SkipFrontend) {
   Invoke-DepoUpgradeStep 'Frontend configuration' { & (Join-Path $root 'infra/deployment/test-depo-frontend-config.ps1') -RootEnvFile $envPath }
 }
 Invoke-DepoUpgradeStep 'Runtime prerequisites' { & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -CheckPrerequisites -SkipFrontend:$SkipFrontend -EnvFile $envPath }
+Invoke-DepoUpgradeStep 'Agentic configuration before shutdown' {
+  Import-DepoEnvironment -Root $root -EnvFile $envPath
+  if (-not $env:NEO4J_USER -and $env:NEO4J_USERNAME) { $env:NEO4J_USER = $env:NEO4J_USERNAME }
+  if (-not $env:NEO4J_PASS -and $env:NEO4J_PASSWORD) { $env:NEO4J_PASS = $env:NEO4J_PASSWORD }
+  $bindHost = if ($env:DEPO_SERVICE_HOST) { $env:DEPO_SERVICE_HOST } else { '127.0.0.1' }
+  $probeHost = Get-DepoProbeHost $bindHost
+  $peerPorts = @{ AGENTIC_SERVICE_URL=8012; ONTOLOGY_SERVICE_URL=8011; GRAPH_SERVICE_URL=8013; INGESTION_SERVICE_URL=8014; OSLC_SERVICE_URL=8015; QIF_SERVICE_URL=8010; DATA_CATALOG_URL=8016; DATA_PRODUCT_SERVICE_URL=8017; CEIM_SERVICE_URL=8018; DATA_PIPELINE_SERVICE_URL=8019 }
+  foreach ($entry in $peerPorts.GetEnumerator()) {
+    if (-not [Environment]::GetEnvironmentVariable($entry.Key, 'Process')) {
+      [Environment]::SetEnvironmentVariable($entry.Key, "http://${probeHost}:$($entry.Value)/api/v1", 'Process')
+    }
+  }
+  Push-Location $root
+  try {
+    & (Join-Path $root 'backend/.dt_venv/Scripts/python.exe') -B -m backend.agentic_service.configuration --preflight
+    if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Correct the listed settings. Services were not stopped.' }
+  } finally { Pop-Location }
+}
 if ($EnableOcr -and -not $InstallDependencies) { throw '-EnableOcr requires -InstallDependencies during upgrade.' }
 if (-not $InstallDependencies) {
   $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json

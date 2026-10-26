@@ -71,6 +71,8 @@ class UpgradePreflightTests(unittest.TestCase):
         stop = source.index("'stop-depo-services.ps1'")
         self.assertLess(source.index("'initialize-depo-schema.ps1'"), stop)
         self.assertLess(source.index("'test-depo-neo4j.ps1'"), stop)
+        self.assertLess(source.index('backend.agentic_service.configuration --preflight'), stop)
+        self.assertLess(source.index('backend.agentic_service.configuration --preflight'), source.index('if ($PreflightOnly)'))
 
     def test_linux_public_routing_excludes_secrets(self):
         spec = importlib.util.spec_from_file_location('browser_routing', ROOT / 'infra/linux/browser-routing.py')

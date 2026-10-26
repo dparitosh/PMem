@@ -47,7 +47,7 @@ export const graphApi = {
     });
   },
   getArchitectureGraph(prefix = 'archimate', limit = 1000, signal) {
-    return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {
+    return apiClient.get(graphUrl(`/api/v1/graph/view/architecture/${encodeURIComponent(prefix)}`), {
       params: { limit },
       signal,
       headers: readHeaders(),

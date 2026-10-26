@@ -1464,6 +1464,9 @@ export default function ImportWorkspace() {
     if (error) {
       return { text: 'Attention Needed', bg: '#FFEBEE', color: C.red };
     }
+    if (status?.governedImport && !status.committed && ['completed', 'quality_warning'].includes(status.status || status.backendStage)) {
+      return { text: 'Validated — awaiting publication', bg: '#FFF8E1', color: '#805500' };
+    }
     if (backendStage === 'preview' || backendStage === 'verify' || stage === 'validate' || stage === 'verify') {
       return { text: 'Awaiting load approval', bg: '#E8F5E9', color: C.green };
     }
@@ -3131,7 +3134,7 @@ export default function ImportWorkspace() {
                   }}
                   title={status.stats?.ontology_mapping ? `Import context: ${status.stats.ontology_mapping === 'auto' ? 'Auto-detected from ' + (status.stats.mapping_type || 'file format') : status.stats.ontology_mapping}` : 'Structural import'}>
                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {getStageLabel(status.stage)}
+                        {status.governedImport && !status.committed && ['completed', 'quality_warning'].includes(status.status || status.backendStage) ? 'Publication pending' : getStageLabel(status.stage)}
                         {status.stage === 'map' && status.stats?.ontology_mapping && (
                           <span style={{ fontSize: '9px', color: C.orange, marginLeft: '4px' }}>
                             ({status.stats.ontology_mapping === 'auto' ? 'Auto' : status.stats.ontology_mapping})

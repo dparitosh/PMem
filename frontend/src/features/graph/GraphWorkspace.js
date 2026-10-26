@@ -2757,7 +2757,7 @@ const boundaryForce = (width, height) => {
         }}>
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#6c757d' }}><i className="fas fa-chart-line"></i></div>
           <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>
-            {isOntologyGraphMode ? 'No Ontology Graph Available' : 'No Graph Data Available'}
+            {selectedOntology === 'archimate' ? 'Process graph unavailable' : isOntologyGraphMode ? 'No Ontology Graph Available' : 'No Graph Data Available'}
           </div>
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>
             {isOntologyGraphMode

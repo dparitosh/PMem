@@ -508,7 +508,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
           <section style={cardStyle} aria-label="Agent operations telemetry">
             <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
-              Agent Operations — Retained history{agentOps?.status === 'degraded' ? ' — Historical alerts' : ''}
+              Agent Operations — Retained history
             </div>
             <div style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
               PostgreSQL retains agent run and tool history after cache, schema and graph cleanup.
@@ -516,16 +516,19 @@ export default function AdminPanel({ onSchemaCleaned }) {
               Historical failures do not by themselves indicate a current service outage.
             </div>
             {agentOps ? (
+              <details><summary>View historical execution statistics — includes earlier deployments</summary>
+              <p>These statistics are not a health assessment of the current release. Deployment-specific rates are unavailable in this history.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
                 <Stat label="Runs" value={agentOps.runs} />
                 <Stat label="Running" value={agentOps.running} />
                 <Stat label="Failures" value={agentOps.failed} />
-                <Stat label="Failure rate" value={`${((agentOps.failure_rate || 0) * 100).toFixed(1)}%`} />
+                <Stat label="Historical failed-run rate" value={`${((agentOps.failure_rate || 0) * 100).toFixed(1)}%`} />
                 <Stat label="Avg latency" value={`${Math.round(agentOps.average_duration_ms || 0)} ms`} />
                 <Stat label="Tool calls" value={agentOps.tool_calls} />
                 <Stat label="Tool failures" value={agentOps.tool_failures} />
                 <Stat label="Evidence" value={agentOps.evidence_total} />
               </div>
+              </details>
             ) : (
               <div style={{ fontSize: 11, color: colors.muted }}>
                 Configure the Agentic service to display durable run and tool telemetry.

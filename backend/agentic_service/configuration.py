@@ -188,6 +188,14 @@ def configuration_status(*, check_workers=True):
         errors.append('AGENTIC_CATALOG_PATH')
     from backend.depo_platform.network import timeout_configuration_warnings
     actions = {}
+    for key in ('DT_AGENT_GATEWAY_URL', 'DT_AGENT_GATEWAY_TOKEN'):
+        if key in errors:
+            actions[key] = (
+                'DT_AGENT_ENABLED=true enables the separate external DT current-plan integration. '
+                'If that integration is not used, set DT_AGENT_ENABLED=false in the selected root environment file. '
+                'Otherwise configure its HTTPS URL and token. These settings are unrelated to the AOI Wrapper adapter; '
+                'AOI uses USE_LLM=aoi, AOI_BASE_URL, AOI_MODEL and AOI_GATEWAY_TOKEN.'
+            )
     if 'OLLAMA_CHAT_API_URL' in errors:
         actions['OLLAMA_CHAT_API_URL'] = (
             'USE_LLM selects ollama. Set OLLAMA_CHAT_API_URL to the native HTTP(S) API root '

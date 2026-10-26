@@ -7,6 +7,18 @@ from backend.agentic_service.configuration import configuration_status
 
 
 class LlmReadinessConfigurationTests(unittest.TestCase):
+    def test_optional_dt_gateway_is_independent_of_aoi_and_has_recovery(self):
+        with patch.dict(os.environ, {'DT_AGENT_ENABLED':'true'}, clear=True):
+            result = configuration_status(check_workers=False)['configuration']
+        for key in ('DT_AGENT_GATEWAY_URL', 'DT_AGENT_GATEWAY_TOKEN'):
+            self.assertIn(key, result['invalid_settings'])
+            self.assertIn('DT_AGENT_ENABLED=false', result['actions'][key])
+            self.assertIn('unrelated to the AOI', result['actions'][key])
+        with patch.dict(os.environ, {'DT_AGENT_ENABLED':'false'}, clear=True):
+            disabled = configuration_status(check_workers=False)['configuration']
+        self.assertNotIn('DT_AGENT_GATEWAY_URL', disabled['invalid_settings'])
+        self.assertNotIn('DT_AGENT_GATEWAY_TOKEN', disabled['invalid_settings'])
+
     def test_preflight_defers_worker_presence_but_runtime_requires_it(self):
         with patch.dict(os.environ, {'AGENTIC_EXECUTION_MODE': 'worker', 'AUTH_MODE': 'token'}, clear=True):
             preflight = configuration_status(check_workers=False)['configuration']['invalid_settings']

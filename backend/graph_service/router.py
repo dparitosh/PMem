@@ -145,6 +145,16 @@ def ontology_projection(ontology_id: str, limit: int = 900) -> dict:
         raise HTTPException(status_code=503, detail="Graph projection failed; check service logs using X-Request-ID") from exc
 
 
+@router.get('/view/architecture/{prefix}', dependencies=[Depends(graph_read_identity)], summary='Read imported architecture and process instances')
+def architecture_process_view(prefix: str, limit: int = 750) -> dict:
+    from backend.Services.graph_view_service import GraphViewService
+    try:
+        return GraphViewService.get_architecture_process_view(prefix=prefix, limit=limit)
+    except Exception as exc:
+        logger.exception('Architecture process view failed')
+        raise HTTPException(503, 'Process graph unavailable; check graph service logs using X-Request-ID') from exc
+
+
 @router.get("/traversal/{iri:path}", dependencies=[Depends(graph_read_identity)], summary="Get a bounded explorer-ready neighborhood for an RDF resource")
 def traversal(iri: str, depth: int = 1, limit: int = 200) -> dict:
     try:
