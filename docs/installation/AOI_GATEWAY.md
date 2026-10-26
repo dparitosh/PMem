@@ -1,4 +1,10 @@
-# Optional AOI gateway: customer deployment
+# Optional AOI adapter: configure from PMem
+
+No Azure APIM or external API gateway is required. PMem connects directly from its backend to the separate AOI Wrapper adapter. The existing `aoi_gateway` module name and `AOI_GATEWAY_TOKEN` setting are retained for compatibility; they identify this adapter, not an APIM service.
+
+Configure the connection in PMem's selected root `.env.local`: `USE_LLM=aoi`, `AOI_BASE_URL`, `AOI_MODEL`, and `AOI_GATEWAY_TOKEN`. These are server settings; the Admin UI does not currently save provider configuration. Restart PMem after changing them. Set `USE_EMBEDDER` explicitly to your existing embedding provider if only chat should use AOI, because an omitted value follows `USE_LLM`. Changing embedding providers requires checking vector dimensions and existing index compatibility.
+
+The adapter's `.env.aoi.local` owns AOI account credentials and vendor deployment settings. PMem's `.env.local` owns the adapter connection and model alias. Model aliases must match the adapter configuration. Neither credentials nor direct adapter access belong in frontend settings.
 
 AOI is an optional backend provider. The default installer does not install or start this gateway. IIF remains unchanged: preparation copies its existing helper and CPython 3.12 wrapper files byte-for-byte into a private directory and records SHA-256 checksums. Vendor files and credentials are not included in Git.
 

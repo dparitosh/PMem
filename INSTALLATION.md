@@ -295,4 +295,4 @@ Build releases from the reviewed commit and validate the actual artifact. Before
 
 ## Feature-specific verification
 
-After installation, use the [operator reference](docs/installation/OPERATOR_REFERENCE.md) for ontology governance, microservice checks, credentials, browser access, XMI import and PLM Companion acceptance. The [PLM response contract](docs/PLM_COMPANION_RESPONSE_CONTRACT.md) contains the implemented system instructions and evidence rules. For the optional separate AOI provider, follow [AOI gateway customer deployment](docs/installation/AOI_GATEWAY.md).
+After installation, use the [operator reference](docs/installation/OPERATOR_REFERENCE.md) for ontology governance, microservice checks, credentials, browser access, XMI import and PLM Companion acceptance. The [PLM response contract](docs/PLM_COMPANION_RESPONSE_CONTRACT.md) contains the implemented system instructions and evidence rules. For the optional separate AOI provider, follow [AOI adapter configuration from PMem](docs/installation/AOI_GATEWAY.md).
