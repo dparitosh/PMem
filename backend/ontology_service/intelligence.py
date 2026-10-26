@@ -145,7 +145,27 @@ class SemanticIntelligence:
         PostgresRegistry("semantic_decision_assessments").put(key, evidence)
 
     def quality_gate(self, *, entities: list[dict[str, Any]], deduplicate: bool, conflict_property: str | None,
-                     merge_strategy: str = "keep_most_complete") -> dict[str, Any]:
+                     merge_strategy: str = "keep_most_complete", deduplication_mode: str = "similarity") -> dict[str, Any]:
+        if deduplication_mode not in {'similarity', 'resource_identity'}:
+            raise ValueError('Unknown quality deduplication mode')
+        if deduplication_mode == 'resource_identity':
+            # RDF identity is its complete IRI. Similar namespace strings or
+            # generated IDs are not evidence that different resources duplicate.
+            from urllib.parse import urlsplit
+            seen, duplicates = set(), []
+            for entity in entities:
+                identity = entity.get('id')
+                if not isinstance(identity, str) or not urlsplit(identity).scheme or any(c.isspace() for c in identity):
+                    raise ValueError('Resource-identity quality review requires absolute IRIs')
+                if identity in seen and deduplicate:
+                    duplicates.append({'id': identity, 'reason': 'repeated_resource_identity'})
+                seen.add(identity)
+            conflicts = detect_conflicts(entities, property_name=conflict_property) if conflict_property else []
+            return {'entities_received':len(entities), 'entities_semantically_reviewed':0,
+                    'review_mode':'resource_identity', 'semantic_similarity_checked':False,
+                    'consistency_verified':False, 'duplicates':duplicates, 'merge_operations':[],
+                    'conflicts':serialise(conflicts), 'resolutions':[],
+                    'publish_recommended':not duplicates and not conflicts}
         # Semantica's similarity deduplication is intentionally exhaustive.
         # Running it across a multi-thousand-term standard schema is quadratic
         # and can starve the service.  For large inputs, first use a stable,

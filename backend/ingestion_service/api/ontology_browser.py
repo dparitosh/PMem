@@ -61,7 +61,9 @@ def export_ontology(ontology_id: str, format: str = "ttl") -> Response:
 @router.get("/{ontology_id}/reason")
 def reasoning(ontology_id: str) -> dict:
     try:
-        return OntologyTaxonomyService.get_reasoning(_resolve_ontology_id(ontology_id))
+        # Taxonomy resolves both the native catalog and legacy upload registry.
+        # The legacy-only resolver rejected engineering registrations first.
+        return OntologyTaxonomyService.get_reasoning(ontology_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
     except RuntimeError as exc:

@@ -315,6 +315,6 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       </div>}
     </>}
     </details>
-    {job?.status === 'published' && <p role="status">{job.receipt?.applied_links || 0} mappings published to Neo4j. {policyReport?.held_count || 0} mappings held and unchanged. Publication: {job.job_id}.</p>}
+    {job?.status === 'published' && <p role="status">{job.receipt?.applied_links || 0} mappings published to knowledge graph. {policyReport?.held_count || 0} mappings held and unchanged. Publication: {job.job_id}.</p>}
   </section>;
 }

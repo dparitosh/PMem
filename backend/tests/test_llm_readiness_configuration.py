@@ -38,6 +38,25 @@ class LlmReadinessConfigurationTests(unittest.TestCase):
                                       ONTOLOGY_AGENT_LLM_ENABLED='true')
         self.assertFalse(any(key.startswith('OLLAMA_') for key in errors))
 
+    def test_bad_chat_route_has_secret_free_recovery_action(self):
+        with patch.dict(os.environ, {'USE_LLM':'ollama',
+                'OLLAMA_CHAT_API_URL':'http://private-fixture/api/generate'}, clear=True):
+            result=configuration_status()['configuration']
+        self.assertIn('/api/chat',result['actions']['OLLAMA_CHAT_API_URL'])
+        self.assertNotIn('private-fixture',str(result))
+
+    def test_aoi_does_not_validate_unused_ollama_chat_route(self):
+        errors=self.settings_errors(USE_LLM='aoi',USE_EMBEDDER='aoi',
+            AOI_MODEL='aoi-chat',AOI_EMBED_MODEL='aoi-embedding',
+            AOI_BASE_URL='http://127.0.0.1:8020/v1',AOI_GATEWAY_TOKEN='fixture-token-of-at-least-32-characters',
+            EMBEDDING_VECTOR_DIMENSIONS='1536',OLLAMA_CHAT_API_URL='http://unused/api/generate')
+        self.assertNotIn('OLLAMA_CHAT_API_URL',errors)
+
+    def test_valid_explicit_chat_preserves_generate_route(self):
+        errors=self.settings_errors(OLLAMA_API_URL='http://host/ollama/api/generate',
+            OLLAMA_CHAT_API_URL='http://host/ollama/api/chat')
+        self.assertNotIn('OLLAMA_CHAT_API_URL',errors)
+
     def test_blank_models_and_invalid_companion_flag_are_reported(self):
         errors = self.settings_errors(LLM_MODEL_NAME=' ', EMBED_MODEL_NAME='',
                                       COMPANION_LLM_ENABLED='yes')

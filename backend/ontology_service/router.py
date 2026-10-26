@@ -53,16 +53,28 @@ async def ontology_publication_status(ontology_id: str, include_job: bool = True
                     'deadline_at': job.get('deadline_at'), 'attempt': job.get('attempt', 0), 'next_attempt_at': job.get('next_attempt_at')})
     record = await run_in_threadpool(graph_publications.get, ontology_id)
     original_record = record
-    if record:
-        digest = await run_in_threadpool(catalog.artifact_digest, ontology_id)
-        if record.get('artifact_sha256', record.get('publication_id')) != digest:
-            record = {'ontology_id': ontology_id, 'publication_id': digest}
-    if not record:
-        metadata = await run_in_threadpool(catalog.get, ontology_id)
-        if not metadata:
-            return status({'ontology_id': ontology_id, 'status': 'not_verified'})
-        identifier = await run_in_threadpool(catalog.artifact_digest, ontology_id)
-        record = {'ontology_id': ontology_id, 'publication_id': identifier}
+    try:
+        if record:
+            digest = await run_in_threadpool(catalog.artifact_digest, ontology_id)
+            if record.get('artifact_sha256', record.get('publication_id')) != digest:
+                record = {'ontology_id': ontology_id, 'publication_id': digest}
+        if not record:
+            metadata = await run_in_threadpool(catalog.get, ontology_id)
+            if not metadata:
+                return status({'ontology_id': ontology_id, 'status': 'not_verified'})
+            identifier = await run_in_threadpool(catalog.artifact_digest, ontology_id)
+            record = {'ontology_id': ontology_id, 'publication_id': identifier}
+    except OSError as exc:
+        # A retained DB row does not guarantee that its filesystem artifact was
+        # restored. Never infer publication success from an old receipt here.
+        return {**status({'ontology_id': ontology_id, 'status': 'unverified'}),
+                'artifact_status': 'missing' if isinstance(exc, FileNotFoundError) else 'unreadable',
+                'recovery_action': 'restore_retained_artifact',
+                'message': 'The registered ontology artifact is missing or unreadable. Restore the exact retained artifact from backup, then verify publication. Existing Neo4j data has not been changed.'}
+    except (ValueError, KeyError):
+        return {**status({'ontology_id': ontology_id, 'status': 'unverified'}),
+                'artifact_status': 'invalid', 'recovery_action': 'review_retained_artifact',
+                'message': 'The registered ontology artifact could not be validated. Review its catalog record and retained file before verifying publication. Existing Neo4j data has not been changed.'}
     graph_root = service_url('GRAPH_SERVICE_URL', 'http://127.0.0.1:8013').rstrip('/')
     if not graph_root.endswith('/api/v1'): graph_root += '/api/v1'
     try:
@@ -297,6 +309,7 @@ def quality_gate(payload: QualityGateBody) -> dict:
         return intelligence.quality_gate(
             entities=_array_field(payload, "entities"), deduplicate=_boolean_field(payload, "deduplicate", True),
             conflict_property=payload.get("conflict_property"), merge_strategy=str(payload.get("merge_strategy", "keep_most_complete")),
+            deduplication_mode=payload.get('deduplication_mode', 'similarity'),
         )
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

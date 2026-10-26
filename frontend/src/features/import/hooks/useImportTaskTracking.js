@@ -86,7 +86,7 @@ export default function useImportTaskTracking({ isMountedRef, setPipelineStatus,
             stage: mappedStage,
             backendStage: data.current_stage,
             progress: data.progress,
-            message: isAwaitingImportApproval(data) ? 'Parsing complete. Review the preview, then choose Load to Neo4j and enter an approver.' : data.message,
+            message: isAwaitingImportApproval(data) ? 'Parsing complete. Review the preview, then choose Load to knowledge graph and enter an approver.' : data.message,
             stats: normalizedStats,
             status: data.status,
             committing: typeof data.committing === 'boolean'
@@ -157,7 +157,7 @@ export default function useImportTaskTracking({ isMountedRef, setPipelineStatus,
         if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) return;
 
         // Preview is a stable user decision point. Stop polling until the
-        // user explicitly starts the Neo4j commit, which starts a new poller.
+        // user explicitly starts the knowledge graph commit, which starts a new poller.
         if ((data.status === 'ready_for_commit' && !data.committing && data.current_stage !== 'ingest') || data.status === 'completed' || data.status === 'failed') {
           clearPoller(pollerKey);
           return;

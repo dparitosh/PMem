@@ -7,13 +7,21 @@ function Workspace() {
   const state = useOntologyImportTasks();
   return <><select aria-label="Task" value={state.selectedImportTaskId} onChange={event => state.setSelectedImportTaskId(event.target.value)}>
     {state.importTasks.map(task => <option key={task.task_id} value={task.task_id}>{task.task_id}</option>)}
-  </select><output>{state.selectedImportTaskDetails?.name || 'No details'}</output><output>{state.selectedImportTaskPreview?.name || 'No preview'}</output></>;
+  </select><button onClick={state.refreshImportTasks}>Refresh</button><output>{state.selectedImportTaskDetails?.name || 'No details'}</output><output>{state.selectedImportTaskPreview?.name || 'No preview'}</output></>;
 }
 beforeEach(() => {
   vi.resetAllMocks();
   api.getTasks.mockResolvedValue({ data: { tasks: [{ task_id: 'A' }, { task_id: 'B' }] } });
   api.getStatus.mockResolvedValue({ data: { name: 'Details A' } });
   api.getPreview.mockResolvedValue({ data: { name: 'Preview A' } });
+});
+test('manual refresh replaces a removed selection with an available task', async () => {
+  render(<Workspace />);
+  await screen.findByText('Preview A');
+  api.getTasks.mockResolvedValue({data:{tasks:[{task_id:'B'}]}});
+  fireEvent.click(screen.getByRole('button',{name:'Refresh'}));
+  await waitFor(() => expect(screen.getByRole('combobox')).toHaveValue('B'));
+  expect(screen.queryByRole('option',{name:'A'})).not.toBeInTheDocument();
 });
 test('selection clears old evidence immediately without reloading the task registry', async () => {
   render(<Workspace />);

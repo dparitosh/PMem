@@ -38,7 +38,7 @@ export default function useOntologyImportTasks() {
       if (controller.signal.aborted) return;
       const tasks = response.data?.tasks || [];
       setImportTasks(tasks);
-      setSelectedImportTaskId(current => current || tasks[0]?.task_id || '');
+      setSelectedImportTaskId(current => tasks.some(task => task.task_id === current) ? current : tasks[0]?.task_id || '');
     }).catch(failure => {
       if (!controller.signal.aborted) setError(apiErrorMessage(failure, 'Failed to load instance tasks.'));
     }).finally(() => {
@@ -70,6 +70,7 @@ export default function useOntologyImportTasks() {
   return {
     importTasks, selectedImportTaskId, setSelectedImportTaskId,
     importTasksLoading, importTasksError,
+    refreshImportTasks: () => setRevision(value => value + 1),
     selectedImportTaskDetails: current?.details || null,
     selectedImportTaskPreview: current?.preview || null,
   };

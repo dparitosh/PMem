@@ -57,6 +57,7 @@ class QualityGateBody(RequestBody, total=False):
     deduplicate: bool
     conflict_property: str | None
     merge_strategy: str
+    deduplication_mode: str
 
 class VersionBody(RequestBody, total=False):
     __pydantic_config__ = ConfigDict(strict=True, extra="allow", json_schema_extra={"anyOf": [{"required": ["ontology"]}, {"required": ["version_id"]}]})

@@ -2,12 +2,12 @@ import React from 'react';
 import './MergeMappingReview.css';
 
 export default function MergeWorkflowControls({ availableCount = 2, sourceId, targetId, reviewer, onReviewerChange, connected,
-  busy, preview, dirty, ready, publication, error, stewardStatus, selectionCount, onGenerate, onResume, onPublish }) {
+  busy, preview, dirty, ready, publication, error, stewardStatus, selectionCount, onGenerate, onResume, onPublish, children }) {
   const sourcesReady = Boolean(sourceId && targetId && sourceId !== targetId);
   const accessReady = Boolean(reviewer.trim() && connected);
   const publishing = ['queued', 'running', 'published'].includes(publication);
   const pending = !dirty && preview?.background_validation && ['queued', 'preparing', 'validating'].includes(preview.job_status);
-  const status = !sourcesReady ? 'Choose two ontology versions' : publication === 'published' ? 'Published to Neo4j' : publishing ? 'Publication in progress'
+  const status = !sourcesReady ? 'Choose two ontology versions' : publication === 'published' ? 'Published to knowledge graph' : publishing ? 'Publication in progress'
     : busy ? 'Submitting request' : error ? 'Request needs attention' : dirty ? 'Mapping selection changed'
       : preview?.job_status === 'failed' ? 'Validation failed'
         : pending ? preview.job_status === 'validating' ? 'Validating semantic constraints' : 'Preparing mapping candidates'
@@ -24,23 +24,23 @@ export default function MergeWorkflowControls({ availableCount = 2, sourceId, ta
                   : stewardStatus === 'running' ? 'The existing Steward is evaluating the saved Governor plan. Publication remains blocked until its report is available.'
                   : ready ? `Review the proposed changes below. Approval creates and publishes a new ontology with ${selectionCount} identity consolidations.`
                     : preview ? 'Inspect the validation findings below. Resolve blocking issues before approval.'
-                      : 'Generate a plan to see proposed mappings. This first action does not publish to Neo4j.';
+                      : 'Generate a plan to see proposed mappings. This first action does not publish to knowledge graph.';
   return <section className="merge-workflow" aria-label="Merge workflow controls">
     <ol className="merge-stages" aria-label="Merge progress">
       <li aria-current={!preview ? 'step' : undefined}><strong>1. Generate plan</strong><span>Governor runs matching tools</span></li>
       <li aria-current={preview && !publishing ? 'step' : undefined}><strong>2. Review mappings</strong><span>Steward audits; you review</span></li>
-      <li aria-current={publishing ? 'step' : undefined}><strong>3. Approve and publish</strong><span>Governor submits to Neo4j</span></li>
+      <li aria-current={publishing ? 'step' : undefined}><strong>3. Approve and publish</strong><span>Governor submits to knowledge graph</span></li>
     </ol>
     <div className="merge-agent-status" role="status" aria-live="polite"><strong>{status}</strong><p>{guidance}</p></div>
     <div className="merge-action-row">
-      <label htmlFor="merge-reviewer">Reviewing steward
-        <input id="merge-reviewer" value={reviewer} onChange={event => onReviewerChange(event.target.value)} placeholder="name or service principal" />
+      <label htmlFor="merge-reviewer">Reviewer name
+        <input id="merge-reviewer" aria-describedby="merge-reviewer-help" value={reviewer} onChange={event => onReviewerChange(event.target.value)} placeholder="Your name or team identifier" />
+        <small id="merge-reviewer-help">Recorded with the review for accountability. Enter a name, not an API key or password. Access is managed in Admin.</small>
       </label>
       <button type="button" className="merge-primary" disabled={busy || pending || publishing || !sourcesReady || !accessReady} onClick={onGenerate}>
         {pending ? 'Validation running' : dirty ? 'Validate selected mappings' : preview ? 'Regenerate mapping plan' : 'Generate mapping plan'}
       </button>
       <button type="button" disabled={busy || publishing || !sourcesReady} onClick={onResume}>Resume saved plan</button>
-      <button type="button" className="merge-publish" disabled={busy || publishing || dirty || !ready || !sourcesReady || !accessReady} onClick={onPublish}>Approve merge and publish</button>
     </div>
     {availableCount < 2 && <a href="#/import">Import ontology versions</a>}
     {!connected && <a href="#/admin">Connect agent access in Admin</a>}
@@ -49,5 +49,10 @@ export default function MergeWorkflowControls({ availableCount = 2, sourceId, ta
       <p>You choose any identities to consolidate and approve the validated plan. With no pairs selected, the merge combines both vocabularies while preserving their distinct identities. Publication creates a new ontology; it does not replace either source.</p>
       <p>SHACL and OWL-RL checks provide structural evidence. They do not establish full OWL-DL consistency or business equivalence.</p>
     </details>
+    {children}
+    <div className="merge-action-row" aria-label="Publication decision">
+      <button type="button" className="merge-publish" disabled={busy || publishing || dirty || !ready || !sourcesReady || !accessReady} onClick={onPublish}>Approve merge and publish</button>
+      <span>Review the mappings and assessment above before publishing the new ontology.</span>
+    </div>
   </section>;
 }

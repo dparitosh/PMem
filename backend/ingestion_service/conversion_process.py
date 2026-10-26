@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+from functools import lru_cache
 from backend.depo_platform.network import bounded_timeout_seconds
 
 
@@ -35,7 +37,30 @@ def conversion_result_limit():
         raise ValueError(f'{name} must be an integer between 1 and 1073741824') from None
 
 
+@lru_cache(maxsize=1)
+def conversion_slots():
+    try:
+        capacity = int(os.getenv('ENGINEERING_CONVERSION_MAX_CONCURRENCY', '2'))
+        if not 1 <= capacity <= 8:
+            raise ValueError()
+    except ValueError:
+        raise ValueError('ENGINEERING_CONVERSION_MAX_CONCURRENCY must be between 1 and 8') from None
+    return threading.BoundedSemaphore(capacity)
+
+
 def convert_engineering(**inputs):
+    # Generic HTTP capacity does not bound expensive parser subprocesses.
+    # Reject before spawning rather than queueing dozens of large RDF jobs.
+    slots = conversion_slots()
+    if not slots.acquire(blocking=False):
+        raise RuntimeError('Engineering conversion capacity is busy; retry the same schema set after active conversions finish')
+    try:
+        return _convert_engineering(**inputs)
+    finally:
+        slots.release()
+
+
+def _convert_engineering(**inputs):
     from backend.depo_platform.network import engineering_workflow_timeout_seconds
     total = engineering_workflow_timeout_seconds()
     timeout = min(bounded_timeout_seconds('ENGINEERING_CONVERSION_TIMEOUT_SECONDS', default=180, maximum=900), max(1, total - 30))

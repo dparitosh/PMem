@@ -109,14 +109,14 @@ describe('DataImportPipeline workflow routing', () => {
       {task_id:url.includes('task-first')?'task-first':'task-last',status:'ready_for_commit',current_stage:'preview',progress:75,stats:{row_count:22}}}));
     await renderPipeline();
     expect(await screen.findByText(/2 parsed imports are waiting for your review/)).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button',{name:'Load to Neo4j'})[0]);
+    fireEvent.click(screen.getAllByRole('button',{name:'Load to knowledge graph'})[0]);
     await screen.findByText('SELECTED_REQUIREMENT');
     expect(screen.queryByText('OTHER_BOP')).not.toBeInTheDocument();
-    const loads=screen.getAllByRole('button',{name:'Load to Neo4j'});
+    const loads=screen.getAllByRole('button',{name:'Load to knowledge graph'});
     expect(loads[loads.length-1]).toBeDisabled();
     fireEvent.click(screen.getByText('Approval credentials (required by token authentication for loading)'));
     fireEvent.change(screen.getByLabelText('Import approver'),{target:{value:'pmem-ui-test'}});
-    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Load to Neo4j'}).at(-1)).toBeEnabled());
+    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Load to knowledge graph'}).at(-1)).toBeEnabled());
     setCredentialProfile('INGESTION_WRITE_TOKEN','');
   });
 
@@ -267,14 +267,14 @@ describe('DataImportPipeline workflow routing', () => {
     );
   });
 
-  it('defaults to Neo4j publication and makes register-only behavior explicit', async () => {
+  it('defaults to knowledge graph publication and makes register-only behavior explicit', async () => {
     await renderPipeline();
     const publication = screen.getByLabelText(/Register XSD/);
     expect(publication).toBeChecked();
     expect(screen.getByText(/Publication is confirmed only by a graph receipt/)).toBeInTheDocument();
     fireEvent.click(publication);
     expect(publication).not.toBeChecked();
-    expect(screen.getByText(/Register only: the source is retained, but Neo4j is not updated/)).toBeInTheDocument();
+    expect(screen.getByText(/Register only: the source is retained, but knowledge graph is not updated/)).toBeInTheDocument();
   });
 
   it('offers only OWL generation when schema publication is enabled', async () => {
@@ -317,7 +317,7 @@ describe('DataImportPipeline workflow routing', () => {
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
     await screen.findByText('Graph job queued in background');
-    expect(screen.getByText('Review, approve and publish this ontology to Neo4j').closest('details').open).toBe(true);
+    expect(screen.getByText('Review, approve and publish this ontology to knowledge graph').closest('details').open).toBe(true);
     expect(screen.queryByText(/outcome is unverified/i)).not.toBeInTheDocument();
   });
 
@@ -392,6 +392,7 @@ describe('DataImportPipeline workflow routing', () => {
       await flushAsyncEffects();
     });
     expect(await screen.findByText('uploaded-schema-set.xsd')).toBeInTheDocument();
+    expect(await screen.findByText('2 XSD sources · one ontology')).toBeInTheDocument();
     const runAll = screen.queryByRole('button', {name:'Run all'});
     if (runAll) expect(runAll).toBeDisabled();
     fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Combined Ontology' } });
@@ -409,7 +410,7 @@ describe('DataImportPipeline workflow routing', () => {
     expect(screen.getByRole('region', { name: 'Import job history' })).toHaveStyle({ overflowX: 'auto' });
     expect(screen.getByText('Processing details')).toBeInTheDocument();
     await screen.findAllByText(/registered; graph publication has not run/);
-    expect(screen.getByText('Review, approve and publish this ontology to Neo4j')).toBeInTheDocument();
+    expect(screen.getByText('Review, approve and publish this ontology to knowledge graph')).toBeInTheDocument();
     expect(screen.getByRole('button', {name:'Run all'})).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Clear finished/failed history' }));
     await waitFor(() => expect(screen.queryByText('uploaded-schema-set.xsd')).not.toBeInTheDocument());

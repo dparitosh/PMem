@@ -17,7 +17,7 @@ export const pipelineStages = [
   { id: 'map', label: 'Map', description: 'Ontology alignment' },
   { id: 'validate', label: 'Validate', description: 'SHACL and quality check' },
   { id: 'enrich', label: 'Enrich', description: 'Semantic enrichment' },
-  { id: 'load', label: 'Load', description: 'Ingest to Neo4j' },
+  { id: 'load', label: 'Load', description: 'Ingest to knowledge graph' },
   { id: 'verify', label: 'Verify', description: 'Post-load health check' },
 ];
 
@@ -78,7 +78,7 @@ export const workflowCatalog = [
     execution: 'File upload',
     prerequisite: 'Choose one or more files',
     icon: Database,
-    stages: ['Upload files', 'Parse and preview', 'Validate structure', 'Load to Neo4j'],
+    stages: ['Upload files', 'Parse and preview', 'Validate structure', 'Load to knowledge graph'],
     writes_to_neo4j: true,
     retains_artifacts: true,
   },
@@ -153,7 +153,7 @@ export const workflowCatalog = [
     category: 'Ontology',
     description: 'Compare two ontologies and produce a merge plan. Source ontology and target ontology are selected explicitly, then the merge can be reviewed and committed.',
     inputs: 'Two ontology catalog entries',
-    outputs: ['Merge plan', 'Overlap report', 'Addition candidates', 'Neo4j merge commit'],
+    outputs: ['Merge plan', 'Overlap report', 'Addition candidates', 'knowledge graph merge commit'],
     status: 'available',
     execution: 'Artifact workflow',
     prerequisite: 'Select source and target ontologies',
@@ -328,7 +328,7 @@ export const buildWorkflowStages = (workflow) =>
           'Attach one or more source files for parsing.',
           'Parse the file and review detected entities, attributes, relationships, and metadata.',
           'Check structural quality and prepare the load package.',
-          'Commit the prepared graph to Neo4j and verify the result.',
+          'Commit the prepared graph to knowledge graph and verify the result.',
         ][idx]
       : workflow.id === 'ontology.create'
         ? [

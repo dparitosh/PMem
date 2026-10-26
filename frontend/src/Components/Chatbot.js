@@ -629,7 +629,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         />
                         <button type="submit" aria-label="Send chat question" disabled={requestActive || !question.trim()}>Send</button>
                     </form>
-                    <details className="chat-answer-help"><summary>About these answers</summary>Answers use matching graph resources and saved mapping reviews. Historical reviews do not verify current Neo4j publication. Model summaries require an enabled provider; missing evidence is never invented. Use Shift+Enter for a new line.</details>
+                    <details className="chat-answer-help"><summary>About these answers</summary>Answers use matching graph resources and saved mapping reviews. Historical reviews do not verify current knowledge graph publication. Model summaries require an enabled provider; missing evidence is never invented. Use Shift+Enter for a new line.</details>
                     {requestActive && <button type="button" onClick={() => {
                         abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');
                         setChatMessages(messages => messages.map(message => message.streaming ? { ...message, streaming: false, stopped: true } : message));

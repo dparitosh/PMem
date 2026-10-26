@@ -106,8 +106,31 @@ class OntologyCatalog:
         if self._postgres_enabled:
             self.registry.put(str(metadata["ontology_id"]), metadata)
         artifact_dir = self.root / str(metadata["ontology_id"])
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        (artifact_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        temporary = None
+        try:
+            import tempfile
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=artifact_dir,
+                                             prefix='.metadata-', suffix='.tmp', delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(metadata, stream, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, artifact_dir / 'metadata.json')
+        except OSError as exc:
+            if not self._postgres_enabled:
+                raise
+            # PostgreSQL already committed. A mirror failure must not advertise
+            # a failed registration/transition and encourage a duplicate retry.
+            logging.getLogger(__name__).warning(
+                'Ontology metadata committed; disk mirror unavailable ontology_id=%s error_type=%s',
+                metadata['ontology_id'], type(exc).__name__)
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
         return metadata
 
     @staticmethod

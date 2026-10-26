@@ -44,7 +44,7 @@ test('automated workflow publishes validated results without individual approval
   ]}});
   render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
   fireEvent.click(screen.getByText('Run automated mapping and publish'));
-  await screen.findByText(/1 mappings published to Neo4j/);
+  await screen.findByText(/1 mappings published to knowledge graph/);
   expect(api.automate).toHaveBeenCalledTimes(1);
   expect(api.publish).not.toHaveBeenCalled();
   expect(Object.keys(sessionStorage).some(key => key.startsWith('bridge-workflow:') && sessionStorage.getItem(key) === 'workflow-1')).toBe(true);

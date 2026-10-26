@@ -247,7 +247,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       <WorkspaceTabs label="Admin sections" tabs={adminTabs} value={section} onChange={setSection} idPrefix="depo-admin" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12, color: widgetColors.muted, lineHeight: 1.4, maxWidth: 720 }}>
-          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current Neo4j schema status.'}[section]}
+          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current knowledge graph schema status.'}[section]}
         </div>
         <button
           type="button"
@@ -356,7 +356,7 @@ export default function AdminPage({ onSchemaCleaned }) {
           <div className="depo-panel__header">
             <div>
               <div className="depo-panel__title">Operations</div>
-              <div className="depo-panel__meta">Controlled cleanup and current Neo4j schema status.</div>
+              <div className="depo-panel__meta">Controlled cleanup and current knowledge graph schema status.</div>
             </div>
           </div>
           {section === 'maintenance' && <AdminPanel onSchemaCleaned={onSchemaCleaned} />}

@@ -16,6 +16,7 @@ def configuration_status(*, check_workers=True):
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
         ('AGENTIC_WORKER_CONCURRENCY', '4', 1, 16),
+        ('ENGINEERING_CONVERSION_MAX_CONCURRENCY', '2', 1, 8),
         ('AGENT_GOAL_MAX_DECISIONS', '8', 3, 16),
         ('OLLAMA_MAX_CONCURRENCY', '4', 1, 32),
         ('OLLAMA_FAILURE_THRESHOLD', '3', 1, 20),
@@ -186,8 +187,18 @@ def configuration_status(*, check_workers=True):
     except (ValueError, OSError, KeyError, TypeError):
         errors.append('AGENTIC_CATALOG_PATH')
     from backend.depo_platform.network import timeout_configuration_warnings
+    actions = {}
+    if 'OLLAMA_CHAT_API_URL' in errors:
+        actions['OLLAMA_CHAT_API_URL'] = (
+            'USE_LLM selects ollama. Set OLLAMA_CHAT_API_URL to the native HTTP(S) API root '
+            'or /api/chat endpoint, without embedded credentials, query or fragment; '
+            'do not use /api/generate. If chat is unavailable, leave this optional setting '
+            'blank; generate-only text remains available but chat-dependent capabilities '
+            'remain unavailable. To use AOI instead, explicitly configure USE_LLM=aoi '
+            'and the AOI gateway settings; startup never switches providers automatically.'
+        )
     return {'configuration': {'status': 'unavailable' if errors else 'ready', 'invalid_settings': sorted(set(errors)),
-                              'warnings': timeout_configuration_warnings()}}
+                              'warnings': timeout_configuration_warnings(), 'actions': actions}}
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ export function governedRunStatus(run) {
   const counts=run.output_manifest?.counts || {};
   const entities=counts.normalized_entities ?? counts.accepted_records;
   const relationships=counts.normalized_relationships;
-  const message=failed ? `Run ${run.run_id}: ${reason || status}` : published ? `Neo4j publication receipt retained for run ${run.run_id}.` : complete ? `Validation completed for run ${run.run_id}. Graph publication is pending; review and publish in Data Flow.` : `Governed run ${run.run_id}: ${status}. Open Data Flow for retained evidence.`;
+  const message=failed ? `Run ${run.run_id}: ${reason || status}` : published ? `knowledge graph publication receipt retained for run ${run.run_id}.` : complete ? `Validation completed for run ${run.run_id}. Graph publication is pending; review and publish in Data Flow.` : `Governed run ${run.run_id}: ${status}. Open Data Flow for retained evidence.`;
   return {dataJobRunId:run.run_id,governedImport:true,stage:failed?'error':complete?'complete':'convert',backendStage:status,status,
     progress:complete?100:10,error:failed,committed:published,qualityWarning:status==='quality_warning',message,
     entities:entities ?? 0,relationships:relationships ?? 0,

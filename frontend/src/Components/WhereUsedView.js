@@ -13,7 +13,7 @@ import { UI_COLORS } from '../styles/uiTokens';
 //
 // Shared UI configuration
 //   The first property found on a node is used as the display name.
-//   Set to [] (empty array) to rely solely on the Neo4j label.
+//   Set to [] (empty array) to rely solely on the knowledge graph label.
 const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'id'];
 //
 // Shared UI configuration
@@ -100,7 +100,7 @@ const resolveDisplayProp = (props) => {
   return null;
 };
 
-// Helper: format a display string from a Neo4j label and a property value
+// Helper: format a display string from a knowledge graph label and a property value
 const formatNodeDisplay = (label, propValue) => {
   switch (DISPLAY_MODE) {
     case 'label-only':

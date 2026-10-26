@@ -133,13 +133,14 @@ class EngineeringWorkflow:
                         "message": "Publication was blocked by policy checks."}
             quality_response = await self._request(client, 'quality_gate', request_id,
                 f"{self.ontology_url}/ontologies/quality-gate",
-                json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True},
+                json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True,
+                      "deduplication_mode": "resource_identity"},
             )
             quality_response.raise_for_status()
             quality = quality_response.json()
             if publish and not quality.get("publish_recommended", False):
                 return {"status": "quality_blocked", "conversion": conversion, "policy": policy,
-                        "quality": quality, "message": "Publication was blocked by quality checks."}
+                        "quality": quality, "message": self._quality_block_message(quality)}
             response = await self._request(client, 'ontology_registration', request_id,
                 f"{self.ontology_url}/ontologies/register",
                 data=data,
@@ -209,13 +210,26 @@ class EngineeringWorkflow:
             raise ValueError("Ontology publication is blocked by its current lifecycle state")
 
     @staticmethod
+    def _quality_block_message(quality: dict[str, Any]) -> str:
+        # Explain the retained assessment without echoing resource contents or
+        # claiming that similarity candidates are confirmed duplicate identities.
+        counts = []
+        for key, label in (('duplicates', 'duplicate candidates'), ('conflicts', 'conflicts')):
+            items = quality.get(key)
+            if isinstance(items, list) and items:
+                counts.append(f'{len(items)} {label}')
+        findings = ', '.join(counts) if counts else 'the assessment did not recommend publication'
+        return ('Publication was blocked by quality checks: ' + findings +
+                '. Review the quality assessment before retrying; no graph publication was requested.')
+
+    @staticmethod
     def _governance_entities(turtle: str) -> list[dict[str, str]]:
         """Supply stable resource identities to Semantica's quality gate."""
-        from rdflib import Graph
+        from rdflib import Graph, URIRef
         graph = Graph()
         graph.parse(data=turtle, format="turtle")
         return [{"id": str(subject), "name": str(subject), "type": "resource"}
-                for subject in sorted(set(graph.subjects()), key=str) if str(subject).startswith(("http://", "https://"))]
+                for subject in sorted(set(graph.subjects()), key=str) if isinstance(subject, URIRef)]
 
 
 class PathName:

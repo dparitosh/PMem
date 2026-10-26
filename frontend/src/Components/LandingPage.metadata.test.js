@@ -14,7 +14,7 @@ test('landing shows the namespace prefix separately from immutable identity', ()
   expect(rows[0].ontology_id).toBe('uuid-123');
 });
 
-test('unknown prefix is not fabricated from an ID and Neo4j is not a format', () => {
+test('unknown prefix is not fabricated from an ID and knowledge graph is not a format', () => {
   const [row] = normalizeOntologyRows([{ ontology_id: 'uuid-123', file_type: 'neo4j' }]);
   expect(row.prefix).toBe('');
   expect(ontologyTypeLabel(row)).toBe('Ontology');
@@ -22,7 +22,7 @@ test('unknown prefix is not fabricated from an ID and Neo4j is not a format', ()
 });
 
 test('existing graph records are visible without presenting them as declared RDF counts', () => {
-  render(<ExistingOntologyMetrics metrics={{ resources: 125, classes: 75, object_properties: 30, data_properties: 20, definition: 'Existing ingestion records counted by Neo4j labels.' }} />);
+  render(<ExistingOntologyMetrics metrics={{ resources: 125, classes: 75, object_properties: 30, data_properties: 20, definition: 'Existing ingestion records counted by knowledge graph labels.' }} />);
   expect(screen.getByText('125')).toBeVisible();
   expect(screen.getByText('Class records')).toBeVisible();
   expect(screen.getByText(/Chat searches these records/)).toBeVisible();

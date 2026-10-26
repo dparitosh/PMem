@@ -387,23 +387,7 @@ export default function ImportWorkspace() {
       for (const source of selected) fileDigestsRef.current.set(source, await fileSha256(source));
       if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
     } catch (failure) { setError(failure.message); return; }
-    if (selected.length > 1 && selected.every(file => file.name.toLowerCase().endsWith('.xsd'))) {
-      try {
-        // Resolve supplied dependencies before queuing an upload. Keep the
-        // original selection for recovery when companion files are missing.
-        let bundle;
-        try { bundle = await combineXsdFiles(selected, selected, true); }
-        catch (failure) {
-          if (!/Missing companion|Select exactly one local companion|Schema dependency escapes/.test(failure.message)) throw failure;
-          bundle = await combineXsdFiles(selected);
-        }
-        if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
-        fileDigestsRef.current.set(bundle.root, await fileSha256(bundle.root));
-        if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
-        xsdFolderBundlesRef.current.set(bundle.root, bundle);
-        handleFiles([bundle.root]);
-      } catch (failure) { if (isMountedRef.current && selectionGeneration === fileSelectionGeneration.current) setError(failure.message); }
-    } else handleFiles(selected);
+    await handleFiles(selected);
   };
 
   const queueOntologyRegistration = (selectedOntologyFiles) => {
@@ -413,6 +397,7 @@ export default function ImportWorkspace() {
       size: file.size,
       fileObj: file,
       sourceDigest: fileDigestsRef.current.get(file),
+      schemaSetSources: (xsdFolderBundlesRef.current.get(file)?.sources || []).map(source => source.name),
       workflowId: 'ontology.create',
       createdAt: new Date().toLocaleTimeString(),
       pendingMetadata: true,
@@ -459,8 +444,27 @@ export default function ImportWorkspace() {
     setError(null);
   };
 
-  const handleFiles = (fileList) => {
-    const newFiles = Array.from(fileList).filter(file => {
+  const handleFiles = async (fileList) => {
+    const selectionGeneration = fileSelectionGeneration.current;
+    let selected = Array.from(fileList);
+    if (selected.length > 1 && selected.every(file => file.name.toLowerCase().endsWith('.xsd'))) {
+      try {
+        // Resolve supplied dependencies before queuing an upload. Keep the
+        // original selection for recovery when companion files are missing.
+        let bundle;
+        try { bundle = await combineXsdFiles(selected, selected, true); }
+        catch (failure) {
+          if (!/Missing companion|Select exactly one local companion|Schema dependency escapes/.test(failure.message)) throw failure;
+          bundle = await combineXsdFiles(selected);
+        }
+        if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
+        fileDigestsRef.current.set(bundle.root, await fileSha256(bundle.root));
+        if (!isMountedRef.current || selectionGeneration !== fileSelectionGeneration.current) return;
+        xsdFolderBundlesRef.current.set(bundle.root, bundle);
+        selected = [bundle.root];
+      } catch (failure) { if (isMountedRef.current && selectionGeneration === fileSelectionGeneration.current) setError(failure.message); return; }
+    }
+    const newFiles = selected.filter(file => {
       const ext = getFileExtensionFromName(file.name);
       return supportedFormats.some(f => f.ext === ext);
     });
@@ -737,7 +741,7 @@ export default function ImportWorkspace() {
           registered: true,
           published: publicationConfirmed,
           approvalRequired: responseBody.status === 'approval_required',
-          message: publicationConfirmed ? `Ontology '${file.ontologyName}' published to Neo4j` : ['approval_required', 'publication_queued'].includes(responseBody.status) ? responseBody.message : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
+          message: publicationConfirmed ? `Ontology '${file.ontologyName}' published to knowledge graph` : ['approval_required', 'publication_queued'].includes(responseBody.status) ? responseBody.message : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
           stats: {
             entities_found: publicationConfirmed ? responseBody.graph_publication.resources : uploadDataBody.nodes_merged ?? null,
             relationships_found: publicationConfirmed ? responseBody.graph_publication.relationships : null,
@@ -1236,7 +1240,7 @@ export default function ImportWorkspace() {
   };
   const commitImport = async (taskId) => {
     if (getCredentialProfile('INGESTION_WRITE_TOKEN') && !commitApprover.trim()) {
-      setError('Enter an approver before loading to Neo4j.');
+      setError('Enter an approver before loading to knowledge graph.');
       return;
     }
     // â”€â”€ Pre-commit check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1253,7 +1257,7 @@ export default function ImportWorkspace() {
         const neo4jOk = check.checks?.neo4j?.ok;
         const taskOk  = check.checks?.task?.ok;
         let msg = `Cannot commit: ${reason}`;
-        if (!neo4jOk) msg += '\n\nNeo4j is unreachable - check your database connection.';
+        if (!neo4jOk) msg += '\n\nThe knowledge graph is unreachable - check the service connection.';
         if (!taskOk)  msg += `\n\nTask state: ${check.checks?.task?.status}`;
         setError(msg);
         return; // abort - modal stays open
@@ -1278,7 +1282,7 @@ export default function ImportWorkspace() {
     const approvedBy = commitApprover.trim();
     setConfirmingImport(null);
 
-    // Mark as "loading to Neo4j" in the file card right away
+    // Mark as "loading to knowledge graph" in the file card right away
     setPipelineStatus(prev => {
       const updated = { ...prev };
       for (const [fid, status] of Object.entries(updated)) {
@@ -1288,7 +1292,7 @@ export default function ImportWorkspace() {
             committing: true,
             progress: 80,
             commitPhase: 'queued',
-            message: 'Queued for Neo4j commit. You can stay on this page while batches continue.',
+            message: 'Queued for knowledge graph commit. You can stay on this page while batches continue.',
             lastUpdatedAt: new Date().toISOString(),
           };
         }
@@ -1339,7 +1343,7 @@ export default function ImportWorkspace() {
                   backendStage: 'ingest',
                   progress: Math.max(status.progress || 80, 80),
                   commitPhase: 'queued',
-                  message: commitData.message || 'Neo4j commit queued in background. The loader will keep polling until the write finishes.',
+                  message: commitData.message || 'knowledge graph commit queued in background. The loader will keep polling until the write finishes.',
                   lastUpdatedAt: new Date().toISOString(),
                 };
               }
@@ -1452,7 +1456,7 @@ export default function ImportWorkspace() {
   const getStatusBadge = (stage, progress, error, backendStage, committing, commitError, commitPhase, status) => {
     if (committing || (commitPhase && commitPhase !== 'complete' && commitPhase !== 'error')) {
       const phaseLabel = getCommitPhaseLabel(commitPhase);
-      return { text: phaseLabel ? `Loading  /  ${phaseLabel}` : 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
+      return { text: phaseLabel ? `Loading  /  ${phaseLabel}` : 'Loading to knowledge graph...', bg: '#FFF8E1', color: '#F57F17' };
     }
     if (commitError || commitPhase === 'error') {
       return { text: 'Commit Retry Needed', bg: '#FFEBEE', color: C.red };
@@ -1592,7 +1596,7 @@ export default function ImportWorkspace() {
   const activePipelineStages = useMemo(
     () => buildWorkflowStages(fallbackWorkflow).map((stage, index) =>
       selectedWorkflow === 'instance.import' && index === 2
-        ? { ...stage, title: 'Review and approve load', label: 'Review and approve load', description: 'Review the parsed graph and supply an approver before loading to Neo4j.' } : stage),
+        ? { ...stage, title: 'Review and approve load', label: 'Review and approve load', description: 'Review the parsed graph and supply an approver before loading to knowledge graph.' } : stage),
     [fallbackWorkflow, selectedWorkflow]
   );
   const fileStatusIndex = useMemo(() => {
@@ -1760,8 +1764,8 @@ export default function ImportWorkspace() {
       {selectedWorkflow !== 'instance.link' && <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
         <legend>Workflow access</legend>
         <p>Manage and validate keys in <a href="#/admin">Admin / Service credentials</a> before starting uploads or jobs.</p>
-        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register XSD/XMI or OWL/RDF/TTL and request Neo4j publication after review and approval</label>
-        <p>{publishOntology ? 'Create ontology registers a draft. Expand Review, approve and publish this ontology to Neo4j beneath its imported row: Submit for review, Approve ontology, then Publish to Neo4j. Already approved ontologies can publish after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but Neo4j is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
+        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register XSD/XMI or OWL/RDF/TTL and request knowledge graph publication after review and approval</label>
+        <p>{publishOntology ? 'Create ontology registers a draft. Expand Review, approve and publish this ontology to knowledge graph beneath its imported row: Submit for review, Approve ontology, then Publish to knowledge graph. Already approved ontologies can publish after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but knowledge graph is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
       </fieldset>}
       {/* Ontology Metadata Form Modal */}
       {showMetadataForm && (
@@ -2285,7 +2289,7 @@ export default function ImportWorkspace() {
                 {selectedWorkflow === 'ontology.merge' && (
                   <div style={{ marginTop: '6px', color: C.textPrimary, lineHeight: 1.45 }}>
                     Use <strong>Review merge plan</strong> to inspect ontology gaps, overlaps, and conflicts first.
-                    Use <strong>Merge into Neo4j</strong> when you want to commit the selected source ontology into the chosen target ontology.
+                    Use <strong>Merge into knowledge graph</strong> when you want to commit the selected source ontology into the chosen target ontology.
                   </div>
                 )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
@@ -2372,7 +2376,7 @@ export default function ImportWorkspace() {
           ))}
         </div>
 
-        {jobSummary.awaitingReview > 0 && <p role="status">{jobSummary.awaitingReview} parsed imports are waiting for your review, not processing. Open Import instance graph, review each preview with Load to Neo4j, and enter an approver to start loading. No automatic load is performed.</p>}
+        {jobSummary.awaitingReview > 0 && <p role="status">{jobSummary.awaitingReview} parsed imports are waiting for your review, not processing. Open Import instance graph, review each preview with Load to knowledge graph, and enter an approver to start loading. No automatic load is performed.</p>}
         {activeJobs.length > 0 && (
           <div style={{
             display: 'grid',
@@ -3009,6 +3013,10 @@ export default function ImportWorkspace() {
                       }}>
                         {file.name}
                       </div>
+                      {file.schemaSetSources?.length > 1 && <details style={{fontSize:'10px',marginTop:4}}>
+                        <summary>{file.schemaSetSources.length} XSD sources · one ontology</summary>
+                        <ul>{file.schemaSetSources.map((name,index) => <li key={`${index}:${name}`}>{name}</li>)}</ul>
+                      </details>}
                       {(status.message || file.persisted) && (
                         <div style={{
                           fontSize: '9px',
@@ -3320,10 +3328,10 @@ export default function ImportWorkspace() {
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title={status.commitError || status.commitPhase === 'error' ? 'Retry commit to Neo4j' : 'Load to Neo4j'}
+                        title={status.commitError || status.commitPhase === 'error' ? 'Retry commit to knowledge graph' : 'Load to knowledge graph'}
                       >
                         {status.commitError || status.commitPhase === 'error' ? <RotateCcw size={12} /> : <Upload size={12} />}
-                        {status.commitError || status.commitPhase === 'error' ? 'Retry commit' : 'Load to Neo4j'}
+                        {status.commitError || status.commitPhase === 'error' ? 'Retry commit' : 'Load to knowledge graph'}
                       </button>
                     )}
                     {isCommitInFlight(status) && (
@@ -3344,7 +3352,7 @@ export default function ImportWorkspace() {
                           gap: '4px',
                         }}
                       >
-                        <Loader2 size={12} /> {getCommitPhaseLabel(status.commitPhase) ? `${getCommitPhaseLabel(status.commitPhase)}...` : 'Loading to Neo4j...'}
+                        <Loader2 size={12} /> {getCommitPhaseLabel(status.commitPhase) ? `${getCommitPhaseLabel(status.commitPhase)}...` : 'Loading to knowledge graph...'}
                       </button>
                     )}
                     {status.taskId && !status.published && (file.workflowId || selectedWorkflow) === 'ontology.create' && importJobState(status) === 'completed' && (
@@ -3421,11 +3429,11 @@ export default function ImportWorkspace() {
                       const open = event.currentTarget.open;
                       setPublicationPanels(previous => ({ ...previous, [fileId]: open }));
                     }}>
-                      <summary>Review, approve and publish this ontology to Neo4j</summary>
+                      <summary>Review, approve and publish this ontology to knowledge graph</summary>
                       {publicationPanels[fileId] && <OntologyPublicationPanel fromWorkflow ontologyId={file.ontologyId || status.taskId} onPublished={receipt => {
                         setPipelineStatus(previous => ({ ...previous, [fileId]: {
                           ...previous[fileId], approvalRequired: false, published: true, committed: true,
-                          message: `Ontology '${file.ontologyName}' published to Neo4j`,
+                          message: `Ontology '${file.ontologyName}' published to knowledge graph`,
                           stats: { entities_found: receipt.resources, relationships_found: receipt.relationships },
                         } }));
                       }} />}

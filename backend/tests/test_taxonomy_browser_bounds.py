@@ -1,8 +1,20 @@
 import unittest
 import ast
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 class BrowserBoundsTests(unittest.TestCase):
+ def test_reason_endpoint_uses_catalog_aware_taxonomy_resolver(self):
+    tree=ast.parse(Path('backend/ingestion_service/api/ontology_browser.py').read_text())
+    fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='reasoning')
+    fn.decorator_list=[]
+    service=SimpleNamespace(get_reasoning=Mock(return_value={'ontology_id':'native-catalog-id'}))
+    scope={'OntologyTaxonomyService':service}
+    exec(compile(ast.Module(body=[fn],type_ignores=[]),'<reason-route>','exec'),scope)
+    assert scope['reasoning']('native-catalog-id')['ontology_id']=='native-catalog-id'
+    service.get_reasoning.assert_called_once_with('native-catalog-id')
+
  def test_browser_slice_prioritizes_classes_preserves_totals_and_does_not_mutate_inventory(self):
     tree=ast.parse(Path('backend/ingestion_service/api/ontology_browser.py').read_text())
     fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='bounded_taxonomy')

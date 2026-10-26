@@ -93,7 +93,7 @@ export default function RequirementsWorkbench({ filter = "", onNavigate }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 800, color: C.textPrimary }}><FileText size={16} /> Requirements workbench</div>
-          <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>View normalized requirements from Neo4j context graph plus uploaded ReqIF 1.2 files for Semantic Bridge, GraphRAG, and traceability review.</div>
+          <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>View normalized requirements from knowledge graph context graph plus uploaded ReqIF 1.2 files for Semantic Bridge, GraphRAG, and traceability review.</div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <select aria-label="Requirement source filter" value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setRequirementOffset(0); }} style={{ padding: '7px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.textPrimary, fontSize: '12px', fontWeight: 700 }}>
@@ -120,7 +120,7 @@ export default function RequirementsWorkbench({ filter = "", onNavigate }) {
             ))}
           </div>
           <div style={{ padding: '8px 10px', borderRadius: '6px', background: '#EEF7FF', border: `1px solid ${C.border}`, fontSize: '11px', color: C.textPrimary }}>
-            Source: Neo4j graph loaded through the Import pipeline. Use Import for ReqIF/PLMXML/MBSE/OSLC/ALM/unstructured ingestion, then review normalized requirements here.
+            Source: knowledge graph loaded through the Import pipeline. Use Import for ReqIF/PLMXML/MBSE/OSLC/ALM/unstructured ingestion, then review normalized requirements here.
           </div>
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '360px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>

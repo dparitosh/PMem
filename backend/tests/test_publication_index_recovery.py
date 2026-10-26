@@ -13,6 +13,26 @@ from backend.depo_platform.rdf_preparation import prepare_rdf
 from backend.postgres_migrations import MIGRATIONS
 
 class IndexRecoveryTests(unittest.TestCase):
+    def test_missing_or_unreadable_artifact_is_unverified_without_graph_or_registry_write(self):
+        tree=ast.parse(Path('backend/ontology_service/router.py').read_text(encoding='utf-8'))
+        fn=next(n for n in tree.body if isinstance(n,ast.AsyncFunctionDef) and n.name=='ontology_publication_status')
+        fn.decorator_list=[]
+        for error in (FileNotFoundError('private-path'),PermissionError('private-path'),ValueError('private-path'),KeyError('private-path')):
+            for retained in (None,{'publication_id':'old-digest','status':'published'}):
+                records=SimpleNamespace(get=Mock(return_value=retained),compare_and_put=Mock())
+                graph=Mock(side_effect=AssertionError('Graph must not be queried with an unverified digest'))
+                async def thread(function,*args):return function(*args)
+                scope={'__name__':'backend.ontology_service.router','graph_publications':records,
+                    'catalog':SimpleNamespace(get=lambda _: {'ontology_id':'demo'},artifact_digest=Mock(side_effect=error)),
+                    'run_in_threadpool':thread,'httpx':SimpleNamespace(AsyncClient=graph)}
+                exec(compile(ast.Module(body=[fn],type_ignores=[]),'<status>','exec'),scope)
+                result=asyncio.run(scope['ontology_publication_status']('demo',include_job=False))
+                self.assertEqual(result['status'],'unverified')
+                self.assertEqual(result['recovery_action'],'restore_retained_artifact' if isinstance(error,OSError) else 'review_retained_artifact')
+                self.assertNotIn('private-path',str(result))
+                records.compare_and_put.assert_not_called()
+                graph.assert_not_called()
+
     def test_postgres_index_definition_and_validity_are_checked(self):
         cursor=SimpleNamespace(execute=Mock(),fetchone=Mock(return_value=(True,True,'depo_registry','namespace',"(value ->> 'source'::text)",'key')))
         verify_source_lookup_index(cursor,'semantic')

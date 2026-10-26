@@ -178,7 +178,7 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
                   </span>
                   {preCheck.checks?.neo4j && (
                     <span style={{ color: preCheck.checks.neo4j.ok ? '#067647' : '#B42318' }}>
-                      {preCheck.checks.neo4j.ok ? 'OK' : 'Failed'} Neo4j: {preCheck.checks.neo4j.message || (preCheck.checks.neo4j.ok ? 'Connected' : 'Unreachable')}
+                      {preCheck.checks.neo4j.ok ? 'OK' : 'Failed'} knowledge graph: {preCheck.checks.neo4j.message || (preCheck.checks.neo4j.ok ? 'Connected' : 'Unreachable')}
                     </span>
                   )}
                   {preCheck.checks?.task && (
@@ -244,7 +244,7 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
                   cursor: (preCheck?.loading || preCheck?.ready === false) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {preCheck?.loading ? 'Checking...' : 'Load to Neo4j'}
+                {preCheck?.loading ? 'Checking...' : 'Load to knowledge graph'}
               </button>
             </div>
           </div>

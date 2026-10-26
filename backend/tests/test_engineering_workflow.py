@@ -1,8 +1,18 @@
 import pytest
-
 from backend.ingestion_service.engineering_workflow import EngineeringWorkflow, EngineeringDependencyFailure
 import httpx
 
+
+def test_quality_block_message_explains_counts_without_resource_payload():
+    message=EngineeringWorkflow._quality_block_message({'duplicates':[{'name':'private-resource'}], 'conflicts':[{},{}]})
+    assert '1 duplicate candidates' in message and '2 conflicts' in message
+    assert 'private-resource' not in message
+    assert 'no graph publication was requested' in message
+
+
+def test_quality_block_message_does_not_invent_findings():
+    message=EngineeringWorkflow._quality_block_message({'publish_recommended':False})
+    assert 'assessment did not recommend publication' in message
 
 class StubConverter:
     def convert(self, *, filename, content):
@@ -90,6 +100,9 @@ async def test_engineering_publication_delegates_to_locked_ontology_service(monk
 
     assert result["status"] == "publication_queued"
     assert result["publication_job"]["job_id"] == "durable-job"
+    quality_call = next(call for call in calls if call[0].endswith("/quality-gate"))
+    assert quality_call[1]["json"]["deduplication_mode"] == "resource_identity"
+    assert sum(url.endswith("/register") for url, _ in calls) == 1
     publication_call = next(call for call in calls if call[0].endswith("/ontologies/demo/publish"))
     assert publication_call[1]["json"] == {"approved_by": "engineering-ingestion"}
     assert publication_call[1]["params"] == {"background": True}

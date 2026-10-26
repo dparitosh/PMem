@@ -34,7 +34,7 @@ function consumePendingEvents(key) {
 //
 // DISPLAY_NAME_PROPERTY  ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â priority-ordered list of node properties to try.
 //   The first property found on a node is used as the display name.
-//   Set to [] (empty array) to rely solely on the Neo4j label.
+//   Set to [] (empty array) to rely solely on the knowledge graph label.
 const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'entity_type'];
 
 // Define constants for graph tuning values.
@@ -1560,7 +1560,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   const props = d.properties || d;
 
-  // Prefer true data-bearing fields; do not surface driver metadata or Neo4j labels.
+  // Prefer true data-bearing fields; do not surface driver metadata or knowledge graph labels.
   const displayValue =
     resolveDisplayProp(props) ??
     props.name ??
@@ -1804,7 +1804,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
-  // Monitor Neo4j connection health and refresh graph if reconnected
+  // Monitor knowledge graph connection health and refresh graph if reconnected
   useEffect(() => {
     let active = true;
     let controller = null;
@@ -1828,7 +1828,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           selectedOntologyRef.current === 'ALL'
         ) {
           // Connection was restored but graph is empty - trigger refresh
-          logger.data('Neo4j reconnected, refreshing graph...');
+          logger.data('knowledge graph reconnected, refreshing graph...');
           const graphResponse = await graphApi.getOverview(DEFAULT_GRAPH_OVERVIEW_LIMIT, controller.signal);
           if (!active) return;
           const dataSet = normalizeGraphDataset(graphResponse.data);
@@ -1907,7 +1907,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             expandNeighbors: false,
             // Keep the backend search broad and object-centric; root context is
             // chosen client-side from the returned matches so it is based on
-            // actual Neo4j hits instead of a premature server-side root guess.
+            // actual knowledge graph hits instead of a premature server-side root guess.
             limit: 24,
             ...(ontologyPrefix ? { ontologyPrefix } : {}),
           }, abortController.signal);
@@ -2762,7 +2762,7 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>
             {isOntologyGraphMode
               ? (ontologyGraphMessage || 'The selected ontology did not return classes or relationships for visualization.')
-              : 'No graph data available from Neo4j database'}
+              : 'No graph data available from knowledge graph database'}
           </div>
         </div>
       )}

@@ -776,8 +776,8 @@ async def get_generic_mappings(
                  toLower(
                    coalesce(
                      a.source_format,
-                     a.file_type,
-                     a.source_format_detected,
+                     a['file_type'],
+                     a['source_format_detected'],
                      ''
                    )
                  ) AS src_fmt

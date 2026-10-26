@@ -82,7 +82,7 @@ export default function OntologyWorkspace() {
   const [mapBusy, setMapBusy] = useState(false);
   const [mapMessage, setMapMessage] = useState(null);
   const { importTasks, selectedImportTaskId, setSelectedImportTaskId, importTasksLoading,
-    importTasksError, selectedImportTaskDetails, selectedImportTaskPreview } = useOntologyImportTasks();
+    importTasksError, selectedImportTaskDetails, selectedImportTaskPreview, refreshImportTasks } = useOntologyImportTasks();
   const [unifyBusy, setUnifyBusy] = useState(false);
   const [unifyResult, setUnifyResult] = useState(null);
   const [bridgeCandidates, setBridgeCandidates] = useState([]);
@@ -777,7 +777,7 @@ export default function OntologyWorkspace() {
       if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
-        text: res.result.publication_status === 'published' ? 'Reviewed merge approved and published to Neo4j.' : 'Reviewed merge retained. Neo4j publication is queued; follow its status below.',
+        text: res.result.publication_status === 'published' ? 'Reviewed merge approved and published to knowledge graph.' : 'Reviewed merge retained. knowledge graph publication is queued; follow its status below.',
         agentRunId: res.runId,
         report: { ...(mergeResult.report || {}), governed: res.result },
         governedPreview: mergeResult.governedPreview,
@@ -1072,7 +1072,7 @@ export default function OntologyWorkspace() {
 
       <WorkspaceTabs label="Ontology Junction views" tabs={VIEWS} value={activeView} onChange={setActiveView} />
       <p aria-live="polite">{activeView === 'taxonomy' ? 'Inspect declared classes, properties and hierarchy for the selected ontology version.' : activeView === 'vocabulary' ? 'Inspect recorded vocabulary relations. A mapping relation is not automatically OWL identity or equivalence.' : activeView === 'alignment' ? 'Ask the governed agents for saved proposals, inspect their evidence, then review publication separately.' : 'Preview structural rules and their supporting declarations. This view does not execute arbitrary SWRL or publish conclusions.'}</p>
-      <details className="depo-bridge-metadata"><summary>Ontology lifecycle and Neo4j publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>
+      <details className="depo-bridge-metadata"><summary>Ontology lifecycle and knowledge graph publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>
 
       {activeView === 'alignment' && error && <div role="alert" style={{ padding: 12 }}>Vocabulary loading failed: {error} Semantic Bridge tasks remain available. Merge previews use retained RDF; instance mapping results are shown in the governed job review below.</div>}
       {loading && activeView === 'vocabulary' ? (
@@ -1292,6 +1292,9 @@ export default function OntologyWorkspace() {
                         </option>
                       ))}
                     </select>
+                    <button type="button" onClick={refreshImportTasks} disabled={importTasksLoading}>Refresh imported instances</button>
+                    {importTasksError && <p role="alert">{importTasksError}</p>}
+                    {!importTasksLoading && !importTasksError && !importTasks.length && <p>No retained instance imports are available. <a href="#/import">Import instance data</a>, then refresh this list.</p>}
                   </div>
                   <div style={{ border: `1px solid ${selectedOntologyApi ? C.borderDark : C.red}`, borderRadius: '6px', background: C.surface, padding: '10px 12px', minHeight: '42px' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Active ontology</div>
@@ -1514,7 +1517,7 @@ export default function OntologyWorkspace() {
                   busy={mergeBusy} preview={mergeResult?.governedPreview} dirty={mergePlanDirty}
                   ready={mergePlanReady} stewardStatus={mergeStewardReview?.key === mergeReviewKey ? mergeStewardReview.status : undefined} error={mergeResult?.kind === 'error' ? mergeResult.text : ''} publication={mergeResult?.report?.governed?.publication_status}
                   selectionCount={mergeEntityMappings.length} onGenerate={handlePreviewOntologyMerge}
-                  onResume={resumeMergeReview} onPublish={handleCommitOntologyMerge} />
+                  onResume={resumeMergeReview} onPublish={handleCommitOntologyMerge}>
                 <MergeStewardReview reviewKey={mergeReviewKey} previewId={mergeResult?.governedPreview?.preview_id}
                   enabled={mergeValidationReady} reviewer={mergeApprover} onReview={setMergeStewardReview} />
                 <MergeMappingReview sourceId={mergeSourceOntologyId} targetId={selectedMapping}
@@ -1529,13 +1532,14 @@ export default function OntologyWorkspace() {
                   })}
                   preview={mergeResult?.governedPreview} busy={mergeBusy} dirty={mergePlanDirty}
                   error={mergeResult?.kind === 'error' ? mergeResult.text : ''} />
+                </MergeWorkflowControls>
                 {mergeResult && (
                   <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergePlanDirty ? 'Mapping selections changed. Validate selected mappings before approving this merge.' : mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
                     {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">Merged ontology: {mergeResult.report.governed.ontology.ontology_id}. Publication: {mergeResult.report.governed.publication_status || "not requested"}.</p>}
                     {mergeResult.report?.governed?.publication?.job_id && <OntologyPublicationPanel ontologyId={mergeResult.report.governed.ontology.ontology_id} fromWorkflow onPublished={() => {
-                      setMergeResult(current => ({...current, text:'Reviewed merge published to Neo4j.', report:{...current.report, governed:{...current.report.governed, publication_status:'published'}}}));
+                      setMergeResult(current => ({...current, text:'Reviewed merge published to knowledge graph.', report:{...current.report, governed:{...current.report.governed, publication_status:'published'}}}));
                       window.dispatchEvent(new Event('depo:ontologies-changed'));
                     }} />}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}

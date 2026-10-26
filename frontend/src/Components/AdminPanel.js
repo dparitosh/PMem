@@ -158,7 +158,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
         const detail =
           statsRes.reason?.response?.data?.detail ||
           statsRes.reason?.message ||
-          'Unable to load Neo4j schema stats.';
+          'Unable to load knowledge graph schema stats.';
         setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
       if (agentOpsRes.status === 'fulfilled') {
@@ -206,9 +206,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
   const cleanSchema = useCallback(async () => {
     const accepted = await requestConfirmation({
-      title: 'Clean the complete Neo4j schema?',
-      description: 'This deletes graph data, indexes, constraints, uploaded ontology registry metadata and quiescent instance-import workflows with their owned files and PostgreSQL artifact manifests. Active or uncertain imports block cleanup. Governed ontology artifacts and separate agent history remain. Run the Neo4j bootstrap script before publishing again.',
-      phrase: 'CLEAN NEO4J',
+      title: 'Clean the complete knowledge graph schema?',
+      description: 'This deletes graph data, indexes, constraints, uploaded ontology registry metadata and quiescent instance-import workflows with their owned files and PostgreSQL artifact manifests. Active or uncertain imports block cleanup. Governed ontology artifacts and separate agent history remain. Run the knowledge graph bootstrap script before publishing again.',
+      phrase: 'CLEAN KNOWLEDGE GRAPH',
       confirmLabel: 'Clean schema',
     });
     if (!accepted) {
@@ -222,10 +222,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
     try {
       const res = await API_METHODS.admin.cleanSchema();
       const metadataCleared = res.data?.metadata_cleared ?? 0;
-      const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
+      const graphMessage = res.data?.message || 'knowledge graph reset completed.';
       const receipt = res.data?.cleanup_receipt;
       const progress = receipt ? ` Cleanup ${receipt.run_id}: ${Object.entries(receipt.phases || {}).map(([phase, status]) => `${phase.replaceAll('_', ' ')}: ${status}`).join('; ')}.` : '';
-      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Import workflows cleared: ${res.data?.import_cleanup?.deleted_count ?? 0}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.${progress}`);
+      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Import workflows cleared: ${res.data?.import_cleanup?.deleted_count ?? 0}. Before publishing again, ask your administrator to restore the publication constraints using the installation guide.${progress}`);
       const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || (res.data?.import_cleanup?.status === 'partial' ? 'Import workflow cleanup is incomplete. Review the cleanup receipt and use Clear Import Workflows to reconcile remaining tasks. Do not repeat the graph reset blindly.' : 'Graph reset completed, but cleanup is incomplete.') : '';
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
@@ -248,7 +248,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const resetGraphDatabase = useCallback(async () => {
     const accepted = await requestConfirmation({
       title: 'Reset the graph database?',
-      description: 'This deletes Neo4j nodes and relationships and recreates operational indexes. Uploaded ontology files remain available.',
+      description: 'This deletes knowledge graph nodes and relationships and recreates operational indexes. Uploaded ontology files remain available.',
       phrase: 'RESET GRAPH',
       confirmLabel: 'Reset graph',
     });
@@ -265,7 +265,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const resetStatus = String(res.data?.status || '').toUpperCase();
       if (!['SUCCESS', 'PARTIAL'].includes(resetStatus)) throw new Error(res.data?.message || 'Graph reset did not complete.');
       const warning = resetStatus === 'PARTIAL' ? res.data?.message || 'Graph data was reset, but registry reconciliation is incomplete.' : '';
-      setMessage(`Graph reset completed. ${res.data?.message || 'Neo4j data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
+      setMessage(`Graph reset completed. ${res.data?.message || 'knowledge graph data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
       window.dispatchEvent(new Event('dt-schema-cleaned'));
@@ -296,8 +296,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
       ].filter(Boolean);
       const cacheWarning = res.data?.status === 'partial' || parts.length === 0 ? res.data?.message || 'Some caches could not be cleared.' : '';
       setMessage(parts.length > 0
-        ? `Cache cleanup completed: ${parts.join(', ')}. No Neo4j graph data or ontology files were deleted.`
-        : res.data?.message || 'Application caches cleared. No Neo4j graph data or ontology files were deleted.');
+        ? `Cache cleanup completed: ${parts.join(', ')}. No knowledge graph data or ontology files were deleted.`
+        : res.data?.message || 'Application caches cleared. No knowledge graph data or ontology files were deleted.');
       await loadAdminState();
       await fetchOntologies(true);
       window.dispatchEvent(new Event('depo:ontologies-changed'));
@@ -325,7 +325,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
         return;
       }
 
-      const ok = await requestConfirmation({ title: 'Delete old XSD schemas?', description: `Delete ${count} old ingested XSD schema entries from storage and Neo4j?`, confirmLabel: 'Delete schemas' });
+      const ok = await requestConfirmation({ title: 'Delete old XSD schemas?', description: `Delete ${count} old ingested XSD schema entries from storage and knowledge graph?`, confirmLabel: 'Delete schemas' });
       if (!ok) return;
 
       const result = await API_METHODS.ontology.cleanupOldXsd({
@@ -336,7 +336,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const deleted = result?.data?.deleted_count || 0;
       const deletedNodes = result?.data?.neo4j_deleted_nodes || 0;
       const cleanupWarning = result?.data?.status === 'partial' ? 'Old XSD cleanup was partial. Some catalog registrations could not be removed; inspect service logs.' : '';
-      setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. Neo4j schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
+      setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. knowledge graph schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.dispatchEvent(new Event('depo:ontologies-changed'));
       await fetchOntologies(true);
@@ -357,7 +357,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     const batchSize = Number(deleteBatchSize) || 10000;
 
     if (!label && !prefix) {
-      return { error: 'Enter a Neo4j label or ontology prefix.' };
+      return { error: 'Enter a knowledge graph label or ontology prefix.' };
     }
     if (label && prefix) {
       return { error: 'Use either label or prefix, not both.' };
@@ -496,7 +496,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
           <section style={cardStyle}>
             <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
-              Neo4j Schema Snapshot
+              Knowledge graph schema
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
               <Stat label="Nodes" value={stats?.total_nodes} />
@@ -512,7 +512,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             </div>
             <div style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
               PostgreSQL retains agent run and tool history after cache, schema and graph cleanup.
-              These totals cover the latest {agentOps?.window_limit || 500} recorded runs, not the current Neo4j graph.
+              These totals cover the latest {agentOps?.window_limit || 500} recorded runs, not the current knowledge graph.
               Historical failures do not by themselves indicate a current service outage.
             </div>
             {agentOps ? (
@@ -539,7 +539,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             Targeted Graph Cleanup
           </div>
           <div style={{ fontSize: 11, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
-            Preview and delete a scoped set of Neo4j nodes. This does not delete uploaded ontology files or registry metadata.
+            Preview and delete a scoped set of knowledge graph nodes. This does not delete uploaded ontology files or registry metadata.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 8 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>

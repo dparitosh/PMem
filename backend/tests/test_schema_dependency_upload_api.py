@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 import httpx
 from backend.ingestion_service.engineering_workflow import EngineeringDependencyFailure
+from backend.depo_platform.upload_limits import ontology_upload_limit
 from fastapi.testclient import TestClient
 from starlette.concurrency import run_in_threadpool
 
@@ -25,7 +26,8 @@ def client_and_calls(engineering=False, result=None, failure=None):
             raise failure
         return result if result is not None else converted
     scope = {'UploadFile':UploadFile,'File':File,'Form':Form,'HTTPException':HTTPException,
-        'MAX_UPLOAD_BYTES':25*1024*1024,'json':json,'Path':Path,'run_in_threadpool':run_in_threadpool,
+        'MAX_UPLOAD_BYTES':25*1024*1024,'ontology_upload_limit':ontology_upload_limit,
+        'json':json,'Path':Path,'run_in_threadpool':run_in_threadpool,
         'converter':SimpleNamespace(convert=convert), 'engineering_workflow':SimpleNamespace(run=run),
         'Request':Request, 'httpx':httpx, 'EngineeringDependencyFailure':EngineeringDependencyFailure}
     exec(compile(ast.Module(body=nodes,type_ignores=[]), '<actual multipart handler>', 'exec'),scope)

@@ -542,7 +542,7 @@ export const importAPI = {
     apiClient.get(buildUrl(API.import.tasks), options),
   commit: (taskId, options = {}) => 
     apiClient.post(buildUrl(replaceParams(API.import.commit, { task_id: taskId })), options, {
-      timeout: 300000, // 5 minutes â€” Neo4j batch commit to AuraDB can take 2-3 min
+      timeout: 300000, // 5 minutes â€” knowledge graph batch commit to AuraDB can take 2-3 min
     }),
   preCommitCheck: (taskId) =>
     apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 300000 }),
