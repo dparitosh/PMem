@@ -1,13 +1,68 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ReadGoalPanel from './ReadGoalPanel';
 import { agenticClient } from '../services/agenticApi';
+import {installBrowserSession,expireBrowserSession,clearServiceAuthToken} from '../services/serviceAuth';
 
 vi.mock('../services/agenticApi', () => ({agenticClient: {post: vi.fn(), get: vi.fn()}}));
 vi.mock('../config', () => ({config:{},buildSemanticServiceUrl: (_, path) => path}));
 vi.mock('../utils/apiErrorMessage', () => ({apiErrorMessage: e => e.message}));
 
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
+afterEach(()=>{clearServiceAuthToken();vi.unstubAllGlobals();});
+
+test('expiry and reconnect retain an uncertain submission without automatically resubmitting it',async()=>{
+ installBrowserSession({token:'depo_session_old',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()});
+ agenticClient.post.mockRejectedValueOnce(new Error('Response lost')).mockResolvedValueOnce({data:{run_id:'goal-recovered',status:'completed',goal:'Recovered'}});
+ render(<ReadGoalPanel agent="reviewer" task="Inspect bearing"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
+ const recover=await screen.findByRole('button',{name:'Recover submitted investigation'});
+ const id=agenticClient.post.mock.calls[0][1].submission_id;
+ // The service emits expiry and credentials-changed together.
+ act(()=>expireBrowserSession('depo_session_old'));
+ expect(recover).toBeDisabled();
+ act(()=>installBrowserSession({token:'depo_session_new',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()}));
+ await waitFor(()=>expect(recover).toBeEnabled());
+ expect(agenticClient.post).toHaveBeenCalledTimes(1);
+ fireEvent.click(recover);await screen.findByText('Recovered');
+ expect(agenticClient.post.mock.calls[1][1].submission_id).toBe(id);
+});
+
+test.each([{observations:{}},{observations:[null]},{plans:[{subtasks:null}]},{result:{summary:{raw:'invalid'}}}])('invalid agent records preserve recovery instead of crashing (%j)',async invalid=>{
+ agenticClient.post.mockResolvedValue({data:{run_id:'goal-invalid',status:'completed',...invalid}});
+ render(<ReadGoalPanel agent="reviewer" task="Inspect bearing"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('invalid investigation record');
+ expect(screen.getByRole('button',{name:'Recover submitted investigation'})).toBeEnabled();
+ expect(screen.queryByLabelText('Task progress')).toBeNull();
+});
+
+test('submits from an HTTP browser where randomUUID is unavailable',async()=>{
+ const getRandomValues=globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+ vi.stubGlobal('crypto',{getRandomValues});
+ agenticClient.post.mockResolvedValue({data:{run_id:'goal-http',goal:'HTTP investigation',status:'completed'}});
+ render(<ReadGoalPanel agent="reviewer" task="Inspect bearing"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
+ await screen.findByText('HTTP investigation');
+ expect(agenticClient.post.mock.calls[0][1].submission_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+ expect(screen.queryByText(/randomUUID is not a function/)).toBeNull();
+});
+
+test('rejected access pauses submissions and keeps the recoverable identity',async()=>{
+ agenticClient.post.mockRejectedValueOnce(new Error('Response lost')).mockResolvedValueOnce({data:{run_id:'goal-recovered',goal:'Recovered investigation',status:'completed'}});
+ render(<ReadGoalPanel agent="reviewer" task="Inspect bearing"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Start read-only investigation'}));
+ const recover=await screen.findByRole('button',{name:'Recover submitted investigation'});
+ const original=agenticClient.post.mock.calls[0][1].submission_id;
+ fireEvent(window,new Event('depo:access-rejected'));
+ expect(recover).toBeDisabled();
+ expect(screen.getByRole('alert')).toHaveTextContent('Revalidate access');
+ fireEvent(window,new Event('depo:access-verified'));
+ await waitFor(()=>expect(recover).toBeEnabled());
+ fireEvent.click(recover);
+ await screen.findByText('Recovered investigation');
+ expect(agenticClient.post.mock.calls[1][1].submission_id).toBe(original);
+});
 
 test('runs a selected read goal and exposes the plan, failure and cited result', async () => {
   const result = {run_id:'goal-test', goal:'Inspect motor', agent_id:'reviewer', status:'completed', decisions:4, max_decisions:8,

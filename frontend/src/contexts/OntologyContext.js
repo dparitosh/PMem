@@ -57,13 +57,18 @@ export const OntologyProvider = ({ children }) => {
           if (path !== '/api/v1/ontologies') return apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 });
           const rows = [];
           let offset = 0;
+          const deadline = Date.now() + 60000;
+          let pages = 0;
           do {
-            const response = await apiClient.get(buildUrl(`${path}?limit=200&offset=${offset}`), { signal: controller.signal, timeout: 15000 });
+            const remaining = deadline - Date.now();
+            if (remaining <= 0 || pages++ >= 100 || rows.length >= 20000) throw new Error('Ontology catalog loading limit reached. Narrow the registry scope and retry.');
+            const response = await apiClient.get(buildUrl(`${path}?limit=200&offset=${offset}`), { signal: controller.signal, timeout: Math.min(15000, remaining) });
             // Accept older servers without pagination metadata during upgrades.
             if (!Array.isArray(response.data?.ontologies)) return response;
             rows.push(...response.data.ontologies);
             const next = response.data.next_offset;
             if (next == null) return { data: { ...response.data, ontologies: rows } };
+            if (response.data.ontologies.length === 0) throw new Error('Invalid ontology catalog pagination: empty page has a next offset');
             if (!Number.isSafeInteger(next) || next <= offset) throw new Error('Invalid ontology catalog pagination');
             offset = next;
           } while (!controller.signal.aborted);
@@ -132,12 +137,14 @@ export const OntologyProvider = ({ children }) => {
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);
     window.addEventListener('depo:session-expired', refresh);
+    window.addEventListener('depo:session-replaced', refresh);
     window.addEventListener('depo:ontologies-changed', changed);
     window.addEventListener('dt-schema-cleaned', refresh);
     return () => {
       window.removeEventListener('depo:credentials-changed', refresh);
       window.removeEventListener('depo:credentials-cleared', refresh);
       window.removeEventListener('depo:session-expired', refresh);
+      window.removeEventListener('depo:session-replaced', refresh);
       window.removeEventListener('depo:ontologies-changed', changed);
       window.removeEventListener('dt-schema-cleaned', refresh);
     };

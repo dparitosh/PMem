@@ -36,6 +36,18 @@ const normalizeSearchValue = (value) => String(value || '').trim().toLowerCase()
 
 const getNodeProps = (node) => node?.properties || node || {};
 
+const vocabularyName = value => String(value || '').split(/[#/:]/).pop().replace(/[^a-z0-9]/gi, '').toLowerCase();
+const businessTypes = new Set(['part','product','productrevision','productinstance','component','item','itemrevision','assembly','requirement','requirementspecification','process','operation','manufacturingprocess','document','change','changerequest','changenotice']);
+const businessNode = node => {
+  const props = getNodeProps(node);
+  if (/^urn:depo:(assertion|evidence):/i.test(String(props.iri || props.uri || props.name || ''))) return false;
+  return [...(node?.labels || []), ...(Array.isArray(props.rdf_types) ? props.rdf_types : []), props.semantic_role, props.element_type, props.entity_type]
+    .some(value => businessTypes.has(vocabularyName(value).replace(/type$/, '')));
+};
+// Direction is defined by the predicate, not by the drawing's arrow orientation.
+const parentToChild = new Set(['haspart','hascomponent','assemblycontains','contains','haschild','haschildinstance','parentof','uses','masterref','masterreference','revisionref','productref','partref','instanceref','instancedref']);
+const childToParent = new Set(['partof','childof','usedby','belongsto']);
+
 const getNodeLabel = (node) => node?.labels?.[0] || node?.label || 'Node';
 
 const collectSearchableNodeValues = (node) => {
@@ -247,11 +259,10 @@ const WhereUsedView = ({
             setFallbackGraphData({ nodes: [], links: [] });
             setSessionRevision(value => value + 1);
         };
-        window.addEventListener('depo:credentials-changed', reset);
-        window.addEventListener('depo:credentials-cleared', reset);
+        const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
+        events.forEach(event => window.addEventListener(event, reset));
         return () => {
-            window.removeEventListener('depo:credentials-changed', reset);
-            window.removeEventListener('depo:credentials-cleared', reset);
+            events.forEach(event => window.removeEventListener(event, reset));
             overviewAbortRef.current?.abort();
             searchAbortRef.current?.abort();
             expansionAbortRef.current?.abort();
@@ -260,6 +271,11 @@ const WhereUsedView = ({
     
     // Search the bounded standalone graph projection used by Graph Explorer.
     const handleSearch = async () => {
+        expansionAbortRef.current?.abort();
+        expansionAbortRef.current = null;
+        setIsExpandingUpwards(false);
+        setExpansionError(null);
+        setAutoExpanded(false);
         const term = searchTerm.trim();
         if (!term) return;
         searchAbortRef.current?.abort();
@@ -346,26 +362,31 @@ const WhereUsedView = ({
                         const targetId = getLinkEndpointId(relationship.end ?? relationship.target);
                         if (!sourceId || !targetId) return;
 
-                        if (targetId === currentNodeId) {
-                            const parent = nodes.find(node => node?.elementId === sourceId);
-                            if (!ancestorMap.has(sourceId)) {
-                                if (!parent) return;
+                        const predicate = vocabularyName(relationship.properties?.predicate || relationship.predicate || relationship.type || relationship.label);
+                        const parentId = targetId === currentNodeId && parentToChild.has(predicate) ? sourceId
+                            : sourceId === currentNodeId && childToParent.has(predicate) ? targetId : null;
+                        if (parentId) {
+                            const parent = nodes.find(node => node?.elementId === parentId);
+                            if (!businessNode(parent)) return;
+                            if (!ancestorMap.has(parentId)) {
                                 if (ancestorMap.size >= 1000) { bounded = true; return; }
-                                ancestorMap.set(sourceId, parent);
+                                ancestorMap.set(parentId, parent);
                             }
                             const key = buildRelationshipKey({ ...relationship, source: sourceId, target: targetId });
                             if (!linkSet.has(key)) {
                                 linkSet.set(key, {
                                     elementId: relationship.elementId || key,
-                                    source: sourceId,
-                                    target: targetId,
-                                    type: relationship.type || relationship.label || 'RELATED',
+                                    source: parentId,
+                                    target: currentNodeId,
+                                    originalSource: sourceId,
+                                    originalTarget: targetId,
+                                    type: relationship.properties?.predicate || relationship.predicate || relationship.type || relationship.label || 'RELATED',
                                     properties: relationship.properties || {},
                                 });
                             }
-                            if (!depths.has(sourceId)) {
-                                depths.set(sourceId, (depths.get(currentNodeId) || 0) + 1);
-                                queue.push(sourceId);
+                            if (!depths.has(parentId)) {
+                                depths.set(parentId, (depths.get(currentNodeId) || 0) + 1);
+                                queue.push(parentId);
                             }
                         }
                     });
@@ -410,6 +431,7 @@ const WhereUsedView = ({
             logger.data('  Total links: %d', parentLinks.length);
             logger.data('  Levels: %d', sortedLevels.length);
 
+            if (controller.signal.aborted || expansionAbortRef.current !== controller) return;
             setLevels(sortedLevels);
             setTreeData({
                 nodes: Array.from(ancestorMap.values()),
@@ -545,8 +567,8 @@ const WhereUsedView = ({
 
         const selectedId = selectedNode.elementId;
         const incoming = (treeData.links || []).filter((link) => link?.target === selectedId);
-        const usageTypes = new Set(['USES', 'CONTAINS', 'HASCHILD', 'HASCHILDINSTANCE', 'HASCOMPONENT', 'ASSEMBLYCONTAINS', 'PARTREF', 'INSTANCEDREF']);
-        const usageLinks = incoming.filter(link => usageTypes.has(String(link.type || '').toUpperCase().replace(/[^A-Z0-9]/g, '')));
+        const usageTypes = new Set(['uses','contains','haspart','haschild','haschildinstance','hascomponent','assemblycontains','parentof',...childToParent]);
+        const usageLinks = incoming.filter(link => usageTypes.has(vocabularyName(link.type)));
         const directParents = (usageLinks.length ? usageLinks : incoming)
             .map((link) => treeData.nodes.find((node) => node.elementId === link.source))
             .filter(Boolean);

@@ -39,6 +39,8 @@ const RecommendationsWorkspace = () => {
   const [quickResult, setResult] = useState(null);
   const [executionMode,setExecutionMode]=useState('agent');
   const [agentRun,setAgentRun]=useState(null);
+  const [agentStatus,setAgentStatus]=useState({});
+  const [accessRejected,setAccessRejected]=useState(false);
   const [agentContract,setAgentContract]=useState(false);
   const [agentTools,setAgentTools]=useState(null);
   const [agentError,setAgentError]=useState('');
@@ -49,14 +51,21 @@ const RecommendationsWorkspace = () => {
   useEffect(()=>{
     const controller=new AbortController();setAgentTools(null);setAgentContract(false);setAgentError('');
     agenticClient.get(buildSemanticServiceUrl('agentic','/api/v1/tools'),{signal:controller.signal,timeout:15000}).then(response=>{
-      if(!controller.signal.aborted){setAgentTools(new Set((response.data?.tools||[]).map(tool=>tool.id)));setAgentContract(response.data?.read_goal_capabilities?.recommendation_evidence===1);}
+      if(!controller.signal.aborted){
+        if(!Array.isArray(response.data?.tools))throw new Error('Agent tool catalog is invalid. Retry readiness after checking the agent service.');
+        setAgentTools(new Set(response.data.tools.filter(tool=>typeof tool?.id==='string').map(tool=>tool.id)));setAgentContract(response.data?.read_goal_capabilities?.recommendation_evidence===1);
+      }
     }).catch(failure=>{if(!controller.signal.aborted)setAgentError(apiErrorMessage(failure,'Agent tools are unavailable.'));});
     return()=>controller.abort();
   },[healthRevision]);
-  const goalContext={page:'recommendations',...objectContext,recommendation_service:activeService,recommendation_object:inputValue.trim(),recommendation_top_n:topN};
-  const result=executionMode==='agent'?recommendationGoalEvidence(agentRun,goalContext):quickResult;
-  const recommendationReady = !healthLoading && health?.status === 'ok' && health?.readiness?.scenario_ready === true;
-  const readinessMessage = health?.readiness?.message || health?.error || (
+  const selectedLimit=activeService==='similar-parts'?topN:10;
+  const goalContext={page:'recommendations',...objectContext,recommendation_service:activeService,recommendation_object:inputValue.trim(),recommendation_top_n:selectedLimit};
+  const agentEvidence=executionMode==='agent'?recommendationGoalEvidence(agentRun,goalContext):null;
+  const result=executionMode==='agent'?agentEvidence:quickResult;
+  const inputValid=inputValue.trim().length>0&&inputValue.trim().length<=500;
+  const limitValid=activeService!=='similar-parts'||(Number.isInteger(topN)&&topN>=1&&topN<=50);
+  const recommendationReady = !accessRejected && !healthLoading && health?.status === 'ok' && health?.readiness?.scenario_ready === true;
+  const readinessMessage = accessRejected ? 'API access was rejected. Use Revalidate access before starting another analysis; retained investigations are preserved.' : health?.readiness?.message || health?.error || (
     healthLoading ? 'Checking recommendation readiness...' : 'Recommendation readiness is unavailable.'
   );
   const activeServiceReadiness = activeService ? health?.readiness?.service_readiness?.[activeService] : null;
@@ -88,6 +97,7 @@ const RecommendationsWorkspace = () => {
 
   useEffect(() => {
     const resetSession = () => {
+      setAccessRejected(false);
       analysisController.current?.abort();
       analysisGeneration.current += 1;
       setResult(null);
@@ -101,10 +111,18 @@ const RecommendationsWorkspace = () => {
     window.addEventListener('depo:credentials-changed', resetSession);
     window.addEventListener('depo:credentials-cleared', resetSession);
     window.addEventListener('depo:session-expired', resetSession);
+    window.addEventListener('depo:session-replaced', resetSession);
+    const rejected=()=>{setAccessRejected(true);analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setAgentRun(null);};
+    const verified=()=>{setAccessRejected(false);setHealthRevision(value=>value+1);};
+    window.addEventListener('depo:access-rejected',rejected);
+    window.addEventListener('depo:access-verified',verified);
     return () => {
       window.removeEventListener('depo:credentials-changed', resetSession);
       window.removeEventListener('depo:credentials-cleared', resetSession);
       window.removeEventListener('depo:session-expired', resetSession);
+      window.removeEventListener('depo:session-replaced', resetSession);
+      window.removeEventListener('depo:access-rejected',rejected);
+      window.removeEventListener('depo:access-verified',verified);
       analysisController.current?.abort();
       analysisGeneration.current += 1;
     };
@@ -141,6 +159,7 @@ const RecommendationsWorkspace = () => {
   const handleAnalyse = useCallback(async () => {
     const generation = ++analysisGeneration.current;
     if (!inputValue.trim() || !activeService) return;
+    if (!inputValid) {setError('Enter an object name of at most 500 characters.');return;}
     if (!recommendationReady || activeServiceReadiness===false || activeServiceReadiness?.ready===false) { setLoading(false); setError('Verify recommendation readiness before analysis.'); return; }
     if(activeService==='similar-parts'&&(!Number.isInteger(topN)||topN<1||topN>50)){setError('Choose a whole number of results from 1 to 50.');return;}
     analysisController.current?.abort();
@@ -162,7 +181,7 @@ const RecommendationsWorkspace = () => {
     } finally {
       if (generation === analysisGeneration.current) setLoading(false);
     }
-  }, [activeService, inputValue, topN, objectContext, recommendationReady, activeServiceReadiness]);
+  }, [activeService, inputValue, topN, objectContext, recommendationReady, activeServiceReadiness, inputValid]);
 
   useEffect(() => () => { analysisGeneration.current += 1; }, []);
 
@@ -186,25 +205,28 @@ const RecommendationsWorkspace = () => {
   };
   return <section className="recommendation-cockpit" aria-label="Graph recommendations">
     <header className="recommendation-heading"><div><span className="recommendation-eyebrow">Decision support</span><h2>Recommendations</h2><p>Choose an analysis, identify a graph object, then review the evidence before making a decision.</p></div><button type="button" disabled={healthLoading} onClick={()=>setHealthRevision(value=>value+1)}>{healthLoading?'Checking readiness…':'Retry recommendation readiness'}</button></header>
-    <div className="recommendation-readiness" role="status"><span className={`recommendation-readiness__badge ${recommendationReady?'is-ready':''}`}>{healthLoading?'Checking':recommendationReady?'Graph ready':'Needs attention'}</span><span>{readinessMessage}</span>{!healthLoading&&!recommendationReady&&<a href="#/import">Review source imports</a>}</div>
+    <div className="recommendation-readiness" role="status"><span className={`recommendation-readiness__badge ${recommendationReady?'is-ready':''}`}>{healthLoading?'Checking':recommendationReady?'Graph data available':'Needs attention'}</span><span>{readinessMessage}</span>{!healthLoading&&!recommendationReady&&<a href="#/import">Review source imports</a>}</div>
     <div className="recommendation-services" role="tablist" aria-label="Recommendation analyses">{services.map((service,index)=><button key={service.id} type="button" role="tab" id={`${tabId}-${service.id}`} aria-controls={`${tabId}-analysis`} aria-selected={activeService===service.id} tabIndex={activeService===service.id?0:-1} ref={node=>{serviceTabs.current[index]=node;}} onClick={()=>handleSelect(service.id)} onKeyDown={event=>navigate(event,index)}><service.Icon size={17} aria-hidden="true"/>{service.label}</button>)}</div>
     <section role="tabpanel" id={`${tabId}-analysis`} aria-labelledby={`${tabId}-${activeService}`} tabIndex={0}>
       <p className="recommendation-purpose">{activeService==='change-impact'?'Review dependency paths across parts, assemblies, requirements and processes, including configuration and effectivity questions.':activeService==='similar-parts'?'Compare typed parts using engineering properties, units and name similarity. Inspect conflicts and missing evidence before deciding on reuse.':'Inspect process links and operational context around a part or assembly.'}</p>
       {recommendationReady&&(activeServiceReadiness===false||activeServiceReadiness?.ready===false)&&<p role="status" className="recommendation-notice">{activeServiceReadiness?.message||'This analysis is not ready. Review source graph data and retry readiness.'}</p>}
       <div className="recommendation-mode"><label>Analysis method<select value={executionMode} onChange={event=>{analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setExecutionMode(event.target.value);}}><option value="agent">Agent investigation + Semantica review</option><option value="graph">Direct graph analysis</option></select></label><p>{executionMode==='agent'?'The existing Graph Analyst plans read steps, retains observations and explains graph evidence with the shared decision-policy assessment.':'Run the bounded graph query directly, with the same shared decision-policy assessment.'}</p></div>
       <form className="recommendation-query" onSubmit={event=>{event.preventDefault();if(executionMode==='graph')handleAnalyse();}}>
-        <label>{activeService==='change-impact'?'Changed item':activeService==='similar-parts'?'Reference part':'Part or assembly'}<input value={inputValue} onChange={event=>{setObjectContext({});setInputValue(event.target.value);}} placeholder="Enter an existing graph object name" autoComplete="off"/></label>
+        <label>{activeService==='change-impact'?'Changed item':activeService==='similar-parts'?'Reference part':'Part or assembly'}<input value={inputValue} maxLength={500} onChange={event=>{setObjectContext({});setInputValue(event.target.value);}} placeholder="Enter an existing graph object name" autoComplete="off"/></label>
         {activeService==='similar-parts'&&<label className="recommendation-query__limit">Results<input type="number" min="1" max="50" step="1" value={topN} onChange={event=>setTopN(event.target.value===''?'':Number(event.target.value))}/></label>}
-        {executionMode==='graph'&&<button type="submit" disabled={loading||!inputValue.trim()||!canAnalyse}>{loading?'Analysing…':'Analyse'}</button>}
+        {executionMode==='graph'&&<button type="submit" disabled={loading||!inputValid||!limitValid||!canAnalyse}>{loading?'Analysing…':'Analyse'}</button>}
       </form>
+      {!limitValid&&<p role="alert">Choose a whole number of results from 1 to 50.</p>}
+      {inputValue.trim().length>500&&<p role="alert">Enter an object name of at most 500 characters.</p>}
       {executionMode==='agent'&&<>
         {agentError&&<p role="alert">{agentError}</p>}
         {agentTools&&(!agentContract||!agentTools.has(recommendationTools[activeService]))&&<p role="status">Agent investigation is awaiting the updated PMem backend. Restart PMem, then retry readiness. Direct graph analysis remains available when graph context is ready.</p>}
-        <ReadGoalPanel agent="graph-analyst" task={inputValue.trim()?recommendationTask(goalContext):''} context={goalContext} compact startLabel="Analyse with agent" disabled={!canAnalyse||!inputValue.trim()||!Number.isInteger(topN)||topN<1||topN>50||!agentContract||!agentTools?.has(recommendationTools[activeService])} onRunChange={setAgentRun}/>
+        <ReadGoalPanel agent="graph-analyst" task={inputValue.trim()?recommendationTask(goalContext):''} context={goalContext} compact startLabel="Analyse with agent" disabled={!canAnalyse||!inputValid||!limitValid||!agentContract||!agentTools?.has(recommendationTools[activeService])} onRunChange={setAgentRun} onStateChange={setAgentStatus}/>
+        {agentRun?.status==='completed'&&!agentEvidence&&<p role="alert">The investigation completed without usable evidence for this selection. Review the retained task; no recommendation result is established.</p>}
       </>}
-      {error&&<div role="alert" className="recommendation-notice recommendation-notice--error">{error}</div>}
+      {error&&<div role="alert" className="recommendation-notice recommendation-notice--error"><p>{error}</p><a href="#/graph">Select a business object in Graph Explorer</a><p>Choose the object's identity and ontology scope before retrying this analysis.</p></div>}
       {loading&&<p role="status">Reading graph context for {inputValue}. Changing the object or analysis cancels this request.</p>}
-      {!result&&!loading&&!error&&!(executionMode==='agent'&&agentRun)&&<div className="recommendation-empty"><strong>{inputValue?'Ready to analyse':'Start with a graph object'}</strong><p>{inputValue?'Run the analysis to inspect matching evidence.':'Copy an object name from Graph Explorer, or open a recommendation from its object actions.'}</p><a href="#/graph">Find an object in Graph Explorer</a></div>}
+      {!result&&!loading&&!error&&canAnalyse&&inputValid&&limitValid&&!(executionMode==='agent'&&(agentRun||agentStatus.error||agentStatus.busy||agentStatus.pending||!agentContract||!agentTools?.has(recommendationTools[activeService])))&&<div className="recommendation-empty"><strong>Ready to analyse</strong><p>Run the analysis to inspect matching evidence.</p><a href="#/graph">Find an object in Graph Explorer</a></div>}
       {result&&<section className="recommendation-results" aria-label="Recommendation evidence"><div className="recommendation-result-heading"><h3>{selectedService.label} results</h3><span>Object: {inputValue}</span></div><AIInsightBanner service={activeService} data={result}/><details className="recommendation-method"><summary>Analysis method & scope</summary><p>{result.traceability || result.ranking_scope || 'Graph-derived read-only analysis. The response does not record additional method or coverage details.'}</p><p>Scores are heuristics, not calibrated confidence. The graph tool returns evidence and a shared decision-policy assessment. In agent mode, the existing Graph Analyst plans the investigation and cites the retained tool observation.</p></details><DecisionPolicyAssessment report={result.decision_policy}/>
         {activeService==='change-impact'&&<ChangeImpactResult data={result}/>}
         {activeService==='similar-parts'&&<SimilarPartsResult data={result}/>}

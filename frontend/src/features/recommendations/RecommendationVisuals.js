@@ -109,7 +109,7 @@ const ProcessFlowTimeline = ({ data }) => {
 
   return (
     <div style={{ ...CARD, padding: '12px' }}>
-      <SectionHeader icon={BarChart2} label="Process Flow Timeline" color={C.primary} />
+      <SectionHeader icon={BarChart2} label="Process links by category" color={C.primary} />
       <svg ref={svgRef} style={{ width: '100%', minHeight: '200px' }} />
     </div>
   );

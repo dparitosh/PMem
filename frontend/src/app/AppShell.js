@@ -63,6 +63,7 @@ export default function AppShell({
       if (!controller.signal.aborted) {
         setAccessMessage(result.message);
         setAccessState(result.status);
+        if(result.status==='verified')window.dispatchEvent(new Event('depo:access-verified'));
       }
       if (result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
     } catch { if (!controller.signal.aborted) { setAccessState('unverified'); setAccessMessage('Access could not be verified. Try again.'); } }
@@ -84,11 +85,12 @@ export default function AppShell({
     return () => window.removeEventListener('depo:access-rejected', rejected);
   }, []);
   useEffect(() => {
-    const changed = event => { setAccessState('unverified'); setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
+    const changed = event => { accessRequest.current?.abort();accessRequest.current=null;setVerifyingAccess(false);setAccessState('unverified'); setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);
     window.addEventListener('depo:session-expired', changed);
-    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); window.removeEventListener('depo:session-expired', changed); };
+    window.addEventListener('depo:session-replaced', changed);
+    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); window.removeEventListener('depo:session-expired', changed);window.removeEventListener('depo:session-replaced', changed); };
   }, [onServiceAuthChange]);
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';

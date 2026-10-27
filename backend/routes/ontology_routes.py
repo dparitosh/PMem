@@ -792,7 +792,7 @@ async def get_generic_mappings(
               OR (r.predicate IN $alignment_predicates
                   AND coalesce(b.ontology_id, b.source_ontology) = $ontology_id)
             )
-              AND (src_fmt = '' OR src_fmt = $source_format OR r.predicate IN $alignment_predicates)
+              AND ($source_format = 'all' OR src_fmt = '' OR src_fmt = $source_format OR r.predicate IN $alignment_predicates)
             RETURN DISTINCT
               coalesce(a.iri, a.uri, a.name, elementId(a)) AS source_term,
               coalesce(b.iri, b.uri, b.name, elementId(b)) AS target_term,

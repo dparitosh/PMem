@@ -1,12 +1,47 @@
 import { setCredentialProfile, getCredentialProfile } from '../services/serviceAuth';
 import React from 'react';
 import { vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor,act } from '@testing-library/react';
 import { TextDecoder } from 'util';
 import Chatbot from './Chatbot';
-import { setClientSessionId } from '../services/apiClient';
+import { setClientSessionId,getClientSessionId } from '../services/apiClient';
 
 global.TextDecoder = TextDecoder;
+
+test('reconnect releases a stalled chat and ignores its late session-retry response',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','old-key');
+ let resolveRetry,posts=0;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,headers:{get:()=>null},json:async()=>({turns:[],queries:[]})});
+  posts+=1;
+  if(posts===1)return Promise.resolve({ok:false,status:403,headers:{get:()=> 'retry-session'}});
+  return new Promise(resolve=>{resolveRetry=resolve;});
+ });
+ render(<Chatbot/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Find bearing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(posts).toBe(2));
+ setCredentialProfile('GRAPH_READ_TOKEN','new-key');
+ fireEvent(window,new Event('depo:session-replaced'));
+ const current=getClientSessionId();
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Find current part'}});
+ expect(screen.getByRole('button',{name:'Send chat question'})).toBeEnabled();
+ await act(async()=>{resolveRetry({ok:true,status:200,headers:{get:()=> 'late-old-session'}});});
+ await waitFor(()=>expect(getClientSessionId()).toBe(current));
+ expect(getClientSessionId()).not.toBe('late-old-session');
+});
+
+test('late sample queries cannot adopt a conversation from previous credentials',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','samples-old');
+ let resolveSamples;
+ global.fetch=vi.fn(()=>new Promise(resolve=>{resolveSamples=resolve;}));
+ render(<Chatbot/>);
+ setCredentialProfile('GRAPH_READ_TOKEN','samples-new');
+ fireEvent(window,new Event('depo:credentials-changed'));
+ await act(async()=>{resolveSamples({ok:true,headers:{get:()=> 'old-sample-session'},json:async()=>({queries:['Old identity prompt']})});});
+ expect(getClientSessionId()).toBeNull();
+ expect(screen.queryByText('Old identity prompt')).toBeNull();
+});
 
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 

@@ -1,4 +1,5 @@
 import { applyAgenticAuth, agenticAPI, agenticClient } from './agenticApi';
+vi.unmock('axios');
 import { clearServiceAuthToken, setServiceAuthToken } from './serviceAuth';
 import { buildSemanticServiceUrl } from '../config';
 
@@ -32,6 +33,27 @@ test('the app token is used when a request has no scoped token', () => {
   setServiceAuthToken('app-token');
   const configured = applyAgenticAuth({ headers: {}, method: 'get', url: buildSemanticServiceUrl('agentic', '/api/v1/agents') });
   expect(configured.headers.Authorization).toBe('Bearer app-token');
+});
+
+test('reconnect aborts agent requests and ignores old success and rejection responses',async()=>{
+ setServiceAuthToken('old-key');
+ const request=applyAgenticAuth({headers:{},method:'post',url:buildSemanticServiceUrl('agentic','/api/v1/runs')});
+ window.dispatchEvent(new Event('depo:session-replaced'));
+ expect(request.signal.aborted).toBe(true);
+ const receive=agenticClient.interceptors.response.handlers[0];
+ const update=jest.fn(),rejected=jest.fn();
+ window.addEventListener('depo:page-task-updated',update);window.addEventListener('depo:access-rejected',rejected);
+ try{
+  await expect(receive.fulfilled({config:request,data:{run_id:'old-run'}})).rejects.toThrow(/previous credentials/);
+  await expect(receive.rejected({config:request,response:{status:403,data:{detail:'Required API key is missing or invalid'}}})).rejects.toThrow(/previous agent request/);
+  expect(update).not.toHaveBeenCalled();expect(rejected).not.toHaveBeenCalled();
+ }finally{window.removeEventListener('depo:page-task-updated',update);window.removeEventListener('depo:access-rejected',rejected);}
+});
+
+test('caller cancellation is preserved by the shared agent request guard',()=>{
+ const controller=new AbortController();
+ const request=applyAgenticAuth({headers:{},method:'get',url:buildSemanticServiceUrl('agentic','/api/v1/agents'),signal:controller.signal});
+ controller.abort();expect(request.signal.aborted).toBe(true);
 });
 
 test('agent execution uses supported route, explicit tool and approval', async () => {

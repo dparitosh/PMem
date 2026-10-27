@@ -10,3 +10,9 @@ test('only selected, cited, untruncated server evidence is displayed',()=>{
  expect(recommendationGoalEvidence({...run,result:{summary:'Uncited claim'}},context)).toBeNull();
  expect(recommendationGoalEvidence({...run,observations:[{...run.observations[0],result:{truncated:true,decision_policy:{status:'passed'}}}]},context)).toBeNull();
 });
+
+test('invalid observation envelopes cannot crash or masquerade as completed evidence',()=>{
+ for(const observations of [{},'wrong',[null],[{...run.observations[0],result:{decision_policy:{status:'passed'},impacted_parts:[null]}}]]){
+  expect(recommendationGoalEvidence({...run,observations},context)).toBeNull();
+ }
+});

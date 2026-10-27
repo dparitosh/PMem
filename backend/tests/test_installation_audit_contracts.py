@@ -7,6 +7,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_offline_lifecycle_fixture_matches_current_prerequisites():
+    shell = shutil.which('powershell.exe')
+    if not shell:
+        pytest.skip('Windows PowerShell required')
+    result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                             str(ROOT/'infra/deployment/test-depo-lifecycle.ps1')],
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'PASS: lifecycle automatic sequence' in result.stdout
+
+
 @pytest.mark.parametrize('missing', ['Setup-DEPO.cmd', 'infra/windows/setup-depo.ps1', 'infra/windows/install-checkpoints.ps1', 'backend/depo_platform/import_cleanup.py'])
 def test_release_gate_rejects_missing_guided_entrypoint(tmp_path, missing):
     shell = shutil.which('powershell.exe')

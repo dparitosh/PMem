@@ -94,6 +94,10 @@ function restoreBrowserSession() {
 }
 export function handleSessionRejection(status, authorization, detail = '') {
   const value = String(authorization || '');
+  const presented=value.replace(/^Bearer\s+/i,'');
+  // A delayed rejection from an old delegation must not invalidate the new
+  // connection or display a global reconnect prompt for its owner.
+  if(presented.startsWith('depo_session_')&&browserSession?.token!==presented)return;
   const credentialRejected = status === 401 || (status === 403 &&
     /required api key is missing or invalid|invalid or revoked|^revoked [A-Z_]+|browser session|administrator key changed|graph read (?:authorization|key)|valid service write token/i.test(String(detail)));
   if (credentialRejected && typeof window !== 'undefined') window.dispatchEvent(new Event('depo:access-rejected'));

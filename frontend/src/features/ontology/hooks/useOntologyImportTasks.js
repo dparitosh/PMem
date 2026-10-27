@@ -21,7 +21,7 @@ export default function useOntologyImportTasks() {
       setError(null);
       refresh();
     };
-    const sessions = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired', 'dt-schema-cleaned'];
+    const sessions = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced', 'dt-schema-cleaned'];
     sessions.forEach(event => window.addEventListener(event, reset));
     window.addEventListener('depo:page-task-updated', refresh);
     return () => {
@@ -36,7 +36,8 @@ export default function useOntologyImportTasks() {
     setError(null);
     API_METHODS.import.getTasks({ signal: controller.signal }).then(response => {
       if (controller.signal.aborted) return;
-      const tasks = response.data?.tasks || [];
+      const tasks = response.data?.tasks;
+      if(!Array.isArray(tasks)||tasks.some(task=>!task||typeof task.task_id!=='string'))throw new Error('Import task registry returned an invalid response. Refresh after checking the ingestion service.');
       setImportTasks(tasks);
       setSelectedImportTaskId(current => tasks.some(task => task.task_id === current) ? current : tasks[0]?.task_id || '');
     }).catch(failure => {
@@ -60,6 +61,8 @@ export default function useOntologyImportTasks() {
         revision,
         details: status.status === 'fulfilled' ? status.value?.data || null : null,
         preview: preview.status === 'fulfilled' ? preview.value?.data || null : null,
+        detailsError: status.status === 'rejected' ? apiErrorMessage(status.reason, 'Import status is unavailable.') : null,
+        previewError: preview.status === 'rejected' ? apiErrorMessage(preview.reason, 'Import preview is unavailable.') : null,
       });
     });
     return () => controller.abort();
@@ -73,5 +76,7 @@ export default function useOntologyImportTasks() {
     refreshImportTasks: () => setRevision(value => value + 1),
     selectedImportTaskDetails: current?.details || null,
     selectedImportTaskPreview: current?.preview || null,
+    selectedImportTaskLoading: Boolean(selectedImportTaskId && !current),
+    selectedImportTaskError: [current?.detailsError, current?.previewError].filter(Boolean).join(' '),
   };
 }

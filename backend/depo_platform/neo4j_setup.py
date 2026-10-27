@@ -18,6 +18,7 @@ REQUIRED_INDEXES = {
     'idx_depo_resource_search_iri': ('OntologyResource', ['search_iri']),
     'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
     'idx_depo_ontologyresource_scope': ('OntologyResource', ['ontology_id']),
+    'idx_depo_ontologyresource_source_scope': ('OntologyResource', ['source_ontology']),
     'idx_depo_context_evidence': (('GraphChunk', 'DatasheetChunk'), ['content']),
 }
 

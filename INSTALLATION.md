@@ -106,81 +106,7 @@ Every guided action starts PowerShell with process-scoped ExecutionPolicy Bypass
 
 ### Public access through APIM or a reverse proxy
 
-Configure this before exposing a workstation installation to remote browsers. A public frontend URL does not automatically provide API routes. `DEPO_ROUTING_MODE=local` sends browser requests directly to the configured service host; a private address such as `10.0.2.16` will time out for clients without network access to it.
-
-1. Identify the **API gateway base URL**, including its configured base path. Obtain this from the APIM/reverse-proxy administrator; the developer portal or frontend URL can be different.
-2. Back up root `.env.local`, then edit these existing settings in place (do not append conflicting duplicates):
-
-   ```dotenv
-   DEPO_ROUTING_MODE=gateway
-   DEPO_API_GATEWAY_URL=https://api.example.com/depo
-   ```
-
-   Keep `DEPO_SERVICE_HOST` as the backend listening address appropriate for the server. `DEPO_LOCAL_SERVICE_HOST` is not used for gateway browser routing. Keep existing authentication and credentials; routing changes do not replace authentication. Never put subscription keys or service keys in `VITE_*` settings.
-3. Configure every public service prefix below. The gateway must remove the service prefix and its own base path while retaining the remaining request path, query, method and body. For example, `/depo/ontology/api/v1/ontologies` forwards to `http://10.0.2.16:8011/api/v1/ontologies`.
-
-   | Default public suffix after gateway base | Private service port |
-   | --- | --- |
-   | `/qif` | 8010 |
-   | `/ontology` | 8011 |
-   | `/agentic` | 8012 |
-   | `/graph` | 8013 |
-   | `/ingestion` | 8014 |
-   | `/oslc` | 8015 |
-   | `/catalog` | 8016 |
-   | `/data-products` | 8017 |
-   | `/ceim` | 8018 |
-   | `/data-pipeline` | 8019 |
-
-   The private host is deployment-specific. Gateway-to-backend connectivity must work, and streaming chat routes must support streaming responses. If APIM uses different suffixes, set the corresponding `DEPO_GATEWAY_<SERVICE>_PATH` overrides documented in the operator reference. Do not expose private backend ports to browsers as a workaround.
-4. Include the exact frontend origin, including scheme and port, in root `ALLOWED_ORIGINS` and in the gateway CORS policy when cross-origin access is used. Allow the authentication headers required by your configured policy. Use HTTPS for customer access; an HTTPS frontend cannot call HTTP APIs.
-5. From the release root, validate routes and restart the application:
-
-   ```powershell
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-gateway.ps1 -EnvFile .\.env.local
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
-   ```
-
-   The diagnostic checks gateway health/readiness, API contracts and CORS. Entra deployments must supply a valid `-AccessToken` as a SecureString; see the operator reference. The frontend launcher regenerates `frontend/dist/depo-runtime-config.js` from root routing settings. Older releases without runtime routing support require a matching source update and frontend rebuild first.
-6. Hard-refresh the browser, reconnect using the configured authentication flow, and inspect DevTools → Network. Ontology and ingestion requests must target the public gateway prefixes, never `10.0.2.16:8011` or other private service ports. Verify ontology selection, import status and chat through the public URL. A server-side diagnostic alone does not establish remote browser connectivity.
-
-**Example for `http://azdtlabs.southindia.cloudapp.azure.com:2200/`:** use that address as `DEPO_API_GATEWAY_URL` only if the listener on port 2200 actually proxies all service prefixes above. Serving PMem HTML on that port is insufficient; the PMem frontend launcher does not automatically create these gateway routes. If APIM is hosted elsewhere or under a base path, use that API gateway address instead. The actual proxy configuration for this host must be verified by its operator.
-
-#### Worked example: Azure VM public access on port 2200
-
-This example assumes a reverse proxy on `azdtlabs.southindia.cloudapp.azure.com:2200` serves the frontend and forwards API prefixes to the VM at `10.0.2.16`. It is a configuration example, not confirmation that your current listener has these routes. For a separate Azure APIM gateway, replace the API base URL with its actual gateway address and base path.
-
-**Step 1 — Edit the deployed root `.env.local`.** For an installation at `E:\App\PMem`, open `E:\App\PMem\.env.local` and update the existing routing entries:
-
-```dotenv
-DEPO_ROUTING_MODE=gateway
-DEPO_API_GATEWAY_URL=http://azdtlabs.southindia.cloudapp.azure.com:2200
-DEPO_SERVICE_HOST=10.0.2.16
-ALLOWED_ORIGINS=http://azdtlabs.southindia.cloudapp.azure.com:2200,http://127.0.0.1:3000,http://localhost:3000
-```
-
-Retain any other origins your deployment requires and all existing credential/database settings. The HTTP address matches the supplied deployment for diagnosis; use HTTPS and update both URLs/origins before customer rollout. Do not add `/api/v1` to the gateway base URL.
-
-**Step 2 — Have the proxy operator configure and verify the routes.** The same host must serve frontend files at `/` and forward each service prefix from the preceding table. These examples show the required path transformation:
-
-| Browser request | Forwarded backend request |
-| --- | --- |
-| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ontology/api/v1/ontologies?limit=200&offset=0` | `http://10.0.2.16:8011/api/v1/ontologies?limit=200&offset=0` |
-| `http://azdtlabs.southindia.cloudapp.azure.com:2200/agentic/api/v1/agents` | `http://10.0.2.16:8012/api/v1/agents` |
-| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ingestion/api/v1/engineering-workflows` | `http://10.0.2.16:8014/api/v1/engineering-workflows` |
-| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ontology/readyz` | `http://10.0.2.16:8011/readyz` |
-
-A request to an API route must reach the service, not fall back to the frontend `index.html`. An authentication error is different from a connection timeout; keep the configured authentication policy in place.
-
-**Step 3 — Run the diagnostic and restart from PowerShell on the server.** Replace the installation root if necessary. Run each command in order and resolve diagnostic failures before continuing:
-
-```powershell
-Set-Location -LiteralPath 'E:\App\PMem'
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-gateway.ps1 -EnvFile .\.env.local
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
-```
-
-**Step 4 — Verify from the remote user's browser.** Open `http://azdtlabs.southindia.cloudapp.azure.com:2200/`, press Ctrl+F5 and reconnect access. In DevTools → Network, confirm ontology requests use `/ontology/api/v1/ontologies` on the public host and return JSON. Confirm agent and import requests use `/agentic/` and `/ingestion/`. If requests still target `10.0.2.16:8011`, check that the public proxy serves the updated frontend and `depo-runtime-config.js`; a stale public deployment/cache can retain old routing even when the private frontend was restarted.
+Follow the [ordered gateway configuration and application-VM examples](docs/installation/OPERATOR_REFERENCE.md#public-access-through-apim-or-a-reverse-proxy). They separate public browser routing from private service addresses and include verification before restart.
 
 ### 2.4 Follow the stages and expected results
 
@@ -252,6 +178,10 @@ Use `-InstallDependencies` on the second command when dependency files changed. 
 
 After success, press Ctrl+F5, choose **Revalidate access**, then check Import, Ontology Junction's Semantic Bridge, all four Graph Explorer views, Knowledge Companion and Recommendations. Confirm pending publication is distinguished from completed validation. Review a retained workflow before retrying an uncertain write. Customer acceptance requires these checks against the customer's URLs, credentials and data; an offline regression pass does not replace them.
 
+### Customer browser errors and release acceptance
+
+Use the [browser error and frontend-rebuild procedure](docs/installation/OPERATOR_REFERENCE.md#customer-browser-errors-after-an-update) and the [page reliability and authorization acceptance checks](docs/installation/OPERATOR_REFERENCE.md#deploying-the-page-reliability-and-authorization-fixes). Deploy the complete matching backend and frontend; do not disable authentication or clear workflow history to repair access.
+
 For dependency corruption requiring a forced reinstall:
 
 ```powershell
@@ -262,35 +192,13 @@ This preserves configuration and data. Review migration history and backups afte
 
 ## 6. Resolve errors
 
-### Large ontology configuration
+### Schema upload configuration
 
-Generated RDF can be much larger than its source. `ONTOLOGY_MAX_UPLOAD_BYTES` defaults to 25 MiB and controls downstream artifact registration/publication as well as uploads; `ENGINEERING_CONVERSION_MAX_RESULT_BYTES` defaults to 256 MiB and controls the worker's complete generated result. Raising only the latter does not raise the former. Configure root `.env.local` consistently for ingestion, ontology and graph processes, then rerun setup to restart them. A root-plus-dependency XSD bundle still has a separate 25 MiB ceiling. Merge source limits apply to the combined inputs. Do not equate these byte limits with supported server memory capacity. See the [large-ontology audit](docs/audits/extra-large-ontologies-2026-10-21.md) for measured smoke tests and unresolved scale risks.
-
-### XSD schemas with remote dependencies
-
-An HTTP(S) `schemaLocation` no longer fails merely because it is a URL. Import resolves a matching uploaded companion first (filename and namespace), otherwise retrieves the remote schema on the server, resolves its nested references and validates the complete local schema set before conversion. Multiple selected XSD sources remain one schema-set registration. XML namespace prefixes used in type references are preserved.
-
-Example root (replace the example URL with your supplier's schema URL):
-
-```xml
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:product">
-  <xs:import namespace="urn:common"
-             schemaLocation="https://schemas.example.com/product/common.xsd"/>
-</xs:schema>
-```
-
-If internet access is unavailable, select the schema folder containing `common.xsd` and its dependencies with the root. Customer input files are not edited. Engineering conversion retains the original root when rewritten, plus the resolved dependency bytes used by conversion and analytics. Retrying from those retained local bytes does not require another download.
-
-Optional settings in the **root `.env.local`**:
-
-```dotenv
-XSD_REMOTE_SCHEMA_ENABLED=true
-XSD_REMOTE_SCHEMA_HOSTS=www.w3.org,standards.iso.org
-```
-
-The enable flag defaults to `true`; the host list is optional and, when provided, applies to every redirect and dependency. Set the flag to `false` for offline installations and supply companions. Requests use public addresses on ports 80/443, with no PMem keys or browser credentials. Private/loopback addresses, unsafe XML/DTD declarations, namespace mismatches and ambiguous mirrors are rejected. Limits are 64 files including the root, 25 MiB combined (or the smaller configured upload limit), 5 MiB per downloaded file, three redirects and a 60-second resolution budget with bounded socket waits. Customer DNS resolution remains subject to the operating system resolver. Unreachable or invalid schemas require a local companion; PMem must not silently publish an incomplete ontology.
+For generated-output limits, see [large ontology configuration](docs/installation/OPERATOR_REFERENCE.md#large-ontology-configuration). For supplier schema URLs, offline companions, examples and network limits, see [XSD schemas with remote dependencies](docs/installation/OPERATOR_REFERENCE.md#xsd-schemas-with-remote-dependencies). Supply local companions when remote access is unavailable; do not publish an incomplete schema set.
 
 ### Installation and service error recovery
+
+For schema update failures, follow [PostgreSQL migration error records](docs/installation/OPERATOR_REFERENCE.md#postgresql-migration-error-records). Logs retain the migration filename, SQLSTATE and available database-object identifiers; PowerShell errors retain their original source location and stack.
 
 **Import task snapshot reports `WinError 5` / access denied:** this release uses unique temporary files, OS-managed task locks and bounded sharing retries. It retains the last committed snapshot and its matching parsed rows if replacement fails. Persistent failures are reported as a storage warning; a failure during graph loading leaves the outcome requiring review rather than automatically offering a duplicate load. Existing task snapshots and legacy parsed-row pointers remain readable; no history reset is required.
 
@@ -339,6 +247,10 @@ Build releases from the reviewed commit and validate the actual artifact. Before
 
 ## Feature-specific verification
 
+If the frontend is ready but **Existing ontology upgrade review** reports `WinError 10061`, the ontology inventory connection was refused. Frontend readiness does not establish ontology service availability. Verify that `ONTOLOGY_SERVICE_URL` in the selected `.env.local` points to the running service listener. For a backend bound specifically to `10.0.2.16`, the direct peer URL is `http://10.0.2.16:8011/api/v1`; use that example only when it matches the actual backend binding. Keep the configured gateway URL when routing through a gateway. Inspect `logs/windows-services/ontology.err.log` and `ontology.out.log`, restore the service or correct the peer URL, then rerun the same repository-root updater. Existing publications and the previous review plan are retained. The updated reviewer logs its chosen endpoint and retries transient inventory reads within a bounded budget; registration writes are not automatically retried.
+
 For engineering similarity, change-dependency paths and decision-policy examples, follow the [engineering recommendation review](docs/recommendation-engineering-review.md). The complete release must include `backend/graph_service/recommendation_engine.py`, `backend/graph_service/engineering_comparison.py` and `backend/Services/recommendation_compat.py`; the normal updater verifies them and rebuilds the customer UI. Domain policies are reviewed configuration and are not installed automatically. Direct graph analysis can run while the configured language model is unavailable; agent investigation requires the model.
+
+The [Recommendations customer audit](docs/recommendations-customer-audit.md) records input, browser, session, agent, evidence, process-scope and decision-policy checks plus the remaining customer acceptance procedure. Deploy the matching frontend and backend together; Process Context now applies scope before limiting neighbors and reports bounded coverage. A passed local suite does not establish customer API authorization or model availability.
 
 After installation, use the [operator reference](docs/installation/OPERATOR_REFERENCE.md) for ontology governance, microservice checks, credentials, browser access, XMI import and PLM Companion acceptance. The [PLM response contract](docs/PLM_COMPANION_RESPONSE_CONTRACT.md) contains the implemented system instructions and evidence rules. For the optional separate AOI provider, follow [AOI adapter configuration from PMem](docs/installation/AOI_GATEWAY.md).

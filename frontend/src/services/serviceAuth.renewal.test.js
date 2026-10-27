@@ -150,3 +150,14 @@ test('generic credential rejection clears only the presented delegated session f
   expect(getBrowserSessionStatus()).toBeNull();
   expect(wasBrowserSessionExpired()).toBe(true);
 });
+
+test('a delayed rejection from an old delegation cannot reject newly connected access',()=>{
+ connect();
+ installBrowserSession({token:'depo_session_new',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()});
+ const rejected=vi.fn();window.addEventListener('depo:access-rejected',rejected);
+ try{
+  handleSessionRejection(403,'Bearer depo_session_test','Required API key is missing or invalid');
+  expect(rejected).not.toHaveBeenCalled();
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_new');
+ }finally{window.removeEventListener('depo:access-rejected',rejected);}
+});

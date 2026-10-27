@@ -8,6 +8,12 @@ export default function useRuleValidation(expression, ontologyId, view) {
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState(null);
  useEffect(()=>{
+  const reset=()=>{request.current?.abort();request.current=null;setValidation(null);setBusy(false);setError(null);};
+  const events=['depo:credentials-changed','depo:credentials-cleared','depo:session-expired','depo:session-replaced'];
+  events.forEach(event=>window.addEventListener(event,reset));
+  return()=>events.forEach(event=>window.removeEventListener(event,reset));
+ },[]);
+ useEffect(()=>{
   request.current?.abort(); request.current=null;
   setValidation(null);setBusy(false);setError(null);
   return ()=>{request.current?.abort();request.current=null;};

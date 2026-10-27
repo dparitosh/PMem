@@ -208,14 +208,16 @@ async def run_governed_import(
 
 
 @router.get("/import/tasks", summary="List retained import tasks")
-def import_tasks() -> dict:
+def import_tasks(request: Request = None) -> dict:
     """Expose persisted task history used by Import and Ontology Junction."""
     try:
         from backend.Services.unified_data_import import UnifiedDataImportService
         tasks = UnifiedDataImportService.list_tasks()
         return {"total_tasks": len(tasks), "tasks": tasks}
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Import task registry is unavailable: {type(exc).__name__}") from exc
+        import logging
+        logging.getLogger(__name__).exception('Import task registry listing failed; request_id=%s', getattr(getattr(request,'state',None),'request_id',''))
+        raise HTTPException(status_code=503, detail="Imported instance history could not be loaded. Check the ingestion service log using the request ID, then refresh.") from exc
 
 
 @router.post("/schema-conversions/inspect", summary="Convert EXPRESS, STEP/STP/STPX, XMI, or XSD to a normalized Turtle contract")

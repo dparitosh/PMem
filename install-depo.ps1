@@ -80,6 +80,9 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
 . (Join-Path $windows 'runtime-config.ps1')
 Write-Host "Deployment environment file: $envPath"
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
+if ($ReplaceExistingCredentials -and ($settings['AUTH_MODE'] -ne 'token' -or $settings['DEPO_CREDENTIAL_STORE'] -ne 'postgres')) {
+  throw '-ReplaceExistingCredentials requires AUTH_MODE=token and DEPO_CREDENTIAL_STORE=postgres.'
+}
 . (Join-Path $windows 'deployment-process-guards.ps1')
 Invoke-DepoStage 'Stopped backend verification (before installation or migrations)' {
   Assert-DepoWindowsManagementAccess
@@ -178,8 +181,6 @@ if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -
   Invoke-DepoStage $credentialStage {
     & (Join-Path $windows 'apply-depo-service-credentials.ps1') -EnvFile $envPath -ReplaceExisting:$ReplaceExistingCredentials
   }
-} elseif ($ReplaceExistingCredentials) {
-  throw '-ReplaceExistingCredentials requires AUTH_MODE=token and DEPO_CREDENTIAL_STORE=postgres.'
 }
 Invoke-DepoStage 'Neo4j schema provisioning and validation' {
   # The schema file is idempotent. Provision it before the read-only release
@@ -238,13 +239,14 @@ if (-not $SkipFrontend) {
   Invoke-DepoStage 'Frontend startup and readiness' {
     & (Join-Path $windows 'start-depo-frontend.ps1') -EnvFile $envPath
   }
-  Write-Host 'Installation complete. Open the frontend URL reported above. Rerun the same installer after a failure; verified dependencies are reused.'
+  Write-Host 'Frontend is ready. Remaining installation and upgrade-review stages will run next.'
 
 }
 
 
 if ($script:depoDetectedMode -eq 'existing') {
   Invoke-DepoStage 'Existing ontology upgrade review' {
+    Import-DepoEnvironment -Root $root -EnvFile $envPath
     Push-Location $root
     try {
       $arguments=@('-m','backend.depo_platform.ontology_upgrade','--root',$root)

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from backend.depo_platform.request_bodies import InferenceBody
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from backend.depo_platform.authorization import graph_read_identity
 import os
 from backend.depo_platform.graph_access import GraphDatabase
 from fastapi.responses import Response
@@ -13,7 +14,7 @@ from backend.ontology_service.domain.reasoning import OntologyReasoningService
 from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 from backend.Services.ontology_upload_manager import OntologyUploadManager
 
-router = APIRouter(prefix="/ontology", tags=["ontology-browser"])
+router = APIRouter(prefix="/ontology", tags=["ontology-browser"], dependencies=[Depends(graph_read_identity)])
 
 
 @router.get("/{ontology_id}/export")

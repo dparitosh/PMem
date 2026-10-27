@@ -25,6 +25,13 @@ function ConvertTo-DepoAuditMessage([string]$Message, [string]$Root='', [string]
   $Message=[regex]::Replace($Message,'(?i)(Bearer\s+)[A-Za-z0-9._~-]+','$1[REDACTED]')
   return $Message
 }
+function Format-DepoAuditError([Management.Automation.ErrorRecord]$Record) {
+  $details = @($Record.ToString())
+  if ($Record.FullyQualifiedErrorId) { $details += 'Error ID: ' + $Record.FullyQualifiedErrorId }
+  if ($Record.InvocationInfo.PositionMessage) { $details += $Record.InvocationInfo.PositionMessage }
+  if ($Record.ScriptStackTrace) { $details += $Record.ScriptStackTrace }
+  return ($details -join [Environment]::NewLine)
+}
 function Invoke-DepoLoggedAction {
   param([string]$Root,[string]$Name,[Alias("Action")][scriptblock]$Body,[string]$AuditEnvFile='.env.local')
   $safeName=$Name -replace '[^A-Za-z0-9_-]','-'
@@ -48,14 +55,15 @@ function Invoke-DepoLoggedAction {
     & $Body *>&1 | ForEach-Object {
       $level=if($_ -is [Management.Automation.ErrorRecord]){'error'}elseif($_ -is [Management.Automation.WarningRecord]){'warning'}else{'output'}
       if($level -eq 'error'){$hadErrors=$true}
-      Write-AuditEvent $level ([string]$_)
+      $message = if ($level -eq 'error') { Format-DepoAuditError $_ } else { [string]$_ }
+      Write-AuditEvent $level $message
     }
     if($hadErrors){throw "Action $Name reported errors; see the retained audit log"}
     if($LASTEXITCODE -ne 0){throw "Action $Name exited with native code $LASTEXITCODE"}
     Write-AuditEvent 'succeeded' "Completed $Name"
   } catch {
     $failure=$_
-    Write-AuditEvent 'failed' ($failure.ToString()+[Environment]::NewLine+$failure.InvocationInfo.PositionMessage+[Environment]::NewLine+$failure.ScriptStackTrace)
+    Write-AuditEvent 'failed' (Format-DepoAuditError $failure)
     Write-Host "FAILED. Audit log retained: $console" -ForegroundColor Red
     throw (ConvertTo-DepoAuditMessage -Message $failure.ToString() -Root $Root -EnvFile $AuditEnvFile)
   }

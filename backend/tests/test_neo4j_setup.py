@@ -1,3 +1,4 @@
+import re
 import pytest
 
 from backend.depo_platform import neo4j_setup
@@ -28,9 +29,18 @@ def test_constraint_validation_still_rejects_incompatible_definitions(field, val
 
 def test_publication_schema_contains_only_idempotent_statements():
     statements = neo4j_setup._statements(neo4j_setup.SCHEMA_FILE.read_text(encoding="utf-8"))
-    assert len(statements) == 11
     assert all("IF NOT EXISTS" in statement or statement == "CALL db.awaitIndexes(60)" for statement in statements)
-    assert "depo_bridge_publication_id" in statements[2]
+    creations = {}
+    for statement in statements:
+        if statement == 'CALL db.awaitIndexes(60)':
+            continue
+        match = re.match(r'CREATE (?:CONSTRAINT|(?:TEXT |FULLTEXT )?INDEX) (\w+) IF NOT EXISTS\b', statement)
+        assert match, statement
+        assert match[1] not in creations, 'Duplicate schema object: ' + match[1]
+        creations[match[1]] = statement
+    assert set(creations) == neo4j_setup.REQUIRED_CONSTRAINTS | set(neo4j_setup.REQUIRED_INDEXES)
+    assert 'FOR (n:OntologyResource) ON (n.source_ontology)' in creations['idx_depo_ontologyresource_source_scope']
+    assert neo4j_setup.REQUIRED_INDEXES['idx_depo_ontologyresource_source_scope'] == ('OntologyResource', ['source_ontology'])
     assert statements[-1] == "CALL db.awaitIndexes(60)"
     assert not any(token in statement.upper() for statement in statements for token in (" DELETE ", " DETACH ", " DROP "))
 

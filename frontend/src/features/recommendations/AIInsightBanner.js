@@ -23,7 +23,7 @@ const AIInsightBanner = ({ service, data }) => {
         { value: reqCount,  label: 'Requirements' },
         { value: procCount, label: 'Processes' },
       ],
-      cta: 'Direct links support investigation. Impact severity and indirect effects have not been assessed.',
+      cta: 'Recorded dependency paths support investigation. Impact severity and whole-graph completeness have not been established.',
     };
   } else if (service === 'similar-parts' && data?.source_part) {
     const count = data.similar_parts?.length || 0;
@@ -39,13 +39,13 @@ const AIInsightBanner = ({ service, data }) => {
     const rel    = data.process_summary?.total_related   || 0;
     insight = {
       color: C.green, bg: C.greenLight, Icon: Info,
-      headline: `Process landscape mapped Ã¢â‚¬â€ ${direct + inst + rel} total process${(direct + inst + rel) !== 1 ? 'es' : ''} identified`,
+      headline: `Recorded process links: ${direct + inst + rel} in this result`,
       chips: [
         { value: direct, label: 'Direct' },
         { value: inst,   label: 'Instances' },
         { value: rel,    label: 'Related' },
       ],
-      cta: 'Confirm the sequence against the manufacturing plan.',
+      cta: 'Recorded links do not establish manufacturing sequence or whole-graph completeness.',
     };
   }
 

@@ -95,23 +95,29 @@ async def contextual_subgraph(
         raise HTTPException(status_code=503, detail="Contextual graph is unavailable") from exc
 
 
-def _neighbors(node_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
-    return publisher._session_rows(
+def _neighbors(node_id: str, *, limit: int = 100, scope: dict | None = None) -> list[dict[str, Any]]:
+    from .recommendation_engine import RecommendationEngine, EXCLUDED
+    engine = RecommendationEngine(publisher)
+    return engine.query(
         "MATCH (root)-[r]-(neighbor) WHERE elementId(root) = $node_id "
         "AND NOT root:StagedOntologyResource AND NOT neighbor:StagedOntologyResource "
         "AND NOT root:RetainedOntologyIdentity AND NOT neighbor:RetainedOntologyIdentity "
         "AND NOT neighbor:OntologyPublication AND NOT neighbor:GraphChunk AND NOT neighbor:DatasheetChunk "
+        "AND none(label IN labels(neighbor) WHERE label IN $excluded) "
+        "AND ($scope = '' OR neighbor.ontology_id = $scope OR neighbor.source_ontology = $scope) "
+        "AND ($prefix = '' OR neighbor.prefix = $prefix OR neighbor.ontology_prefix = $prefix) "
+        "OPTIONAL MATCH (neighbor)-[:INSTANCE_OF|TYPED_BY|SEMANTICALLY_MAPPED_TO]->(cls) "
+        "WHERE NOT cls:StagedOntologyResource AND NOT cls:RetainedOntologyIdentity "
         "RETURN elementId(neighbor) AS id, coalesce(neighbor.name, neighbor.label, neighbor.uri, neighbor.iri) AS name, "
         "labels(neighbor) AS labels, coalesce(neighbor.rdf_types,[]) AS rdf_types, type(r) AS relation_type, r.predicate AS predicate, elementId(r) AS relationship_id, "
+        "neighbor.element_type AS element_type, neighbor.semantic_role AS semantic_role, "
+        "collect(DISTINCT coalesce(cls.iri,cls.name,cls.label)) AS mapped_types, "
         "coalesce(neighbor.source_ontology, neighbor.ontology_id, neighbor.prefix, 'graph') AS source_tag "
-        "ORDER BY name LIMIT $limit",
+        "ORDER BY name, id, relationship_id LIMIT $limit",
         node_id=node_id,
         limit=max(1, min(int(limit), 500)),
+        excluded=EXCLUDED, **engine.scope(scope),
     )
-
-
-def _kind(row: dict[str, Any]) -> str:
-    return " ".join(str(value).lower() for value in [*row.get("labels", []), *row.get('rdf_types',[]), row.get("name", "")])
 
 
 @router.get('/api/v1/graph/business-context', summary='Retrieve connected business instances with inclusion evidence')
@@ -223,11 +229,19 @@ def _manufacturing_context_result(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "direct_processes": [], "process_instances": [], "related_processes": [], "process_summary": {}}
-    neighbors = _neighbors(str(root["id"]))
-    process_rows = [row for row in neighbors if "process" in _kind(row) or "manufactur" in _kind(row)]
-    direct = [{"process_name": _display_name(row), "source_tag": row.get("source_tag"), "file_name": None} for row in process_rows]
+    from .engineering_comparison import kind
+    neighbors = _neighbors(str(root["id"]), scope=payload.get('scope'), limit=101)
+    limit_reached = len(neighbors) > 100
+    process_rows = [row for row in neighbors[:100] if kind({
+        'labels': row.get('labels') or [], 'mapped_types': row.get('mapped_types') or [],
+        'properties': {key: row.get(key) for key in ('rdf_types','element_type','semantic_role') if row.get(key) is not None},
+    }) == 'process']
+    unique = {row['id']: row for row in process_rows}
+    direct = [{"node_id":row['id'], "process_name": _display_name(row), "source_tag": row.get("source_tag"), "file_name": None} for row in unique.values()]
     return {
-        "part": {"name": root["name"], "source_tag": root.get("source_tag", "graph")},
+        "part": {"node_id":root['id'], "name": root["name"], "source_tag": root.get("source_tag", "graph")},
+        "coverage": {"limit_reached":limit_reached, "neighbors_examined":min(len(neighbors),100), "whole_graph_complete":False},
+        "traceability": "Direct recorded neighbors in the selected ontology scope; process types are declared or mapped. This does not establish manufacturing sequence or whole-graph completeness.",
         "direct_processes": direct,
         "process_instances": [],
         "related_processes": [],

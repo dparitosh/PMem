@@ -55,4 +55,55 @@ class ImportStatusRecoveryTests(unittest.TestCase):
         (self.service.TASK_STORE_DIR/'task.json.writer_123_v1.json').write_text(json.dumps(self.old))
         self.assertEqual(self.service.list_tasks()[0]['status'],'completed')
 
+    def test_hashed_sidecars_do_not_break_registry_or_get_read_as_snapshots(self):
+        from unittest.mock import patch
+        from backend.Services.import_task_persistence import persist_task
+        task={**self.old,'status':'completed','parsed_rows':[{'name':'Bearing'}],'shacl_report':{'conforms':True}}
+        persist_task(self.service._task_snapshot_path('task'),task,dict)
+        read=Path.read_text
+        reads=[]
+        def tracked(path,*args,**kwargs):
+            reads.append(path.name)
+            return read(path,*args,**kwargs)
+        with patch.object(Path,'read_text',tracked):
+            result=self.service.list_tasks()
+        self.assertEqual([row['task_id'] for row in result],['task'])
+        self.assertEqual(result[0]['status'],'completed')
+        self.assertFalse(any('.parsed_rows.' in name or '.shacl_report.' in name for name in reads))
+
+    def test_non_task_json_values_do_not_hide_valid_imports(self):
+        self.service._task_snapshot_path('task').write_text(json.dumps(self.old))
+        for index,data in enumerate([[],None,17,'text',False,{'message':'not a task'}]):
+            (self.service.TASK_STORE_DIR/f'other-{index}.json').write_text(json.dumps(data))
+        self.assertEqual([row['task_id'] for row in self.service.list_tasks()],['task'])
+
+    def test_legacy_sidecar_arrays_are_still_excluded(self):
+        self.service._task_snapshot_path('task').write_text(json.dumps(self.old))
+        (self.service.TASK_STORE_DIR/'task.json.parsed_rows.json').write_text('[{}]')
+        (self.service.TASK_STORE_DIR/'task.json.shacl_report.json').write_text('[]')
+        self.assertEqual(len(self.service.list_tasks()),1)
+
+    def test_import_tasks_endpoint_returns_history_with_new_sidecar_format(self):
+        import sys
+        from types import ModuleType
+        from unittest.mock import patch
+        from fastapi import FastAPI, HTTPException, Request
+        from fastapi.testclient import TestClient
+        from backend.Services.import_task_persistence import persist_task
+        persist_task(self.service._task_snapshot_path('task'),{**self.old,'status':'completed','parsed_rows':[{'name':'Bearing'}]},dict)
+        module=ModuleType('backend.Services.unified_data_import');module.UnifiedDataImportService=self.service
+        source=SOURCE.parents[1]/'ingestion_service/router.py'
+        tree=ast.parse(source.read_text(encoding='utf-8'))
+        function=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='import_tasks')
+        function.decorator_list=[]
+        scope={'HTTPException':HTTPException,'Request':Request,'__name__':__name__}
+        exec(compile(ast.Module(body=[function],type_ignores=[]),str(source),'exec'),scope)
+        app=FastAPI();app.add_api_route('/api/v1/import/tasks',scope['import_tasks'],methods=['GET'])
+        with patch.dict(sys.modules,{'backend.Services.unified_data_import':module}):
+            result=TestClient(app).get('/api/v1/import/tasks')
+        self.assertEqual(result.status_code,200)
+        response=result.json()
+        self.assertEqual(response['total_tasks'],1)
+        self.assertEqual(response['tasks'][0]['filename'],'req.xml')
+
 if __name__=='__main__':unittest.main()

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor,act } from '@testing-library/react';
 import { vi } from 'vitest';
 import AppShell from './AppShell';
 import { graphApi } from '../services/graphApi';
@@ -98,6 +98,17 @@ test('header revalidates stored access without navigating or executing workflows
   await screen.findByText('Read access verified.');
   expect(navigate).not.toHaveBeenCalled();
   expect(verifyStoredAccess).toHaveBeenCalledTimes(1);
+});
+
+test('reconnect aborts old access verification and cannot display its late success',async()=>{
+ let finish;verifyStoredAccess.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+ fireEvent.click(screen.getByRole('button',{name:'Revalidate or reconnect API access'}));
+ const signal=verifyStoredAccess.mock.calls[0][0].signal;
+ fireEvent(window,new Event('depo:session-replaced'));
+ expect(signal.aborted).toBe(true);
+ await act(async()=>{finish({status:'verified',message:'Old connection authorized'});});
+ await waitFor(()=>expect(screen.queryByText('Old connection authorized')).toBeNull());
 });
 
 test('expired access opens the API access tab for reconnection', async () => {

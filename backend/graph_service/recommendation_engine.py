@@ -75,8 +75,21 @@ class RecommendationEngine:
         types = [value for value in (root.get('properties') or {}).get('rdf_types', [])
                  if value != 'http://www.w3.org/2002/07/owl#NamedIndividual']
         roles = ['part', 'product', 'productrevision', 'productinstance', 'component', 'item', 'itemrevision', 'assembly']
+        candidate_scope = self.scope(scope)
+        # Default to the selected object's retained scope, never the entire
+        # database. Published RDF has an ontology_id range index; legacy typed
+        # imports use a bounded set of label scans rather than AllNodesScan.
+        if not candidate_scope['scope'] and not candidate_scope['prefix']:
+            props = root.get('properties') or {}
+            candidate_scope['scope'] = props.get('ontology_id') or props.get('source_ontology') or ''
+            candidate_scope['prefix'] = '' if candidate_scope['scope'] else props.get('ontology_prefix') or props.get('prefix') or ''
+        if 'OntologyResource' in root.get('labels', []) and candidate_scope['scope']:
+            anchor = ('CALL { MATCH (n:OntologyResource {ontology_id:$scope}) RETURN n '
+                      'UNION MATCH (n:OntologyResource {source_ontology:$scope}) RETURN n } WITH n ')
+        else:
+            anchor = ('MATCH (n:OntologyResource|Part|PART|part|Product|PRODUCT|product|ProductRevision|ProductInstance|Component|Item|ItemRevision|Assembly|ASSEMBLY|assembly|resource) ')
         rows = self.query(
-            '/* recommendation-candidates */ MATCH (n) WHERE elementId(n)<>$id '
+            '/* recommendation-candidates */ ' + anchor + 'WHERE elementId(n)<>$id '
             'AND none(label IN labels(n) WHERE label IN $excluded) '
             "AND ($scope='' OR n.ontology_id=$scope OR n.source_ontology=$scope) "
             "AND ($prefix='' OR n.prefix=$prefix OR n.ontology_prefix=$prefix) "
@@ -91,7 +104,7 @@ class RecommendationEngine:
             'WHERE NOT cls:StagedOntologyResource AND NOT cls:RetainedOntologyIdentity '
             'RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS properties, '
             'collect(DISTINCT coalesce(cls.iri,cls.name,cls.label)) AS mapped_types ORDER BY id', id=root['id'], excluded=EXCLUDED, types=types,
-            roles=roles, mapped_types=root.get('mapped_types', []), **self.scope(scope))
+            roles=roles, mapped_types=root.get('mapped_types', []), **candidate_scope)
         return rows[:200], len(rows) > 200
 
     @graph_projection_reader
@@ -135,8 +148,10 @@ class RecommendationEngine:
             'source_evidence': provenance(root),
             'similar_parts': candidates[:max(1, min(top_n, 50))], 'advisory_only': True,
             'coverage': {'candidate_limit': 200, 'candidates_examined': len(rows), 'category_mismatches_excluded': excluded,
+                         'requested_scope': self.scope(scope),
+                         'default_ontology_scope': (root.get('properties') or {}).get('ontology_id') or (root.get('properties') or {}).get('source_ontology') or None,
                          'limit_reached': limited, 'whole_graph_complete': False},
-            'ranking_scope': 'Up to 200 typed engineering candidates. Scores combine type (15%), tokens/trigrams (20%) and declared engineering properties (65%). Missing evidence earns no engineering points; conflicts hold reuse. Scores are not calibrated confidence.'}
+            'ranking_scope': 'Up to 200 typed engineering candidates in the requested scope, defaulting to the selected record ontology when no scope is supplied. Legacy retrieval covers published resources and declared business labels. Scores combine type (15%), tokens/trigrams (20%) and declared engineering properties (65%). Missing evidence earns no engineering points; conflicts hold reuse. Scores are not calibrated confidence.'}
 
     def edges(self, frontier, scope):
         # Select eligible dependency edges BEFORE the cap so unrelated metadata

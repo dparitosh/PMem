@@ -4,6 +4,7 @@ import {SimilarPartsResult} from './SimilarPartsResult';
 import {ScoreBar} from './RecommendationPrimitives';
 import {AIInsightBanner} from './AIInsightBanner';
 import DependencyPathGraph from './DependencyPathGraph';
+import {ManufacturingResult} from './ManufacturingResult';
 
 test('unassessed relationships are not presented as negative findings',()=>{
  render(<SimilarPartsResult data={{source_part:{name:'Motor'},similar_parts:[{name:'Other',similarity_score:75,source_tag_match:true,type_match:false,shared_assembly:null,rflp_layer_match:null,traceability_link:null}]}}/>);
@@ -41,4 +42,12 @@ test('property comparisons and compatibility conflicts are visible in result row
  fireEvent.click(screen.getByText('Review properties and missing evidence'));
  expect(screen.getByText('10 mm')).toBeVisible();
  expect(screen.getByText('11 mm')).toBeVisible();
+});
+
+test('process context exposes limited coverage and does not imply an ordered manufacturing plan',()=>{
+ const data={part:{name:'Bearing'},coverage:{limit_reached:true},direct_processes:[],process_summary:{total_direct:0}};
+ render(<><AIInsightBanner service="manufacturing" data={data}/><ManufacturingResult data={data}/></>);
+ expect(screen.getByText(/neighbor limit was reached/)).toBeVisible();
+ expect(screen.getByText(/do not establish manufacturing sequence/)).toBeVisible();
+ expect(screen.queryByText('Analysis completed')).toBeNull();
 });

@@ -5,6 +5,9 @@ from backend.ontology_service.merge_service import GovernedMergeService
 
 
 class IntelligenceStub:
+    def evaluate_decisions(self, *args, **kwargs):
+        return {"status": "passed", "blocking": False, "compliant": True, "checks": []}
+
     def create_merge_version(self, **kwargs):
         return {"version_id": "approved-version", **kwargs}
 

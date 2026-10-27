@@ -1,30 +1,39 @@
 import DecisionPolicyAssessment from '../DecisionPolicyAssessment';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ontologyMergeAgent } from '../../services/ontologyMergeAgent';
 import { apiErrorMessage } from '../../utils/apiErrorMessage';
 
 export default function MergeStewardReview({ reviewKey, previewId, enabled, reviewer, onReview }) {
   const [state, setState] = useState(null);
-  const [retry, setRetry] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const identity = JSON.stringify([reviewKey, previewId, enabled, reviewer]);
+  const inFlight = useRef(false), currentKey = useRef(identity), mounted = useRef(true);
+  currentKey.current = identity;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    let active = true;
-    const update = value => { if (active) { setState(value); onReview(value); } };
-    update(null);
-    if (enabled && previewId && reviewer.trim()) {
-      update({key: reviewKey, status: 'running'});
-      ontologyMergeAgent.evaluate(previewId, reviewer).then(response => update({key: reviewKey, status: 'completed',
-        runId: response.runId, result: response.result})).catch(error => update({key: reviewKey, status: 'failed',
-        error: apiErrorMessage(error, 'Steward evaluation failed. Approval remains blocked.')}));
-    }
-    return () => { active = false; };
-  }, [reviewKey, previewId, enabled, reviewer, onReview, retry]);
+    setState(null); onReview(null);
+  }, [reviewKey, previewId, enabled, reviewer, onReview]);
+  const assess = async () => {
+    if (inFlight.current || !enabled || !previewId || !reviewer.trim()) return;
+    inFlight.current = true; setBusy(true);
+    const key = reviewKey;
+    const update = value => { if (mounted.current && currentKey.current === identity) { setState(value); onReview(value); } };
+    update({key, status: 'running'});
+    try {
+      const response = await ontologyMergeAgent.evaluate(previewId, reviewer.trim());
+      update({key, status: 'completed', runId: response.runId, result: response.result});
+    } catch (error) {
+      update({key, status: 'failed', error: apiErrorMessage(error, 'Steward evaluation failed. Approval remains blocked.')});
+    } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
+  };
   const report = state?.key === reviewKey ? state.result?.governance : null;
   return <section className="merge-workflow" aria-label="Ontology Steward assessment">
     <h4>Ontology Steward assessment</h4>
     <p>The Governor prepares and publishes the saved plan. The existing Steward checks its governance evidence before publication. Model explanations cannot override these checks.</p>
     {!enabled && <p>Generate and validate the current mapping plan to start the Steward assessment.</p>}
+    {enabled && <button type="button" disabled={busy || !previewId || !reviewer.trim()} onClick={assess}>{busy ? 'Steward assessment in progress' : 'Run Steward assessment'}</button>}
     {state?.status === 'running' && <p role="status">Steward is evaluating the retained plan; no graph changes are being made.</p>}
-    {state?.status === 'failed' && <div role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Retry Steward assessment</button></div>}
+    {state?.status === 'failed' && <div role="alert"><p>{state.error}</p></div>}
     {report && <>
       <DecisionPolicyAssessment report={report.decision_policy} />
       <p role="status"><strong>{report.overall_verdict === 'APPROVED' && !report.decision_policy?.blocking ? 'Steward checks passed — human review and publication approval remain required' : report.overall_verdict === 'PENDING_VALIDATION' ? 'Validation evidence is incomplete' : 'Publication held — review the findings below'}</strong></p>

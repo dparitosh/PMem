@@ -7,6 +7,61 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_nonterminating_errors_retain_original_source_and_stack_with_redaction(tmp_path):
+    shell = shutil.which('powershell.exe')
+    if not shell:
+        pytest.skip('Windows PowerShell required')
+    (tmp_path/'.env.local').write_text('ADMIN_API_KEY=fixture-stack-secret-987654\n')
+    helper = ROOT/'infra/windows/native-install-command.ps1'
+    script = tmp_path/'source-error.ps1'
+    script.write_text(f""". '{helper}'
+function Invoke-FailingFixtureRead {{ Write-Error 'read failed fixture-stack-secret-987654' -ErrorAction Continue }}
+Invoke-DepoLoggedAction -Root '{tmp_path}' -Name 'source-error' -Action {{ Invoke-FailingFixtureRead }}
+""")
+    result = subprocess.run([shell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(script)],capture_output=True,text=True,timeout=30)
+    assert result.returncode != 0
+    events = [json.loads(line) for line in next((tmp_path/'logs/installation/runs').glob('*.jsonl')).read_text().splitlines()]
+    errors = [event['message'] for event in events if event['level']=='error']
+    assert errors and 'Invoke-FailingFixtureRead' in errors[0]
+    assert 'source-error.ps1' in errors[0] and 'line 2' in errors[0]
+    assert 'Error ID:' in errors[0]
+    for path in (tmp_path/'logs/installation/runs').glob('*'):
+        assert 'fixture-stack-secret-987654' not in path.read_text(encoding='utf-8')
+    assert 'fixture-stack-secret-987654' not in result.stdout + result.stderr
+
+
+def test_structured_migration_failure_is_retained_by_the_windows_audit_wrapper(tmp_path):
+    import sys
+    shell = shutil.which('powershell.exe')
+    if not shell:
+        pytest.skip('Windows PowerShell required')
+    helper = ROOT/'infra/windows/native-install-command.ps1'
+    source = """import json,sys
+from backend.postgres_migrations import MigrationExecutionError
+from backend.depo_platform.database_setup import _failure_action
+class Failure(Exception): sqlstate='42501'
+cause=Failure('postgresql://user:never-print@private/db')
+try:
+    raise MigrationExecutionError(13,'registry_workflow_lookup',cause,'private SQL','apply_sql') from cause
+except MigrationExecutionError as exc:
+    print(json.dumps(_failure_action(exc)),file=sys.stderr)
+    sys.exit(1)
+"""
+    script = tmp_path/'migration-error.ps1'
+    script.write_text(f"""$ErrorActionPreference='Stop'
+. '{helper}'
+Invoke-DepoLoggedAction -Root '{tmp_path}' -Name 'migration-error' -Action {{
+@'
+{source}'@ | Invoke-DepoNativeCommand -Executable '{sys.executable}' -NativeArguments @('-')
+}}
+""")
+    result = subprocess.run([shell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(script)],capture_output=True,text=True,timeout=30)
+    assert result.returncode != 0
+    retained = next((tmp_path/'logs/installation/runs').glob('*.log')).read_text(encoding='utf-8')
+    assert '013_registry_workflow_lookup.sql' in retained and '42501' in retained
+    assert 'never-print' not in retained + result.stdout + result.stderr
+
+
 @pytest.mark.parametrize('absolute', [False, True])
 def test_selected_environment_secrets_are_redacted_before_import(tmp_path, absolute):
     shell = shutil.which('powershell.exe')

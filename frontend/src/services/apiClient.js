@@ -1,4 +1,5 @@
 import {recommendationIdentity} from './recommendationScope';
+import {prepareSessionRequest,trackSessionRequest,releaseRequest,staleRequest} from './requestSession';
 import { applyRequestDeadline, abortableDelay, retryFitsDeadline } from './requestPolicy';
 import { apiRequestId, apiErrorMessage } from '../utils/apiErrorMessage';
 /**
@@ -44,16 +45,8 @@ const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
 const SESSION_SCOPE_KEY = 'depo.sessionScope.v1';
-let credentialGeneration = 0;
-const pendingRequests = new Set();
-function invalidateRequests() { credentialGeneration += 1; pendingRequests.forEach(controller => controller.abort()); pendingRequests.clear(); }
-function releaseRequest(config) { if (config?.__credentialController) pendingRequests.delete(config.__credentialController); }
-function staleRequest(config) { return config?.__credentialGeneration !== undefined && config.__credentialGeneration !== credentialGeneration; }
 if (typeof window !== 'undefined') {
-  window.addEventListener('depo:credentials-changed', invalidateRequests);
-  window.addEventListener('depo:session-replaced', invalidateRequests);
   window.addEventListener('depo:credentials-cleared', () => {
-    invalidateRequests();
     clearClientSessionId();
   });
 }
@@ -137,17 +130,7 @@ function isStandaloneServiceRequest(url) {
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
-    if (staleRequest(requestConfig)) throw new axios.CanceledError('Credentials changed; retry with current access');
-    if (!requestConfig.__credentialController) {
-      const controller = new AbortController();
-      requestConfig.__credentialController = controller;
-      requestConfig.__credentialGeneration = credentialGeneration;
-      if (requestConfig.signal) {
-        if (requestConfig.signal.aborted) controller.abort();
-        else requestConfig.signal.addEventListener('abort', () => controller.abort(), { once: true, signal: controller.signal });
-      }
-      requestConfig.signal = controller.signal;
-    }
+    prepareSessionRequest(requestConfig);
     applyRequestDeadline(requestConfig);
     prepareMultipartHeaders(requestConfig);
     // Older feature modules pass a relative path directly to Axios.  Resolve
@@ -188,7 +171,7 @@ apiClient.interceptors.request.use(
         url: requestConfig.url,
       });
     }
-    pendingRequests.add(requestConfig.__credentialController);
+    trackSessionRequest(requestConfig);
     return requestConfig;
   },
   (error) => {
@@ -387,8 +370,8 @@ export const ontologyAPI = {
     headers: { Authorization: `Bearer ${getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000,
   }),
   exportUrl: (ontologyId, format = 'ttl') => `${buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId }))}?format=${encodeURIComponent(format)}`,
-  exportRegistered: (ontologyId, format = 'ttl') =>
-    apiClient.get(buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId })), { params: { format }, responseType: 'blob' }),
+  exportRegistered: (ontologyId, format = 'ttl', options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId })), { ...options, params: { format }, responseType: 'blob' }),
   extract3dxml: (file, metadata = {}) => {
     const formData = new FormData();
     formData.append('file', file);

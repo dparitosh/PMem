@@ -37,7 +37,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       } catch { setSubmissionUnknown(true); }
       setRevision(value => value + 1);
     };
-    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced'];
     events.forEach(event => window.addEventListener(event, clear));
     return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, clear)); };
   }, [key]);

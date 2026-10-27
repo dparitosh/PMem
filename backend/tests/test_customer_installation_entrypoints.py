@@ -22,6 +22,26 @@ def test_customer_guide_is_concise_and_links_complete_operator_reference():
         assert retired not in installation_documentation()
 
 
+def test_detailed_installation_topics_remain_linked_with_examples_and_safeguards():
+    guide = (ROOT / 'INSTALLATION.md').read_text(encoding='utf-8')
+    reference = (ROOT / 'docs/installation/OPERATOR_REFERENCE.md').read_text(encoding='utf-8')
+    for anchor, heading in (
+        ('public-access-through-apim-or-a-reverse-proxy', 'Public access through APIM or a reverse proxy'),
+        ('customer-browser-errors-after-an-update', 'Customer browser errors after an update'),
+        ('deploying-the-page-reliability-and-authorization-fixes', 'Deploying the page reliability and authorization fixes'),
+        ('large-ontology-configuration', 'Large ontology configuration'),
+        ('xsd-schemas-with-remote-dependencies', 'XSD schemas with remote dependencies'),
+    ):
+        assert 'docs/installation/OPERATOR_REFERENCE.md#' + anchor in guide
+        assert '### ' + heading in reference
+    for detail in ('idx_depo_ontologyresource_source_scope', 'Run Steward assessment',
+                   'XSD_REMOTE_SCHEMA_HOSTS=', 'https://schemas.example.com/product/common.xsd',
+                   'crypto.randomUUID is not a function', 'GRAPH_READ_TOKEN'):
+        assert detail in reference
+    assert '[customer installation runbook](../../INSTALLATION.md)' in reference
+    assert '(../page-audit-remediation-20261027.md)' in reference
+
+
 def test_customer_entrypoints_exist_and_guide_does_not_expose_internal_lifecycle_commands():
     for name in ("configure-depo.ps1", "install-depo.ps1", "diagnose-depo.ps1", "manage-depo.ps1", "certify-depo-release.ps1"):
         assert (ROOT / name).is_file(), name

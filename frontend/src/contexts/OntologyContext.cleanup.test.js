@@ -68,3 +68,13 @@ test('session expiry removes previously visible ontology registrations', async (
   await screen.findByText('Empty registry');
   expect(screen.queryByText('Previous session ontology')).not.toBeInTheDocument();
 });
+
+test('session replacement discards the previous registry and cancels its pending refresh',async()=>{
+ mocks.get.mockResolvedValue({data:{ontologies:[{ontology_id:'old',name:'Previous identity ontology'}]}});
+ render(<OntologyProvider><Registry/></OntologyProvider>);
+ await screen.findByText('Previous identity ontology');
+ mocks.get.mockImplementation(()=>new Promise(()=>{}));
+ act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
+ expect(screen.queryByText('Previous identity ontology')).toBeNull();
+ expect(screen.getByText('Empty registry')).toBeVisible();
+});

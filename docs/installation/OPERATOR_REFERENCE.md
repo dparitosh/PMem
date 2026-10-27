@@ -1,5 +1,33 @@
 # Installation operator reference
 
+Start with the ordered [customer installation runbook](../../INSTALLATION.md). Commands in this reference run from the release repository root unless a step explicitly changes directory.
+
+## PostgreSQL migration error records
+
+The full updater applies pending PostgreSQL migrations and verifies the resulting schema. It preserves the migration history/checksum safeguards described under [schema upgrade integrity](#postgresql-schema-upgrade-integrity-and-legacy-checksum-adoption). Invalid credential-replacement options are rejected before process checks, dependency installation, storage probes or migration.
+
+When migration SQL or its history write fails, the diagnostic includes `migration.version`, `migration.name`, `migration.file`, `migration.operation`, the original `sqlstate` when supplied by the driver, and `database_error_type`. Valid database-object identifiers are included under `database_object` when the server supplies them. A valid server statement position can add `migration.sql_line` for SQL-file execution. Missing fields mean the server did not provide that context; they are not invented.
+
+Example failure record (illustrative):
+
+```json
+{"status":"failed","error_type":"MigrationExecutionError","sqlstate":"42501","migration":{"version":13,"name":"registry_workflow_lookup","file":"013_registry_workflow_lookup.sql","operation":"apply_sql"},"database_object":{"schema_name":"semantic","table_name":"depo_registry"}}
+```
+
+Operations distinguish applying SQL (`apply_sql`), recording its history (`record_history`), adopting explicitly reviewed legacy checksums (`adopt_checksum`) and preparing the history table (`bootstrap_history`). A failed statement escapes the transaction context; later migrations are not run and the normal setup transaction rolls back. Do not mark the migration as applied manually, edit immutable released SQL, or recreate the database to bypass the failure. Correct the reported ownership, conflicting data, lock contention or matching-release issue, then rerun the same command.
+
+The diagnostic is retained in `logs/installation/runs/*.log` and the JSONL event messages. PowerShell records include the error ID, source position and script stack, including for nonterminating errors. Native command exit codes remain authoritative: an npm/pip warning on stderr with exit code zero is not an installation failure. Raw SQL, row DETAIL and driver connection strings are excluded from migration diagnostics; audit output redacts configured credential values.
+
+Use the schema-only commands from the release root when database maintenance alone is intended:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\update-postgres-schema.ps1 -EnvFile .\.env.local
+# Continue only after the update succeeds.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\test-postgres-schema.ps1 -EnvFile .\.env.local
+```
+
+The first command applies pending migrations; the second is read-only verification. These commands do not deploy frontend/backend code or replace the normal full-release updater. Use the existing backup and maintenance-window procedure before applying schema changes.
+
 ## Generated conversion results and browser reconnection
 
 `ENGINEERING_CONVERSION_MAX_CONCURRENCY=2` in root `.env.local` limits active engineering parser subprocesses per ingestion process (accepted range: 1–8). Restart after changing it. A saturated process rejects new conversions before spawning; retry the same schema set after active conversions finish. Multiple ingestion processes each have their own limit, so size the total against server memory. See the [ontology import resilience review](../audits/ONTOLOGY_IMPORT_RESILIENCE_2026-10-26.md) for artifact recovery, timing and database boundaries.
@@ -4928,3 +4956,153 @@ $reviewPython = Get-DepoServicePython -Root (Get-Location).Path -ServiceId 'inge
 ```
 
 If a review step fails after services start, inspect the reported audit log and rerun the review after correcting connectivity. Preserve the installed schema and existing publications; do not downgrade or delete databases to clear the review.
+
+### Public access through APIM or a reverse proxy
+
+Configure this before exposing a workstation installation to remote browsers. A public frontend URL does not automatically provide API routes. `DEPO_ROUTING_MODE=local` sends browser requests directly to the configured service host; a private address such as `10.0.2.16` will time out for clients without network access to it.
+
+1. Identify the **API gateway base URL**, including its configured base path. Obtain this from the APIM/reverse-proxy administrator; the developer portal or frontend URL can be different.
+2. Back up root `.env.local`, then edit these existing settings in place (do not append conflicting duplicates):
+
+   ```dotenv
+   DEPO_ROUTING_MODE=gateway
+   DEPO_API_GATEWAY_URL=https://api.example.com/depo
+   ```
+
+   Keep `DEPO_SERVICE_HOST` as the backend listening address appropriate for the server. `DEPO_LOCAL_SERVICE_HOST` is not used for gateway browser routing. Keep existing authentication and credentials; routing changes do not replace authentication. Never put subscription keys or service keys in `VITE_*` settings.
+3. Configure every public service prefix below. The gateway must remove the service prefix and its own base path while retaining the remaining request path, query, method and body. For example, `/depo/ontology/api/v1/ontologies` forwards to `http://10.0.2.16:8011/api/v1/ontologies`.
+
+   | Default public suffix after gateway base | Private service port |
+   | --- | --- |
+   | `/qif` | 8010 |
+   | `/ontology` | 8011 |
+   | `/agentic` | 8012 |
+   | `/graph` | 8013 |
+   | `/ingestion` | 8014 |
+   | `/oslc` | 8015 |
+   | `/catalog` | 8016 |
+   | `/data-products` | 8017 |
+   | `/ceim` | 8018 |
+   | `/data-pipeline` | 8019 |
+
+   The private host is deployment-specific. Gateway-to-backend connectivity must work, and streaming chat routes must support streaming responses. If APIM uses different suffixes, set the corresponding `DEPO_GATEWAY_<SERVICE>_PATH` overrides documented in the operator reference. Do not expose private backend ports to browsers as a workaround.
+4. Include the exact frontend origin, including scheme and port, in root `ALLOWED_ORIGINS` and in the gateway CORS policy when cross-origin access is used. Allow the authentication headers required by your configured policy. Use HTTPS for customer access; an HTTPS frontend cannot call HTTP APIs.
+5. From the release root, validate routes and restart the application:
+
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-gateway.ps1 -EnvFile .\.env.local
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
+   ```
+
+   The diagnostic checks gateway health/readiness, API contracts and CORS. Entra deployments must supply a valid `-AccessToken` as a SecureString; see the operator reference. The frontend launcher regenerates `frontend/dist/depo-runtime-config.js` from root routing settings. Older releases without runtime routing support require a matching source update and frontend rebuild first.
+6. Hard-refresh the browser, reconnect using the configured authentication flow, and inspect DevTools → Network. Ontology and ingestion requests must target the public gateway prefixes, never `10.0.2.16:8011` or other private service ports. Verify ontology selection, import status and chat through the public URL. A server-side diagnostic alone does not establish remote browser connectivity.
+
+**Example for `http://azdtlabs.southindia.cloudapp.azure.com:2200/`:** use that address as `DEPO_API_GATEWAY_URL` only if the listener on port 2200 actually proxies all service prefixes above. Serving PMem HTML on that port is insufficient; the PMem frontend launcher does not automatically create these gateway routes. If APIM is hosted elsewhere or under a base path, use that API gateway address instead. The actual proxy configuration for this host must be verified by its operator.
+
+#### Worked example: Azure VM public access on port 2200
+
+This example assumes a reverse proxy on `azdtlabs.southindia.cloudapp.azure.com:2200` serves the frontend and forwards API prefixes to the VM at `10.0.2.16`. It is a configuration example, not confirmation that your current listener has these routes. For a separate Azure APIM gateway, replace the API base URL with its actual gateway address and base path.
+
+**Step 1 — Edit the deployed root `.env.local`.** For an installation at `E:\App\PMem`, open `E:\App\PMem\.env.local` and update the existing routing entries:
+
+```dotenv
+DEPO_ROUTING_MODE=gateway
+DEPO_API_GATEWAY_URL=http://azdtlabs.southindia.cloudapp.azure.com:2200
+DEPO_SERVICE_HOST=10.0.2.16
+ALLOWED_ORIGINS=http://azdtlabs.southindia.cloudapp.azure.com:2200,http://127.0.0.1:3000,http://localhost:3000
+```
+
+Retain any other origins your deployment requires and all existing credential/database settings. The HTTP address matches the supplied deployment for diagnosis; use HTTPS and update both URLs/origins before customer rollout. Do not add `/api/v1` to the gateway base URL.
+
+**Step 2 — Have the proxy operator configure and verify the routes.** The same host must serve frontend files at `/` and forward each service prefix from the preceding table. These examples show the required path transformation:
+
+| Browser request | Forwarded backend request |
+| --- | --- |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ontology/api/v1/ontologies?limit=200&offset=0` | `http://10.0.2.16:8011/api/v1/ontologies?limit=200&offset=0` |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/agentic/api/v1/agents` | `http://10.0.2.16:8012/api/v1/agents` |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ingestion/api/v1/engineering-workflows` | `http://10.0.2.16:8014/api/v1/engineering-workflows` |
+| `http://azdtlabs.southindia.cloudapp.azure.com:2200/ontology/readyz` | `http://10.0.2.16:8011/readyz` |
+
+A request to an API route must reach the service, not fall back to the frontend `index.html`. An authentication error is different from a connection timeout; keep the configured authentication policy in place.
+
+**Step 3 — Run the diagnostic and restart from PowerShell on the server.** Replace the installation root if necessary. Run each command in order and resolve diagnostic failures before continuing:
+
+```powershell
+Set-Location -LiteralPath 'E:\App\PMem'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-gateway.ps1 -EnvFile .\.env.local
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
+```
+
+**Step 4 — Verify from the remote user's browser.** Open `http://azdtlabs.southindia.cloudapp.azure.com:2200/`, press Ctrl+F5 and reconnect access. In DevTools → Network, confirm ontology requests use `/ontology/api/v1/ontologies` on the public host and return JSON. Confirm agent and import requests use `/agentic/` and `/ingestion/`. If requests still target `10.0.2.16:8011`, check that the public proxy serves the updated frontend and `depo-runtime-config.js`; a stale public deployment/cache can retain old routing even when the private frontend was restarted.
+
+
+### Customer browser errors after an update
+
+See the [session, state and GraphQL audit](../session-state-and-graphql-audit.md) for the separate lifetimes of browser access, Companion conversations, retained agent tasks and tab evidence. The matching frontend release must include `frontend/src/services/requestSession.js`; REST and agent transports both import it. Do not replace only one client file.
+
+Run deployment commands on the affected customer server. Updating a developer workstation does not update the customer installation.
+
+- **`crypto.randomUUID is not a function` on an HTTP IP address:** install the matching frontend source, including `frontend/src/utils/submissionId.js`, and rebuild it. Investigations use a cryptographically random UUID fallback when the browser does not expose `randomUUID`. This does not change API authorization.
+- **Import history returns 503 / `AttributeError`:** install the matching ingestion backend update. Task discovery must exclude both legacy and content-hashed parsed-row/report sidecars, and ignore JSON values that are not task objects. Retain the task folder and import history.
+- **Ontology requests return 403:** rebuilding the UI does not repair rejected service credentials. Use **Revalidate access** and retain the failed response's request ID. Inspect the corresponding customer service log and selected environment configuration. Do not rotate keys or disable authentication based only on a screenshot. Investigation controls pause after an access rejection; successful access verification allows recovery of a retained submission.
+
+For a frontend-only source correction, after backing up and replacing the matching files, run from the customer repository root using that deployment's existing environment file:
+
+```powershell
+Set-Location E:\App\PMem
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\build-depo-frontend.ps1 -EnvFile .\.env.local
+# Continue only when the build succeeds.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local
+```
+
+For a complete release, use the normal `update-depo.ps1` procedure instead. Refresh the customer browser with Ctrl+F5 after a successful restart. Verify the JavaScript asset changed and test **Recommendations → Analyse with agent**, import history, and ontology access separately. A working investigation ID does not prove that the configured model or API credentials are available.
+
+### Deploying the page reliability and authorization fixes
+
+Deploy the matching backend and frontend release together. Ontology browsing, structural inference and exports now require graph-read access on the ingestion service as well as the ontology service. The updated export buttons download through the authenticated API client. An old frontend's direct export links can fail after the backend is updated; do not disable authentication to compensate.
+
+1. Back up the deployment's environment/configuration, retained artifact folders and databases using the normal release backup procedure. Keep pending workflow records; this update does not approve, replay or delete them.
+2. Place the complete matching release in the customer repository, preserving `.env.local`, runtime environments, `data`, `uploads` and logs. Do not copy only the new browser router or an individual compiled asset.
+3. From that repository root, run the existing updater with that deployment's environment file. For example, in `E:\App\PMem`:
+
+   ```powershell
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local
+   ```
+
+   The updater already delegates dependency/build, existing database/index checks and managed service restart to the installer. This release idempotently provisions `idx_depo_ontologyresource_source_scope` for retained source-ontology lookups; no PostgreSQL migration or credential rotation is added. Do not pass `-SkipFrontend` for this release. If update fails, retain its reported audit log and rerun the same command after correcting the reported cause.
+4. Refresh the browser with Ctrl+F5 and revalidate access. Open Ontology Junction and download TTL using the updated button. Verify an unauthenticated browser cannot export or run structural inference. Verify read access is present for ingestion as well as ontology; existing central credential profiles remain authoritative.
+5. In Semantic Bridge, select an imported instance and confirm its status/preview load. Read errors now have a retry action; creation/publication controls remain held while selected-source evidence is unavailable. Retained workflow status refresh/recovery remains accessible.
+6. For ontology merging, generate and validate the mapping plan, commit the reviewer identity, then choose **Run Steward assessment**. Typing a reviewer name no longer submits assessments. Review its result before the separate approval/publication action.
+7. Test Where Used with a typed business object. Its hierarchy follows supported usage predicates in their declared directions and excludes provenance assertions. An empty result is bounded evidence, not proof of whole-graph absence.
+8. For Recommendations, select a stable object identity and scope through Graph Explorer. Similar Parts defaults to the selected record's ontology when no explicit scope is supplied; it does not claim whole-graph completeness. Direct graph analyses and structural inference do not need an LLM. Model-backed investigations still need the configured provider.
+
+Retained investigation status checks stop on permanent errors and pause after three consecutive transient read failures. Use **Refresh investigation status** after restoring access/service availability. Closing the view retains the server task; neither refresh nor reconnect submits a replacement investigation automatically. See [the page audit remediation record](../page-audit-remediation-20261027.md) for the fixes and validation boundaries.
+
+
+### Large ontology configuration
+
+Generated RDF can be much larger than its source. `ONTOLOGY_MAX_UPLOAD_BYTES` defaults to 25 MiB and controls downstream artifact registration/publication as well as uploads; `ENGINEERING_CONVERSION_MAX_RESULT_BYTES` defaults to 256 MiB and controls the worker's complete generated result. Raising only the latter does not raise the former. Configure root `.env.local` consistently for ingestion, ontology and graph processes, then rerun setup to restart them. A root-plus-dependency XSD bundle still has a separate 25 MiB ceiling. Merge source limits apply to the combined inputs. Do not equate these byte limits with supported server memory capacity. See the [large-ontology audit](../audits/extra-large-ontologies-2026-10-21.md) for measured smoke tests and unresolved scale risks.
+
+### XSD schemas with remote dependencies
+
+An HTTP(S) `schemaLocation` no longer fails merely because it is a URL. Import resolves a matching uploaded companion first (filename and namespace), otherwise retrieves the remote schema on the server, resolves its nested references and validates the complete local schema set before conversion. Multiple selected XSD sources remain one schema-set registration. XML namespace prefixes used in type references are preserved.
+
+Example root (replace the example URL with your supplier's schema URL):
+
+```xml
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:product">
+  <xs:import namespace="urn:common"
+             schemaLocation="https://schemas.example.com/product/common.xsd"/>
+</xs:schema>
+```
+
+If internet access is unavailable, select the schema folder containing `common.xsd` and its dependencies with the root. Customer input files are not edited. Engineering conversion retains the original root when rewritten, plus the resolved dependency bytes used by conversion and analytics. Retrying from those retained local bytes does not require another download.
+
+Optional settings in the **root `.env.local`**:
+
+```dotenv
+XSD_REMOTE_SCHEMA_ENABLED=true
+XSD_REMOTE_SCHEMA_HOSTS=www.w3.org,standards.iso.org
+```
+
+The enable flag defaults to `true`; the host list is optional and, when provided, applies to every redirect and dependency. Set the flag to `false` for offline installations and supply companions. Requests use public addresses on ports 80/443, with no PMem keys or browser credentials. Private/loopback addresses, unsafe XML/DTD declarations, namespace mismatches and ambiguous mirrors are rejected. Limits are 64 files including the root, 25 MiB combined (or the smaller configured upload limit), 5 MiB per downloaded file, three redirects and a 60-second resolution budget with bounded socket waits. Customer DNS resolution remains subject to the operating system resolver. Unreachable or invalid schemas require a local companion; PMem must not silently publish an incomplete ontology.

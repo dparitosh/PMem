@@ -65,7 +65,9 @@ def _connection_context() -> dict[str, str]:
 
 def _failure_action(exc: Exception) -> dict:
     """Return useful diagnostics without echoing a DSN or credentials."""
-    sqlstate = getattr(exc, 'sqlstate', None)
+    from backend.postgres_migrations import MigrationExecutionError
+    origin = exc.__cause__ if isinstance(exc, MigrationExecutionError) and exc.__cause__ is not None else exc
+    sqlstate = getattr(origin, 'sqlstate', None)
     actions = {
         '28P01': 'PostgreSQL rejected the user/password. Correct DEPO_DATABASE_URL and test the same credentials in pgAdmin.',
         '28000': 'PostgreSQL rejected this login. Check the role, database access, and pg_hba.conf rule for the application VM.',
@@ -73,11 +75,16 @@ def _failure_action(exc: Exception) -> dict:
         '42501': 'The migration role lacks privileges. Check CONNECT, schema USAGE/CREATE, and ownership of existing DEPO tables/views (or inherited membership in their owning role). Schema grants alone do not authorize ALTER TABLE. Have the DBA reconcile ownership; do not recreate the database.',
         '23514': 'Existing data violates a new schema constraint. Correct the reported rows before rerunning the migration.',
         '23503': 'Existing data violates a foreign-key constraint. Correct the referenced records before rerunning the migration.',
+        '23505': 'Existing data violates a uniqueness constraint. Review the reported database object and reconcile duplicate identities before rerunning; do not reset the database.',
+        '40P01': 'PostgreSQL reported a deadlock. Resolve concurrent maintenance and rerun the same schema update command.',
+        '55P03': 'A required database lock was unavailable. Check concurrent transactions and the migration lock budget before retrying.',
+        '57014': 'PostgreSQL cancelled the statement or its time budget expired. Check database activity, locks and configured migration timeouts before retrying.',
+        '42601': 'PostgreSQL rejected migration SQL syntax. Restore the matching reviewed SQL file; do not edit migration history to skip it.',
         '42P07': 'An untracked relation already exists. Do not delete it; compare it with the versioned migration and reconcile migration history.',
         '42710': 'An untracked constraint or index already exists. Do not delete it; reconcile it with the versioned migration.',
     }
-    diagnostic = str(exc).lower()
-    if not sqlstate and type(exc).__name__ == 'ProgrammingError':
+    diagnostic = str(origin).lower()
+    if not sqlstate and type(origin).__name__ == 'ProgrammingError':
         action = ('The PostgreSQL client rejected an application query before server execution. '
                   'Deploy the matching backend release, including depo_platform/schema_contract.py. '
                   'Parameterized psycopg queries must escape literal percent signs as %% '
@@ -99,7 +106,7 @@ def _failure_action(exc: Exception) -> dict:
     if 'no pg_hba.conf entry' in diagnostic:
         # PostgreSQL reports the client address it actually sees (possibly NAT).
         # Extract only a validated IP address; never include driver error text.
-        match = re.search(r'no pg_hba\.conf entry for host "([^"]+)"', str(exc), re.IGNORECASE)
+        match = re.search(r'no pg_hba\.conf entry for host "([^"]+)"', str(origin), re.IGNORECASE)
         if match:
             try:
                 address = ipaddress.ip_address(match.group(1))
@@ -111,6 +118,15 @@ def _failure_action(exc: Exception) -> dict:
                 pass
     if sqlstate:
         result['sqlstate'] = sqlstate
+    migration = getattr(exc, 'migration_context', None)
+    if isinstance(migration, dict):
+        # Only MigrationExecutionError owns this structured contract. Driver
+        # messages, SQL contents, DETAIL and connection strings stay excluded.
+        if isinstance(exc, MigrationExecutionError):
+            result['migration'] = dict(migration)
+            result['database_error_type'] = exc.database_error_type
+            if exc.database_object:
+                result['database_object'] = dict(exc.database_object)
     # RuntimeError text is authored by DEPO and cannot contain driver connection details.
     if isinstance(exc, RuntimeError):
         result['reason'] = str(exc)

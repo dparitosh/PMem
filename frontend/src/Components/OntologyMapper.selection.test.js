@@ -52,7 +52,7 @@ test('background merge shows mappings while validation holds approval and resume
  fireEvent.click(screen.getByRole('tab',{name:'2. Semantic Bridge'}));
  fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
  fireEvent.change(screen.getByRole('combobox',{name:'Source ontology'}),{target:{value:'source-id'}});
- const approver=screen.getByPlaceholderText('name or service principal');
+ const approver=screen.getByLabelText(/Reviewer name/);
  fireEvent.change(approver,{target:{value:'pmem-ui-test'}});
  fireEvent.click(screen.getByRole('button',{name:'Generate mapping plan'}));
  await screen.findByText(/Mappings are ready for review/);
@@ -159,8 +159,10 @@ test('selected merge mappings keep the evidence visible but block stale-plan pub
  await screen.findByRole('option',{name:/Target.*target-id/});
  fireEvent.click(screen.getByRole('tab',{name:'2. Semantic Bridge'}));
  fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
- fireEvent.change(screen.getByLabelText('Reviewing steward'),{target:{value:'steward'}});
+ fireEvent.change(screen.getByLabelText(/Reviewer name/),{target:{value:'steward'}});
  fireEvent.click(screen.getByRole('button',{name:'Generate mapping plan'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Run Steward assessment'})).toBeEnabled());
+ fireEvent.click(screen.getByRole('button',{name:'Run Steward assessment'}));
  await waitFor(()=>expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Select for consolidation'}));
  expect(screen.getByText('Source Part')).toBeVisible();
@@ -168,6 +170,8 @@ test('selected merge mappings keep the evidence visible but block stale-plan pub
  expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
  state.preview.mockResolvedValue({runId:'agent-revised',result:{...plan,preview_id:'revised-plan',changes:{entity_mappings:[candidate]}}});
  fireEvent.click(screen.getByRole('button',{name:'Validate selected mappings'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Run Steward assessment'})).toBeEnabled());
+ fireEvent.click(screen.getByRole('button',{name:'Run Steward assessment'}));
  await waitFor(()=>expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeEnabled());
  expect(state.preview.mock.calls.at(-1)[1].entity_mappings).toEqual([{source_iri:candidate.source_iri,target_iri:candidate.target_iri}]);
  expect(screen.getByText('Selected mappings in this plan')).toBeVisible();

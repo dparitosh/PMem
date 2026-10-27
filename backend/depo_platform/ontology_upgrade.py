@@ -4,10 +4,49 @@ import argparse
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 from backend.depo_platform.ontology_namespace import ontology_prefix
 from backend.depo_platform.upload_limits import ontology_upload_limit
 REVISION = 2
+
+
+class UpgradeInventoryUnavailable(RuntimeError):
+    pass
+
+
+def inventory_endpoint():
+    from backend.depo_platform.service_urls import service_url
+    host = os.getenv('DEPO_SERVICE_HOST', '').strip() or '127.0.0.1'
+    if host == '0.0.0.0': host = '127.0.0.1'
+    if host == '::': host = '[::1]'
+    if ':' in host and not host.startswith('['): host = '[' + host + ']'
+    endpoint = service_url('ONTOLOGY_SERVICE_URL', f'http://{host}:8011/api/v1')
+    return endpoint if endpoint.endswith('/api/v1') else endpoint + '/api/v1'
+
+
+def inventory_page(client, endpoint, headers, offset):
+    """Retry bounded inventory reads only; never retry a registration write."""
+    import httpx
+    deadline = time.monotonic() + 30
+    for attempt in range(3):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0: break
+        try:
+            response = client.get(endpoint + '/ontologies', headers=headers,
+                params={'limit':200,'offset':offset}, timeout=httpx.Timeout(min(10,remaining), connect=min(5,remaining), pool=min(5,remaining)))
+            if response.status_code not in {502,503,504}:
+                if response.status_code in {401,403}:
+                    raise UpgradeInventoryUnavailable('Ontology inventory access was rejected. Verify GRAPH_READ_TOKEN and the configured ontology service credentials; do not rotate keys or resubmit publications to resolve this read failure.')
+                response.raise_for_status()
+                return response.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+        if attempt < 2:
+            time.sleep(min(attempt+1, max(0,deadline-time.monotonic())))
+    raise UpgradeInventoryUnavailable(
+        f'Ontology inventory could not be reached at {endpoint}. Verify ONTOLOGY_SERVICE_URL matches DEPO_SERVICE_HOST and the running ontology listener (normally port 8011). '
+        'Inspect logs/windows-services/ontology.err.log and ontology.out.log, then rerun the same repository-root update/install command. Existing publications and the previous review plan are retained.')
 
 def digest(content):
     return hashlib.sha256(content).hexdigest()
@@ -125,10 +164,10 @@ def stage_draft(metadata, update, content, backup, client, endpoint, headers, ro
 
 def run(root, *, stage=False):
     import httpx
-    from backend.depo_platform.service_urls import service_url
     from backend.depo_platform.network import service_bearer_headers
     root = Path(root).resolve()
-    endpoint = service_url('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011/api/v1').rstrip('/')
+    endpoint = inventory_endpoint()
+    print(json.dumps({'stage':'ontology_upgrade_inventory','endpoint':endpoint}), flush=True)
     readers = service_bearer_headers('GRAPH_READ_TOKEN', service_name='ontology upgrade inventory', endpoint=endpoint)
     writers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='ontology upgrade drafts', endpoint=endpoint) if stage else {}
     folder = root / 'logs/installation/ontology-upgrade-v2'
@@ -137,9 +176,7 @@ def run(root, *, stage=False):
     with httpx.Client(timeout=httpx.Timeout(3600, connect=10, pool=10), trust_env=False) as client:
         offset = 0
         while True:
-            response = client.get(endpoint + '/ontologies', headers=readers, params={'limit':200,'offset':offset})
-            response.raise_for_status()
-            page = response.json()
+            page = inventory_page(client, endpoint, readers, offset)
             for metadata in page.get('ontologies', []): records[metadata['ontology_id']] = metadata
             following = page.get('next_offset')
             if following is None: break
@@ -270,4 +307,8 @@ if __name__ == '__main__':
     args=parser.parse_args()
     if args.detect: print(json.dumps(detect_deployment(args.root)))
     elif args.ceim_review: review_ceim_mappings(args.root)
-    else: run(args.root,stage=args.stage)
+    else:
+        try: run(args.root,stage=args.stage)
+        except UpgradeInventoryUnavailable as exc:
+            print(json.dumps({'status':'failed','stage':'ontology_upgrade_inventory','action':str(exc)}), flush=True)
+            raise SystemExit(1)

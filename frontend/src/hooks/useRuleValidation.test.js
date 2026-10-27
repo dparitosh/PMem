@@ -18,3 +18,13 @@ test('invalid response is reported instead of displaying a successful validation
  await act(async()=>{await result.current.validate();});
  expect(result.current.error).toMatch(/invalid validation/);expect(result.current.validation).toBeNull();
 });
+
+test('reconnect cancels validation and prevents old success from enabling the new session',async()=>{
+ let resolve;API_METHODS.ontology.validateRule.mockReturnValue(new Promise(done=>{resolve=done;}));
+ const {result}=renderHook(()=>useRuleValidation('rule','ontology','inference'));
+ let pending;act(()=>{pending=result.current.validate();});
+ act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
+ expect(result.current.busy).toBe(false);
+ await act(async()=>{resolve({data:{validation:{valid:true}}});await pending;});
+ expect(result.current.validation).toBeNull();
+});

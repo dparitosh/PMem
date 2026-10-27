@@ -7,13 +7,13 @@ export default function DependencyPathGraph({data}) {
   const graph=useMemo(()=>{
     const root=data.change_entity;
     if(!root?.node_id)return {nodes:[],edges:[],limited:false,height:100};
-    const nodes=new Map([[root.node_id,{id:root.node_id,name:root.name,depth:0}]]),edges=new Map();
+    const nodes=new Map([[root.node_id,{id:root.node_id,name:typeof root.name==='string'&&root.name?root.name:'Selected object',depth:0}]]),edges=new Map();
     for(const item of data.realization_chain || []){
       let current=root.node_id;
       for(const [index,edge] of (item.path || []).entries()){
         const target=edge.start_id===current?edge.end_id:edge.start_id;
         if(!nodes.has(target)&&nodes.size>=60)break;
-        if(!nodes.has(target))nodes.set(target,{id:target,name:item.path_names?.[index+1] || 'Related record',depth:index+1});
+        if(!nodes.has(target))nodes.set(target,{id:target,name:String(item.path_names?.[index+1] || 'Related record'),depth:index+1});
         edges.set(edge.relationship_id,{id:edge.relationship_id,source:current,target});
         current=target;
       }

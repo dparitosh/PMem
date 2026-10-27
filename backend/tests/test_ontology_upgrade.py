@@ -73,6 +73,60 @@ class OntologyUpgradeTests(unittest.TestCase):
 if __name__=='__main__': unittest.main()
 
 
+class InventoryConnectivityTests(unittest.TestCase):
+    def test_endpoint_uses_bind_address_and_preserves_explicit_routing(self):
+        from backend.depo_platform.ontology_upgrade import inventory_endpoint
+        cases = [({'DEPO_SERVICE_HOST':'10.0.2.16'},'http://10.0.2.16:8011/api/v1'),
+                 ({'DEPO_SERVICE_HOST':'0.0.0.0'},'http://127.0.0.1:8011/api/v1'),
+                 ({'DEPO_SERVICE_HOST':'::'},'http://[::1]:8011/api/v1'),
+                 ({'ONTOLOGY_SERVICE_URL':'https://gateway.example/ontology'},'https://gateway.example/ontology/api/v1')]
+        for env, expected in cases:
+            with self.subTest(env=env), patch.dict('os.environ',env,clear=True):
+                self.assertEqual(inventory_endpoint(),expected)
+
+    def test_production_does_not_guess_a_peer_url(self):
+        from backend.depo_platform.ontology_upgrade import inventory_endpoint
+        with patch.dict('os.environ',{'DEPO_ENV':'production','DEPO_SERVICE_HOST':'10.0.2.16'},clear=True):
+            with self.assertRaises(RuntimeError): inventory_endpoint()
+
+    def test_transient_inventory_connection_is_retried_without_writes(self):
+        import httpx
+        from backend.depo_platform.ontology_upgrade import inventory_page
+        client=MagicMock()
+        client.get.side_effect=[httpx.ConnectError('refused'),Response({'ontologies':[]})]
+        with patch('backend.depo_platform.ontology_upgrade.time.sleep'):
+            result=inventory_page(client,'http://10.0.2.16:8011/api/v1',{},0)
+        self.assertEqual(result,{'ontologies':[]})
+        self.assertEqual(client.get.call_count,2)
+        client.post.assert_not_called()
+        self.assertLessEqual(client.get.call_args.kwargs['timeout'].read,10)
+
+    def test_refusal_preserves_previous_plan_and_explains_service_logs(self):
+        import httpx
+        from backend.depo_platform.ontology_upgrade import UpgradeInventoryUnavailable
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); plan=root/'logs/installation/ontology-upgrade-v2/plan.json'
+            plan.parent.mkdir(parents=True); plan.write_text('previous review')
+            client=MagicMock(); client.__enter__.return_value=client
+            client.get.side_effect=httpx.ConnectError('private connection details')
+            with patch('httpx.Client',return_value=client),patch('backend.depo_platform.network.service_bearer_headers',return_value={}),patch('backend.depo_platform.ontology_upgrade.time.sleep'),patch.dict('os.environ',{'ONTOLOGY_SERVICE_URL':'http://10.0.2.16:8011/api/v1'},clear=True):
+                with self.assertRaises(UpgradeInventoryUnavailable) as error: run(root)
+            self.assertEqual(client.get.call_count,3)
+            self.assertIn('ontology.err.log',str(error.exception))
+            self.assertNotIn('private connection details',str(error.exception))
+            self.assertEqual(plan.read_text(),'previous review')
+            client.post.assert_not_called()
+
+    def test_auth_rejection_is_not_retried(self):
+        from backend.depo_platform.ontology_upgrade import inventory_page, UpgradeInventoryUnavailable
+        response=Response({}); response.status_code=403
+        client=MagicMock(); client.get.return_value=response
+        with self.assertRaises(UpgradeInventoryUnavailable) as error:
+            inventory_page(client,'http://service:8011/api/v1',{},0)
+        self.assertIn('GRAPH_READ_TOKEN',str(error.exception))
+        self.assertEqual(client.get.call_count,1)
+
+
 class CeimUpgradeReviewTests(unittest.TestCase):
     def test_review_reports_old_and_unknown_mapping_without_writes(self):
         from backend.ceim.contract import contract

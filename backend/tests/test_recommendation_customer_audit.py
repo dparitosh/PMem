@@ -59,6 +59,26 @@ def test_similarity_excludes_requirements_and_does_not_invent_trace_evidence():
     assert result['coverage']['category_mismatches_excluded'] == 1
 
 
+def test_candidate_scope_uses_indexed_published_ontology_anchor():
+    graph = Graph([record('root','Shaft',ontology_id='one'), record('same','Alternative',ontology_id='one'), record('other','Other',ontology_id='two')])
+    result = RecommendationEngine(graph).similar('root')
+    query, params = next(call for call in graph.calls if 'recommendation-candidates' in call[0])
+    assert 'MATCH (n:OntologyResource {ontology_id:$scope})' in query
+    assert 'UNION MATCH (n:OntologyResource {source_ontology:$scope})' in query
+    assert params['scope'] == 'one'
+    assert [row['node_id'] for row in result['similar_parts']] == ['same']
+    assert result['coverage']['default_ontology_scope'] == 'one'
+
+
+def test_legacy_candidate_query_has_an_explicit_label_anchor():
+    root = {'id':'legacy','labels':['Part'],'properties':{'name':'Legacy'}}
+    graph = Graph([root])
+    RecommendationEngine(graph).similar('legacy')
+    query, _ = next(call for call in graph.calls if 'recommendation-candidates' in call[0])
+    assert 'MATCH (n) ' not in query
+    assert '|Part|' in query
+
+
 def test_differently_named_part_with_engineering_evidence_outranks_name_only_match():
     props = dict(material='Steel', diameter='25.4 mm', length='10 mm', revision='A', specification='ISO-1')
     graph = Graph([record('root','Drive shaft',**props), record('good','Replacement 739',**{**props,'diameter':'1 in'}), record('lexical','Drive shaft')])
@@ -143,6 +163,47 @@ def test_recommendation_name_lookup_requests_business_records():
     with patch.object(api.publisher, 'search', return_value={'nodes':[]}) as search:
         assert api._find_node('Motor') is None
     assert search.call_args.kwargs['business_only'] is True
+
+
+def test_process_context_uses_declared_types_not_business_names_and_deduplicates():
+    neighbors = [
+        {'id':'fake','name':'Manufacturing process specification','labels':['Document']},
+        {'id':'real','name':'Press fit','labels':['OntologyResource'],'rdf_types':['https://example.org/Process']},
+        {'id':'real','name':'Press fit','labels':['OntologyResource'],'rdf_types':['https://example.org/Process']},
+        {'id':'mapped','name':'Inspect bearing','mapped_types':['https://example.org/Operation']},
+    ]
+    with patch.object(api,'_find_node',return_value={'id':'root','name':'Bearing'}), patch.object(api,'_neighbors',return_value=neighbors) as query:
+        result = api._manufacturing_context_result({'node_id':'root','scope':{'ontology_id':'selected'}})
+    query.assert_called_once_with('root',scope={'ontology_id':'selected'},limit=101)
+    assert [row['node_id'] for row in result['direct_processes']] == ['real','mapped']
+    assert result['process_summary']['total_direct'] == 2
+    assert result['part']['node_id'] == 'root'
+    assert result['coverage']['whole_graph_complete'] is False
+
+
+def test_process_neighbor_query_applies_scope_before_limit_and_has_timeout():
+    with patch.object(api.publisher,'_session_rows',return_value=[]) as query:
+        api._neighbors('root',scope={'ontology_id':'selected','ontology_prefix':'plant'},limit=101)
+    cypher = query.call_args.args[0]
+    params = query.call_args.kwargs
+    assert params['scope'] == 'selected' and params['prefix'] == 'plant'
+    assert 0 < params['_timeout_seconds'] <= 20
+    assert cypher.index('neighbor.ontology_id = $scope') < cypher.index('LIMIT $limit')
+    assert 'OntologyClass' in params['excluded']
+
+
+def test_process_context_reports_neighbor_truncation_without_claiming_absence():
+    with patch.object(api,'_find_node',return_value={'id':'root','name':'Bearing'}), patch.object(api,'_neighbors',return_value=[{'id':str(i),'name':'Document'} for i in range(101)]):
+        result = api._manufacturing_context_result({'node_id':'root'})
+    assert result['coverage']['limit_reached'] is True
+    assert result['coverage']['neighbors_examined'] == 100
+
+
+def test_process_neighbor_database_failure_is_actionable_503():
+    with patch.object(api.publisher,'_session_rows',side_effect=OSError('DB unavailable')):
+        with pytest.raises(HTTPException) as failure:
+            api._neighbors('root')
+    assert failure.value.status_code == 503
 
 
 def test_compatibility_callers_use_same_engine_and_preserve_scope():

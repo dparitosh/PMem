@@ -22,6 +22,8 @@ const ManufacturingResult = ({ data }) => {
 
   return (
     <div>
+      {data.coverage?.limit_reached&&<p role="status">The neighbor limit was reached. These process results cover only the inspected graph slice; narrow the scope to investigate further.</p>}
+      {data.message&&<p role="status">{data.message}</p>}
       {/* Header Ã¢â‚¬â€ always visible */}
       <div style={CARD}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>

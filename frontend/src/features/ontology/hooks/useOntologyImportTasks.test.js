@@ -7,13 +7,27 @@ function Workspace() {
   const state = useOntologyImportTasks();
   return <><select aria-label="Task" value={state.selectedImportTaskId} onChange={event => state.setSelectedImportTaskId(event.target.value)}>
     {state.importTasks.map(task => <option key={task.task_id} value={task.task_id}>{task.task_id}</option>)}
-  </select><button onClick={state.refreshImportTasks}>Refresh</button><output>{state.selectedImportTaskDetails?.name || 'No details'}</output><output>{state.selectedImportTaskPreview?.name || 'No preview'}</output></>;
+  </select><button onClick={state.refreshImportTasks}>Refresh</button><output>{state.selectedImportTaskDetails?.name || 'No details'}</output><output>{state.selectedImportTaskPreview?.name || 'No preview'}</output>{state.selectedImportTaskError&&<p role="alert">{state.selectedImportTaskError}</p>}</>;
 }
 beforeEach(() => {
   vi.resetAllMocks();
   api.getTasks.mockResolvedValue({ data: { tasks: [{ task_id: 'A' }, { task_id: 'B' }] } });
   api.getStatus.mockResolvedValue({ data: { name: 'Details A' } });
   api.getPreview.mockResolvedValue({ data: { name: 'Preview A' } });
+});
+
+test('failed selected reads expose recovery errors and refresh recovers the same task', async()=>{
+ api.getStatus.mockRejectedValue(new Error('Status unavailable'));
+ api.getPreview.mockRejectedValue(new Error('Preview unavailable'));
+ render(<Workspace/>);
+ expect(await screen.findByRole('alert')).toHaveTextContent('Status unavailable');
+ expect(screen.getByRole('alert')).toHaveTextContent('Preview unavailable');
+ expect(screen.getByRole('combobox')).toHaveValue('A');
+ api.getStatus.mockResolvedValue({data:{name:'Recovered details'}});
+ api.getPreview.mockResolvedValue({data:{name:'Recovered preview'}});
+ fireEvent.click(screen.getByRole('button',{name:'Refresh'}));
+ await screen.findByText('Recovered preview');
+ expect(screen.queryByRole('alert')).toBeNull();
 });
 test('manual refresh replaces a removed selection with an available task', async () => {
   render(<Workspace />);
@@ -68,4 +82,12 @@ test('schema cleanup removes retained task choices and preview evidence', async 
   await waitFor(() => expect(api.getTasks).toHaveBeenCalledTimes(2));
   expect(screen.queryByText('Preview A')).not.toBeInTheDocument();
   expect(screen.queryByRole('option',{name:'A'})).not.toBeInTheDocument();
+});
+
+test('reconnect clears selected task evidence and reloads the registry',async()=>{
+ render(<Workspace/>);await screen.findByText('Preview A');
+ api.getTasks.mockImplementation(()=>new Promise(()=>{}));
+ act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
+ expect(screen.queryByText('Preview A')).toBeNull();
+ await waitFor(()=>expect(api.getTasks).toHaveBeenCalledTimes(2));
 });

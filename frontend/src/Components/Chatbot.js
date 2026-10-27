@@ -71,6 +71,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             readKey = nextKey;
             if (!nextKey && wasBrowserSessionExpired()) {
                 abortRef.current?.abort();
+                abortRef.current=null;requestActiveRef.current=false;setRequestActive(false);setShowSpinner(false);setStatusLabel(null);
                 setError('Access expired. Reconnect in Admin to resume this conversation.');
                 return;
             }
@@ -84,6 +85,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         const replaced = () => {
             readKey = getCredentialProfile('GRAPH_READ_TOKEN');
             abortRef.current?.abort();
+            abortRef.current=null;requestActiveRef.current=false;setRequestActive(false);setShowSpinner(false);setStatusLabel(null);
             setChatMessages([]);
             setChatResults?.([]);
             setError(null);
@@ -107,13 +109,18 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         let active = true;
         const timeout = setTimeout(() => controller.abort(), 10000);
         const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history?ontology_id=${encodeURIComponent(scopeId)}&ontology_prefix=${encodeURIComponent(scopePrefix)}&page=${encodeURIComponent(pageId)}`);
-        fetch(url, { headers: serviceAuthHeaders(url), signal: controller.signal, credentials: 'omit', redirect: 'error' })
+        const headers=serviceAuthHeaders(url);
+        fetch(url, { headers, signal: controller.signal, credentials: 'omit', redirect: 'error' })
             .then(async response => {
                 if ([404, 410].includes(response.status)) {
                     if (active && !requestActiveRef.current) { clearClientSessionId(); sessionIdRef.current = null; }
                     return null;
                 }
-                if (!response.ok) throw new Error(`Conversation restore failed (${response.status})`);
+                if (!response.ok) {
+                    const body=await response.json().catch(()=>({}));
+                    if(active&&!controller.signal.aborted&&credential===getCredentialProfile('GRAPH_READ_TOKEN'))handleSessionRejection(response.status,headers.Authorization||'',body.detail);
+                    throw new Error(`Conversation restore failed (${response.status})`);
+                }
                 return response.json();
             }).then(body => {
                 if (!active || credential !== getCredentialProfile('GRAPH_READ_TOKEN') || requestActiveRef.current || !Array.isArray(body?.turns)) return;
@@ -122,7 +129,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, restored: true, retainedPromptJobId: turn.job_id },
                 ]);
                 setChatMessages(current => current.length ? current : restored);
-            }).catch(error => { if (active && error.name !== 'AbortError') setError(error.message); })
+            }).catch(error => { if (active && !controller.signal.aborted && credential===getCredentialProfile('GRAPH_READ_TOKEN') && error.name !== 'AbortError') setError(error.message); })
             .finally(() => clearTimeout(timeout));
         return () => { active = false; clearTimeout(timeout); controller.abort(); };
     }, [scopeId, scopePrefix, pageId, historyVersion]);
@@ -221,6 +228,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             if (response.status === 403 && returnedSessionId && returnedSessionId !== activeSessionId) {
                 activeSessionId = returnedSessionId;
                 response = await sendRequest(activeSessionId);
+                if(controller.signal.aborted)return;
                 returnedSessionId = response.headers.get('x-session-id');
                 if (returnedSessionId) {
                     sessionIdRef.current = returnedSessionId;
@@ -368,6 +376,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     useEffect(() => {
         // Fetch dynamic sample queries from backend
         const sampleController = new AbortController();
+        const sampleCredential=getCredentialProfile('GRAPH_READ_TOKEN');
         setSampleQueries(companionFallbackPrompts);
         const samplesUrl = new URL(buildUrl(API.chat.sampleQueries), window.location.origin);
         samplesUrl.searchParams.set('page', pageId || 'home');
@@ -384,7 +393,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     },
                     signal: sampleController.signal,
                 });
-                if (sampleController.signal.aborted) return;
+                if (sampleController.signal.aborted || sampleCredential!==getCredentialProfile('GRAPH_READ_TOKEN')) return;
                 const returnedSessionId = response.headers.get('x-session-id');
                 if (returnedSessionId) {
                     sessionIdRef.current = returnedSessionId;
@@ -392,7 +401,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 }
                 if (response.ok) {
                     const data = await response.json();
-                    if (!sampleController.signal.aborted && Array.isArray(data.queries) && data.queries.length > 0 && data.queries.length <= 8 && data.queries.every(query => typeof query === 'string' && query.trim() && query.length <= 300)) {
+                    if (!sampleController.signal.aborted && sampleCredential===getCredentialProfile('GRAPH_READ_TOKEN') && Array.isArray(data.queries) && data.queries.length > 0 && data.queries.length <= 8 && data.queries.every(query => typeof query === 'string' && query.trim() && query.length <= 300)) {
                         setSampleQueries(data.queries);
                         logger.data('Loaded dynamic sample queries', {
                             count: data.queries.length,

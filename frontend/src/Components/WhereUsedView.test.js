@@ -21,7 +21,7 @@ test('upward traversal stops at the depth budget and shows partial evidence', as
  graphApi.getTraversal.mockImplementation(async id => {
    const depth = id === 'root' ? 0 : Number(id.slice(1));
    const parent = `p${depth+1}`;
-   return {data:{nodes:[{elementId:id},{elementId:parent}],links:[{elementId:`e${depth}`,source:parent,target:id,type:'USES'}]}};
+   return {data:{nodes:[{elementId:id,labels:['Part']},{elementId:parent,labels:['Assembly']}],links:[{elementId:`e${depth}`,source:parent,target:id,type:'USES'}]}};
  });
  render(<WhereUsedView data={{nodes:[root],links:[]}} />);
  fireEvent.change(screen.getByRole('textbox'), {target:{value:'Root'}});

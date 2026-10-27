@@ -2512,16 +2512,21 @@ class UnifiedDataImportService:
         store; otherwise the UI renders an empty instance selector.
         """
         tasks_by_id: Dict[str, Dict[str, Any]] = {}
-        for task in import_tasks.values():
+        for task in list(import_tasks.values()):
             if isinstance(task, dict) and task.get('task_id') and not import_task_cleared(str(task['task_id']), cls.TASK_STORE_DIR):
                 tasks_by_id[str(task['task_id'])] = task
 
         cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
         for path in cls.TASK_STORE_DIR.glob('*.json'):
-            if path.name.endswith(('.parsed_rows.json', '.shacl_report.json')):
+            # Only primary task snapshots belong in the registry. Sidecars
+            # include both legacy names and content-addressed hash names.
+            if '.parsed_rows.' in path.name or '.shacl_report.' in path.name:
                 continue
             try:
                 task = json.loads(path.read_text(encoding='utf-8'))
+                if not isinstance(task, dict):
+                    logger.warning('Skipping non-object import task snapshot %s', path.name)
+                    continue
                 task_id = str(task.get('task_id') or '')
                 if task_id and path.name == f'{task_id}.json' and not import_task_cleared(task_id, cls.TASK_STORE_DIR):
                     tasks_by_id[task_id] = task

@@ -30,6 +30,7 @@ import MergeStewardReview from "../../Components/ontology/MergeStewardReview";
 import { UI_COLORS as C } from "../../styles/uiTokens";
 
 const SOURCE_FORMATS = [
+  { id: 'all', label: 'All source formats' },
   { id: 'plmxml', label: 'PLMXML' },
   { id: 'step', label: 'STEP' },
   { id: 'xmi', label: 'XMI' },
@@ -68,6 +69,16 @@ export default function OntologyWorkspace() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [vocabularyWarning, setVocabularyWarning] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exportRequest = useRef(null);
+  useEffect(() => {
+    const cancel = () => { exportRequest.current?.abort(); exportRequest.current = null; setExportBusy(false); setExportError(''); };
+    const events = ['depo:session-replaced','depo:session-expired','depo:credentials-cleared','depo:credentials-changed'];
+    events.forEach(event => window.addEventListener(event, cancel));
+    return () => { exportRequest.current?.abort(); events.forEach(event => window.removeEventListener(event, cancel)); };
+  }, []);
   const [mappingTruncated, setMappingTruncated] = useState(false);
   const [vocabularyRevision, setVocabularyRevision] = useState(0);
   const [selectedMapping, setSelectedMapping] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('target') || '');
@@ -82,7 +93,7 @@ export default function OntologyWorkspace() {
   const [mapBusy, setMapBusy] = useState(false);
   const [mapMessage, setMapMessage] = useState(null);
   const { importTasks, selectedImportTaskId, setSelectedImportTaskId, importTasksLoading,
-    importTasksError, selectedImportTaskDetails, selectedImportTaskPreview, refreshImportTasks } = useOntologyImportTasks();
+    importTasksError, selectedImportTaskDetails, selectedImportTaskPreview, selectedImportTaskLoading, selectedImportTaskError, refreshImportTasks } = useOntologyImportTasks();
   const [unifyBusy, setUnifyBusy] = useState(false);
   const [unifyResult, setUnifyResult] = useState(null);
   const [bridgeCandidates, setBridgeCandidates] = useState([]);
@@ -114,8 +125,10 @@ export default function OntologyWorkspace() {
     const invalidate = () => {
       mergeGeneration.current += 1; inferenceGeneration.current += 1;
       setMergeResult(null); setMergeBusy(false); setInferenceBusy(false);
+      inferenceRequest.current?.abort();setInferenceResult(null);setInferenceError(null);
+      setMergeStewardReview(null);setMergeEntityMappings([]);setMergeSuggestions([]);setBridgeApproved(false);
     };
-    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced'];
     events.forEach(event => window.addEventListener(event, invalidate));
     return () => { events.forEach(event => window.removeEventListener(event, invalidate)); mergeGeneration.current += 1; };
   }, []);
@@ -243,7 +256,7 @@ export default function OntologyWorkspace() {
   );
 
   const normalizeSourceFormat = (rawType, ontologyId) => {
-    const valid = new Set(['plmxml', 'step', 'xmi', 'xml']);
+    const valid = new Set(SOURCE_FORMATS.map(item => item.id));
     const t = String(rawType || '').toLowerCase();
     if (valid.has(t)) return t;
 
@@ -256,7 +269,7 @@ export default function OntologyWorkspace() {
     const firstToken = id.split('_')[0];
     if (valid.has(firstToken)) return firstToken;
 
-    return 'plmxml';
+    return 'all';
   };
 
   const buildOntologyOptions = useCallback((ontologies = []) => {
@@ -397,13 +410,14 @@ export default function OntologyWorkspace() {
         setMappingTruncated(false);
         setLoading(true);
         setError(null);
+        setVocabularyWarning('');
       }
       try {
         // Use selectedOntologyApi (the currently selected uploaded ontology prefix).
         // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
         const [dictRes, mapRes] = await Promise.allSettled([
           API_METHODS.ontology.getDataDictionary(selectedOntologyApi, options),
-          API_METHODS.ontology.getMappings(selectedOntologyApi, selectedMappingType, options),
+          API_METHODS.ontology.getMappings(selectedOntologyApi, activeView === 'vocabulary' ? 'all' : selectedMappingType, options),
         ]);
         const rejectedAccess = [dictRes, mapRes].find(result => result.status === 'rejected' && [401, 403].includes(result.reason?.response?.status));
         if (rejectedAccess) throw rejectedAccess.reason;
@@ -417,8 +431,14 @@ export default function OntologyWorkspace() {
         let dictData = dictDataRaw;
 
         if (!hasPrimaryDictionary) {
-          const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi, {...options, timeout:120000});
-          taxonomyData = taxonomyRes?.data || null;
+          try {
+            const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi, {...options, timeout:120000});
+            taxonomyData = taxonomyRes?.data || null;
+          } catch (failure) {
+            if (controller.signal.aborted) return;
+            if ([401,403].includes(failure?.response?.status)) throw failure;
+            if (!cancelled) setVocabularyWarning('Term descriptions are unavailable. Saved mapping evidence is shown; refresh ontology to retry the dictionary.');
+          }
           usingFallbackDictionary = Boolean(taxonomyData?.nodes?.length);
           dictData = usingFallbackDictionary ? buildFallbackDictionaryFromTaxonomy(taxonomyData, selectedOntologyApi) : dictDataRaw;
         }
@@ -1048,15 +1068,26 @@ export default function OntologyWorkspace() {
               {selectedMapping && activeView === 'taxonomy' && (
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
                   {['ttl', 'rdf', 'owl', 'jsonld'].map((format) => (
-                    <a
+                    <button type="button" disabled={exportBusy}
                       key={format}
-                      href={API_METHODS.ontology.exportUrl(selectedMapping, format)}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={async () => {
+                        if (exportRequest.current) return;
+                        const controller = new AbortController(); exportRequest.current = controller;
+                        setExportBusy(true); setExportError('');
+                        try {
+                          const response = await API_METHODS.ontology.exportRegistered(selectedMapping, format, {signal:controller.signal});
+                          if (controller.signal.aborted) return;
+                          const url = URL.createObjectURL(response.data);
+                          const anchor = document.createElement('a'); anchor.href = url; anchor.download = `ontology.${format}`;
+                          document.body.appendChild(anchor); anchor.click(); anchor.remove();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        } catch (failure) { if (!controller.signal.aborted) setExportError(apiErrorMessage(failure, 'Ontology export failed.')); }
+                        finally { if (exportRequest.current === controller) { exportRequest.current = null; setExportBusy(false); } }
+                      }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 7px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', color: C.primaryDark, background: C.surface, fontSize: '10px', fontWeight: 800, textDecoration: 'none', textTransform: 'uppercase' }}
                     >
                       <Download size={11} /> {format}
-                    </a>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1071,6 +1102,8 @@ export default function OntologyWorkspace() {
       </div>
 
       <WorkspaceTabs label="Ontology Junction views" tabs={VIEWS} value={activeView} onChange={setActiveView} />
+      {exportError && <p role="alert">{exportError}</p>}
+      {vocabularyWarning && <p role="status">{vocabularyWarning}</p>}
       <p aria-live="polite">{activeView === 'taxonomy' ? 'Inspect declared classes, properties and hierarchy for the selected ontology version.' : activeView === 'vocabulary' ? 'Inspect recorded vocabulary relations. A mapping relation is not automatically OWL identity or equivalence.' : activeView === 'alignment' ? 'Ask the governed agents for saved proposals, inspect their evidence, then review publication separately.' : 'Preview structural rules and their supporting declarations. This view does not execute arbitrary SWRL or publish conclusions.'}</p>
       <details className="depo-bridge-metadata"><summary>Ontology lifecycle and knowledge graph publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>
 
@@ -1078,7 +1111,7 @@ export default function OntologyWorkspace() {
       {loading && activeView === 'vocabulary' ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textSec }}>
           <div style={{ width: 32, height: 32, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-          Loading ontology dataÃ¢â‚¬Â¦
+          Loading ontology data…
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : error && activeView === 'vocabulary' ? (
@@ -1294,6 +1327,8 @@ export default function OntologyWorkspace() {
                     </select>
                     <button type="button" onClick={refreshImportTasks} disabled={importTasksLoading}>Refresh imported instances</button>
                     {importTasksError && <p role="alert">{importTasksError}</p>}
+                    {selectedImportTaskLoading && <p role="status">Loading selected instance evidence…</p>}
+                    {selectedImportTaskError && <p role="alert">{selectedImportTaskError} <button type="button" onClick={refreshImportTasks}>Retry instance evidence</button></p>}
                     {!importTasksLoading && !importTasksError && !importTasks.length && <p>No retained instance imports are available. <a href="#/import">Import instance data</a>, then refresh this list.</p>}
                   </div>
                   <div style={{ border: `1px solid ${selectedOntologyApi ? C.borderDark : C.red}`, borderRadius: '6px', background: C.surface, padding: '10px 12px', minHeight: '42px' }}>
@@ -1356,7 +1391,7 @@ export default function OntologyWorkspace() {
                   {selectedImportTaskId ? `Source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
                 </div>
                 </details>
-                <SemanticBridgeJobs ontologyId={selectedOntologyApi} importTaskId={selectedImportTaskId} manualMappings={(mappingEdges || []).filter(edge => edge.source_instance_id === selectedImportTaskId && edge.evidence?.includes('user-selected bridge')).map(edge => ({source_term: edge.source_term, source_type: edge.source_type, target_term: edge.target_term, target_ontology_type: edge.target_ontology_type}))} />
+                <SemanticBridgeJobs sourceUnavailable={Boolean(selectedImportTaskLoading || selectedImportTaskError)} ontologyId={selectedOntologyApi} importTaskId={selectedImportTaskId} manualMappings={(mappingEdges || []).filter(edge => edge.source_instance_id === selectedImportTaskId && edge.evidence?.includes('user-selected bridge')).map(edge => ({source_term: edge.source_term, source_type: edge.source_type, target_term: edge.target_term, target_ontology_type: edge.target_ontology_type}))} />
                 {(importTasksError || unifyResult) && (
                   <div style={{
                     marginTop: '12px',

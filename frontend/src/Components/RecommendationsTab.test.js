@@ -136,3 +136,99 @@ test('session expiry clears direct graph evidence and rechecks service readiness
  await waitFor(()=>expect(screen.queryAllByText('Previous session evidence')).toHaveLength(0));
  await waitFor(()=>expect(API_METHODS.recommendations.health).toHaveBeenCalledTimes(previous+1));
 });
+
+test('an access rejection blocks analysis until access has been verified',async()=>{
+ ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ direct();
+ fireEvent(window,new Event('depo:access-rejected'));
+ expect(screen.getByRole('button',{name:'Analyse'})).toBeDisabled();
+ expect(screen.getByText(/API access was rejected. Use Revalidate access/)).toBeVisible();
+ expect(screen.queryByText('Graph data available')).toBeNull();
+ fireEvent(window,new Event('depo:access-verified'));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Analyse'})).toBeEnabled());
+});
+
+test('agent errors do not leave a contradictory ready-to-analyse message',async()=>{
+ ready();agenticClient.post.mockRejectedValue(new Error('Service access was rejected'));
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ fireEvent.click(await screen.findByRole('button',{name:'Analyse with agent'}));
+ await screen.findByText('Service access was rejected');
+ expect(screen.queryByText('Ready to analyse')).toBeNull();
+});
+
+test('invalid similarity limits do not disable other agent analyses',async()=>{
+ ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.click(screen.getByRole('tab',{name:'Similar Parts'}));
+ fireEvent.change(screen.getByLabelText('Reference part'),{target:{value:'Bearing'}});
+ fireEvent.change(screen.getByLabelText('Results'),{target:{value:''}});
+ expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
+ expect(screen.getByText('Choose a whole number of results from 1 to 50.')).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'Process Context'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeEnabled());
+ expect(screen.queryByText('Choose a whole number of results from 1 to 50.')).toBeNull();
+});
+
+test.each(['', '0','51','1.5'])('invalid direct similarity limit %s cannot submit',async value=>{
+ ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');direct();
+ fireEvent.click(screen.getByRole('tab',{name:'Similar Parts'}));
+ fireEvent.change(screen.getByLabelText('Reference part'),{target:{value:'Bearing'}});
+ fireEvent.change(screen.getByLabelText('Results'),{target:{value}});
+ expect(screen.getByRole('button',{name:'Analyse'})).toBeDisabled();
+ expect(API_METHODS.recommendations.similarParts).not.toHaveBeenCalled();
+});
+
+test('a malformed agent tool catalog gives a recoverable error without enabling submission',async()=>{
+ ready();agenticClient.get.mockResolvedValue({data:{tools:{wrong:'shape'}}});
+ render(<RecommendationsTab/>);await screen.findByText(/Agent tool catalog is invalid/);
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
+ expect(screen.queryByText('Ready to analyse')).toBeNull();
+});
+
+test.each([null,[],{impacted_parts:[null]},{change_entity:{name:{raw:'wrong'}}},{realization_chain:[{path_names:'not an array'}]}])('invalid graph evidence is reported without rendering results (%j)',async data=>{
+ ready();API_METHODS.recommendations.changeImpact.mockResolvedValue({data});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');direct();
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent(/Recommendation response/);
+ expect(screen.queryByRole('heading',{name:'Change Impact results'})).toBeNull();
+});
+
+test('unusable completed agent evidence is explicitly reported',async()=>{
+ ready();agenticClient.post.mockResolvedValue({data:{run_id:'goal-missing',status:'completed',result:{summary:'No cited observation'}}});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Analyse with agent'}));
+ expect(await screen.findByText(/completed without usable evidence/)).toBeVisible();
+ expect(screen.queryByRole('heading',{name:'Change Impact results'})).toBeNull();
+});
+
+test('object edits cancel in-flight analysis and late failures cannot replace current state',async()=>{
+ ready();let reject;API_METHODS.recommendations.changeImpact.mockImplementation(()=>new Promise((_,failure)=>{reject=failure;}));
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');direct();
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ const signal=API_METHODS.recommendations.changeImpact.mock.calls[0][2].signal;
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Shaft'}});
+ expect(signal.aborted).toBe(true);reject(new Error('Old object failed'));
+ await waitFor(()=>expect(screen.queryByText('Old object failed')).toBeNull());
+ expect(screen.getByRole('button',{name:'Analyse'})).toBeEnabled();
+});
+
+test('process context submits the selected scoped identity',async()=>{
+ ready();API_METHODS.recommendations.manufacturing.mockResolvedValue({data:{message:'No linked processes'}});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');direct();
+ fireEvent(window,new CustomEvent('dt-rec-prefill',{detail:{service:'manufacturing',name:'Bearing',node_id:'selected',scope:{ontology_id:'plant'}}}));
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ await screen.findByRole('heading',{name:'Process Context results'});
+ expect(API_METHODS.recommendations.manufacturing).toHaveBeenCalledWith('Bearing',{node_id:'selected',ontology_id:'plant'},expect.objectContaining({timeout:60000}));
+});
+
+test('non-string prefill data cannot crash the object input',async()=>{
+ ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent(window,new CustomEvent('dt-rec-prefill',{detail:{service:'change-impact',name:{raw:'not a name'}}}));
+ expect(screen.getByLabelText('Changed item')).toHaveValue('');
+ expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
+});
