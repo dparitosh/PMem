@@ -262,6 +262,8 @@ Invoke-DepoStage 'AP242 PMI mapping upgrade review (no graph publication)' {
   Import-DepoEnvironment -Root $root -EnvFile $envPath
   Push-Location -LiteralPath $root
   try {
+    # Each stage runs in its own scope; helpers loaded by an earlier stage are unavailable here.
+    . (Join-Path $windows 'service-runtimes.ps1')
     $reviewPython = Get-DepoServicePython -Root $root -ServiceId 'ingestion' -Mode $settings.DEPO_SERVICE_RUNTIME_MODE
     Invoke-DepoNativeCommand -Executable $reviewPython -NativeArguments @('-m','backend.depo_platform.ontology_upgrade','--root',$root,'--ceim-review')
   } finally { Pop-Location }
