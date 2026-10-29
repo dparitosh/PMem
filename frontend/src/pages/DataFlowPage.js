@@ -144,25 +144,29 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     else setRefreshing(true);
     setError('');
     try {
-      const [healthResult, telemetryResult, runsResult, definitionsResult] = await Promise.allSettled([
-        dataPipelineAPI.health(),
-        dataPipelineAPI.telemetry(),
-        dataPipelineAPI.runs(100),
-        dataPipelineAPI.definitions(),
-      ]);
+      // Apply each independent read as soon as it completes. A slow telemetry
+      // endpoint must not hide usable runs, definitions, or health evidence.
+      let fulfilled = 0;
+      let nextRuns = runs;
+      let runsFulfilled = false;
+      const read = (kind, request) => request.then(value => {
+        if (sequence !== loadSequence.current) return;
+        fulfilled += 1;
+        const payload = responsePayload(value);
+        if (kind === 'health') setHealth(payload);
+        if (kind === 'telemetry') setTelemetry(payload);
+        if (kind === 'runs') { runsFulfilled = true; nextRuns = asArray(payload?.runs); setRuns(nextRuns); }
+        if (kind === 'definitions') setDefinitions(asArray(payload?.definitions));
+      });
+      const requests = [
+        read('health', dataPipelineAPI.health()),
+        read('telemetry', dataPipelineAPI.telemetry()),
+        read('runs', dataPipelineAPI.runs(100)),
+        read('definitions', dataPipelineAPI.definitions()),
+      ];
+      const results = await Promise.allSettled(requests);
       if (sequence !== loadSequence.current) return;
-      const successes = [healthResult, telemetryResult, runsResult, definitionsResult]
-        .filter((result) => result.status === 'fulfilled');
-      if (!successes.length) throw healthResult.reason || new Error('Data pipeline service is unavailable.');
-      const healthPayload = healthResult.status === 'fulfilled' ? responsePayload(healthResult.value) : null;
-      const telemetryPayload = telemetryResult.status === 'fulfilled' ? responsePayload(telemetryResult.value) : null;
-      const runsPayload = runsResult.status === 'fulfilled' ? responsePayload(runsResult.value) : null;
-      const definitionsPayload = definitionsResult.status === 'fulfilled' ? responsePayload(definitionsResult.value) : null;
-      if (healthResult.status === 'fulfilled') setHealth(healthPayload);
-      if (telemetryResult.status === 'fulfilled') setTelemetry(telemetryPayload);
-      const nextRuns = asArray(runsPayload?.runs);
-      if (runsResult.status === 'fulfilled') setRuns(nextRuns);
-      if (definitionsResult.status === 'fulfilled') setDefinitions(asArray(definitionsPayload?.definitions));
+      if (!fulfilled) throw results.find(result => result.status === 'rejected')?.reason || new Error('Data pipeline service is unavailable.');
       const requestedId = preferredRunId.current || requestedRunId();
       if (requestedId) {
         let requested = nextRuns.find(run => run.run_id === requestedId);
@@ -179,10 +183,8 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         }
         if (sequence !== loadSequence.current) return;
         setSelectedRun(requested);
-      } else if (runsResult.status === 'fulfilled') setSelectedRun(current => nextRuns.find(run => run.run_id === current?.run_id) || nextRuns[0] || null);
-      const failure = [healthResult, telemetryResult, runsResult, definitionsResult]
-        .find((result) => result.status === 'rejected');
-      if (failure) setError('Some processing-job evidence is temporarily unavailable. Showing the available data.');
+      } else if (runsFulfilled) setSelectedRun(current => nextRuns.find(run => run.run_id === current?.run_id) || nextRuns[0] || null);
+      if (results.some((result) => result.status === 'rejected')) setError('Some processing-job evidence is temporarily unavailable. Showing the available data.');
     } catch (loadError) {
       if (sequence !== loadSequence.current) return;
       setError(apiErrorMessage(loadError, 'Unable to load data-job telemetry.'));
