@@ -3523,7 +3523,7 @@ class UnifiedDataImportService:
                     try:
                         shacl_report = OWLGenerationService.validate_with_shacl(
                             owl_ttl,
-                            ontology_context=owl_meta.get('owlready2'),
+                            ontology_context=owl_meta.get('semantica'),
                         )
                     except TypeError:
                         # Preserve compatibility with older test doubles / callers

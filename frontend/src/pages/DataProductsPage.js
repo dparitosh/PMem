@@ -1,3 +1,4 @@
+import SemanticSupport from '../Components/SemanticSupport';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IxButton } from '@siemens/ix-react';
 import RegistryWidget from '../widgets/RegistryWidget';
@@ -26,7 +27,7 @@ const columns = [
   { field: 'status', headerName: 'Delivery status', flex: 1.2 },
 ];
 
-export default function DataProductsPage({ mode = 'products' }) {
+export default function DataProductsPage({ mode = 'products', onCompanionRecordChange }) {
   const catalog = mode === 'catalog';
   const [workspace,setWorkspace]=useState(()=>{const query=new URLSearchParams(window.location.hash.split('?')[1]||'');return mode==='catalog'?'sources':query.has('view')||query.has('run_id')?'create':'library';});
   const title = catalog ? 'Data Catalog' : 'Data Products';
@@ -39,6 +40,11 @@ export default function DataProductsPage({ mode = 'products' }) {
   const [selected, setSelected] = useState('');
   const [filter,setFilter] = useState('');
   const [detail, setDetail] = useState(null);
+  useEffect(() => {
+    onCompanionRecordChange?.({ page: catalog ? 'catalog' : 'data-products',
+      product_id: detail?.product_id || '', product_version: catalog ? '' : detail?.version || '' });
+    return () => onCompanionRecordChange?.(null);
+  }, [onCompanionRecordChange, catalog, detail?.product_id, detail?.version]);
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
   const [runDraft, setRunDraft] = useState(null);
@@ -150,7 +156,11 @@ export default function DataProductsPage({ mode = 'products' }) {
     const controller = new AbortController(); detailRequest.current = controller; setDetailLoading(true);
     try {
       const response = await apiClient.get(buildSemanticServiceUrl(service, `${path}/${encodeURIComponent(key)}`), { signal: controller.signal, timeout: 15000 });
-      if (!controller.signal.aborted) setDetail(response.data);
+      if (!controller.signal.aborted) {
+        const identity = catalog ? response.data?.product_id : `${response.data?.product_id}:${response.data?.version}`;
+        if (identity !== key) throw new Error('Product service returned a different selected identity.');
+        setDetail(response.data);
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
         setDetail(null);
@@ -190,7 +200,7 @@ export default function DataProductsPage({ mode = 'products' }) {
       </select>
       {detailLoading&&<p role="status">Loading product details…</p>}
       {detailError&&<div role="alert">{detailError}</div>}
-      {detail&&<ProductEvidenceDetails detail={detail}/>}
+      {detail&&<><SemanticSupport report={detail.semantic_support}/><ProductEvidenceDetails detail={detail}/></>}
     </section>
       {!state.loading&&!state.error&&!state.rows.length&&<div className="data-cockpit__empty"><h3>{catalog?'No published products yet':'Start with retained evidence'}</h3><p>{catalog?'Ingested sources remain discoverable in the Ingested sources tab. Published products appear here after approval and catalog delivery.':'Choose Create & review to build a product from a schema draft or completed pipeline run.'}</p><button type="button" className="depo-button" onClick={()=>setWorkspace(catalog?'sources':'create')}>{catalog?'Browse ingested sources':'Create a product'}</button></div>}
       </>,create:<>
@@ -220,7 +230,7 @@ export default function DataProductsPage({ mode = 'products' }) {
       </>,governance:<>
       <div className="data-cockpit__guidance"><div><strong>Review readiness before publication</strong><p>Confirm source provenance, ownership, quality evidence and an approved semantic release. Agent recommendations support the review; approval remains an explicit action.</p></div><a href="#/ontology">Review semantic releases</a></div>
     {!state.loading && !state.error && !state.warning && state.rows.length === 0 && <details className="product-workspace-details"><summary>How to publish your first governed product</summary><FirstProductGuide catalog={catalog} /></details>}
-    <details className="product-workspace-details"><summary>Ask the product governor to review evidence</summary><AgentProposalPanel title="Product governance recommendations" agentIds={['data-product-governor']} context={{ page: catalog ? 'catalog' : 'data-products', product_ids: state.rows.map(row => row.product_id).slice(0, 20) }} /></details>
+    <details className="product-workspace-details"><summary>Ask the product governor to review evidence</summary><AgentProposalPanel key={detail?.product_id ? `${detail.product_id}:${detail.version || ''}` : 'discovery'} title="Product governance recommendations" agentIds={['data-product-governor']} context={{ page: catalog ? 'catalog' : 'data-products', ...(detail?.product_id ? {product_id:detail.product_id,...(!catalog && detail.version ? {product_version:detail.version}: {})} : {product_ids: state.rows.map(row => row.product_id).slice(0, 20)}) }} /></details>
       </>}}
     </DataWorkspace>
   </section>;

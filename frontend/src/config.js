@@ -161,7 +161,7 @@ const SERVICE_PATHS = [
   ['ingestion', /^\/api\/v1\/import(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/documents(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/reports(?:\/|$)/],
-  ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
+  ['oslc', /^(?:\/api\/v1\/(?:oslc|change-control)|\/oslc)(?:\/|$)/],
   ['catalog', /^\/api\/v1\/catalog\/(?:products|artifacts)(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
   ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
@@ -315,6 +315,7 @@ const ADMIN_ENDPOINTS = {
   cleanSchema: setting('API_ADMIN_CLEAN_SCHEMA') || '/api/v1/admin/clean-schema',
   clearCache: setting('API_ADMIN_CLEAR_CACHE') || '/api/v1/admin/clear-cache',
     clearImportWorkflows: setting('API_ADMIN_CLEAR_IMPORT_WORKFLOWS') || '/api/v1/admin/clear-import-workflows',
+    vanillaReset: '/api/v1/admin/reset-vanilla',
   deleteData: setting('API_ADMIN_DELETE_DATA') || '/api/v1/admin/delete-data',
   schemaStats: setting('API_ADMIN_SCHEMA_STATS') || '/api/v1/admin/schema-stats',
   resetDatabase: setting('API_ADMIN_RESET_DATABASE') || '/api/v1/admin/reset-database',
@@ -331,6 +332,7 @@ const METADATA_REGISTRY_ENDPOINTS = {
  * Recommendation Endpoints
  */
 const RECOMMENDATION_ENDPOINTS = {
+  resolve: setting('API_RECOMMENDATIONS_RESOLVE') || '/recommendations/resolve',
   changeImpact: setting('API_RECOMMENDATIONS_CHANGE_IMPACT') || '/recommendations/change-impact',
   similarParts: setting('API_RECOMMENDATIONS_SIMILAR_PARTS') || '/recommendations/similar-parts',
   manufacturing: setting('API_RECOMMENDATIONS_MANUFACTURING') || '/recommendations/manufacturing',

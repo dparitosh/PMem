@@ -205,7 +205,7 @@ export default function useImportTaskTracking({ isMountedRef, setPipelineStatus,
     schedulePoller(pollerKey, poll, 0);
   }, [activePollersRef, clearPoller, isMountedRef, schedulePoller]);
   useEffect(() => {
-    const events = ['dt-schema-cleaned', 'depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
+    const events = ['dt-schema-cleaned', 'depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced'];
     events.forEach(event => window.addEventListener(event, clearAllPollers));
     return () => events.forEach(event => window.removeEventListener(event, clearAllPollers));
   }, [clearAllPollers]);

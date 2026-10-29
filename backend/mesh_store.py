@@ -97,10 +97,19 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
-    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None, exclude_superseded=False):
+    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None, exclude_superseded=False, projection=None):
         """Bounded, deterministic database pagination over JSON registry records."""
         if offset < 0 or not 1 <= limit <= 1000:
             raise ValueError('Invalid registry page')
+        selection, selection_args = 'value', []
+        if projection is not None:
+            if not isinstance(projection, dict) or not 1 <= len(projection) <= 64 or any(
+                not isinstance(name, str) or not isinstance(path, list) or not path or
+                any(not isinstance(part, str) for part in path) for name, path in projection.items()
+            ):
+                raise ValueError('Invalid registry projection')
+            selection = 'jsonb_build_object(' + ','.join('%s::text, value #> %s::text[]' for _ in projection) + ')'
+            selection_args = [item for name, path in projection.items() for item in (name, path)]
         where = 'namespace=%s'
         args = [self.namespace]
         if field is not None:
@@ -120,7 +129,7 @@ class PostgresRegistry:
             total = cursor.fetchone()[0]
             ordering = 'updated_at DESC, key' if order_field is None else "COALESCE(value->>%s,'') DESC, key DESC"
             order_args = [] if order_field is None else [order_field]
-            cursor.execute('SELECT value FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*args,*order_args,limit,offset])
+            cursor.execute('SELECT '+selection+' FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*selection_args,*args,*order_args,limit,offset])
             return total, [row[0] for row in cursor.fetchall()]
 
     def put_with_related(self, key, value, *, related_namespace, related_key, related_value):

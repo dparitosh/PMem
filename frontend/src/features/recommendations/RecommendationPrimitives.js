@@ -103,18 +103,27 @@ const CheckCell = ({ value }) => value
   ? <CheckCircle size={14} color={C.green} strokeWidth={2.5} />
   : <Minus size={13} color={C.textMuted} />;
 
-const ResultTabBar = ({ tabs, active, onChange }) => (
-  <div style={{
+const ResultTabBar = ({ tabs, active, onChange, children }) => {
+  const id = React.useId();
+  const navigate = (event, index) => {
+    const next = event.key==='Home'?0:event.key==='End'?tabs.length-1:event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:null;
+    if(next===null)return;
+    event.preventDefault();
+    onChange(tabs[next].id);
+    event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();
+  };
+  return <>
+  <div role="tablist" aria-label="Result views" style={{
     display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`,
     background: C.surface, marginBottom: '14px', flexWrap: 'wrap',
     borderRadius: '8px 8px 0 0', padding: '0 4px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
   }}>
-    {tabs.map(t => {
+    {tabs.map((t,index) => {
       const isActive = active === t.id;
       const col = t.color || C.primary;
       return (
-        <button key={t.id} onClick={() => onChange(t.id)} style={{
+        <button key={t.id} type="button" role="tab" id={`${id}-${t.id}`} aria-label={t.label} aria-selected={isActive} aria-controls={`${id}-panel`} tabIndex={isActive?0:-1} onKeyDown={event=>navigate(event,index)} onClick={() => onChange(t.id)} style={{
           display: 'inline-flex', alignItems: 'center', gap: '5px',
           padding: '9px 14px', border: 'none', background: 'transparent',
           borderBottom: isActive ? `2px solid ${col}` : '2px solid transparent',
@@ -136,7 +145,9 @@ const ResultTabBar = ({ tabs, active, onChange }) => (
       );
     })}
   </div>
-);
+  <section id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${active}`} tabIndex={0}>{children}</section>
+  </>;
+};
 
 const MetricChip = ({ value, label, color }) => (
   <div style={{

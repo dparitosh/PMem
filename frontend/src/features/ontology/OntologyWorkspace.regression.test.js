@@ -17,6 +17,65 @@ import { collectBridgeTargetOptions, normalizeBridgeMappingRow } from '../../fea
 const tasks={getTasks:vi.fn(),getStatus:vi.fn(),getPreview:vi.fn()};
 afterEach(()=>{cleanup();vi.clearAllMocks();window.location.hash='';});
 
+test('pending taxonomy does not render false zero counts or empty hierarchy messages',async()=>{
+ window.location.hash='#/ontology?target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockImplementation(()=>new Promise(()=>{}));
+ render(<OntologyMapper/>);
+ expect(await screen.findByText('Loading OWL taxonomy details...')).toBeVisible();
+ expect(screen.queryByText('OWL Browser')).toBeNull();
+ expect(screen.queryByText('No class hierarchy available')).toBeNull();
+ expect(screen.queryByText('No ontology classes are available for this ontology slice.')).toBeNull();
+});
+
+test('taxonomy requests a small initial slice and pages without downloading the full inventory',async()=>{
+ window.location.hash='#/ontology?target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[],summary:{terms:0},page:{offset:0,next_offset:500,matching_terms:1200}}});
+ render(<OntologyMapper/>);
+ const next=await screen.findByRole('button',{name:'Next terms'});
+ await waitFor(()=>expect(next).toBeEnabled());
+ expect(state.taxonomy.mock.calls[0][1].params).toEqual({limit:500,offset:0,query:'',kind:'all'});
+ fireEvent.click(next);
+ await waitFor(()=>expect(state.taxonomy.mock.calls.at(-1)[1].params.offset).toBe(500));
+ await waitFor(()=>expect(screen.getByRole('tab',{name:'Properties',exact:true})).toBeEnabled());
+ fireEvent.click(screen.getByRole('tab',{name:'Properties',exact:true}));
+ await waitFor(()=>expect(state.taxonomy.mock.calls.at(-1)[1].params).toEqual({limit:500,offset:0,query:'',kind:'property'}));
+});
+
+test('Companion receives the selected ontology identity and clears it on leaving the workspace',async()=>{
+ window.location.hash='#/ontology?target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[],summary:{terms:0}}});
+ const changed=vi.fn();const view=render(<OntologyMapper onCompanionContextChange={changed}/>);
+ await waitFor(()=>expect(changed).toHaveBeenCalledWith(expect.objectContaining({ontology_id:'target-id',ontology_prefix:'target'})));
+ view.unmount();expect(changed).toHaveBeenLastCalledWith(null);
+});
+
+test('revalidated access reloads taxonomy without changing the selected ontology',async()=>{
+ window.location.hash='#/ontology?target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockRejectedValueOnce({response:{status:403,data:{detail:'Access rejected'}}})
+   .mockResolvedValue({data:{nodes:[],edges:[],summary:{terms:0}}});
+ render(<OntologyMapper/>);
+ await screen.findByText('Access rejected');
+ const previous=state.taxonomy.mock.calls.length;
+ fireEvent(window,new Event('depo:access-verified'));
+ await waitFor(()=>expect(state.taxonomy.mock.calls.length).toBeGreaterThan(previous));
+ expect(state.taxonomy.mock.calls.at(-1)[0]).toBe('target-id');
+ await waitFor(()=>expect(screen.queryByText('Access rejected')).toBeNull());
+});
+
+test('credential replacement aborts stale taxonomy reads and reloads the same ontology',async()=>{
+ window.location.hash='#/ontology?target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ let finish;state.taxonomy.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}))
+   .mockResolvedValue({data:{nodes:[],edges:[],summary:{terms:0}}});
+ render(<OntologyMapper/>);
+ await waitFor(()=>expect(state.taxonomy).toHaveBeenCalled());
+ const signal=state.taxonomy.mock.calls[0][1].signal;
+ fireEvent(window,new Event('depo:session-replaced'));
+ await waitFor(()=>expect(signal.aborted).toBe(true));
+ await waitFor(()=>expect(state.taxonomy.mock.calls.length).toBeGreaterThan(1));
+ finish({data:{nodes:[{id:'stale',label:'Stale term'}],edges:[]}});
+ expect(screen.queryByText('Stale term')).toBeNull();
+});
+
 test('exports use the authenticated client and a failed download offers a visible error',async()=>{
  window.location.hash='#/ontology?target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
  state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[]}});

@@ -138,6 +138,10 @@ export const OntologyProvider = ({ children }) => {
     window.addEventListener('depo:credentials-cleared', refresh);
     window.addEventListener('depo:session-expired', refresh);
     window.addEventListener('depo:session-replaced', refresh);
+    // Rechecking the same access is a refresh, not a change of identity.
+    // Retain the last registry until the new read succeeds; expiry, replacement
+    // and cleanup still clear it immediately through their separate events.
+    window.addEventListener('depo:access-verified', changed);
     window.addEventListener('depo:ontologies-changed', changed);
     window.addEventListener('dt-schema-cleaned', refresh);
     return () => {
@@ -145,6 +149,7 @@ export const OntologyProvider = ({ children }) => {
       window.removeEventListener('depo:credentials-cleared', refresh);
       window.removeEventListener('depo:session-expired', refresh);
       window.removeEventListener('depo:session-replaced', refresh);
+      window.removeEventListener('depo:access-verified', changed);
       window.removeEventListener('depo:ontologies-changed', changed);
       window.removeEventListener('dt-schema-cleaned', refresh);
     };

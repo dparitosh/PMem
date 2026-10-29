@@ -42,6 +42,7 @@ export const graphApi = {
   getOntologyGraph(prefix, limit = 200, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {
       params: { limit },
+      timeout: 35000,
       signal,
       headers: readHeaders(),
     });

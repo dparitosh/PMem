@@ -83,24 +83,10 @@ class OntologyUploadManager:
         if file_type != "ontology":
             return ""
         try:
-            from rdflib import Graph, URIRef
+            from rdflib import URIRef
             from rdflib.namespace import OWL, RDF
 
-            graph = Graph()
-            suffix = Path(filename).suffix.lower()
-            formats = {".ttl": ["turtle", "n3"], ".nt": ["nt"], ".jsonld": ["json-ld"]}.get(
-                suffix, ["xml", "turtle", "n3"]
-            )
-            last_error = None
-            for fmt in formats:
-                try:
-                    graph.parse(data=file_content, format=fmt)
-                    last_error = None
-                    break
-                except Exception as exc:
-                    last_error = exc
-            if last_error:
-                return ""
+            graph = OntologyUploadManager._parse_rdf_content(file_content, filename)
             ontology_subjects = list(graph.subjects(RDF.type, OWL.Ontology))
             for subject in ontology_subjects:
                 if isinstance(subject, URIRef) and str(subject).strip():
@@ -163,7 +149,7 @@ class OntologyUploadManager:
                 result['ontology_export_artifacts'] = [{'format': 'xsd', 'path': str(file_path), 'source': True}]
                 return result
             if file_type == "ontology":
-                if file_path.suffix.lower() in {".ttl", ".rdf", ".owl", ".xml"}:
+                if file_path.suffix.lower() in {".ttl", ".rdf", ".owl", ".xml", ".jsonld", ".json", ".nt", ".n3"}:
                     result["owl_file_path"] = str(file_path)
                     result["ontology_export_artifacts"] = [{
                         "format": file_path.suffix.lower().lstrip(".") or "source",
@@ -241,7 +227,7 @@ class OntologyUploadManager:
             shacl_report = OWLGenerationService.validate_with_shacl(
                 ttl_text,
                 shacl_shapes=shacl_ttl,
-                ontology_context=owl_metadata.get("owlready2"),
+                ontology_context=owl_metadata.get("semantica"),
             )
             shacl_report_path = ontology_dir / f"{Path(filename).stem}.shacl_report.json"
             shacl_report['validation_scope'] = 'ontology'
@@ -603,12 +589,12 @@ class OntologyUploadManager:
         WHERE n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id
            OR ($prefix_identity AND coalesce(n.ontology_id, n.source_ontology) IS NULL
                AND coalesce(n.prefix, n.ontology_prefix) = $prefix)
-        WITH collect(DISTINCT n) AS nodes
-        UNWIND CASE WHEN size(nodes) = 0 THEN [NULL] ELSE nodes END AS a
-        OPTIONAL MATCH (a)-[r]-(b)
-        WHERE b IN nodes
-        RETURN size(nodes) AS node_count,
-               count(DISTINCT r) AS relationship_count
+        OPTIONAL MATCH (n)-[r]->(b)
+        WHERE b.ontology_id = $ontology_id OR b.source_ontology = $ontology_id
+           OR ($prefix_identity AND coalesce(b.ontology_id, b.source_ontology) IS NULL
+               AND coalesce(b.prefix, b.ontology_prefix) = $prefix)
+        RETURN count(DISTINCT n) AS node_count,
+               count(r) AS relationship_count
         """
         for row in by_prefix.values():
             try:
@@ -654,19 +640,26 @@ class OntologyUploadManager:
             """
             MATCH (n)
             WHERE n.prefix IS NOT NULL
-              AND NOT (n:DatasheetChunk OR n:GraphChunk)
-            WITH n.prefix AS prefix, coalesce(n.ontology_id, n.source_ontology) AS ontology_id, collect(DISTINCT n) AS nodes
-            UNWIND nodes AS a
-            OPTIONAL MATCH (a)-[r]-(b)
-            WHERE b IN nodes
-            WITH prefix, ontology_id, nodes, count(DISTINCT r) AS relationship_count
-            RETURN prefix, ontology_id,
-                   coalesce(head([n IN nodes WHERE n.ontology_name IS NOT NULL | n.ontology_name]), prefix) AS ontology_name,
-                   size(nodes) AS node_count,
-                   relationship_count
+              AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:RetainedOntologyIdentity)
+              AND (n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty
+                   OR any(t IN coalesce(n.rdf_types, []) WHERE t IN $schema_types))
+            OPTIONAL MATCH (n)-[r]->(b)
+            WHERE b.prefix = n.prefix
+              AND coalesce(b.ontology_id, b.source_ontology, '') = coalesce(n.ontology_id, n.source_ontology, '')
+              AND NOT (b:DatasheetChunk OR b:GraphChunk OR b:StagedOntologyResource OR b:RetainedOntologyIdentity)
+              AND (b:OntologyClass OR b:ObjectProperty OR b:DatatypeProperty
+                   OR any(t IN coalesce(b.rdf_types, []) WHERE t IN $schema_types))
+            RETURN n.prefix AS prefix, coalesce(n.ontology_id, n.source_ontology) AS ontology_id,
+                   coalesce(min(n['ontology_name']), n.prefix) AS ontology_name,
+                   count(DISTINCT n) AS node_count,
+                   count(r) AS relationship_count
             ORDER BY prefix
             """,
-            graph=graph,
+            params={"schema_types": [
+                "http://www.w3.org/2002/07/owl#Class", "http://www.w3.org/2000/01/rdf-schema#Class",
+                "http://www.w3.org/2002/07/owl#ObjectProperty", "http://www.w3.org/2002/07/owl#DatatypeProperty",
+                "http://www.w3.org/2002/07/owl#AnnotationProperty", "http://www.w3.org/2002/07/owl#Ontology",
+            ]}, graph=graph,
         )
         for direct in direct_rows:
             entry = cls._neo4j_only_entry(direct)
@@ -905,21 +898,24 @@ class OntologyUploadManager:
     @staticmethod
     def _parse_rdf_content(file_content: bytes, filename: str) -> Any:
         from rdflib import Graph as RDFGraph
+        from backend.ontology_service.catalog import validate_rdf_input
 
-        rdf_graph = RDFGraph()
         ext = Path(filename).suffix.lower()
-        candidates = ["turtle", "n3", "xml"] if ext == ".ttl" else ["xml", "turtle", "n3"]
+        candidates = {'.jsonld': ['json-ld'], '.json': ['json-ld'], '.nt': ['nt'],
+                      '.n3': ['n3', 'turtle'], '.ttl': ['turtle', 'n3', 'xml']}.get(ext, ['xml', 'turtle', 'n3'])
+        validate_rdf_input(file_content, candidates[0])
         last_error: Exception | None = None
-        text = file_content.decode("utf-8", errors="replace")
         for fmt in candidates:
             try:
-                rdf_graph.parse(data=text, format=fmt)
+                validate_rdf_input(file_content, fmt)
+                rdf_graph = RDFGraph()
+                rdf_graph.parse(data=file_content, format=fmt)
                 return rdf_graph
             except Exception as exc:
                 last_error = exc
         if last_error:
             raise last_error
-        return rdf_graph
+        raise ValueError('No supported RDF serialization was found')
 
     @classmethod
     def _generate_rdf_for_source(cls, file_content: bytes, filename: str, file_type: str, generation_type: str) -> tuple[Any, str, Dict[str, Any]]:

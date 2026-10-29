@@ -1,3 +1,4 @@
+import SemanticSupport from "../../Components/SemanticSupport";
 import useOntologyImportTasks from "./hooks/useOntologyImportTasks";
 import { buildFallbackDictionaryFromTaxonomy, BRIDGE_SOURCE_KINDS, BRIDGE_TARGET_KINDS, inferBridgeSourceKind, collectBridgeSourceOptions, collectBridgeTargetOptions, normalizeBridgeMappingRow } from "./services/ontologyBridgePresentation.js";
 import { ProtegeOntologyBrowser } from "./OntologyBrowser.js";
@@ -40,7 +41,7 @@ const SOURCE_FORMATS = [
   { id: 'excel', label: 'Excel' },
 ];
 
-export default function OntologyWorkspace() {
+export default function OntologyWorkspace({onCompanionContextChange} = {}) {
   const [data, setData] = useState({ nodes: [], edges: [] });
   const [mappingEdges, setMappingEdges] = useState([]);
   const [vocabEdges, setVocabEdges] = useState([]);
@@ -61,6 +62,9 @@ export default function OntologyWorkspace() {
   const [swrlExpression, setSwrlExpression] = useState('satisfies(?requirement, ?function) ^ allocatedTo(?function, ?part) -> impactedBy(?requirement, ?part)');
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [semanticDetailsLoading, setSemanticDetailsLoading] = useState(false);
+  const [taxonomyOffset, setTaxonomyOffset] = useState(0);
+  const [taxonomyQuery, setTaxonomyQuery] = useState('');
+  const [taxonomyKind, setTaxonomyKind] = useState('all');
   const [semanticDetailsError, setSemanticDetailsError] = useState(null);
   const [semanticRevision, setSemanticRevision] = useState(0);
   const defaultSelectionResolved = useRef(false);
@@ -108,6 +112,7 @@ export default function OntologyWorkspace() {
     [selectedImportTaskId, selectedOntologyApi, bridgeSourceTerm, bridgeTargetTerm, bridgeSourceKind, bridgeTargetKind]);
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_source') || '');
   const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeDlCheck, setMergeDlCheck] = useState(true);
   const mergeGeneration = useRef(0);
   const {validation:swrlValidation,busy:swrlBusy,error:swrlError,validate:validateSwrlExpression} = useRuleValidation(swrlExpression, selectedOntologyApi, activeView);
   const inferenceGeneration = useRef(0);
@@ -127,8 +132,12 @@ export default function OntologyWorkspace() {
       setMergeResult(null); setMergeBusy(false); setInferenceBusy(false);
       inferenceRequest.current?.abort();setInferenceResult(null);setInferenceError(null);
       setMergeStewardReview(null);setMergeEntityMappings([]);setMergeSuggestions([]);setBridgeApproved(false);
+      setTaxonomy(null);setReasoning(null);setData({nodes:[],edges:[]});
+      setOntologyDictionary({entities:{},relationships:{},properties:{}});
+      setTargetOntologyDictionary({entities:{},relationships:{},properties:{}});
+      setSemanticRevision(value=>value+1);setVocabularyRevision(value=>value+1);
     };
-    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced'];
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced','depo:access-verified'];
     events.forEach(event => window.addEventListener(event, invalidate));
     return () => { events.forEach(event => window.removeEventListener(event, invalidate)); mergeGeneration.current += 1; };
   }, []);
@@ -141,6 +150,14 @@ export default function OntologyWorkspace() {
     () => selectedMapping ? mappingOptions.find(option => option.value === selectedMapping) || null : null,
     [mappingOptions, selectedMapping],
   );
+  useEffect(() => {
+    if (typeof onCompanionContextChange !== 'function') return undefined;
+    onCompanionContextChange(selectedOntologyOption ? {
+      ontology_id:selectedOntologyOption.value, ontology_prefix:selectedOntologyOption.prefix || '',
+      label:selectedOntologyOption.label,
+    } : null);
+    return () => onCompanionContextChange(null);
+  }, [onCompanionContextChange, selectedOntologyOption]);
   const applyOntologySelection = useCallback((rawValue) => {
     if (!rawValue) {
       setSelectedMapping('');
@@ -516,10 +533,10 @@ export default function OntologyWorkspace() {
             ? taxonomyData?.summary?.terms ?? nodes.length
             : nodes.length,
           total_vocabulary_mappings: edges.length || vocabFromDict.length,
-          owlready_classes: taxonomyData?.reasoning_summary?.classes ?? 0,
-          owlready_object_properties: taxonomyData?.reasoning_summary?.object_properties ?? 0,
-          owlready_datatype_properties: taxonomyData?.reasoning_summary?.datatype_properties ?? 0,
-          owlready_individuals: taxonomyData?.reasoning_summary?.individuals ?? 0,
+          semantic_classes: taxonomyData?.reasoning_summary?.classes ?? 0,
+          semantic_object_properties: taxonomyData?.reasoning_summary?.object_properties ?? 0,
+          semantic_datatype_properties: taxonomyData?.reasoning_summary?.datatype_properties ?? 0,
+          semantic_individuals: taxonomyData?.reasoning_summary?.individuals ?? 0,
         });
       } catch (e) {
         if (cancelled) return;
@@ -576,7 +593,16 @@ export default function OntologyWorkspace() {
     setFilter('');
     setSemanticDetailsError(null);
     setSemanticDetailsLoading(Boolean(selectedOntologyApi));
+    setTaxonomyOffset(0);
+    setTaxonomyQuery('');
+    setTaxonomyKind('all');
   }, [selectedOntologyApi]);
+
+  useEffect(() => {
+    if (activeView !== 'taxonomy') return;
+    const timer = setTimeout(() => { setTaxonomyOffset(0); setTaxonomyQuery(filter.slice(0,200)); }, 350);
+    return () => clearTimeout(timer);
+  }, [filter, activeView]);
 
   useEffect(() => {
     if (!selectedOntologyApi || !['taxonomy', 'alignment', 'inference'].includes(activeView)) return;
@@ -591,7 +617,12 @@ export default function OntologyWorkspace() {
         const requests = [];
         const keys = [];
         keys.push('taxonomy');
-        requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, {...options, timeout:120000}));
+        requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, {...options, timeout:120000,
+          params: {limit:500, offset: activeView === 'taxonomy' ? taxonomyOffset : 0, query: activeView === 'taxonomy' ? taxonomyQuery : '', kind: activeView === 'taxonomy' ? taxonomyKind : 'all'}
+        }).then(response => {
+          if (!cancelled && Array.isArray(response?.data?.nodes)) setTaxonomy(response.data);
+          return response;
+        }));
         if (['alignment', 'inference'].includes(activeView)) {
           keys.push('reasoning');
           requests.push(API_METHODS.ontology.getReasoning(selectedOntologyApi, options));
@@ -625,7 +656,7 @@ export default function OntologyWorkspace() {
       cancelled = true;
       controller.abort();
     };
-  }, [activeView, selectedOntologyApi, semanticRevision]);
+  }, [activeView, selectedOntologyApi, semanticRevision, taxonomyOffset, taxonomyQuery, taxonomyKind]);
 
   useEffect(() => {
     setStats((prev) => {
@@ -633,10 +664,10 @@ export default function OntologyWorkspace() {
       const next = {
         ...prev,
         total_terms: taxonomy?.summary?.terms ?? prev.total_terms,
-        owlready_classes: reasoning?.summary?.classes ?? taxonomy?.reasoning_summary?.classes ?? prev.owlready_classes ?? 0,
-        owlready_object_properties: reasoning?.summary?.object_properties ?? taxonomy?.reasoning_summary?.object_properties ?? prev.owlready_object_properties ?? 0,
-        owlready_datatype_properties: reasoning?.summary?.datatype_properties ?? taxonomy?.reasoning_summary?.datatype_properties ?? prev.owlready_datatype_properties ?? 0,
-        owlready_individuals: reasoning?.summary?.individuals ?? taxonomy?.reasoning_summary?.individuals ?? prev.owlready_individuals ?? 0,
+        semantic_classes: reasoning?.summary?.classes ?? taxonomy?.reasoning_summary?.classes ?? prev.semantic_classes ?? 0,
+        semantic_object_properties: reasoning?.summary?.object_properties ?? taxonomy?.reasoning_summary?.object_properties ?? prev.semantic_object_properties ?? 0,
+        semantic_datatype_properties: reasoning?.summary?.datatype_properties ?? taxonomy?.reasoning_summary?.datatype_properties ?? prev.semantic_datatype_properties ?? 0,
+        semantic_individuals: reasoning?.summary?.individuals ?? taxonomy?.reasoning_summary?.individuals ?? prev.semantic_individuals ?? 0,
       };
       return JSON.stringify(next) === JSON.stringify(prev) ? prev : next;
     });
@@ -741,7 +772,7 @@ export default function OntologyWorkspace() {
     try {
       const governed = await ontologyMergeAgent.preview(
         [mergeSourceOntologyId, selectedMapping],
-        { background: true, ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}`,
+        { background: true, owl_dl_check: mergeDlCheck, ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}`,
           entity_mappings: mergeEntityMappings.map(({source_iri, target_iri}) => ({source_iri, target_iri})) },
         mergeApprover,
       );
@@ -1215,17 +1246,22 @@ export default function OntologyWorkspace() {
           {activeView === 'taxonomy' && !selectedOntologyApi && <p role="status">Select an available ontology to inspect its classes, properties and hierarchy.</p>}
           {activeView === 'taxonomy' && selectedOntologyApi && (
             <>
+              {taxonomy?.page && <nav aria-label="Taxonomy pages" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:12}}>
+                <span>{taxonomy.page.matching_terms} matching terms · showing {taxonomy.nodes.length} in this slice. Hierarchy and relationships cover the displayed terms.</span>
+                <button type="button" disabled={semanticDetailsLoading || taxonomy.page.offset === 0} onClick={()=>setTaxonomyOffset(Math.max(0,taxonomy.page.offset-500))}>Previous terms</button>
+                <button type="button" disabled={semanticDetailsLoading || taxonomy.page.next_offset == null} onClick={()=>setTaxonomyOffset(taxonomy.page.next_offset)}>Next terms</button>
+              </nav>}
               {(semanticDetailsLoading || semanticDetailsError) && (
-                <div style={{ marginBottom: '8px', padding: '7px 10px', borderRadius: '6px', border: `1px solid ${semanticDetailsError ? '#F29B9B' : C.border}`, background: semanticDetailsError ? '#FFF5F5' : C.surface, color: semanticDetailsError ? C.red : C.textSec, fontSize: '11px', fontWeight: 700 }}>
+                <div role={semanticDetailsError && !semanticDetailsLoading ? 'alert' : 'status'} aria-live="polite" style={{ marginBottom: '8px', padding: '14px 16px', borderRadius: '6px', border: `1px solid ${semanticDetailsError ? '#F29B9B' : C.border}`, background: semanticDetailsError ? '#FFF5F5' : C.surface, color: semanticDetailsError ? C.red : C.textSec, fontSize: '13px', fontWeight: 600 }}>
                   {semanticDetailsLoading ? 'Loading OWL taxonomy details...' : semanticDetailsError}
                   {!semanticDetailsLoading && semanticDetailsError && <button type="button" onClick={() => setSemanticRevision(value => value + 1)}>Retry taxonomy loading</button>}
                 </div>
               )}
-              {taxonomy?.view_mode === 'classic' ? (
+              {taxonomy && (taxonomy.view_mode === 'classic' ? (
                 <TaxonomyView nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
               ) : (
-                <ProtegeOntologyBrowser nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
-              )}
+                <ProtegeOntologyBrowser key={selectedOntologyApi} nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={taxonomy?.page ? '' : filter} taxonomy={taxonomy} reasoning={reasoning} onTableModeChange={mode=>{setTaxonomyOffset(0);setTaxonomyKind(mode === 'classes' ? 'class' : mode === 'properties' ? 'property' : 'all');}} />
+              ))}
             </>
           )}
           {activeView === 'vocabulary' && (
@@ -1546,6 +1582,8 @@ export default function OntologyWorkspace() {
                     <label>Target ontology<select aria-label="Target ontology" value={selectedMapping} onChange={event => applyOntologySelection(event.target.value)} style={{width:'100%'}}><option value="">Select target ontology</option>{mappingOptions.map(option => <option key={option.value} value={option.value} disabled={option.value === mergeSourceOntologyId}>{option.label}</option>)}</select></label>
                   </div>
                 </div>
+                <label><input type="checkbox" checked={mergeDlCheck} disabled={mergeBusy} onChange={event => {setMergeDlCheck(event.target.checked); setMergeResult(null); setMergeStewardReview(null);}}/> Check the proposed union for logical contradictions (OWL-DL; may require offline imports)</label>
+                <SemanticSupport report={mergeResult?.governedPreview?.semantic_support}/>
                 <MergeWorkflowControls availableCount={mappingOptions.length} sourceId={mergeSourceOntologyId} targetId={selectedMapping}
                   reviewer={mergeApprover} onReviewerChange={setMergeApprover}
                   connected={Boolean(getCredentialProfile('AGENTIC_APPROVAL_TOKEN'))}

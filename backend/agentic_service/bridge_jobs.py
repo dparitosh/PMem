@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -15,8 +16,11 @@ def now():
 
 
 class BridgeJobs:
-    def __init__(self, store=None, source=None, graph=None, policy_evaluator=None):
+    def __init__(self, store=None, source=None, graph=None, policy_evaluator=None, holds=None, learning_store=None):
         self.store = store or PostgresRegistry('semantic_bridge_jobs_v1')
+        from backend.mesh_store import InMemoryRegistry
+        self.holds = holds if holds is not None else (PostgresRegistry('semantic_bridge_holds_v1') if store is None else InMemoryRegistry())
+        self.learning_store = learning_store if learning_store is not None else (PostgresRegistry('agentic_learning_reviews_v1') if store is None else InMemoryRegistry())
         self.source = source or BridgeSource()
         self.graph = graph or GraphBridgeClient()
         from backend.depo_platform.decision_policy import assess_decisions
@@ -74,6 +78,43 @@ class BridgeJobs:
         self.store.put(preview_id, job)
         return job
 
+    def _semantic_support(self, preview, *, locked=False):
+        reader = getattr(self.source, 'semantic_support', None)
+        support = reader(preview['ontology_id']) if callable(reader) else {'disposition': 'unverified'}
+        key = digest({'ontology_id': preview['ontology_id'], 'ontology_snapshot': preview['snapshot']['ontology']})
+        with (nullcontext(True) if locked else self.holds.advisory_lock(key)) as acquired:
+            if acquired is False: raise BridgeConflict('Semantic decision is being updated; refresh before publication')
+            prior = self.holds.get(key)
+            if prior:
+                retained = copy.deepcopy(prior['assessment'])
+                if support.get('consistency_verified') is True and support.get('status') == 'inconsistent':
+                    retained = copy.deepcopy(support)
+                    prior['assessment'] = retained
+                    self.holds.put(key, prior)
+                # Exact checks may resolve an incomplete sample, but an outage
+                # cannot erase a known contradiction or change its dependency binding.
+                if (support.get('consistency_verified') is True
+                    and support.get('artifact_sha256') == retained.get('artifact_sha256')
+                    and support.get('foundation') == retained.get('foundation')
+                    and support.get('status') == retained.get('status') == 'consistent'):
+                    checks = retained.setdefault('target_checks', {})
+                    for target in support.get('unsatisfiable_classes', []):
+                        checks[target] = 'unsatisfiable'
+                    for target, status in (support.get('target_checks') or {}).items():
+                        if checks.get(target) != 'unsatisfiable' and target not in retained.get('unsatisfiable_classes', []):
+                            checks[target] = status
+                    prior['assessment'] = retained
+                    self.holds.put(key, prior)
+                # A known conflict cannot be cleared by an outage, a new caller or
+                # a different proposal against the same retained model snapshot.
+                return {**retained, 'hold_retained': True,
+                    'current_evidence_status': support.get('status', 'unknown'),
+                    'business_summary': 'An established model conflict remains unresolved for this revision. Prepare a new review after correcting and verifying the model.'}
+            if support.get('consistency_verified') is True and support.get('disposition') == 'conflict':
+                self.holds.put(key, {'ontology_id': preview['ontology_id'], 'snapshot': preview['snapshot']['ontology'],
+                    'assessment': copy.deepcopy(support), 'created_at': now(), 'status': 'held'})
+            return support
+
     def evaluate_policy(self, preview_id):
         """Deterministic steward decision over an immutable saved preview."""
         preview = self.get(preview_id)
@@ -84,6 +125,7 @@ class BridgeJobs:
             candidate_id=row['candidate_id'], candidate_label=str(row.get('source_term') or '') + ' -> ' + str(row.get('ontology_term') or ''), preview_digest=preview['preview_digest'],
             ontology_id=preview['ontology_id'], import_task_id=preview['import_task_id']) for row in preview['candidates']]) if preview['candidates'] else {'status': 'not_applicable', 'blocking': False, 'checks': []}
         shared_held = set(shared.get('blocked_decision_indices', [c['decision_index'] for c in shared['checks'] if not c['compliant']]))
+        support = self._semantic_support(preview)
         decisions, accepted = [], []
         sources = {}
         for row in preview['candidates']:
@@ -94,6 +136,8 @@ class BridgeJobs:
             key = (row.get('import_row_key'), row.get('source_term'), row.get('source_type'))
             from backend.ontology_service.governance import bridge_findings
             checks = bridge_findings(row)
+            from backend.depo_platform.semantic_support import target_conflict
+            if target_conflict(support, row): checks.append('target_ontology_logical_conflict')
             if not row.get('eligible'): checks.append('invalid_target_or_source')
             if row.get('validation_status') != 'auto_approved': checks.append('not_automatically_validated')
             if row.get('validation_warnings'): checks.append('validation_warning')
@@ -107,9 +151,19 @@ class BridgeJobs:
                 checks.append('decision_policy_' + shared['status'])
             if not checks: accepted.append(row['candidate_id'])
             decisions.append({'candidate_id': row['candidate_id'], 'decision': 'hold' if checks else 'publish', 'reasons': checks})
-        return {'policy': 'validated-only-v1', 'preview_id': preview_id,
+        try:
+            from .learning_review import LearningReview,pattern
+            learning = LearningReview(self,self.learning_store).support(preview['ontology_id'],preview['import_task_id'])
+            patterns={digest(pattern(row)) for row in preview['candidates']}
+            learning['lessons']=[row for row in learning['lessons'] if digest(row['mapping_pattern']) in patterns]
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning('Approved lesson read unavailable: %s',type(exc).__name__)
+            learning = {'status':'unavailable','lessons':[],'advisory_only':True,'publication_authorized':False}
+        return {'policy': 'validated-only-v1', 'preview_id': preview_id, 'learning_support':learning,
                 'accepted_ids': sorted(accepted), 'held_count': len(decisions)-len(accepted),
                 'decisions': decisions, 'status': 'ready' if accepted else 'held', 'decision_policy': shared,
+                'semantic_support': support,
                 'governance': {'evaluator': 'deterministic-steward-policy', 'policy_version': 'steward-governance-v1', 'scope': 'instance classification candidates',
                     'identity_review': 'distinct from class assignment', 'abox_shacl_validation': 'not_established_by_mapping_preview',
                     'provenance': {'ontology_id': preview['ontology_id'], 'import_task_id': preview['import_task_id'],
@@ -132,6 +186,18 @@ class BridgeJobs:
                 'policy_decision': decision}
 
     def publish(self, preview_id, approved_ids, actor, approval_policy=None):
+        if not isinstance(preview_id, str) or not preview_id.startswith('bridge-preview-'):
+            raise ValueError('Select a saved Semantic Bridge preview before publication.')
+        preview = self.get(preview_id)
+        key = digest({'ontology_id': preview['ontology_id'], 'ontology_snapshot': preview['snapshot']['ontology']})
+        # Serialize the final assessment and graph action against new semantic
+        # holds for this revision, including other previews/controllers.
+        with self.holds.advisory_lock(key) as acquired:
+            if acquired is False:
+                raise BridgeConflict('Semantic review or publication is active; refresh before retrying')
+            return self._publish(preview_id, approved_ids, actor, approval_policy)
+
+    def _publish(self, preview_id, approved_ids, actor, approval_policy=None):
         if not isinstance(preview_id, str) or not preview_id.startswith('bridge-preview-'):
             raise ValueError('Select a saved Semantic Bridge preview before publication.')
         if not isinstance(approved_ids, list) or not approved_ids or not all(isinstance(x, str) for x in approved_ids):
@@ -184,6 +250,15 @@ class BridgeJobs:
                 raise BridgeConflict(job['error'])
             if job['status'] == 'stale':
                 raise BridgeConflict('This preview was invalidated. Create a new preview.')
+            reader = getattr(self.source, 'semantic_support', None)
+            if callable(reader):
+                from backend.depo_platform.semantic_support import target_conflict
+                support = self._semantic_support(preview, locked=True)
+                job['semantic_support'] = support
+                if any(target_conflict(support, by_id[key]) for key in selected):
+                    job.update(status='held', error='The model has a logical contradiction or unresolved target satisfiability; check the selected class and review again.')
+                    self.store.put(job_id, job)
+                    raise ValueError(job['error'])
             # Recheck current central policy for manual and automatic writes, after receipt reconciliation.
             from backend.depo_platform.decision_policy import decision
             shared = self.policy_evaluator('instance_bridge', [decision(by_id[i].get('confidence'),
@@ -202,6 +277,9 @@ class BridgeJobs:
             command = {'publication_id': job_id, 'preview_id': preview_id,
                        'ontology_id': preview['ontology_id'],
                        'approved_by': job['approved_by'], 'snapshot': preview['snapshot'], 'rows': rows}
+            if job.get('semantic_support', {}).get('consistency_verified') is True:
+                command['semantic_binding'] = {key: job['semantic_support'].get(key)
+                    for key in ('artifact_sha256', 'evidence_id', 'foundation')}
             command['request_digest'] = digest(command)
             job['request_digest'] = command['request_digest']
             self.store.put(job_id, job)
@@ -247,6 +325,30 @@ class BridgeJobs:
 
 
 class BridgeSource:
+    def model_revision(self, ontology_id):
+        from urllib.parse import quote
+        from backend.depo_platform.peer_http import peer_response
+        from backend.depo_platform.service_urls import service_url
+        from backend.depo_platform.network import service_bearer_headers
+        import re
+        base=service_url('ONTOLOGY_SERVICE_URL','http://127.0.0.1:8011/api/v1').rstrip('/')
+        if not base.endswith('/api/v1'):base+='/api/v1'
+        endpoint=base+'/ontologies/'+quote(ontology_id,safe='')+'/revision'
+        response=peer_response('GET',endpoint,budget=5,response_limit=65536,
+            headers=service_bearer_headers('GRAPH_READ_TOKEN',service_name='Learning model revision',endpoint=endpoint))
+        response.raise_for_status();body=response.json()
+        if body.get('ontology_id')!=ontology_id or not re.fullmatch('[0-9a-f]{64}',str(body.get('artifact_sha256',''))):
+            raise ValueError('Invalid owning-service model revision')
+        if body.get('status')=='superseded' or body.get('lifecycle_status') in {'retired','deprecated'}:
+            raise ValueError('Select a current ontology before reusing review hints')
+        return {key:body[key] for key in ('ontology_id','artifact_sha256','semantic_dependencies','status','lifecycle_status') if key in body}
+
+    def semantic_support(self, ontology_id):
+        import os
+        from backend.depo_platform.semantic_support import read_support
+        token = os.getenv('GRAPH_READ_TOKEN', '')
+        return read_support(ontology_id, {'Authorization': 'Bearer ' + token} if token else {})
+
     def _request(self, action, ontology_id, import_id, mappings=None, candidate_offset=0):
         from backend.depo_platform.peer_http import peer_response
         from backend.depo_platform.service_urls import service_url

@@ -31,7 +31,7 @@ class AuditRegressions(unittest.TestCase):
             'Tuple':__import__('typing').Tuple,'Dict':__import__('typing').Dict,'Any':object,
             '_extract_xsd_target_namespace':lambda c:'urn:test','_derive_prefix_from_namespace':lambda *a,**kw:'test',
             '_normalize_base_uri':lambda *a,**kw:'urn:test:','_read_and_validate':lambda p:('turtle',{}),
-            '_inspect_with_owlready':lambda *a:{},'logger':SimpleNamespace(error=lambda *a:None)}
+            '_inspect_semantics':lambda *a:{},'logger':SimpleNamespace(error=lambda *a:None), 'ET':__import__('xml.etree.ElementTree',fromlist=['ElementTree'])}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'owl','exec'),ns)
         module=SimpleNamespace(convert_xsd_to_owl=engine,minimal_config=lambda **kw:SimpleNamespace(**kw))
         with patch.dict(sys.modules,{'backend.Services.owl_xsd_engine':module}):

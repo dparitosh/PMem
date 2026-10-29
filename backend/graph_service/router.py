@@ -3,7 +3,7 @@ from typing import Annotated
 from starlette.concurrency import run_in_threadpool
 from backend.depo_platform.upload_limits import ontology_upload_limit
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, Query
 from backend.depo_platform.authorization import service_write_identity, graph_read_identity
 
 from .neo4j_publisher import publisher
@@ -104,9 +104,9 @@ from .bridge_router import bridge_service_identity
 
 
 @router.get('/mapping-terms', dependencies=[Depends(bridge_service_identity)], summary='Private peer read of scoped ontology mapping targets from the graph data layer')
-def mapping_terms(scope: str) -> dict:
+def mapping_terms(scope: str, offset: int | None = Query(default=None,ge=0,le=100000), limit: int | None = Query(default=None,ge=1,le=10000)) -> dict:
     try:
-        return publisher.mapping_terms(scope)
+        return publisher.mapping_terms(scope,offset=offset,limit=limit)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:

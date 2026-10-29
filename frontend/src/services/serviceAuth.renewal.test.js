@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
-import { clearServiceAuthToken, getBrowserSessionStatus, getCredentialProfile, renewBrowserSession, setBrowserSessionExpiry, setCredentialProfile, installBrowserSession, handleSessionRejection, wasBrowserSessionExpired } from './serviceAuth';
+import { clearServiceAuthToken, getBrowserSessionStatus, getCredentialProfile, renewBrowserSession, setBrowserSessionExpiry, setCredentialProfile, installBrowserSession, handleSessionRejection, wasBrowserSessionExpired, getBrowserAccessPreferences, expireBrowserSession } from './serviceAuth';
 
 vi.mock('../config', () => ({
   config: { semanticServiceUrls: { ontology: 'http://vm:8011' } },
@@ -13,6 +13,16 @@ function connect() {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_test');
   setBrowserSessionExpiry('depo_session_test', new Date(Date.now() + 120000).toISOString(), new Date(Date.now() + 3600000).toISOString());
 }
+
+test('expiry retains scope preferences but clears credentials; explicit sign-out clears both',()=>{
+ installBrowserSession({token:'depo_session_scoped',profiles:['GRAPH_READ_TOKEN','INGESTION_WRITE_TOKEN'],expires_at:new Date(Date.now()+120000).toISOString()});
+ expireBrowserSession('depo_session_scoped');
+ expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('');
+ expect(getBrowserAccessPreferences()).toMatchObject({includeWrites:true,includeMaintenance:false});
+ expect(sessionStorage.getItem('depo.browserAccessPreferences.v1')).not.toContain('depo_session_scoped');
+ clearServiceAuthToken();
+ expect(getBrowserAccessPreferences()).toBeNull();
+});
 
 test('reconnect preserves conversation bookmarks and invalid responses preserve credentials', () => {
   connect();

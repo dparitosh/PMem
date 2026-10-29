@@ -61,11 +61,14 @@ class AgentCatalogControls(unittest.IsolatedAsyncioTestCase):
     def test_control_rejects_invalid_terminal_and_reversal(self):
         auth = ModuleType("backend.depo_platform.authorization")
         auth.service_write_identity = lambda *args, **kw: "supervisor"
-        record = {"status": "running", "deadline_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()}
+        record = {"status": "running", "workflow_id": "governed-write", "deadline_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()}
         writes = []
         controls = SimpleNamespace(get=lambda key: {"action": "cancel"}, put=lambda *args: writes.append(args), advisory_lock=lambda key: nullcontext(True))
         scope = {"Any": object, "Request": object, "HTTPException": Failure, "datetime": datetime, "timezone": timezone,
-                 "workflow_store": SimpleNamespace(get=lambda key: record), "workflow_controls": controls, "_now": lambda: "now"}
+                 "workflow_store": SimpleNamespace(get=lambda key: record), "workflow_controls": controls, "_now": lambda: "now",
+                 "__package__": "backend.agentic_service",
+                 "catalog": SimpleNamespace(item=lambda kind, key: {'id': key}),
+                 "workflow_plan": lambda payload: {'steps': []}}
         fn = extract("agentic_service/router.py", "control_workflow", scope)
         with patch.dict(sys.modules, {"backend.depo_platform.authorization": auth}):
             for action in [[], "resume", "invalid"]:
@@ -96,7 +99,8 @@ class AgentCatalogControls(unittest.IsolatedAsyncioTestCase):
         native = ModuleType("backend.ontology_service.catalog")
         with TemporaryDirectory() as temp:
             root = Path(temp); path = root / "demo_1" / "demo.ttl"; path.parent.mkdir(); path.write_text("rdf")
-            native.catalog = SimpleNamespace(root=root, get=lambda key: {"artifact_path": str(path)})
+            native.catalog = SimpleNamespace(root=root, get=lambda key: {"artifact_path": str(path)},
+                resolve_artifact_path=lambda key, metadata: Path(metadata['artifact_path']).resolve())
             fn = extract("agentic_service/ontology_orchestrator.py", "_resolve_ontology_path", {"Path": Path})
             with patch.dict(sys.modules, {"backend.Services.ontology_upload_manager": legacy, "backend.ontology_service.catalog": native}):
                 self.assertEqual(fn("", "demo_1"), str(path.resolve()))

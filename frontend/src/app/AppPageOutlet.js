@@ -14,7 +14,7 @@ export default function AppPageOutlet({ page, pageContext }) {
   return (
     <ErrorBoundary>
       <Suspense fallback={<PageLoadingState />}>
-        <PageComponent {...props} />
+        <PageComponent {...props} onCompanionRecordChange={pageContext?.onCompanionRecordChange} />
       </Suspense>
     </ErrorBoundary>
   );

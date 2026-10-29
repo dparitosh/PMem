@@ -11,6 +11,7 @@ from http.cookies import SimpleCookie, CookieError
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import ipaddress
 import json
+import logging
 from pathlib import Path
 import secrets
 import socket
@@ -20,6 +21,7 @@ from urllib.parse import urlsplit
 
 COOKIE = 'pmem_local_launcher'
 PREFIX = '/_pmem-local/'
+LOGGER = logging.getLogger(__name__)
 
 
 def local_url(value):
@@ -183,23 +185,33 @@ class FrontendHandler(SimpleHTTPRequestHandler):
         except (TimeoutError, OSError, ValueError):
             self.close_connection = True
             return self._json(408, {'detail': 'Local session request body was incomplete or timed out'})
+        stage = 'authority_exchange'
+        upstream_status = None
         try:
             import httpx
             deadline = time.monotonic() + 15
             with httpx.stream('POST', settings['authority'] + '/auth/browser-session',
                 headers={'X-API-Key': settings['key']},
                 json={'include_writes': settings['writes'], 'include_maintenance': False},
-                timeout=httpx.Timeout(2, connect=3), trust_env=False, follow_redirects=False) as response:
+                # A healthy PostgreSQL-backed exchange may exceed two seconds
+                # during startup/load. Stay inside the browser's 20-second limit
+                # while retaining the separate response-size/time budget.
+                timeout=httpx.Timeout(12, connect=2, write=2, pool=2), trust_env=False, follow_redirects=False) as response:
+                upstream_status = response.status_code
                 if response.status_code != 200:
                     raise ValueError('Authority rejected exchange')
+                stage = 'authority_body'
                 payload = bytearray()
                 for chunk in response.iter_bytes(chunk_size=1024):
                     payload.extend(chunk)
                     if len(payload) > 16384 or time.monotonic() > deadline:
                         raise ValueError('Authority response exceeded size or time budget')
                 body = json.loads(payload)
+            stage = 'delegate_validation'
             return self._json(200, validate_delegate(body, settings['writes']))
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning('Local session exchange failed: stage=%s error_type=%s upstream_status=%s',
+                           stage, type(exc).__name__, upstream_status)
             return self._json(503, {'detail': 'Local session authority is unavailable. Check the ontology service.'})
 
 

@@ -73,6 +73,7 @@ def workflow_snapshot(record, control=None, heartbeat=None):
         elif action in {'pause', 'cancel'}:
             state = action + '_requested'
     reconciliation_required = bool(record.get('reconciliation_required')) or (status == 'interrupted' and mutates)
+    from .recovery import read_only_ontology_review
     return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}},
             'status': status, 'execution_state': state, 'control': control,
             'last_activity_at': activity, 'executor_active': record.get('status') == 'running' and not stale,
@@ -80,4 +81,5 @@ def workflow_snapshot(record, control=None, heartbeat=None):
             'reconcile_allowed': mutates and (record.get('status') in {'failed', 'interrupted', 'timed_out'} or (record.get('status') == 'running' and stale)),
             'executor_stop_verification_required': record.get('status') == 'running',
             'recover_allowed': deadline_open and status in {'failed', 'interrupted', 'recoverable'} and not mutates and not reconciliation_required and not record.get('compensations'),
+            'recovery_requires_approval': not read_only_ontology_review(record.get('workflow_definition')),
             'execution_mode': record.get('execution_mode','process-task'), 'restart_recovery': 'automatic-read-only; uncertain-writes-require-reconciliation' if record.get('execution_mode') == 'worker' else 'supervised', 'completed_writes': 'retained'}

@@ -14,6 +14,7 @@ from backend.mesh_store import PostgresRegistry
 from backend.depo_platform.authorization import approval_identity, graph_read_identity, _request_api_key
 from .artifact_retention import retention
 from .product_contract import validate_revision, validate_registration, public_record
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 router = APIRouter(prefix="/catalog", tags=["data-catalog"])
 store = PostgresRegistry("catalog_products")
@@ -67,6 +68,7 @@ def product(product_id: str) -> dict:
 
 
 @router.put("/products/{product_id}/versions/{version}")
+@ontology_writer
 def register(product_id: str, version: str, payload: ProductMetadataBody, request: Request = None, x_depo_service_token: str | None = Header(default=None)) -> dict:
     _internal(x_depo_service_token or (_request_api_key(request) if request is not None else None))
     # Serialize versions of the same product so latest-version selection and
@@ -140,3 +142,5 @@ def purge_artifact(artifact_id: str, payload: ReasonApprovalBody, request: Reque
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, 'Artifact reference verification is unavailable; no purge can be confirmed. Refresh retention history before retrying.') from exc

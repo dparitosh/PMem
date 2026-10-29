@@ -116,6 +116,24 @@ if (-not $SkipEndpointChecks) {
         $corsChecked = $true
       }
     }
+    # Each browser origin and non-simple authenticated request must work. A
+    # successful health GET for the first origin does not validate preflight.
+    foreach ($browserOrigin in $allowedOrigins) {
+      $preflightUri = "http://${hostName}:$($service.port)/auth/browser-session"
+      try {
+        $preflight = Invoke-WebRequest -Uri $preflightUri -Method Options -Headers @{
+          Origin = $browserOrigin
+          'Access-Control-Request-Method' = 'POST'
+          'Access-Control-Request-Headers' = 'authorization,content-type,x-api-key,x-request-id'
+        } -UseBasicParsing -TimeoutSec 10
+      } catch { throw "$($service.id) CORS preflight failed for $browserOrigin. Check the running ALLOWED_ORIGINS and OPTIONS forwarding; no credential was sent." }
+      $corsMethods = @(([string]$preflight.Headers['Access-Control-Allow-Methods']).ToUpperInvariant().Split(',') | ForEach-Object { $_.Trim() })
+      $corsHeaders = @(([string]$preflight.Headers['Access-Control-Allow-Headers']).ToLowerInvariant().Split(',') | ForEach-Object { $_.Trim() })
+      if ([string]$preflight.Headers['Access-Control-Allow-Origin'] -ne $browserOrigin -or $corsMethods -notcontains 'POST' -or
+          @('authorization','content-type','x-api-key','x-request-id' | Where-Object { $corsHeaders -notcontains $_ }).Count -gt 0) {
+        throw "$($service.id) CORS preflight contract is incomplete for $browserOrigin. Restart after configuration changes and verify proxy header forwarding."
+      }
+    }
     if ($values.AUTH_MODE -eq 'token') {
       try {
         $access = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/auth/access" -Headers @{ Authorization = "Bearer $($values.GRAPH_READ_TOKEN)" } -TimeoutSec 10

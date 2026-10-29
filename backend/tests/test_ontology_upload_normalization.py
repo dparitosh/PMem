@@ -146,3 +146,31 @@ def test_merge_neo4j_only_entries_preserves_registered_prefix(monkeypatch):
 
     assert indexed["registered"]["source"] == "registered"
     assert indexed["new"]["ontology_name"] == "New"
+
+
+def test_discovery_requires_schema_evidence_and_avoids_quadratic_membership(monkeypatch):
+    calls = []
+    def query(cypher, params=None, graph=None):
+        calls.append((cypher, params))
+        return []
+    monkeypatch.setattr(OntologyUploadManager, "_query_configured_neo4j", query)
+    OntologyUploadManager._merge_neo4j_only_entries({})
+    cypher, params = calls[0]
+    assert 'n:OntologyClass OR n:ObjectProperty' in cypher
+    assert 'http://www.w3.org/2002/07/owl#Class' in params['schema_types']
+    assert 'StagedOntologyResource' in cypher
+    assert 'b IN nodes' not in cypher
+    assert 'count(r) AS relationship_count' in cypher
+
+
+def test_empty_registry_count_is_an_aggregate_without_unwinding_node_arrays(monkeypatch):
+    calls = []
+    def query(cypher, params=None, graph=None):
+        calls.append(cypher)
+        return [{'node_count': 0, 'relationship_count': 0}]
+    monkeypatch.setattr(OntologyUploadManager, "_query_configured_neo4j", query)
+    rows = {'empty': {'prefix': 'empty', 'ontology_id': 'empty'}}
+    OntologyUploadManager._enrich_registry_counts(rows)
+    assert rows['empty']['availability'] == 'metadata_only'
+    assert 'b IN nodes' not in calls[0]
+    assert '(n)-[r]->(b)' in calls[0]

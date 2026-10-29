@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import CredentialSettings from './CredentialSettings';
-import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setBrowserSessionExpiry } from '../services/serviceAuth';
+import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setBrowserSessionExpiry, installBrowserSession, expireBrowserSession } from '../services/serviceAuth';
 
 vi.mock('../config', () => ({
   config: { gatewayUrl: '', semanticServiceUrls: { graph: 'http://graph', agentic: 'http://agentic' } },
@@ -19,6 +19,32 @@ const enter = (profile, value) => {
   return within(input.closest('tr'));
 };
 const response = (status, body) => ({ ok: status === 200, status, json: async () => body });
+
+test('reconnect retains previously connected upload preference after expiry', async()=>{
+ installBrowserSession({token:'depo_session_before',profiles:['GRAPH_READ_TOKEN','INGESTION_WRITE_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()});
+ expireBrowserSession('depo_session_before');
+ fetch.mockImplementation((_url,options)=>Promise.resolve(options.method==='POST'
+  ?response(200,{token:'depo_session_after',profiles:['GRAPH_READ_TOKEN','INGESTION_WRITE_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()})
+  :response(200,{status:'authorized'})));
+ render(<CredentialSettings/>);
+ expect(screen.getByLabelText(/Enable registered upload/)).toBeChecked();
+ fireEvent.change(screen.getByLabelText('Administrator key for connection'),{target:{value:'fixture-admin'}});
+ fireEvent.click(screen.getByRole('button',{name:'Connect registered services'}));
+ await waitFor(()=>expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('depo_session_after'));
+ expect(JSON.parse(fetch.mock.calls.find(([,options])=>options.method==='POST')[1].body).include_writes).toBe(true);
+});
+
+test('missing upload grant is explained at connection without inventing write authority',async()=>{
+ fetch.mockImplementation((_url,options)=>Promise.resolve(options.method==='POST'
+  ?response(200,{token:'depo_session_reader',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()})
+  :response(200,{status:'authorized'})));
+ render(<CredentialSettings/>);
+ fireEvent.click(screen.getByLabelText(/Enable registered upload/));
+ fireEvent.change(screen.getByLabelText('Administrator key for connection'),{target:{value:'fixture-admin'}});
+ fireEvent.click(screen.getByRole('button',{name:'Connect registered services'}));
+ await screen.findByText(/server did not grant INGESTION_WRITE_TOKEN/);
+ expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('');
+});
 
 test('credential validation errors include the server request ID', async () => {
   fetch.mockResolvedValue({...response(403,{detail:'Wrong scope'}),headers:new Headers({'X-Request-ID':'credential-check-1'})});

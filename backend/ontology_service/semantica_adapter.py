@@ -50,8 +50,16 @@ class SemanticaAdapter:
     """One required engine for ontology lifecycle, SHACL and quality checks."""
 
     def capabilities(self) -> dict[str, Any]:
+        from .owl_dl import capabilities as dl_capabilities
+        dl = dl_capabilities()
         return {
             "provider": "Semantica", "version": SEMANTICA_VERSION, "available": True, "mode": "required",
+            "rdf_backend": "rdflib",
+            "validation_scope": "structural_and_shacl",
+            "owl_dl_consistency_supported": dl['available'],
+            "semantica_builtin_owl_dl_supported": False,
+            "external_owl_dl": dl,
+            "embedded_foundation": "IDO 4.2 + DEPO business core 1.0.0",
             "capabilities": ["knowledge_graph_to_ontology", "class_and_property_inference", "ontology_validation",
                              "shacl_generation_and_graph_validation", "owl_rdf_jsonld_export", "namespace_management",
                              "ontology_evaluation", "ontology_alignment", "llm_bootstrap_when_configured"],

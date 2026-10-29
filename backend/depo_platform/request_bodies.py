@@ -16,6 +16,16 @@ class ApprovalBody(RequestBody, total=False):
     approved_by: str
     approval_token: str
 
+class ReplayBody(ApprovalBody, total=False):
+    idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
+
+class OntologyReleaseBody(ApprovalBody, total=False):
+    family_id: Required[Text]
+    version: Required[Text]
+    predecessor_id: str | None
+    change_kind: Required[Literal['initial', 'breaking', 'additive', 'corrective']]
+    change_notes: Required[Annotated[str, Field(min_length=1, max_length=8000)]]
+
 class BridgeSourceBody(RequestBody, total=False):
     operation: Required[Literal['snapshot', 'preview', 'manual']]
     ontology_id: Required[Text]
@@ -97,6 +107,7 @@ class EntityMapping(RequestBody, total=False):
 
 class MergePreviewBody(RequestBody, total=False):
     background: bool
+    owl_dl_check: bool
     source_ontology_ids: Required[Annotated[list[Text], Field(min_length=2, max_length=16)]]
     entity_mappings: Annotated[list[EntityMapping], Field(max_length=200)]
     ontology_name: str

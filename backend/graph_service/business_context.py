@@ -45,6 +45,11 @@ def retrieve(publisher, *, node_id, ontology_id='', ontology_prefix='', depth=1,
                 if source in known and target not in reasons:
                     reasons[target]={'reason':edge['evidence_kind'],'path_relationship_ids':[*reasons[source]['path_relationship_ids'],edge['elementId']]}
     connected = set(reasons)
+    from .vocabulary_evidence import read_vocabulary, unique_label
+    vocabulary = read_vocabulary(publisher, [(edge.get('properties') or {}).get('predicate') for edge in edges],
+                                 ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+    for edge in edges:
+        edge['business_label'] = unique_label(vocabulary, (edge.get('properties') or {}).get('predicate'))
     return {'nodes':sorted([n for n in nodes if n['elementId'] in connected],key=lambda n:(n['elementId']!=node_id,n['elementId'])),
             'relationships':[e for e in edges if e['start'] in connected and e['end'] in connected],
             'inclusion':reasons,'root_node_id':node_id,

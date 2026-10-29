@@ -12,5 +12,16 @@ def retrieval_query(message, turns, scope):
         previous=turn.get('graph_context') or {}
         if not same_companion_scope(previous, scope):continue
         text=turn.get('user_request')
-        if isinstance(text,str) and text.strip():return f'{text[:1000]} {message}'
+        if isinstance(text,str) and text.strip():
+            from backend.depo_platform.plm_questions import requirement_subject
+            subject = requirement_subject(text)
+            if subject and re.search(r'\b(it|its|them|their)\b', message, re.I):
+                rewritten = re.sub(r'\b(it|its|them|their)\b', lambda _: subject, message, flags=re.I)
+                if not requirement_subject(rewritten):
+                    if re.search(r'\b(requirements?|specifications?)\b',message,re.I):
+                        return 'Show requirements for '+subject
+                    if re.search(r'\bpmi\b',message,re.I):
+                        return 'Show PMI for '+subject
+                return rewritten
+            return f'{text[:1000]} {message}'
     return message

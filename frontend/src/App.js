@@ -84,6 +84,9 @@ function App() {
   const [page, setPage] = useState(initialActivePage === 'home' ? 'home' : 'app');
   const [activePage, setActivePage] = useState(initialActivePage === 'home' ? 'graph' : initialActivePage);
   const [data, setData] = useState();
+  const [companionSelection, setCompanionSelection] = useState(null);
+  const [ontologyCompanionSelection, setOntologyCompanionSelection] = useState(null);
+  const [recordCompanionSelection, setRecordCompanionSelection] = useState(null);
   const [searchResults, setSearchResults] = useState(null);
   const [chatResults, setChatResults] = useState(null);
   const [showChat, setShowChat] = useState(false);
@@ -129,15 +132,15 @@ function App() {
       const controller = new AbortController();
       currentController = controller;
       try {
-        const health = await platformAPI.coreHealth({ signal: controller.signal, timeout: 5000 });
+        const health = await platformAPI.coreHealth({ signal: controller.signal, timeout: 15000 });
         const onlineCount = Object.values(health).filter(Boolean).length;
         if (!onlineCount) throw new Error('All required DEPO services are unavailable.');
-        if (active) {
+        if (active && !controller.signal.aborted) {
           setServiceStatus(onlineCount === Object.keys(health).length ? 'online' : 'degraded');
           retryDelayMs = 30000;
         }
       } catch (error) {
-        if (active && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
+        if (active && !controller.signal.aborted && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
           setServiceStatus('offline');
           retryDelayMs = Math.min(retryDelayMs * 2, 300000);
         }
@@ -145,12 +148,15 @@ function App() {
         inFlight = false;
         if (currentController === controller) currentController = null;
         if (active) {
-          retryTimer = window.setTimeout(checkHealth, retryDelayMs);
+          retryTimer = window.setTimeout(checkHealth, controller.signal.aborted ? 0 : retryDelayMs);
         }
       }
     };
+    const verifyHealth = () => { if (!inFlight) void checkHealth(); else currentController?.abort(); };
+    window.addEventListener('depo:access-verified', verifyHealth);
     checkHealth();
     return () => {
+      window.removeEventListener('depo:access-verified', verifyHealth);
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
       currentController?.abort();
@@ -183,6 +189,7 @@ function App() {
   }, []);
 
   const handleSchemaCleaned = useCallback(() => {
+    setCompanionSelection(null);
     setData({ nodes: [], links: [] });
     setSearchResults(null);
     setChatResults(null);
@@ -191,6 +198,7 @@ function App() {
 
   const [serviceAuthRevision, setServiceAuthRevision] = useState(0);
   const handleServiceAuthChange = useCallback(() => {
+    setCompanionSelection(null);
     setData(undefined);
     setSearchResults(null);
     setChatResults(null);
@@ -198,6 +206,7 @@ function App() {
     setServiceAuthRevision(revision => revision + 1);
   }, []);
   const graphProps = useMemo(() => ({
+    onBusinessSelection: setCompanionSelection,
     graphData: data,
     setData,
     searchResults,
@@ -232,12 +241,19 @@ function App() {
             rightDrawer={(
               <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>
-                    <Chatbot
+                    {page !== 'home' && activePage === 'change-control' ? <p>Change Control shows retained cross-workspace evidence. Open the owning workflow to investigate a selected proposal with its Governor or Steward. This view does not grant approval or execute changes.</p> : <Chatbot
                       key={`chat-${serviceAuthRevision}`}
-                    graphData={page !== 'home' && ['graph','ontology','whereused','requirements','modeling','qif'].includes(activePage) ? data : undefined}
+                    graphData={page !== 'home' && ['graph','whereused'].includes(activePage) ? data : undefined}
                     pageId={page === 'home' ? 'home' : activePage}
+                    runId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.run_id || '' : ''}
+                    productId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_id || '' : ''}
+                    productVersion={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_version || '' : ''}
+                    nodeId={page !== 'home' && activePage === 'graph' ? companionSelection?.node_id || '' : ''}
+                    ontologyId={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_id || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_id || '' : ''}
+                    ontologyPrefix={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_prefix || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_prefix || '' : ''}
+                    contextLabel={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.label || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.label || '' : ''}
                     setChatResults={setChatResults}
-                  />
+                  />}
                 </Suspense>
               </ErrorBoundary>
             )}
@@ -256,6 +272,8 @@ function App() {
                     graphProps,
                     onNavigate: handleNavigate,
                     onSchemaCleaned: handleSchemaCleaned,
+                    onOntologyContextChange: setOntologyCompanionSelection,
+                    onCompanionRecordChange: setRecordCompanionSelection,
                   }}
                 />
               )}

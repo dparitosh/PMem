@@ -16,6 +16,7 @@ def child_result_limit(module):
         # mapping/delta evidence. This is a graph result, not a small report.
         return 4 * ontology_upload_limit() + 8 * 1024 * 1024
     if module == 'backend.ontology_service.merge_semantics': return 8 * 1024 * 1024
+    if module == 'backend.ontology_service.semantic_merge': return 2 * 1024 * 1024
     raise ValueError('Unsupported merge worker module')
 
 
@@ -118,6 +119,15 @@ class BackgroundMerges:
                         record['conflicts'] += checks.get('inferred_conflicts', [])
                         if not checks.get('shacl_conforms'): record['conflicts'].append({'kind': 'shacl_nonconformance'})
                         record['publish_recommended'] = not record['conflicts']
+                        if job['payload'].get('owl_dl_check') is True:
+                            semantic = validation_child(record['turtle'], stop, 240,
+                                'backend.ontology_service.semantic_merge')
+                            record['owl_dl_evidence'] = semantic['evidence']
+                            record['semantic_support'] = semantic['assessment']
+                            from .owl_dl import semantic_dependencies
+                            record['semantic_dependencies'] = semantic_dependencies()
+                            record['validation']['formal_reasoning_performed'] = semantic['evidence'].get('deductive_reasoner_executed') is True
+                            if semantic['assessment']['disposition'] != 'ready_for_review': record['publish_recommended'] = False
                         record['validation_receipt'] = {'token': token, 'graph_sha256': hashlib.sha256(record['turtle'].encode()).hexdigest(), 'policy_sha256': fingerprint}
                         service.registry.put(key, record)
                         update('completed')

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { vi } from 'vitest';
 import IngestedDataInventory from './IngestedDataInventory';
 import AnalyticsSchemaReview from './AnalyticsSchemaReview';
@@ -7,6 +7,24 @@ import { apiClient } from '../services/apiClient';
 vi.mock('../services/apiClient', () => ({ apiClient: { get: vi.fn() } }));
 afterEach(cleanup);
 beforeEach(() => vi.clearAllMocks());
+it.each(['depo:session-replaced', 'depo:session-expired', 'depo:access-verified'])(
+  'cancels the previous inventory and reloads after %s', async eventName => {
+    let finishOld;
+    apiClient.get.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ data: { tasks: [{ task_id: 'current', filename: 'current.xml' }] } });
+    const view = render(<IngestedDataInventory />);
+    const oldSignal = apiClient.get.mock.calls[0][1].signal;
+    fireEvent(window, new Event(eventName));
+    expect(await screen.findByText('current.xml')).toBeVisible();
+    expect(oldSignal.aborted).toBe(true);
+    await act(async () => finishOld({ data: { tasks: [{ task_id: 'old', filename: 'stale.xml' }] } }));
+    expect(screen.queryByText('stale.xml')).toBeNull();
+    const currentSignal = apiClient.get.mock.calls[1][1].signal;
+    view.unmount();
+    fireEvent(window, new Event(eventName));
+    expect(currentSignal.aborted).toBe(true);
+    expect(apiClient.get).toHaveBeenCalledTimes(2);
+  });
 it('discovers retained imports independently of product publication', async () => {
   apiClient.get.mockResolvedValue({ data: { tasks: [{ task_id: 'task-1', filename: 'assembly.xml', status: 'completed' }, { task_id: 'task-2', filename: 'part.xml', status: 'ready_for_commit' }] } });
   render(<IngestedDataInventory ontologies={[{ ontology_id: 'o-1', label: 'Teamcenter' }]} />);

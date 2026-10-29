@@ -134,6 +134,17 @@ def create_service_app(
 
     # APIM registration is standardized on OpenAPI 3.0.x across all DEPO services.
     app = FastAPI(title=title, version=version, lifespan=lifespan)
+    if os.getenv('DEPO_VANILLA_MAINTENANCE') == 'true':
+        @app.middleware('http')
+        async def isolated_reset_mode(request, call_next):
+            path = request.url.path
+            permitted = (request.method == 'OPTIONS' or path.startswith('/auth/')
+                         or path in {'/healthz', '/readyz', '/openapi.json', '/api/v1/ontologies/health'}
+                         or (request.method == 'GET' and path.startswith('/api/v1/admin/'))
+                         or (request.method == 'POST' and path == '/api/v1/admin/reset-vanilla'))
+            if not permitted:
+                return JSONResponse(status_code=503, content={'detail': 'Isolated reset maintenance is active. Application workflows are stopped.'})
+            return await call_next(request)
     app.openapi_version = "3.0.3"
     from .openapi_contract import normalize_openapi, describe_security
     original_openapi = app.openapi

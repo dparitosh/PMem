@@ -23,6 +23,7 @@ from rdflib import Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
 from . import query_repository as cypher
+from .business_types import CEIM_IRIS
 
 
 class Neo4jPublisher:
@@ -142,12 +143,13 @@ class Neo4jPublisher:
                     ON CREATE SET receipt.published_at = $published_at
                     SET receipt.prefix = $prefix, receipt.resources = $resources,
                         receipt.relationships = $relationships, receipt.hierarchy_edges = $hierarchy_edges,
-                        receipt.status = 'published', receipt.current = true
+                        receipt.status = 'published', receipt.current = true,
+                        receipt.artifact_sha256 = $artifact_sha256
                     """,
                     ontology_id=ontology_id, publication_id=publication_id, prefix=prefix,
                     resources=len(resources), relationships=sum(len(rows) for rows in relationships.values()),
                     hierarchy_edges=len(relationships["SUBCLASS_OF"]) + len(relationships["HAS_PART"]),
-                    published_at=now,
+                    published_at=now, artifact_sha256=hashlib.sha256(content).hexdigest(),
                 ).consume()
 
         logger.warning('Ontology publication phase=neo4j_write ontology_id=%s resources=%s relationships=%s elapsed_seconds=%.3f',
@@ -231,7 +233,7 @@ class Neo4jPublisher:
                 if timeout<=0:raise TimeoutError('Graph read deadline elapsed')
             return session.run(Query(query, timeout=timeout), parameters).data()
 
-    def mapping_terms(self, scope: str) -> dict[str, Any]:
+    def mapping_terms(self, scope: str, offset=None, limit=None) -> dict[str, Any]:
         if not isinstance(scope, str) or not scope.strip() or len(scope) > 256:
             raise ValueError('Select a valid ontology scope.')
         scopes = {scope, scope.lower()}
@@ -239,8 +241,21 @@ class Neo4jPublisher:
             scopes.update({'ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D'})
         kinds = [{'kind': kind, 'iri': 'http://www.w3.org/2002/07/owl#' + kind}
                  for kind in ('Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty')]
-        rows = self._session_rows(cypher.MAPPING_TERMS, scope=scope, scopes=sorted(scopes), kinds=kinds,
-                                  rdf_type='http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+        parameters=dict(scope=scope, scopes=sorted(scopes), kinds=kinds,
+                        rdf_type='http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+        if offset is not None or limit is not None:
+            if type(offset) is not int or not 0 <= offset <= 100000 or type(limit) is not int or not 1 <= limit <= 10000:
+                raise ValueError('Select a mapping page of 1 to 10000 terms within the 100000-term read budget')
+            from backend.depo_platform.graph_access import projection_access
+            with projection_access():
+                revisions=self._session_rows("MATCH (p:OntologyPublication {ontology_id:$scope}) WHERE p.current=true AND p.status='published' RETURN p.publication_id AS id, p.artifact_sha256 AS artifact ORDER BY id",scope=scope)
+                from backend.depo_platform.bridge_contract import digest
+                revision=digest(revisions) if revisions else None
+                query=cypher.MAPPING_TERMS.replace('LIMIT 10001','SKIP toInteger($offset) LIMIT toInteger($read_limit)')
+                rows=self._session_rows(query,**parameters,offset=offset,read_limit=limit+1)
+            return {'scope':scope,'terms':rows[:limit],'offset':offset,
+                    'next_offset':offset+limit if len(rows)>limit else None,'revision':revision}
+        rows = self._session_rows(cypher.MAPPING_TERMS, **parameters)
         if len(rows) > 10000:
             raise ValueError('Ontology mapping lookup exceeds 10000 terms; narrow the ontology scope.')
         return {'scope': scope, 'terms': rows}
@@ -314,17 +329,16 @@ class Neo4jPublisher:
         CALL {
           MATCH (n:OntologyResource)
           WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix)
+          OPTIONAL MATCH (n)-[typing]->(t:OntologyResource)
+          WHERE typing.predicate = $rdf_type
+          WITH n, collect(DISTINCT t.iri) + coalesce(n.rdf_types, []) AS declared_types
           RETURN count(n) AS resources,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri IN $class_types } THEN 1 ELSE 0 END) AS classes,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $object_property } THEN 1 ELSE 0 END) AS object_properties,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $data_property } THEN 1 ELSE 0 END) AS data_properties,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $annotation_property } THEN 1 ELSE 0 END) AS annotation_properties,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $individual } THEN 1 ELSE 0 END) AS named_individuals
+            sum(CASE WHEN any(t IN declared_types WHERE t IN $class_types) THEN 1 ELSE 0 END) AS classes,
+            sum(CASE WHEN $object_property IN declared_types THEN 1 ELSE 0 END) AS object_properties,
+            sum(CASE WHEN $data_property IN declared_types THEN 1 ELSE 0 END) AS data_properties,
+            sum(CASE WHEN $annotation_property IN declared_types THEN 1 ELSE 0 END) AS annotation_properties,
+            sum(CASE WHEN $individual IN declared_types THEN 1 ELSE 0 END) AS named_individuals,
+            sum(CASE WHEN any(t IN declared_types WHERE t IN $business_types) THEN 1 ELSE 0 END) AS business_instances
         }
         CALL {
           MATCH (a:OntologyResource)-[r]->(b:OntologyResource)
@@ -341,11 +355,12 @@ class Neo4jPublisher:
           RETURN collect({ontology: ontology, node_count: node_count}) AS ontology_breakdown
         }
         RETURN resources, relationships, classes, object_properties, data_properties,
-               annotation_properties, named_individuals, ontology_breakdown
+               annotation_properties, named_individuals, business_instances, ontology_breakdown
         """
         rows = self._session_rows(query, ontology_id=ontology_id, ontology_prefix=ontology_prefix, rdf_type=str(RDF.type),
             class_types=[str(OWL.Class), str(RDFS.Class)], object_property=str(OWL.ObjectProperty),
-            data_property=str(OWL.DatatypeProperty), annotation_property=str(OWL.AnnotationProperty), individual=str(OWL.NamedIndividual))
+            data_property=str(OWL.DatatypeProperty), annotation_property=str(OWL.AnnotationProperty), individual=str(OWL.NamedIndividual),
+            business_types=list(CEIM_IRIS))
         if not rows:
             raise RuntimeError('Graph metrics query returned no aggregate result')
         result = dict(rows[0])
@@ -355,10 +370,10 @@ class Neo4jPublisher:
         legacy = self._session_rows(cypher.LEGACY_METRICS, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
         if not legacy:
             raise RuntimeError('Existing ontology metrics query returned no aggregate result')
-        result['existing_ontology'] = {**legacy[0], 'definition': 'Existing ingestion records counted by Neo4j labels. These are separate from declared RDF types in the published projection.'}
+        result['existing_ontology'] = {**legacy[0], 'definition': 'Existing ingestion records counted by graph labels. These are separate from declared RDF types in the published projection.'}
         return {**result, 'scope': {'type': 'published_rdf_projection', 'ontology_id': ontology_id or None,
             'sampled': False, 'inferred': False},
-            'definition': 'Declared RDF/OWL types in the published projection. Named individuals count explicit owl:NamedIndividual declarations. Resources include referenced vocabulary and blank nodes; literal values are stored as properties, not relationship edges.'}
+            'definition': 'Declared RDF/OWL types in the published projection. Annotation properties count explicit owl:AnnotationProperty declarations, not annotation statements such as labels and descriptions. Named individuals count explicit owl:NamedIndividual declarations. Business instance records count resources explicitly typed with a recognized DEPO business class within this scope; the same IRI in different ontology projections counts as separate records. Resources include referenced vocabulary and blank nodes; literal values are stored as properties, not relationship edges.'}
 
     def overview(self, *, limit: int = 900) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))

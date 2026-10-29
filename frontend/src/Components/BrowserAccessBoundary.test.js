@@ -8,6 +8,24 @@ beforeEach(()=>{sessionStorage.clear();vi.clearAllMocks();getBrowserSessionStatu
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 const response=body=>({ok:true,json:async()=>body});
 
+test('failed local bootstrap holds service-reading children until reconnect succeeds',async()=>{
+  const mounted=vi.fn();
+  function Workspace(){React.useEffect(()=>{mounted();},[]);return <div>Protected workspace</div>;}
+  const fetch=vi.fn().mockResolvedValueOnce(response({mode:'local'}))
+    .mockResolvedValueOnce({ok:false,json:async()=>({detail:'Local session authority is unavailable.'})})
+    .mockResolvedValueOnce(response({mode:'local'}))
+    .mockResolvedValueOnce(response({token:'depo_session_recovered'}));
+  vi.stubGlobal('fetch',fetch);
+  render(<BrowserAccessBoundary><Workspace/></BrowserAccessBoundary>);
+  const reconnect=await screen.findByRole('button',{name:'Reconnect local access'});
+  expect(mounted).not.toHaveBeenCalled();
+  expect(screen.queryByText('Protected workspace')).not.toBeInTheDocument();
+  fireEvent.click(reconnect);
+  await screen.findByText('Protected workspace');
+  expect(mounted).toHaveBeenCalledTimes(1);
+  expect(installBrowserSession).toHaveBeenCalledWith({token:'depo_session_recovered'});
+});
+
 test('local credential expiry reconnects promptly without waiting for the interval',async()=>{
   const fetch=vi.fn().mockResolvedValueOnce(response({mode:'local'}))
     .mockResolvedValueOnce(response({token:'depo_session_old'}))

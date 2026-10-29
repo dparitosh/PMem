@@ -12,11 +12,13 @@ const ManufacturingResult = ({ data }) => {
 
   const pt = data.part || {};
   const summary = data.process_summary || {};
+  const instancesAssessed = data.assessment?.process_instances === 'assessed' || data.process_instances?.length > 0;
+  const relatedAssessed = data.assessment?.related_processes === 'assessed' || data.related_part_processes?.length > 0;
   const tabs = [
     { id: 'overview',  label: 'Overview',           color: C.green  },
     { id: 'direct',    label: 'Direct Processes',    color: C.primaryText, count: data.direct_processes?.length          || 0 },
-    { id: 'instances', label: 'Process Instances',   color: C.orange,  count: data.process_instances?.length         || 0 },
-    { id: 'related',   label: 'Related Processes',   color: C.amber,   count: data.related_part_processes?.length    || 0 },
+    { id: 'instances', label: 'Process Instances',   color: C.orange,  count: instancesAssessed ? data.process_instances?.length || 0 : undefined },
+    { id: 'related',   label: 'Related Processes',   color: C.amber,   count: relatedAssessed ? data.related_part_processes?.length || 0 : undefined },
     { id: 'summary',   label: 'Type Summary',        color: C.primaryText  },
   ];
 
@@ -42,18 +44,18 @@ const ManufacturingResult = ({ data }) => {
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Direct</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: C.orange }}>{summary.total_instances || 0}</div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: C.orange }}>{instancesAssessed ? summary.total_instances ?? data.process_instances?.length ?? 0 : 'Not assessed'}</div>
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Instances</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: C.amber }}>{summary.total_related || 0}</div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: C.amber }}>{relatedAssessed ? summary.total_related ?? data.related_part_processes?.length ?? 0 : 'Not assessed'}</div>
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Related</div>
             </div>
           </div>
         </div>
       </div>
 
-      <ResultTabBar tabs={tabs} active={tab} onChange={setTab} />
+      <ResultTabBar tabs={tabs} active={tab} onChange={setTab}>
 
       {tab === 'overview' && <ProcessFlowTimeline data={data} />}
 
@@ -96,7 +98,7 @@ const ManufacturingResult = ({ data }) => {
               </tbody>
             </table>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No process instances.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>{instancesAssessed ? 'No process instances found in the assessed scope.' : 'Process instances are not assessed by this analysis. Direct processes cover recorded neighbors only.'}</div>
       )}
 
       {tab === 'related' && (
@@ -117,7 +119,7 @@ const ManufacturingResult = ({ data }) => {
               </tbody>
             </table>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No related processes.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>{relatedAssessed ? 'No related processes found in the assessed scope.' : 'Related processes are not assessed by this analysis. Direct processes cover recorded neighbors only.'}</div>
       )}
 
       {tab === 'summary' && (
@@ -136,8 +138,9 @@ const ManufacturingResult = ({ data }) => {
               ))}
             </div>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No type summary.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>Process type summary is not assessed by this analysis.</div>
       )}
+      </ResultTabBar>
     </div>
   );
 };

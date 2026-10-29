@@ -1,6 +1,6 @@
 """Canonical ontology reasoning facade.
 
-This service centralizes Owlready2-backed ontology semantics so callers do not
+This service centralizes semantic runtime-backed ontology semantics so callers do not
 reimplement class/property/individual lookup, bridge target validation, or
 registered-ontology file resolution.
 """
@@ -13,13 +13,13 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 from backend.Services.ontology_upload_manager import OntologyUploadManager
-from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
+from backend.Services.ontology_semantic_runtime import OntologySemanticRuntime
 
 
 class OntologyReasoningService:
     """Single backend facade for ontology semantics.
 
-    Owlready2 owns semantic inspection. RDFLib remains inside lower-level
+    semantic runtime owns semantic inspection. RDFLib remains inside lower-level
     runtime/fallback helpers for parsing and serialization.
     """
 
@@ -60,7 +60,7 @@ class OntologyReasoningService:
         ontology_id = meta.get("ontology_id") or ontology_identifier
         source_path = meta.get("file_path") or meta.get("artifact_path") or ""
         source_file_path = Path(source_path)
-        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("artifact_path") or source_path)
+        semantic_file_path = Path(meta.get("artifact_path") or meta.get("owl_file_path") or source_path)
         if not semantic_file_path.is_file() and (not str(source_path).strip() or not source_file_path.is_file()):
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
         if not semantic_file_path.is_file():
@@ -83,7 +83,7 @@ class OntologyReasoningService:
     @staticmethod
     @lru_cache(maxsize=32)
     def _cached_reasoning(file_path_str: str, mtime: float, size: int, prefix: str) -> Dict[str, Any]:
-        return OwlreadyOntologyRuntime.inspect_ontology(Path(file_path_str), prefix)
+        return OntologySemanticRuntime.inspect_ontology(Path(file_path_str), prefix)
 
     @classmethod
     def inspect_context(cls, context: Dict[str, Any]) -> Dict[str, Any]:

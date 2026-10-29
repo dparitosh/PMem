@@ -156,7 +156,7 @@ class ArtifactStore:
             raise ValueError("Artifact metadata does not match its content address")
         return metadata, content
 
-    def purge(self, artifact_id: str, *, recovery_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def purge(self, artifact_id: str, *, recovery_metadata: dict[str, Any] | None = None, reference_check=None) -> dict[str, Any]:
         """Delete one verified artifact; callers must retain external audit evidence."""
         if not artifact_id.startswith('sha256:'):
             raise ValueError('artifact_id must be a sha256 content address')
@@ -172,6 +172,8 @@ class ArtifactStore:
             else:
                 raise ValueError('artifact_id was not found')
             ensure_execution_allowed()
+            if reference_check is not None:
+                reference_check(artifact_id, self)
             content.unlink(missing_ok=True)
             metadata_path.unlink(missing_ok=True)
             # Preserve the lock inode for concurrent writers and crash recovery.

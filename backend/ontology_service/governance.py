@@ -67,6 +67,8 @@ def _identity_findings(left, right, rules, emit, *, subject=None):
 
 
 def audit_ontology(record):
+    from .foundation import foundation_summary
+    embedded_reference = foundation_summary()
     rules = policy()
     turtle = record['turtle']
     graph = Graph().parse(data=turtle, format='turtle')
@@ -186,6 +188,7 @@ def audit_ontology(record):
               'coverage': {'complete': complete, 'shacl': 'pending' if validation_pending else 'retained-result',
                            'shape_digests': checks.get('shape_digests', []), 'owl_rl_performed': checks.get('owl_rl_performed', False),
                            'full_owl_dl_consistency_established': False, 'foundation_alignment': 'configured' if roots else 'not_configured',
+                           'embedded_foundation': {key:embedded_reference[key] for key in ('id','version','bundle_sha256')},
                            'linguistic_and_role_modeling': 'human_review', 'partial_graph_commit': 'disabled'},
               'findings_by_category': dict(categories), 'violations_and_remediations': findings,
               'findings_truncated': total_findings > len(findings), 'automatic_changes_applied': False}

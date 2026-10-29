@@ -120,7 +120,7 @@ def _resolve_ontology_path(ontology_path: str, ontology_id: str | None) -> str:
         metadata = catalog.get(ontology_id)
         if metadata:
             # Resolve only catalog-owned paths, preserving directory containment.
-            artifact = Path(str(metadata["artifact_path"])).resolve()
+            artifact = catalog.resolve_artifact_path(ontology_id, metadata)
             if not artifact.is_relative_to((catalog.root / ontology_id).resolve()) or not artifact.is_file():
                 raise ValueError("Native ontology artifact is missing or outside its catalog directory")
             return str(artifact)
@@ -147,7 +147,28 @@ def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | No
     task = UnifiedDataImportService._restore_task(import_task_id)
     if not task:
         raise ValueError("The selected import task was not found")
-    rows = task.get("parsed_rows") or []
+    rows = task.get("parsed_rows")
+    if rows is None:
+        # Persisted task snapshots hold rows in a separate, content-addressed file.
+        # A worker/service restart must not turn real instance evidence into an empty review.
+        snapshot = UnifiedDataImportService._task_snapshot_path(import_task_id)
+        name = task.get('_parsed_rows_file') or (snapshot.name + '.parsed_rows.json')
+        if (not isinstance(name, str) or Path(name).name != name or
+                not re.fullmatch(re.escape(snapshot.name) + r'\.parsed_rows(?:\.[0-9a-f]{64})?\.json', name)):
+            raise ValueError('The selected import task has invalid parsed row data')
+        sidecar = snapshot.parent / name
+        if sidecar.resolve().parent != snapshot.parent.resolve():
+            raise ValueError('The selected import task has invalid parsed row data')
+        try:
+            content = sidecar.read_bytes()
+        except OSError as exc:
+            raise ValueError('The selected import task retained parsed rows are unavailable') from exc
+        if name != snapshot.name + '.parsed_rows.json' and hashlib.sha256(content).hexdigest() != name.rsplit('.', 2)[1]:
+            raise ValueError('The selected import task has invalid parsed row data')
+        try:
+            rows = json.loads(content)
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError('The selected import task has invalid parsed row data') from exc
     if not isinstance(rows, list):
         raise ValueError("The selected import task has invalid parsed row data")
     entities: list[str] = []

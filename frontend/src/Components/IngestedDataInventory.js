@@ -18,9 +18,10 @@ export default function IngestedDataInventory({ ontologies = [] }) {
       if (!controller.signal.aborted) setState({ loading: false, tasks: [], error: apiErrorMessage(error, 'Ingested-data inventory is unavailable.') });
     });
     const invalidate = () => setRefresh(value => value + 1);
-    window.addEventListener('depo:credentials-changed', invalidate);
-    window.addEventListener('depo:credentials-cleared', invalidate);
-    return () => { controller.abort(); window.removeEventListener('depo:credentials-changed', invalidate); window.removeEventListener('depo:credentials-cleared', invalidate); };
+    const accessEvents = ['depo:credentials-changed', 'depo:credentials-cleared',
+      'depo:session-replaced', 'depo:session-expired', 'depo:access-verified'];
+    accessEvents.forEach(name => window.addEventListener(name, invalidate));
+    return () => { controller.abort(); accessEvents.forEach(name => window.removeEventListener(name, invalidate)); };
   }, [refresh]);
   const tasks = state.tasks.filter(task => `${task.filename || ''} ${task.task_id || ''} ${task.status || ''}`.toLowerCase().includes(search.toLowerCase()));
   return <section aria-label="Ingested data inventory">

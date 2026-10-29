@@ -7,6 +7,9 @@ def validation_fingerprint(source_metadata):
     from backend.Services.shacl_service import ShaclValidationService
     from backend.depo_platform.upload_limits import ontology_upload_limit
     digest = hashlib.sha256()
+    from .owl_dl import semantic_dependencies
+    import json
+    digest.update(json.dumps(semantic_dependencies(), sort_keys=True).encode())
     for filename in ('merge_semantics.py', 'merge_validation.py', 'merge_service.py', 'merge_reasoning.py', 'merge_reporting.py'):
         digest.update(Path(__file__).with_name(filename).read_bytes())
     for dependency in ('pyshacl', 'owlrl', 'rdflib'): digest.update(version(dependency).encode())

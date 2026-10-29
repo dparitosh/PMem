@@ -78,3 +78,16 @@ test('session replacement discards the previous registry and cancels its pending
  expect(screen.queryByText('Previous identity ontology')).toBeNull();
  expect(screen.getByText('Empty registry')).toBeVisible();
 });
+
+test('access revalidation retains the current registry while its read is pending or fails', async () => {
+  mocks.get.mockResolvedValue({data:{ontologies:[{ontology_id:'part',name:'Retained product ontology'}]}});
+  render(<OntologyProvider><Registry /></OntologyProvider>);
+  await screen.findByText('Retained product ontology');
+  const rejects = [];
+  mocks.get.mockImplementation(() => new Promise((_resolve, reject) => rejects.push(reject)));
+  act(() => window.dispatchEvent(new Event('depo:access-verified')));
+  expect(screen.getByText('Retained product ontology')).toBeVisible();
+  await act(async () => rejects.forEach(reject => reject({code:'ERR_NETWORK'})));
+  await screen.findByRole('alert');
+  expect(screen.getByText('Retained product ontology')).toBeVisible();
+});

@@ -12,11 +12,12 @@ ROLE_TOOLS = {
     "data_product_interaction": ["data.catalog.products", "data.catalog.product", "pipeline.definitions", "pipeline.run", "pipeline.run.evidence"],
     "kg_interaction": ["graph.analytics", "graph.neighborhood", "oslc.graph_rag"],
     "export": ["ontology.export"],
-    "self_learning_review": ["pipeline.run.evidence"],
+    "self_learning_review": ["pipeline.run.evidence", "learning.lessons"],
     "orchestrator": ["pipeline.definitions", "pipeline.runs", "pipeline.run.evidence", "data.catalog.products"],
 }
 
 TOOLS = [
+    ("learning.lessons", "agentic", "GET", "/learning/lessons"),
     ("pipeline.definitions", "data_pipeline", "GET", "/pipeline/jobs/definitions"),
     ("pipeline.runs", "data_pipeline", "GET", "/pipeline/jobs/runs"),
     ("pipeline.run.evidence", "data_pipeline", "GET", "/pipeline/jobs/runs/{run_id}"),
@@ -27,6 +28,9 @@ TOOLS = [
 
 def extend_catalog(source):
     catalog = deepcopy(source)
+    for agent in catalog['agents']:
+        if agent['id'] in {'ontology-governor','ontology-steward'} and 'learning.lessons' not in agent['tools']:
+            agent['tools'].append('learning.lessons')
     existing = {tool["id"] for tool in catalog["tools"]}
     for identifier, service, method, path in TOOLS:
         if identifier not in existing:
@@ -48,4 +52,5 @@ def capabilities():
             "analytics": {"job_type": "schema-analytics-product", "quality_profile": "schema-analytics-v1",
                           "requires": "approved enabled job definition and immutable input"},
             "unsupported": ["automatic lesson promotion", "automatic publication approval"],
+            "governed_learning": {"status":"/api/v1/learning/status", "scope":"receipted mapping review hints", "model_training":False},
             "external_client_binding_required": True}

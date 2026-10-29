@@ -23,7 +23,10 @@ langchain-openai==0.3.30
 langgraph==0.6.5
 rdflib>=7.6,<8
 pyshacl>=0.30,<1
+# Ontology lifecycle and structural validation use Semantica. RDF parsing,
+# SHACL validation and OWL-RL inference retain their separate evidence scopes.
 semantica==0.6.7
+psutil==7.2.2
 openpyxl>=3.1,<4
 pypdf>=6,<7
 Pillow>=11,<13

@@ -10,6 +10,7 @@ vi.mock('../contexts/OntologyContext', () => ({useOntologies: () => ({ontologies
 vi.mock('../services/apiClient', () => ({apiClient:{get:vi.fn()},dataPipelineAPI:{getRun:vi.fn()}}));
 vi.mock('../services/productService', () => ({readProductCollection:vi.fn(),PRODUCT_REFRESH_MS:15000,PRODUCT_CHANGED_EVENT:'depo:products-changed'}));
 vi.mock('../Components/SchemaProductPublisher', () => ({default: ({draft}) => draft ? <div data-testid="retained-draft">{JSON.stringify(draft)}</div> : null}));
+vi.mock('../Components/AgentProposalPanel', () => ({default: ({context}) => <div data-testid="governor-context">{JSON.stringify(context)}</div>}));
 beforeEach(() => { vi.clearAllMocks(); window.location.hash = '#/data-products'; });
 it.each(['removed', 'retained', 'failed'])('background refresh handles a %s product snapshot', async (outcome) => {
   let poll;
@@ -22,8 +23,8 @@ it.each(['removed', 'retained', 'failed'])('background refresh handles a %s prod
   readProductCollection.mockResolvedValueOnce({rows:[{product_id:'a',version:'1'}],total:1,warning:''});
   if (outcome === 'failed') readProductCollection.mockRejectedValue(new Error('List unavailable'));
   else readProductCollection.mockResolvedValue({rows:outcome === 'retained' ? [{product_id:'a',version:'1'}] : [],total:outcome === 'retained' ? 1 : 0,warning:''});
-  apiClient.get.mockResolvedValueOnce({data:{name:'old-package-details'}})
-    .mockResolvedValue({data:{name:'refreshed-package-details'}});
+  apiClient.get.mockResolvedValueOnce({data:{product_id:'a',version:'1',name:'old-package-details'}})
+    .mockResolvedValue({data:{product_id:'a',version:'1',name:'refreshed-package-details'}});
   render(<DataProductsPage />);
   await screen.findByText('Data Products (1 total; 1 loaded)');
   fireEvent.change(screen.getByLabelText('Product details and versions'), {target:{value:'a:1'}});
@@ -86,10 +87,32 @@ it('catalog starts with ingested sources and keeps product creation behind its w
 
 it.each(['products','catalog'])('table row selection opens %s details using the shared row callback',async mode=>{
   readProductCollection.mockResolvedValue({rows:[{product_id:'selected',version:'1'}],total:1,warning:''});
-  apiClient.get.mockResolvedValue({data:{name:'Selected product details'}});
+  apiClient.get.mockResolvedValue({data:{product_id:'selected',version:'1',name:'Selected product details'}});
   render(<DataProductsPage mode={mode}/>);
   if(mode==='catalog') fireEvent.click(screen.getByRole('tab',{name:'Published products'}));
   fireEvent.click(await screen.findByRole('button',{name:'Open row selected'}));
   expect(await screen.findByRole('heading',{name:'Selected product details'})).toBeVisible();
   expect(screen.getByLabelText('Product details and versions')).toHaveValue(mode==='catalog'?'selected':'selected:1');
+});
+
+it('rejects a different product identity without forwarding it to Companion',async()=>{
+  readProductCollection.mockResolvedValue({rows:[{product_id:'chosen',version:'1'}],total:1,warning:''});
+  apiClient.get.mockResolvedValue({data:{product_id:'other',version:'1',name:'Wrong product'}});
+  const changed=vi.fn();
+  render(<DataProductsPage onCompanionRecordChange={changed}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Open row chosen'}));
+  expect(await screen.findByText('Product service returned a different selected identity.')).toBeVisible();
+  expect(screen.queryByRole('heading',{name:'Wrong product'})).toBeNull();
+  expect(changed.mock.calls.every(([value])=>!value?.product_id)).toBe(true);
+});
+
+it('the product governor receives the same selected product version as Companion',async()=>{
+  readProductCollection.mockResolvedValue({rows:[{product_id:'chosen',version:'1'}],total:1,warning:''});
+  apiClient.get.mockResolvedValue({data:{product_id:'chosen',version:'1',name:'Chosen product'}});
+  const changed=vi.fn();render(<DataProductsPage onCompanionRecordChange={changed}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Open row chosen'}));
+  await screen.findByRole('heading',{name:'Chosen product'});
+  expect(changed).toHaveBeenLastCalledWith({page:'data-products',product_id:'chosen',product_version:'1'});
+  fireEvent.click(screen.getByRole('tab',{name:'Governance'}));
+  expect(await screen.findByTestId('governor-context')).toHaveTextContent('"product_id":"chosen","product_version":"1"');
 });

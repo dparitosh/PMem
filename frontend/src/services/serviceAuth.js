@@ -48,10 +48,23 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', activity);
 }
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
+const BROWSER_ACCESS_PREFERENCES_KEY = 'depo.browserAccessPreferences.v1';
 function connectionScope() {
   return JSON.stringify([config.gatewayUrl || '', Object.entries(config.semanticServiceUrls || {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 export function publicationRecoveryScope() { return connectionScope(); }
+export function getBrowserAccessPreferences() {
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(BROWSER_ACCESS_PREFERENCES_KEY));
+    if (value?.scope === connectionScope() && typeof value.includeWrites === 'boolean' && typeof value.includeMaintenance === 'boolean') return value;
+  } catch { /* Optional non-secret UI preferences. */ }
+  return null;
+}
+export function setBrowserAccessPreferences({includeWrites, includeMaintenance}) {
+  if (typeof includeWrites !== 'boolean' || typeof includeMaintenance !== 'boolean') throw new Error('Invalid access preferences');
+  try { window.sessionStorage.setItem(BROWSER_ACCESS_PREFERENCES_KEY, JSON.stringify({scope:connectionScope(),includeWrites,includeMaintenance})); }
+  catch { /* Storage restrictions must not prevent authenticated access. */ }
+}
 function clearPendingPublications() {
   try {
     if (typeof window === 'undefined') return;
@@ -142,6 +155,7 @@ export function installBrowserSession(body, subscription = '') {
   serviceToken = body.token;
   profileTokens.clear();
   body.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, body.token));
+  setBrowserAccessPreferences({includeWrites:body.profiles.some(profile=>!['GRAPH_READ_TOKEN','ADMIN_API_KEY'].includes(profile)),includeMaintenance:body.profiles.includes('ADMIN_API_KEY')});
   gatewaySubscriptionKey = String(subscription || '').trim();
   browserAccessExpired = false;
   lastActivity = Date.now();
@@ -222,6 +236,7 @@ export function clearServiceAuthToken() {
   clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;
   clearTimeout(renewalTimer); renewalTimer = null;
   removeStoredSession();
+  try { window.sessionStorage.removeItem(BROWSER_ACCESS_PREFERENCES_KEY); } catch { /* Optional storage. */ }
   serviceToken = '';
   profileTokens.clear();
   gatewaySubscriptionKey = '';

@@ -82,6 +82,47 @@ async def document_context(query, *, headers, ontology_id='', ontology_prefix=''
 CONTEXT_PAGES={'graph','whereused','modeling','requirements','ontology','qif'}
 
 
+def semantic_question(query):
+    return bool(re.search(r'\b(owl[ -]?dl|hermit|logical(?:ly)? consisten\w*|unsatisfiab\w*|embedded (?:ontology|foundation)|foundation (?:term|definition|vocabulary))\b', query, re.I))
+
+
+async def semantic_context(query, *, headers, ontology_id=''):
+    """Explicit semantic questions use model evidence, never lexical business matches."""
+    from urllib.parse import quote
+    from backend.depo_platform.semantic_support import assessment
+    if not semantic_question(query): return None
+    if re.search(r'\b(embedded|foundation)\b', query, re.I):
+        body, endpoint = await _read_json('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011',
+            '/ontologies/foundation', {'limit': 12}, headers)
+        if not isinstance(body.get('terms'), list) or not body.get('bundle_sha256'):
+            raise ValueError('Foundation definitions are unavailable')
+        terms = body['terms'][:12]
+        from .business_answers import cell
+        text = 'Embedded reference vocabulary; customer alignment and business facts require separate evidence.\n\n| Term | Meaning |\n|---|---|'
+        for term in terms:
+            text += f"\n| {cell((term.get('labels') or [term.get('iri')])[0])} | {cell('; '.join(term.get('definitions') or []))} |"
+        evidence = {'resource_id': 'foundation:' + body['bundle_sha256'], 'label': 'Embedded foundation definitions',
+                    'description': text, 'source': endpoint, 'evidence_type': 'semantic_reference'}
+        return {'status': 'grounded', 'answerable': True, 'response': text + f"\n\n[evidence:{evidence['resource_id']}]", 'evidence': [evidence], 'sources': [endpoint],
+                'retrieval': {'answer_scope': 'reference_definitions', 'semantic_entailment_verified': False},
+                'generation': {'enabled': False, 'status': 'not_requested'}}
+    if not ontology_id:
+        return {'status': 'needs_input', 'answerable': False, 'response': 'Select an ontology to inspect its current logical consistency evidence.',
+                'evidence': [], 'sources': [], 'generation': {'enabled': False, 'status': 'not_requested'}}
+    body, endpoint = await _read_json('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011',
+        '/ontologies/' + quote(ontology_id, safe='') + '/semantic-evidence', {}, headers)
+    if body.get('ontology_id') != ontology_id: raise ValueError('Semantic evidence changed selected ontology')
+    report = assessment(body)
+    identifier = str(body.get('evidence_id') or ('not-checked:' + ontology_id))
+    text = f"Logical consistency: {report.get('status', 'unknown')}. {report['business_summary']}\n\nNext action: {report['next_action']}. This check does not establish instance conformance or authorize publication."
+    evidence = {'resource_id': identifier, 'label': 'Selected model reasoning assessment', 'description': text,
+                'source': endpoint, 'evidence_type': 'semantic_assessment', 'assessment': report}
+    return {'status': 'grounded', 'answerable': True, 'response': text + f' [evidence:{identifier}]',
+            'evidence': [evidence], 'sources': [endpoint], 'retrieval': {'answer_scope': 'retained_model_consistency',
+                'semantic_entailment_verified': report.get('consistency_verified') is True},
+            'generation': {'enabled': False, 'status': 'not_requested'}}
+
+
 async def page_context(query, *, page, headers, ontology_id='', ontology_prefix=''):
     """Use existing owning-service reads. A page hint never grants access."""
     if page in PAGE_READS:
@@ -104,7 +145,9 @@ async def page_context(query, *, page, headers, ontology_id='', ontology_prefix=
         if not identifier:continue
         label=str(node.get('name') or node.get('label') or node.get('content') or ((node.get('properties') or {}).get('content') if isinstance(node.get('properties'),dict) else None) or row.get('content') or identifier)[:400]
         details={key:str(node[key])[:300] for key in ('status','version','domain','type','validation_status','publication_status') if node.get(key) is not None}
-        description=f"{label}. Retained {collection} record: {json.dumps(details,ensure_ascii=False)}. This is an owning-service read, not an approval or a publication receipt."
+        from .business_answers import business_text
+        detail_text='; '.join(f"{key.replace('_',' ').capitalize()}: {business_text(value)}" for key,value in details.items())
+        description=f"{business_text(label)}. {detail_text or 'No additional business details recorded'}. Retained {collection} record; approval and publication must be checked separately."
         evidence.append({'evidence_type':'application_record','resource_id':identifier[:256],'label':label,'description':description,'source':endpoint})
     total=body.get('total')
     evidence.insert(0,{'evidence_type':'application_record','resource_id':'page:'+page,'label':page+' service evidence',
@@ -116,11 +159,27 @@ async def page_context(query, *, page, headers, ontology_id='', ontology_prefix=
                          'bounded_listing': True, 'whole_graph_complete': False}}
 
 
-async def plm_context(query, *, headers, ontology_id='', ontology_prefix=''):
+async def plm_context(query, *, headers, ontology_id='', ontology_prefix='', node_id=''):
     body,_=await _read_json('GRAPH_SERVICE_URL','http://127.0.0.1:8013','/graph/business-answer',
-        {'query':query[:500],'ontology_id':ontology_id,'ontology_prefix':ontology_prefix},headers)
+        {'query':query[:500],'ontology_id':ontology_id,'ontology_prefix':ontology_prefix, **({'node_id':node_id} if node_id else {})},headers)
     if body.get('evidence_type')!='business_answer' or body.get('source')!='graph-service:typed-business-read' or not isinstance(body.get('rows'),list) or len(body['rows'])>20 or not isinstance(body.get('resource_id'),str) or not body['resource_id'].startswith('business-answer:'):
         raise ValueError('Invalid PLM evidence')
+    from backend.depo_platform.plm_questions import intent
+    if not intent(query) or body.get('intent') != intent(query):
+        raise ValueError('PLM evidence intent does not match the question')
     if any(not isinstance(row,dict) or (ontology_id and row.get('source')!=ontology_id) or (ontology_prefix and row.get('prefix')!=ontology_prefix) for row in body['rows']):
         raise ValueError('PLM evidence changed selected source')
+    required = {'associated_requirements':('subject','requirement'), 'parts_with_pmi':('part','pmi'),
+                'product_assembly':('name',)}[body['intent']]
+    for row in body['rows']:
+        identity_field={'associated_requirements':'subject_id','parts_with_pmi':'part_id','product_assembly':'node_id'}[body['intent']]
+        if node_id and row.get(identity_field)!=node_id:
+            raise ValueError('PLM evidence changed the selected business object')
+        if any(not isinstance(row.get(key),str) or not row[key].strip() for key in required):
+            raise ValueError('PLM evidence is missing business names')
+        if body['intent']=='associated_requirements' and (not isinstance(row.get('path'),list) or not row['path']
+                or any(not isinstance(edge,dict) or not isinstance(edge.get('type'),str) for edge in row['path'])):
+            raise ValueError('PLM evidence is missing a recorded requirement path')
+        if body['intent']=='parts_with_pmi' and row.get('association_status') not in {'source_reference','recorded_association'}:
+            raise ValueError('PLM evidence is missing an assessed PMI association')
     return {key:body.get(key) for key in ('evidence_type','resource_id','label','intent','rows','description','source','coverage','vocabulary')}

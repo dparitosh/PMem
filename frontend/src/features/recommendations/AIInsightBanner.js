@@ -34,16 +34,18 @@ const AIInsightBanner = ({ service, data }) => {
       cta: data.ranking_scope || 'Review candidate score evidence before deciding whether a part can be reused. Similarity is not a probability or an approval.',
     };
   } else if (service === 'manufacturing' && data?.part) {
-    const direct = data.process_summary?.total_direct    || 0;
-    const inst   = data.process_summary?.total_instances || 0;
-    const rel    = data.process_summary?.total_related   || 0;
+    const direct = data.process_summary?.total_direct ?? data.direct_processes?.length ?? 0;
+    const instancesAssessed = data.assessment?.process_instances === 'assessed' || data.process_instances?.length > 0;
+    const relatedAssessed = data.assessment?.related_processes === 'assessed' || data.related_part_processes?.length > 0;
+    const inst = instancesAssessed ? data.process_summary?.total_instances ?? data.process_instances?.length ?? 0 : null;
+    const rel = relatedAssessed ? data.process_summary?.total_related ?? data.related_part_processes?.length ?? 0 : null;
     insight = {
       color: C.green, bg: C.greenLight, Icon: Info,
-      headline: `Recorded process links: ${direct + inst + rel} in this result`,
+      headline: inst === null || rel === null ? `Recorded direct process links: ${direct} in this result` : `Recorded process links: ${direct + inst + rel} in this result`,
       chips: [
         { value: direct, label: 'Direct' },
-        { value: inst,   label: 'Instances' },
-        { value: rel,    label: 'Related' },
+        { value: inst ?? 'Not assessed', label: 'Instances' },
+        { value: rel ?? 'Not assessed', label: 'Related' },
       ],
       cta: 'Recorded links do not establish manufacturing sequence or whole-graph completeness.',
     };

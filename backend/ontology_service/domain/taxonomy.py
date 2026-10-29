@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import re
 import copy
+import hashlib
+import rdflib
 from collections import Counter
 from functools import lru_cache
 from threading import RLock
@@ -19,8 +21,9 @@ from xml.etree import ElementTree as ET
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
-from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
+from backend.Services.ontology_semantic_runtime import OntologySemanticRuntime
 from .reasoning import OntologyReasoningService
+from .taxonomy_cache import cache_identity, read_cache, write_cache
 from backend.Services.ontology_upload_manager import OntologyUploadManager
 
 
@@ -33,6 +36,7 @@ RDF_FORMAT_BY_EXT = {
     ".xml": ["xml", "turtle"],
     ".jsonld": ["json-ld"],
 }
+_BROWSE_CODE_DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _local_name(value: Any) -> str:
@@ -84,7 +88,7 @@ class OntologyTaxonomyService:
     @staticmethod
     @lru_cache(maxsize=32)
     def _cached_reasoning(file_path_str: str, mtime: float, size: int, prefix: str) -> Dict[str, Any]:
-        return OwlreadyOntologyRuntime.inspect_ontology(Path(file_path_str), prefix)
+        return OntologySemanticRuntime.inspect_ontology(Path(file_path_str), prefix)
 
     @staticmethod
     @lru_cache(maxsize=4)
@@ -102,6 +106,15 @@ class OntologyTaxonomyService:
     ) -> Dict[str, Any]:
         file_path = Path(file_path_str)
         source_file_path = Path(source_file_path_str)
+        cache_path = file_path.parent / ('.' + file_path.name + '.taxonomy-v1.json.gz')
+        try:
+            identity = cache_identity([file_path, source_file_path],
+                [prefix, ontology_id, ontology_name, source_filename, _BROWSE_CODE_DIGEST, rdflib.__version__])
+            cached = read_cache(cache_path, identity)
+            if cached is not None:
+                return cached
+        except OSError:
+            identity = None
         meta = {
             "ontology_id": ontology_id,
             "ontology_name": ontology_name,
@@ -118,14 +131,14 @@ class OntologyTaxonomyService:
             parsed = OntologyTaxonomyService._text_terms(meta, source_file_path)
 
         # RDFLib already supplies the typed graph structure for RDF/OWL/Turtle.
-        # Avoid a second Owlready load here: large AP242 MIM artifacts otherwise
+        # Avoid a second semantic inspection here: large AP242 MIM artifacts otherwise
         # block the browse request while no additional taxonomy data is gained.
         reasoning_summary = (
-            {}
+            parsed.get('reasoning_summary', {})
             if parsed.get("source") == "rdf"
             else OntologyTaxonomyService._cached_reasoning(file_path_str, mtime, size, prefix).get("summary", {})
         )
-        return {
+        payload = {
             "ontology_id": ontology_id,
             "ontology_name": ontology_name,
             "prefix": prefix,
@@ -144,6 +157,9 @@ class OntologyTaxonomyService:
                 "truncated": bool(parsed.get("truncated", False)),
             },
         }
+        if identity is not None:
+            write_cache(cache_path, identity, payload)
+        return payload
 
     @staticmethod
     def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
@@ -153,7 +169,7 @@ class OntologyTaxonomyService:
         # sources and must produce the same typed taxonomy.
         source_path = meta.get("file_path") or meta.get("artifact_path") or ""
         source_file_path = Path(source_path)
-        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("artifact_path") or source_path)
+        semantic_file_path = Path(meta.get("artifact_path") or meta.get("owl_file_path") or source_path)
         if not semantic_file_path.is_file() and (not str(source_path).strip() or not source_file_path.is_file()):
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
         if not semantic_file_path.is_file():
@@ -175,12 +191,14 @@ class OntologyTaxonomyService:
         # are registered in the ontology-service catalog, not the legacy
         # upload manager.  Resolve those artifacts first so their RDF/OWL
         # semantics are preserved instead of falling back to a dictionary.
+        native = None
         try:
             from backend.ontology_service.catalog import catalog as ontology_catalog
 
             native = ontology_catalog.get(identifier)
             if native is not None:
-                return native
+                path = ontology_catalog.resolve_artifact_path(identifier, native)
+                return {**native, 'artifact_path': str(path)}
 
             lookup = str(identifier or "").strip().lower()
             for meta in ontology_catalog.list():
@@ -190,8 +208,12 @@ class OntologyTaxonomyService:
                     str(meta.get("ontology_prefix") or "").lower(),
                 }
                 if lookup in candidates:
-                    return meta
+                    native = meta
+                    path = ontology_catalog.resolve_artifact_path(meta['ontology_id'], meta)
+                    return {**meta, 'artifact_path': str(path)}
         except (ImportError, ValueError):
+            if native is not None:
+                raise  # Registered identity exists; do not hide its artifact failure with a legacy fallback.
             # A staged legacy deployment or an invalid native identifier can
             # still resolve an existing upload. Do not disguise DB failures.
             pass
@@ -228,10 +250,19 @@ class OntologyTaxonomyService:
         graph = Graph()
         parsed_ok = False
         parse_errors: List[str] = []
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        from backend.ontology_service.catalog import validate_rdf_input
+        try:
+            with file_path.open('rb') as source:
+                content = source.read(ontology_upload_limit() + 1)
+        except OSError as exc:
+            return {'source': 'rdf_parse_error', 'nodes': [], 'edges': [], 'triple_count': 0,
+                    'diagnostics': [{'severity': 'error', 'message': f'Artifact read failed: {type(exc).__name__}'}]}
         for rdf_format in rdf_formats:
             try:
+                validate_rdf_input(content, rdf_format)
                 graph = Graph()
-                graph.parse(str(file_path), format=rdf_format)
+                graph.parse(data=content, format=rdf_format)
                 parsed_ok = True
                 break
             except Exception as exc:
@@ -415,6 +446,15 @@ class OntologyTaxonomyService:
             "nodes": nodes,
             "edges": edges,
             "triple_count": len(graph),
+            "reasoning_summary": {
+                "classes": len(set(graph.subjects(RDF.type, OWL.Class)) | set(graph.subjects(RDF.type, RDFS.Class))),
+                "object_properties": len(set(graph.subjects(RDF.type, OWL.ObjectProperty))),
+                "datatype_properties": len(set(graph.subjects(RDF.type, OWL.DatatypeProperty))),
+                "annotation_properties": len(set(graph.subjects(RDF.type, OWL.AnnotationProperty))),
+                "individuals": len(individual_uris),
+                "subclass_edges": len(set(graph.triples((None, RDFS.subClassOf, None)))),
+                "triple_count": len(graph),
+            },
         }
 
     @staticmethod
@@ -520,7 +560,7 @@ class OntologyTaxonomyService:
         return {"source": "text", "nodes": nodes, "edges": []}
 
     @classmethod
-    def get_taxonomy(cls, ontology_identifier: str) -> Dict[str, Any]:
+    def get_taxonomy(cls, ontology_identifier: str, *, project=None) -> Dict[str, Any]:
         context = cls._semantic_context(ontology_identifier)
         meta = context["meta"]
         file_path = context["file_path"]
@@ -531,19 +571,22 @@ class OntologyTaxonomyService:
 
         lock = cls._browse_locks[hash(file_key) % len(cls._browse_locks)]
         with lock:
-            return copy.deepcopy(cls._cached_taxonomy_payload(
+            payload = cls._cached_taxonomy_payload(
                 file_key[0], file_key[1], file_key[2],
                 source_key[0], source_key[1], source_key[2],
                 prefix,
                 str(meta.get("ontology_id") or ""),
                 str(meta.get("ontology_name") or ""),
                 str(meta.get("original_filename") or meta.get("stored_filename") or ""),
-            ))
+            )
+            # Browser projections trim the cached inventory before defensive copying.
+            # Other consumers continue to receive the complete independent payload.
+            return copy.deepcopy(project(payload) if project is not None else payload)
 
 
     @classmethod
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
-        """Return cached Owlready2-backed ontology semantics for the registered ontology."""
+        """Return cached semantic runtime-backed ontology semantics for the registered ontology."""
         context = cls._semantic_context(ontology_identifier)
         meta = context["meta"]
         file_path = context["file_path"]

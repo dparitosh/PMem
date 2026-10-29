@@ -1,3 +1,5 @@
+import SemanticSupport from '../SemanticSupport';
+import GovernedLearningPanel from './GovernedLearningPanel';
 import DecisionPolicyAssessment from '../DecisionPolicyAssessment';
 import { matchScore } from './MappingExplanation';
 import MappingReviewTable from './MappingReviewTable';
@@ -26,6 +28,7 @@ function errorMessage(error) {
 
 export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMappings = [], sourceUnavailable = false, api = bridgeApi }) {
   const [preview, setPreview] = useState(null);
+  const [learningOpen,setLearningOpen]=useState(false);
   const [job, setJob] = useState(null);
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -214,7 +217,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
     {automationStage !== 'idle' && <p role="status" aria-live="polite">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
     {preview && <MappingReviewTable candidates={preview.candidates} decisions={policyReport?.decisions || []} />}
-    {policyReport && <details><summary>Steward policy and assessment scope</summary>
+    <SemanticSupport report={policyReport?.semantic_support}/>{policyReport && <details><summary>Steward policy and assessment scope</summary>
       <DecisionPolicyAssessment report={policyReport.decision_policy} />
       {policyReport.governance && <p>Scope: instance classification candidates. This assessment does not establish full ABox SHACL conformance or identity equivalence. Source task: {policyReport.governance.provenance?.import_task_id}. No automatic predicate changes were applied.</p>}
     </details>}
@@ -222,7 +225,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     <p>The optional ontology agent review explains source alignment; it does not publish mappings. Its retained evidence appears below when the review completes.</p>
     {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
     {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)' }}>
-      <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
+      <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed. Advisory findings; mapping publication uses the separate validation and approval workflow.
       {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : Array.isArray(agentReport.steps?.[1]?.result?.issues) ? ' No structural issues reported.' : ' Structural review results are unavailable.'}
       <p>{agentReport.steps?.at(-1)?.result?.alignment_candidates?.length || 0} exact-name candidate(s) found. These are review evidence only; use a saved Bridge preview to publish mappings.</p>
       <p>{agentReport.steps?.at(-1)?.result?.unmatched_count || 0} unmatched sources; {agentReport.steps?.at(-1)?.result?.ambiguous_count || 0} ambiguous sources.</p>
@@ -317,5 +320,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     </>}
     </details>
     {job?.status === 'published' && <p role="status">{job.receipt?.applied_links || 0} mappings published to knowledge graph. {policyReport?.held_count || 0} mappings held and unchanged. Publication: {job.job_id}.</p>}
+    <details onToggle={event=>setLearningOpen(event.currentTarget.open)}><summary>Learning from reviewed mappings</summary>
+      {learningOpen&&<GovernedLearningPanel key={`${ontologyId}:${importTaskId}`} ontologyId={ontologyId} importTaskId={importTaskId} publication={job} preview={preview}/>}
+    </details>
   </section>;
 }

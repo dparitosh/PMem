@@ -22,6 +22,7 @@ The existing intake, structure-review, bridge-planner and inference agents still
 | Capability | Implementation | Integration boundary |
 |---|---|---|
 | Ontology generation, namespace handling and reasoning | Semantica `OntologyEngine`, `NamespaceManager`, `Reasoner` through `semantica_adapter.py` | Owned by the Ontology service; retained artifacts and lifecycle remain authoritative |
+| Asserted class/property inspection | `OntologySemanticRuntime` reads RDF with RDFLib and invokes Semantica `OntologyEngine.validate` where installed | Shared by taxonomy, conversion, semantic workflow terms and bridge target inspection; full IRIs retain term identity |
 | Decision-policy checks | Semantica `ContextGraph.enforce_decision_policy` through `intelligence.py` | Shared scoped assessment for Recommendations, instance linking and ontology merging; ordinary chat answers do not imply policy approval |
 | Business-object context | Semantica `ContextGraph` through `business_context.py`, persisted in PostgreSQL | Existing context search/traversal APIs; it is not automatically synchronized with Neo4j |
 | Graph search and analytics | Neo4j projections and Semantica `GraphAnalyzer` | Graph service owns graph data and publication barriers |
@@ -30,6 +31,10 @@ The existing intake, structure-review, bridge-planner and inference agents still
 | Audit trail | Existing `AgentTelemetry` and retained execution records | Operational records; not an independently certified append-only or tamper-proof audit ledger |
 
 Configured telemetry now records the selected provider's model rather than reporting an old Ollama model when OpenAI/Mistral is selected. `model_selection_only=true` explicitly distinguishes configuration metadata from proof that a model executed a particular tool.
+
+The optional Owlready runtime has been removed. The shared inspection response distinguishes asserted RDF structure from inference using `reasoning_mode=asserted_semantic_inspection`, `deductive_reasoner_executed=false` and `consistency_verified=false`. Its `structural_validation` reports `passed`, `failed` or `not_executed`; Semantica's structural validator is not a logical consistency proof. Lightweight conversion runtimes without Semantica return asserted RDF and explicitly report validation as not executed. Existing SHACL, OWL-RL and publication approval checks continue independently. Anonymous OWL restrictions remain in the retained RDF but are not emitted as named class identities.
+
+Workflow tools retain class/property/domain/range contracts. Recommendations retain their graph-evidence and shared decision-policy paths. Graph Explorer retains contextual traversal and full-IRI term identities. This migration does not rewrite existing graph publications, replay workflows, change API keys or require a PostgreSQL schema migration.
 
 ## Other pages and the Companion
 
@@ -90,3 +95,10 @@ The Agentic `GET /api/v1/page-tasks?page=<page>` view reads the existing goal, w
 Read goals accept an optional canonical UUID `submission_id`. A deterministic owner-bound goal identity and protected intent digest are checked under the queue advisory lock. Repeated identical submissions return the original task; changed intent with the same submission identity returns 409. This recovers uncertain read-goal submission without creating duplicates. It does not add automatic retry to write execution.
 
 TaskProgress distinguishes planned steps, observed actions, evidence-based conclusions, review holds and uncertain outcomes. Workflow controls come from the native server's allowed actions. Clearing credentials aborts reads and clears visible state; selecting a different source separates browser bookmarks. The task panel never interprets a completed agent run as proof of publication.
+## Runtime capability boundary (verified 2026-10-28)
+
+The supported stack is RDFLib 7.6.x plus Semantica 0.6.7. RDFLib parses and serializes retained RDF and supports graph operations; Semantica itself imports RDFLib in its ontology generator and SHACL validator. These are complementary dependencies. Removing direct application imports would not remove Semantica's underlying RDFLib requirement.
+
+`OntologySemanticRuntime` reports asserted inspection, structural validation and `consistency_verified=false`. `SemanticaAdapter.capabilities()` reports `rdf_backend=rdflib`, `validation_scope=structural_and_shacl` and `semantica_builtin_owl_dl_supported=false`. The separate bundled HermiT worker now supplies `external_owl_dl` availability and the aggregate `owl_dl_consistency_supported` capability. The installed Semantica validator's `_load_reasoner()` still does not initialize a deductive engine.
+
+Structural tests continue to verify that asserted inspection does not certify consistency. Separate real-worker tests exercise the embedded IDO + DEPO business module, disjoint-instance contradictions, unsatisfiable classes and profile boundaries. The worker is process-isolated, memory/deadline bounded and offline; this is not an OS security sandbox. Unknown/unresolved imports are not fetched. Results carry exact artifact and foundation hashes, and never publish graph changes. Inconsistent results are distinct from consistent ontologies containing unsatisfiable classes. See [runtime operation and qualification limits](EMBEDDED_SEMANTIC_FOUNDATION.md). Owlready2 remains removed.

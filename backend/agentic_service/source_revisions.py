@@ -33,7 +33,11 @@ async def _capture(scope, headers):
         if body.get('status') == 'superseded' or body.get('lifecycle_status') in {'deprecated', 'retired'}:
             raise ValueError('Selected ontology is no longer current')
         receipts.append({key: body.get(key) for key in
-            ('ontology_id', 'artifact_sha256', 'lifecycle_status', 'status')})
+            ('ontology_id', 'artifact_sha256', 'lifecycle_status', 'status', 'semantic_dependencies') if key in body})
+    if scope.get('run_id') or scope.get('product_id'):
+        from .selected_record import read
+        _, receipt, _ = await read(scope, headers)
+        receipts.append(receipt)
     return receipts
 
 
@@ -43,5 +47,5 @@ async def verify(record, headers):
         return False  # Existing runs retain their previous source checks.
     current = await capture(record.get('scope') or {}, headers)
     if current != expected:
-        raise ValueError('Selected ontology revision or lifecycle changed; start a new review')
+        raise ValueError('Selected source revision or lifecycle changed; start a new review')
     return True

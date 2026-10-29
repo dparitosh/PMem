@@ -7,7 +7,7 @@ from backend.depo_platform.decision_policy import assess_recommendation
 from typing import Any
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from backend.depo_platform.authorization import graph_read_identity
@@ -36,7 +36,7 @@ def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = N
         raise HTTPException(status_code=422, detail="A graph term is required")
     if not identifier:
         graph=publisher.search(query=query,limit=2,ontology_id=ontology_id,ontology_prefix=ontology_prefix,business_only=True)
-        rows=[{'id':n['elementId'],'name':n['properties'].get('label') or n['elementId'],
+        rows=[{'id':n['elementId'],'name':n['properties'].get('name') or n['properties'].get('label') or n['elementId'],
                'labels':n.get('labels',[]),'rdf_types':n['properties'].get('rdf_types',[]),
                'source_tag':n['properties'].get('ontology_id') or 'graph'} for n in graph['nodes']]
         exact=[row for row in rows if str(row['name']).casefold()==query.casefold()]
@@ -67,6 +67,30 @@ def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = N
             return exact[0]
         raise HTTPException(409, 'Graph term is ambiguous; select its node_id and ontology scope')
     return rows[0] if rows else None
+
+
+@router.post('/recommendations/resolve', summary='Find business objects to select for recommendation analysis')
+@router.post('/api/v1/recommendations/resolve', include_in_schema=False)
+def resolve_recommendation_object(payload: ContextBody) -> dict:
+    query = str(payload.get('part_name') or payload.get('change_name') or '').strip()
+    if not query or len(query) > 500:
+        raise HTTPException(422, 'Enter a business object name of at most 500 characters')
+    scope = payload.get('scope') or {}
+    graph = publisher.search(query=query, limit=20, business_only=True,
+                             ontology_id=str(scope.get('ontology_id') or ''),
+                             ontology_prefix=str(scope.get('ontology_prefix') or scope.get('prefix') or ''))
+    matches = []
+    for node in graph['nodes'][:20]:
+        properties = node.get('properties') or {}
+        identity = str(node['elementId'])
+        selected_scope = {key: str(value) for key, value in {
+            'ontology_id': properties.get('ontology_id') or properties.get('source_ontology'),
+            'ontology_prefix': properties.get('ontology_prefix') or properties.get('prefix'),
+        }.items() if value}
+        matches.append({'node_id': identity,
+                        'name': str(properties.get('name') or properties.get('label') or identity),
+                        'scope': selected_scope})
+    return {'matches': matches, 'truncated': bool((graph.get('view') or {}).get('truncated'))}
 
 
 @router.get("/api/v1/graph/contextual-subgraph", summary="Search a bounded contextual engineering subgraph")
@@ -246,33 +270,41 @@ def _manufacturing_context_result(payload: ContextBody) -> dict:
         "process_instances": [],
         "related_processes": [],
         "related_part_processes": [],
-        "process_summary": {"total_direct": len(direct), "total_instances": 0, "total_related": 0},
+        "process_summary": {"total_direct": len(direct), "total_instances": None, "total_related": None},
+        "assessment": {"direct_processes": "assessed", "process_instances": "not_assessed", "related_processes": "not_assessed", "type_summary": "not_assessed"},
         "message": None if direct else "No manufacturing-process nodes are linked to this semantic term yet.",
     }
 
 
 @router.post("/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
 @router.post("/api/v1/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
-def change_impact(payload: ContextBody) -> dict:
-    return assess_recommendation(_change_impact_result(payload), "change-impact", payload.get("scope"))
+def change_impact(payload: ContextBody, request: Request = None) -> dict:
+    return _semantic_recommendation(assess_recommendation(_change_impact_result(payload), "change-impact", payload.get("scope")), payload, request)
 
 
 @router.post("/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
 @router.post("/api/v1/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
-def similar_parts(payload: ContextBody) -> dict:
-    return assess_recommendation(_similar_parts_result(payload), "similar-parts", payload.get("scope"))
+def similar_parts(payload: ContextBody, request: Request = None) -> dict:
+    return _semantic_recommendation(assess_recommendation(_similar_parts_result(payload), "similar-parts", payload.get("scope")), payload, request)
 
 
 @router.post("/recommendations/manufacturing", summary="Find process context linked to a graph term")
 @router.post("/api/v1/recommendations/manufacturing", summary="Find process context linked to a graph term")
-def manufacturing_context(payload: ContextBody) -> dict:
-    return assess_recommendation(_manufacturing_context_result(payload), "manufacturing", payload.get("scope"))
+def manufacturing_context(payload: ContextBody, request: Request = None) -> dict:
+    return _semantic_recommendation(assess_recommendation(_manufacturing_context_result(payload), "manufacturing", payload.get("scope")), payload, request)
+
+
+def _semantic_recommendation(result, payload, request):
+    from backend.depo_platform.semantic_support import read_support
+    support = read_support((payload.get('scope') or {}).get('ontology_id'), dict(request.headers) if request else {})
+    return {**result, 'semantic_support': support,
+            'engineering_action_authorized': False}
 
 
 @router.get('/api/v1/graph/business-answer', summary='Read typed PLM product and part-PMI evidence')
-async def business_answer(query: str = Query(min_length=1,max_length=500), ontology_id: str = Query(default='',max_length=128), ontology_prefix: str = Query(default='',max_length=128)):
+async def business_answer(query: str = Query(min_length=1,max_length=500), ontology_id: str = Query(default='',max_length=128), ontology_prefix: str = Query(default='',max_length=128), node_id: str = Query(default='',max_length=256)):
     from .plm_answers import retrieve
     try:
-        return await run_in_threadpool(retrieve,publisher,query=query,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+        return await run_in_threadpool(retrieve,publisher,query=query,ontology_id=ontology_id,ontology_prefix=ontology_prefix,node_id=node_id)
     except ValueError as exc:
         raise HTTPException(422,str(exc)) from exc

@@ -10,6 +10,41 @@ import httpx
 from http.server import ThreadingHTTPServer
 from backend.depo_platform.frontend_server import FrontendHandler, allowed_request, configuration, COOKIE, PREFIX, validate_delegate
 
+
+def test_slow_valid_authority_does_not_become_a_false_access_outage():
+    import time
+    from http.server import BaseHTTPRequestHandler
+    delegate={'token':'depo_session_slow_valid_token','profiles':['GRAPH_READ_TOKEN'],
+              'expires_at':'2099-01-01T00:00:00Z','absolute_expires_at':'2099-01-02T00:00:00Z'}
+    class Authority(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get('Content-Length','0')))
+            time.sleep(2.3)  # A healthy response slower than the old two-second read timeout.
+            data=json.dumps(delegate).encode()
+            self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers()
+            try:self.wfile.write(data)
+            except OSError:pass
+        def log_message(self,*args):pass
+    authority=ThreadingHTTPServer(('127.0.0.1',0),Authority)
+    thread=threading.Thread(target=authority.serve_forever,daemon=True);thread.start()
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            broker=ThreadingHTTPServer(('127.0.0.1',0),partial(FrontendHandler,directory=directory))
+            broker.local_settings=configuration({'DEPO_BROWSER_AUTH_MODE':'local','ADMIN_API_KEY':'private-fixture-key',
+                'DEPO_LOCAL_SESSION_AUTHORITY_URL':f'http://127.0.0.1:{authority.server_port}'},'127.0.0.1')
+            broker.capability='capability-fixture'
+            worker=threading.Thread(target=broker.serve_forever,daemon=True);worker.start()
+            try:
+                url=f'http://127.0.0.1:{broker.server_port}'
+                with httpx.Client(base_url=url,trust_env=False,timeout=8) as client:
+                    assert client.get(PREFIX+'config').status_code==200
+                    response=client.post(PREFIX+'session',headers={'Origin':url},json={})
+                    assert response.status_code==200
+                    assert response.json()['profiles']==['GRAPH_READ_TOKEN']
+                    assert 'private-fixture-key' not in response.text
+            finally:broker.shutdown();broker.server_close()
+    finally:authority.shutdown();authority.server_close()
+
 class LocalFrontendAccessTests(unittest.TestCase):
     def test_manual_is_default_and_local_rejects_network_or_gateway_deployments(self):
         self.assertEqual(configuration({}, '0.0.0.0')['mode'], 'manual')

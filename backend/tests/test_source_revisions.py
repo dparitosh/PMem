@@ -54,7 +54,11 @@ def test_revision_endpoint_reads_digest_and_lifecycle_under_owner_lock():
         with_publication_lock=locked, get=lambda i:{'lifecycle_status':'approved','status':'registered'},
         artifact_digest=lambda i:events.append('digest') or 'a'*64)}
     exec(compile(ast.Module(body=[node],type_ignores=[]),'revision.py','exec'),ns)
-    assert ns['ontology_revision']('selected') == receipt()
+    result = ns['ontology_revision']('selected')
+    dependencies = result.pop('semantic_dependencies')
+    assert len(dependencies['foundation_sha256']) == 64
+    assert len(dependencies['adapter_sha256']) == 64
+    assert result == receipt()
     assert events == ['lock','digest','unlock']
 
 

@@ -75,7 +75,7 @@ class SchemaUpgradeSafetyTests(unittest.TestCase):
         self.assertEqual(len(setup.EXPECTED_COLUMNS), 11)
         self.assertEqual(sum(map(len, setup.EXPECTED_COLUMNS.values())), 53)
         self.assertEqual(len(setup.EXPECTED_CONSTRAINTS), 22)
-        self.assertEqual(len(setup.EXPECTED_INDEXES), 10)
+        self.assertEqual(len(setup.EXPECTED_INDEXES), 12)
 
 
 if __name__ == '__main__':

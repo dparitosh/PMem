@@ -1,0 +1,18 @@
+@prefix depo: <urn:depo:business:> .
+@prefix ido: <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+<urn:depo:business-core> a owl:Ontology ; owl:versionIRI <urn:depo:business-core:1.0.0> ;
+  owl:imports <http://rds.posccaesar.org/ontology/lis14/ont/core/4.2> ;
+  rdfs:comment "DEPO-owned business reference module. No source-schema equivalences or ISO conformance are asserted." .
+depo:PhysicalPart a owl:Class ; rdfs:label "Physical part" ; rdfs:subClassOf ido:PhysicalArtefact ;
+  skos:definition "A physical artefact used as a component of an engineered product." .
+depo:PartDesign a owl:Class ; rdfs:label "Part design" ; rdfs:subClassOf ido:InformationObject ;
+  skos:definition "Information specifying an intended engineered part, distinct from a physical manufactured instance." .
+depo:EngineeringDocument a owl:Class ; rdfs:label "Engineering document" ; rdfs:subClassOf ido:InformationObject ;
+  skos:definition "An information object documenting engineering content; its physical carrier is not this information object." .
+depo:RequirementSpecification a owl:Class ; rdfs:label "Requirement specification" ; rdfs:subClassOf depo:EngineeringDocument ;
+  skos:definition "An engineering document expressing required properties, functions or behavior." .
+depo:ManufacturingActivity a owl:Class ; rdfs:label "Manufacturing activity" ; rdfs:subClassOf ido:Activity ;
+  skos:definition "An activity performed to manufacture or transform an engineered product." .

@@ -55,7 +55,7 @@ export function getWorkflowNote({
   if (selectedWorkflow === 'ontology.merge') return 'Select a source ontology and a different target ontology, then review the merge plan.';
   if (['ontology.validate', 'dictionary.generate', 'taxonomy.generate', 'graph.chunk'].includes(selectedWorkflow)) return 'Select an ontology to generate the artifact.';
   if (mappingFileTypeContext === 'express') return 'EXPRESS creates ontology structure.';
-  if (mappingFileTypeContext === 'step') return 'STEP imports structural CAD instance data first. After commit, run Link instances to ontology with AP242 MBD/3D selected to create semantic INSTANCE_OF links.';
+  if (mappingFileTypeContext === 'step') return 'STEP validation retains a Data Flow run. Review and publish it there; a completed validation is not graph publication. After a publication receipt is retained, link the published instances to the AP242 ontology.';
   if (selectedWorkflow === 'instance.import' && ['csv', 'excel'].includes(mappingFileTypeContext)) return 'CSV and Excel import as source data first.';
   if (selectedWorkflow === 'instance.import' && ['json', 'xml', 'plmxml', 'reqif', '3dxml'].includes(mappingFileTypeContext)) return 'JSON, XML, PLMXML, ReqIF, and 3DXML import as source data first.';
   if (selectedWorkflow === 'instance.import' && ['ontology', 'xsd', 'xmi', 'express'].includes(mappingFileTypeContext)) return 'Use Create ontology for OWL, RDF, TTL, XSD, XMI, MDXML, or EXPRESS files.';

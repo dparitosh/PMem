@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 import unittest
 from backend.graph_service import query_repository
+from backend.graph_service.business_types import CEIM_IRIS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,7 +15,7 @@ class GraphProfileMetricsTests(unittest.TestCase):
         tree = ast.parse((ROOT / 'backend/graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         publisher = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'Neo4jPublisher')
         method = next(node for node in publisher.body if isinstance(node, ast.FunctionDef) and node.name == 'metrics')
-        scope = {'Any': Any, 'cypher': query_repository, 'RDF': SimpleNamespace(type='rdf:type'),
+        scope = {'Any': Any, 'cypher': query_repository, 'CEIM_IRIS': CEIM_IRIS, 'RDF': SimpleNamespace(type='rdf:type'),
             'RDFS': SimpleNamespace(Class='rdfs:Class'), 'OWL': SimpleNamespace(Class='owl:Class', ObjectProperty='owl:ObjectProperty',
                 DatatypeProperty='owl:DatatypeProperty', AnnotationProperty='owl:AnnotationProperty', NamedIndividual='owl:NamedIndividual')}
         exec(compile(ast.Module(body=[method], type_ignores=[]), 'metrics', 'exec'), scope)
@@ -41,6 +42,11 @@ class GraphProfileMetricsTests(unittest.TestCase):
         self.assertIn('a.ontology_id = b.ontology_id', query)
         self.assertIn('owl:NamedIndividual', params.values())
         self.assertEqual(result['existing_ontology']['resources'], 125)
+        self.assertEqual(query.count('OPTIONAL MATCH (n)-[typing]'), 1)
+        self.assertNotIn('EXISTS { MATCH', query)
+        self.assertEqual(params['business_types'], list(CEIM_IRIS))
+        self.assertIn('coalesce(n.rdf_types, [])', query)
+        self.assertIn('AS business_instances', query)
 
     def test_zero_projection_still_reports_existing_records_with_explicit_prefix_scope(self):
         self.rows[0]['resources'] = 0

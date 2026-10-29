@@ -203,7 +203,10 @@ async def _worker_loop(routes, logging):
             for run_id, task in list(active.items()):
                 if task.done():
                     active.pop(run_id)
-                    if not task.cancelled() and task.exception(): logging.getLogger(__name__).warning('Workflow worker execution failed: %s',type(task.exception()).__name__)
+                    if not task.cancelled() and task.exception():
+                        failure = task.exception()
+                        logging.getLogger(__name__).warning('Workflow worker execution failed run_id=%s error_type=%s http_status=%s; inspect retained workflow diagnostics',
+                                                            run_id, type(failure).__name__, getattr(failure, 'status_code', None))
             if execution_mode() == 'worker':
                 for family in (('goals', 'workflows') if prefer_goals else ('workflows', 'goals')):
                     if len(active) >= capacity: break

@@ -67,7 +67,7 @@ def render(items):
                 output.append('| Business object | Requirement / specification | Recorded detail | Connection |\n|---|---|---|---|\n' + '\n'.join(
                     '| ' + ' | '.join([cell(row.get('subject')), cell(row.get('requirement')), cell(row.get('detail')),
                     cell(' → '.join(connection_label(edge) for edge in row.get('path',[])))]) + ' |' for row in rows))
-            output.append('Connections show recorded paths of up to three relationships; they do not by themselves prove satisfaction or compliance. '+citation)
+            output.append('Each business-object/requirement pair appears once, with a shortest recorded path of up to three relationships. Connections do not by themselves prove satisfaction or compliance. '+citation)
         elif item['intent']=='parts_with_pmi':
             trace_only=bool(rows) and all(row.get('association_status')=='source_reference' for row in rows)
             output.append(('Only source-reference candidates were returned; part–PMI ownership is unverified.' if trace_only else 'Found recorded part–PMI associations in this bounded view.' if rows else

@@ -7,6 +7,21 @@ function options(){return {initialData:{nodes:[],links:[]},commitGraphSlice:vi.f
 const payload=id=>({data:{nodes:[{elementId:id,labels:['Class'],properties:{name:id}}],relationships:[]}});
 beforeEach(()=>vi.clearAllMocks());
 
+test('wrong ontology response cannot become the selected graph',async()=>{
+ api.getOntologyGraph.mockResolvedValue({data:{ontology_id:'other',nodes:[],relationships:[]}});
+ const props=options(),view=renderHook(()=>useGraphData(props));
+ await act(async()=>{await view.result.current.fetchOntologyGraph('selected');});
+ expect(view.result.current.ontologyGraphMessage).toContain('does not match');
+ expect(props.commitGraphSlice).toHaveBeenCalledTimes(1); // clear only
+});
+
+test('malformed projection is an error rather than an empty ontology',async()=>{
+ api.getOntologyGraph.mockResolvedValue({data:{nodes:'invalid',relationships:[]}});
+ const props=options(),view=renderHook(()=>useGraphData(props));
+ await act(async()=>{await view.result.current.fetchOntologyGraph('selected');});
+ expect(view.result.current.ontologyGraphMessage).toContain('invalid projection contract');
+});
+
 test('an unavailable process response is not presented as an empty model', async()=>{
  api.getArchitectureGraph.mockResolvedValue({data:{status:'unavailable',nodes:[],relationships:[]}});
  const props=options(),view=renderHook(()=>useGraphData(props));

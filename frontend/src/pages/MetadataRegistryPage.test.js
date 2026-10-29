@@ -31,6 +31,26 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+test('dictionary pages bound rendering and filtering returns to the first page', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
+  API_METHODS.ontology.getDataDictionary.mockResolvedValue({data:{entities:Object.fromEntries(
+    Array.from({length:26},(_,i)=>[`Term${i}`,{definition:'Definition '.repeat(40)}]))}});
+  render(<MetadataRegistryPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Data Dictionary'}));
+  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'),{target:{value:'onto-1'}});
+  await screen.findByText('Term0');
+  expect(screen.getAllByRole('button',{name:'Prepare draft registration'})).toHaveLength(25);
+  fireEvent.click(screen.getByRole('button',{name:'Next',exact:true}));
+  expect(screen.getByText('Term25')).toBeVisible();
+  expect(screen.queryByText('Term0')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Filter Data Dictionary terms'),{target:{value:'Term0'}});
+  expect(screen.getByText('Term0')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Previous',exact:true})).toBeDisabled();
+  fireEvent(window,new Event('depo:access-verified'));
+  await waitFor(()=>expect(API_METHODS.ontology.getDataDictionary).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('Select registry source for Data Dictionary')).toHaveValue('onto-1');
+});
+
 test('metadata asset pagination requests the next offset and describes page-local counts', async () => {
   API_METHODS.metadataRegistry.list.mockResolvedValueOnce({ data: { assets: [], has_more: true } })
     .mockResolvedValueOnce({ data: { assets: [], has_more: false } });
@@ -51,7 +71,9 @@ test('dictionary preserves a supplied IRI in draft registration', async () => {
   render(<MetadataRegistryPage />);
   fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
   fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
-  expect(await screen.findByText('urn:engineering:Part')).toBeVisible();
+  await screen.findByText('urn:engineering:Part');
+  fireEvent.click(screen.getByText('Term identity'));
+  expect(screen.getByText('urn:engineering:Part')).toBeVisible();
   fireEvent.click(await screen.findByRole('button', { name: 'Prepare draft registration' }));
   fireEvent.click(screen.getByRole('button', { name: 'Register', exact: true }));
   await waitFor(() => expect(API_METHODS.metadataRegistry.create).toHaveBeenCalledWith(

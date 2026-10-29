@@ -609,6 +609,8 @@ export const documentAPI = {
 
 // ========== ADMIN ENDPOINTS ==========
 export const adminAPI = {
+  previewVanillaReset: () => apiClient.get(buildUrl(API.admin.vanillaReset) + '/preview', { headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  resetVanilla: (previewDigest) => apiClient.post(buildUrl(API.admin.vanillaReset), { confirm: 'RESET DEPO TO VANILLA', preview_digest: previewDigest }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
   health: (options = {}) => apiClient.get(buildUrl(API.admin.health), options),
   registry: (options = {}) => apiClient.get(buildUrl(API.admin.registry), options),
   cleanSchema: () =>
@@ -673,6 +675,9 @@ export const modelingAPI = {
 
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
+  resolve: (name, scope = {}, options = {}) => apiClient.post(buildUrl(API.recommendations.resolve), {
+    part_name: name, ...recommendationIdentity(scope),
+  }, options),
   changeImpact: (changeName, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.changeImpact), {
       change_name: changeName,

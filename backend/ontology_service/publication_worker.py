@@ -24,6 +24,10 @@ def verify(ontology_id):
 
 @asynccontextmanager
 async def publication_lifespan():
+    import os
+    if os.getenv('DEPO_VANILLA_MAINTENANCE') == 'true':
+        yield  # No publication, merge or metadata workers in reset maintenance.
+        return
     async def poll():
         while True:
             try:

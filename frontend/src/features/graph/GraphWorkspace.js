@@ -398,6 +398,7 @@ const GraphWorkspace = ({
   setActiveTab = () => {},
   setVisibleRelationships = () => {},
   chatResults,
+  onBusinessSelection,
 }) => {
   const svgRef = useRef();
   const tooltipRef = useRef();
@@ -2564,6 +2565,15 @@ const boundaryForce = (width, height) => {
   }, []);
 
   const investigationNode = activeDisplayData?.nodes?.find(node => node.elementId === (investigationNodeId || activeSearchResultId)) || null;
+  const companionNodeId = investigationNode && isIndividualTraversalNode(investigationNode) ? investigationNode.elementId : '';
+  const companionOntologyId = investigationNode?.properties?.ontology_id || investigationNode?.properties?.source_ontology || '';
+  const companionOntologyPrefix = investigationNode?.properties?.ontology_prefix || investigationNode?.properties?.prefix || '';
+  const companionLabel = investigationNode?.properties?.name || investigationNode?.properties?.label || '';
+  useEffect(() => {
+    if (typeof onBusinessSelection !== 'function') return undefined;
+    onBusinessSelection(companionNodeId ? {node_id:companionNodeId, ontology_id:companionOntologyId, ontology_prefix:companionOntologyPrefix, label:companionLabel} : null);
+    return () => onBusinessSelection(null);
+  }, [onBusinessSelection, companionNodeId, companionOntologyId, companionOntologyPrefix, companionLabel]);
 
   return (
     <div

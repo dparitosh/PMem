@@ -20,7 +20,7 @@ configuration mocks are not production certification.
 5. Run Spark smoke testing when enabled. Start with `-EnableSpark`; add the
    scheduler/Neo4j connector switches only when their features are required.
 6. Configure the customer's process supervisor for ten APIs, the outbox
-   worker, and the data-pipeline worker in `services.json`. Demonstrate queued
+   worker, data-pipeline worker and agentic-workflow worker in `services.json`. Demonstrate queued
    job lease recovery after a worker failure, recovery after an API failure, and
    server reboot. The supplied direct-process launcher is not a Windows service
    manager and does not by itself provide those guarantees.
@@ -46,11 +46,13 @@ configuration mocks are not production certification.
 
 ## Current release gates
 
-Production installation uses `backend/requirements-lock.txt`, resolved for
+Production installation uses `backend/requirements-lock.txt` or the selected isolated-service locks under `backend/dependency-profiles/` (including `platform-tools.txt`), resolved for
 CPython 3.12 on Windows x64. Every distribution is exact-version and SHA-256
 pinned, and the installer invokes pip with `--require-hashes`. Retain the
 approved matching package artifacts and dependency/license review with the
 customer release evidence.
+
+Local PostgreSQL snapshot/restore and earlier graph restore evidence, together with their remaining cross-store limits, are recorded in [the 29 October recovery qualification](../../docs/audits/recovery-qualification-2026-10-29.md). Repeat the drill on customer infrastructure; independent database checks do not prove coordinated artifact and graph recovery.
 
 Target-server provisioning, full installed-runtime integration tests, Spark execution, gateway and
 supervisor recovery have not been performed in this workspace. Customer-specific

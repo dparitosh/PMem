@@ -59,6 +59,7 @@ test('sends explicit in-memory approval data for a direct replay', async () => {
   await waitFor(() => expect(dataPipelineAPI.replay).toHaveBeenCalledWith('one', {
     approved_by: 'pipeline-steward',
     approval_token: 'direct-token',
+    idempotency_key: expect.any(String),
   }));
   await screen.findByText('replayed');
   expect(screen.queryByLabelText('Replay execution API key')).toBeNull();

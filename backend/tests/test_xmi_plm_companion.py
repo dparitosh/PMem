@@ -81,7 +81,9 @@ async def test_business_reply_prefers_table_and_emits_one_answer(monkeypatch):
     messages=[]
     async def emit(text):messages.append(text)
     result=await companion.KnowledgeCompanion().ask('Find products',headers={},on_token=emit)
-    assert result['response']=='Motor is a retained part. [evidence:business-answer:test]'
+    assert 'Motor is a retained part. [evidence:business-answer:test]' in result['response']
+    assert '| Motor | Part |' in result['response']
+    assert 'Model interpretation' in result['response']
     assert messages==[result['response']]
     assert 'Matching graph resources' not in result['response']
 

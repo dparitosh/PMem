@@ -1,4 +1,5 @@
 import { dictionaryPayload } from '../services/ontologyPayload';
+import './MetadataRegistryPage.css';
 import WorkspaceTabs from '../Components/WorkspaceTabs';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -40,34 +41,28 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
   });
   const prefixes = [...new Set(nodes.map((node) => node.ontology_prefix).filter(Boolean))].sort();
 
-  return (
-    <div style={{ border: '1px solid #d9e2ec', borderRadius: 8, overflow: 'auto', maxHeight: 520 }}>
-      <div style={{ padding: '9px 12px', color: '#52606d', fontSize: 12, borderBottom: '1px solid #d9e2ec' }}>
-        {visible.length} of {nodes.length} terms
-        {prefixes.length > 0 && (
-          <select value={prefixFilter || ''} onChange={(event) => onPrefixFilterChange(event.target.value || null)} style={{ marginLeft: 12, padding: '4px 8px' }} aria-label="Filter dictionary by prefix">
-            <option value="">All prefixes</option>
-            {prefixes.map((prefix) => <option key={prefix} value={prefix}>{prefix}</option>)}
-          </select>
-        )}
-      </div>
-      <table className="depo-table">
-        <thead><tr><th>Term ID</th><th>Label</th><th>Type</th><th>Definition</th><th>Governance</th></tr></thead>
-        <tbody>
-          {visible.map((node) => (
-            <tr key={`${node.term_id}:${node.source}`}>
-              <td><code>{node.term_id}</code></td>
-              <td><strong>{node.label || '—'}</strong></td>
-              <td>{node.source || '—'}</td>
-              <td>{node.definition || '—'}</td>
-              <td><button type="button" disabled={disabled} onClick={() => onRegister(node)}>Prepare draft registration</button></td>
-            </tr>
-          ))}
-          {!visible.length && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No terms match the filter.</td></tr>}
-        </tbody>
-      </table>
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
+  const lastPage = Math.max(0, Math.ceil(visible.length / pageSize) - 1);
+  const currentPage = Math.min(page, lastPage);
+  useEffect(() => setPage(0), [filter, prefixFilter, nodes]);
+  return <section className="registry-dictionary" aria-label="Dictionary terms">
+    <div className="registry-dictionary__toolbar"><strong>{visible.length} of {nodes.length} terms</strong>
+      {prefixes.length > 0 && <label>Prefix <select value={prefixFilter || ''} onChange={event => onPrefixFilterChange(event.target.value || null)} aria-label="Filter dictionary by prefix"><option value="">All prefixes</option>{prefixes.map(prefix => <option key={prefix}>{prefix}</option>)}</select></label>}
     </div>
-  );
+    <div className="registry-dictionary__scroll"><table className="registry-dictionary__table">
+      <colgroup><col style={{width:'28%'}}/><col style={{width:'14%'}}/><col style={{width:'43%'}}/><col style={{width:'15%'}}/></colgroup>
+      <thead><tr><th scope="col">Term</th><th scope="col">Type</th><th scope="col">Definition</th><th scope="col">Action</th></tr></thead>
+      <tbody>{visible.slice(currentPage*pageSize,(currentPage+1)*pageSize).map(node => <tr key={`${node.term_id}:${node.source}`}>
+        <td><strong>{node.label || 'Unnamed term'}</strong><details><summary>Term identity</summary><code>{node.term_id}</code></details></td>
+        <td><span className="registry-dictionary__type">{node.source || 'Unspecified'}</span></td>
+        <td><p className="registry-dictionary__definition">{node.definition || 'No definition provided.'}</p>{node.definition?.length > 220 && <details><summary>Read full definition</summary><p>{node.definition}</p></details>}</td>
+        <td><button className="depo-button depo-button--secondary" type="button" aria-label="Prepare draft registration" disabled={disabled} onClick={()=>onRegister(node)}>Prepare draft</button></td>
+      </tr>)}{!visible.length && <tr><td colSpan={4}>No terms match the filter.</td></tr>}</tbody>
+    </table></div>
+    <nav className="registry-dictionary__pagination" aria-label="Dictionary pages"><span>Page {currentPage+1} of {lastPage+1} · 25 terms per page</span><button disabled={currentPage===0} onClick={()=>setPage(currentPage-1)}>Previous</button><button disabled={currentPage>=lastPage} onClick={()=>setPage(currentPage+1)}>Next</button></nav>
+  </section>;
+
 }
 
 export default function MetadataRegistryPage() {
@@ -94,6 +89,7 @@ export default function MetadataRegistryPage() {
   const [newAsset, setNewAsset] = useState({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
   const registryControllerRef = useRef(null);
   const dictionaryControllerRef = useRef(null);
+  const refreshReadRef = useRef(null);
   const mutationControllersRef = useRef(new Set());
 
   const loadRegistryAssets = async (offset = 0) => {
@@ -146,12 +142,14 @@ export default function MetadataRegistryPage() {
       setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
       loadRegistryAssets();
     };
-    window.addEventListener('depo:credentials-changed', resetSession);
-    window.addEventListener('depo:credentials-cleared', resetSession);
+    const sessionEvents = ['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
+    sessionEvents.forEach(name => window.addEventListener(name, resetSession));
+    const refreshReads = () => refreshReadRef.current?.();
+    window.addEventListener('depo:access-verified', refreshReads);
     loadRegistryAssets();
     return () => {
-      window.removeEventListener('depo:credentials-changed', resetSession);
-      window.removeEventListener('depo:credentials-cleared', resetSession);
+      sessionEvents.forEach(name => window.removeEventListener(name, resetSession));
+      window.removeEventListener('depo:access-verified', refreshReads);
       registryControllerRef.current?.abort();
       dictionaryControllerRef.current?.abort();
       mutationControllers.forEach((controller) => controller.abort());
@@ -248,6 +246,11 @@ export default function MetadataRegistryPage() {
       if (!controller.signal.aborted) setDictionaryLoading(false);
       if (dictionaryControllerRef.current === controller) dictionaryControllerRef.current = null;
     }
+  };
+
+  refreshReadRef.current = () => {
+    loadRegistryAssets(registryOffset);
+    if (selectedOntology) loadDictionary(selectedOntology);
   };
 
   const transitionHandler = async (asset, action, evidence = {}) => {

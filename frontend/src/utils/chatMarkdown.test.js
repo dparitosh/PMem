@@ -34,3 +34,8 @@ describe('formatChatMarkdown', () => {
     expect(html).toContain('Second finding');
   });
 });
+test('citation IDs come from projected records, not nested business IDs', () => {
+  const html = formatChatMarkdown('Record [evidence:node] Property [evidence:forged]', [{elementId:'node', properties:{id:'forged'}}]);
+  expect(html).toContain('chat-citation');
+  expect(html).toContain('[evidence:forged]');
+});

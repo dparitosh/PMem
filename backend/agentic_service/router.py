@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from .workflow_errors import workflow_error
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
@@ -330,12 +330,13 @@ def _session_turns(session, limit=20):
 
 
 @router.get('/chat/sessions/{session_id}/history', dependencies=[Depends(graph_read_identity)])
-async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = ''):
+async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = Query(default='', max_length=256), run_id: str = Query(default='', max_length=256), product_id: str = Query(default='', max_length=256), product_version: str = Query(default='', max_length=256)):
     actor = graph_read_identity(request)
     session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
     turns = await run_in_threadpool(_session_turns, session)
     from .context_scope import same_companion_scope
-    selected = {'ontology': ontology_id, 'ontology_prefix': ontology_prefix, 'page': page}
+    selected = {'ontology': ontology_id, 'ontology_prefix': ontology_prefix, 'page': page, 'node_id': node_id,
+                'run_id': run_id, 'product_id': product_id, 'product_version': product_version}
     turns = [turn for turn in turns if same_companion_scope(turn.get('graph_context'), selected)]
     return {'session_id': session_id, 'turns': [
         {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'answerable', 'retrieval', 'graph_context', 'finished_at')}
@@ -374,8 +375,13 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
                 kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
             if (payload.get('graph_context') or {}).get('page'):
                 kwargs['page']=payload['graph_context']['page']
-            if on_token:
-                kwargs['on_token'] = on_token
+            if (payload.get('graph_context') or {}).get('node_id'):
+                kwargs['node_id']=payload['graph_context']['node_id']
+            for key in ('run_id', 'product_id', 'product_version'):
+                if (payload.get('graph_context') or {}).get(key):
+                    kwargs[key] = payload['graph_context'][key]
+            # Do not emit answer text before its required evidence record has
+            # committed. A failed save must not leave a seemingly valid stream.
             result = await companion.ask(query, **kwargs)
         if (not isinstance(result, dict) or not isinstance(result.get('response'), str)
                 or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
@@ -387,7 +393,9 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
         envelope = assemble(owner=session['owner'] if session.get('owner') else sessions.owner(request, actor),
             run_id=observation['run_id'], purpose='knowledge_companion',
             context={'ontology_id': selected_context.get('ontology', ''),
-                     'ontology_prefix': selected_context.get('ontology_prefix', '')},
+                     'ontology_prefix': selected_context.get('ontology_prefix', ''),
+                     'node_id': selected_context.get('node_id', ''),
+                     **{key: selected_context.get(key, '') for key in ('run_id', 'product_id', 'product_version')}},
             deadline_at=session['expires_at'])
         await _agent_io(companion_job_store.put, retained_id, {
             'job_id': retained_id, 'status': 'completed', 'session_id': session['session_id'],
@@ -411,6 +419,8 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
             status="completed",
             evidence_count=len(result.get("evidence") or []),
         )
+        if on_token:
+            await on_token(result['response'])
         return {**result, 'retention': {'status': 'retained', 'backend': 'postgresql', 'record_id': retained_id},
                 'memory_enrichment': {'status': memory_status, 'required': False},
                 'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
@@ -453,7 +463,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': False, 'generation_delivery': 'buffered-until-citations-validated', 'job_execution': 'synchronous', "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "evidence-grounded-retrieval", "streaming": True, 'incremental_generation': False, 'generation_delivery': 'buffered-until-evidence-retained', 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get('/llm/health', dependencies=[Depends(graph_read_identity)])
@@ -464,7 +474,9 @@ async def local_llm_health() -> dict:
 
 @router.get("/chat/capabilities")
 def companion_capabilities() -> dict:
-    return {"name": "knowledge-companion", "mode": "ontology-search", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'evidence-and-optional-generation-tokens', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False}
+    return {"name": "knowledge-companion", "mode": "evidence-grounded-retrieval", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'evidence-and-optional-generation-tokens', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False,
+            'business_intents':['associated_requirements','parts_with_pmi','product_assembly'],
+            'selected_node_context':True, 'semantic_entailment_verified':False}
 
 
 @router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
@@ -1091,6 +1103,9 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                 diagnostics = workflow_error(exc, active_step['tool_id'])
                 record.update(diagnostics)
                 record['traces'].append({'sequence': len(record['traces'])+1, 'tool_id': active_step['tool_id'], 'attempt': attempt, 'status': status, 'error_type': type(exc).__name__, **diagnostics})
+                logger.warning('Workflow failed run_id=%s tool_id=%s http_status=%s error_code=%s message=%s',
+                               record['run_id'], active_step['tool_id'], diagnostics.get('http_status'),
+                               diagnostics['error_code'], diagnostics['error_message'])
             # Persist state and telemetry independently. A DB outage must not
             # replace the original exception; deadline-based reads expose an
             # interrupted process even if final persistence could not succeed.
@@ -1199,13 +1214,19 @@ async def compensate_workflow(run_id: str, payload: CompensationBody, request: R
 @router.post('/workflow-runs/{run_id}/recover')
 async def recover_workflow(run_id: str, payload: ApprovalBody, request: Request) -> dict:
     from .recovery import prepare_recovery
-    approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    try:
+        approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    except HTTPException as exc:
+        if exc.status_code not in {401, 403}:
+            raise
+        graph_read_identity(request)
     record = await _agent_io(workflow_store.get, run_id)
     if not record:
         raise HTTPException(404, 'Workflow run not found')
     try:
         workflow = catalog.item('workflows', record['workflow_id'])
         definition = {'workflow': workflow, 'steps': workflow_plan({'workflow_id': record['workflow_id']})['steps']}
+        _authorize_workflow_review_control(request, record, definition, payload)
         heartbeat = await _agent_io(workflow_heartbeats.get, f"{run_id}:{record.get('execution_id', '')}")
         recovery = prepare_recovery(record, definition, activity_at=last_activity(record, heartbeat))
     except ValueError as exc:
@@ -1221,16 +1242,41 @@ async def recover_workflow(run_id: str, payload: ApprovalBody, request: Request)
     return await _keep_workflow_running(_execute_workflow(command, request, recovery=recovery))
 
 
+def _authorize_workflow_review_control(request, record, definition, payload):
+    from .recovery import read_only_ontology_review
+    if read_only_ontology_review(definition):
+        try:
+            actor = graph_read_identity(request)
+            if record.get('owner') == sessions.owner(request, actor):
+                return actor
+        except HTTPException as exc:
+            if exc.status_code not in {401, 403}:
+                raise
+    return approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+
+
 @router.post("/workflow-runs/{run_id}/control", summary="Pause, resume or cancel at the next tool boundary")
 def control_workflow(run_id: str, payload: WorkflowControlBody, request: Request) -> dict:
     from backend.depo_platform.authorization import service_write_identity
-    actor = service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
+    try:
+        service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
+    except HTTPException as exc:
+        if exc.status_code not in {401, 403}:
+            raise
+        graph_read_identity(request)
     action = payload.get("action")
     if not isinstance(action, str) or action not in {"pause", "resume", "cancel"}:
         raise HTTPException(422, "action must be pause, resume or cancel")
     record = workflow_store.get(run_id)
     if not record:
         raise HTTPException(404, "Workflow run not found")
+    workflow = catalog.item('workflows', record['workflow_id'])
+    definition = {'workflow': workflow, 'steps': workflow_plan({'workflow_id': record['workflow_id']})['steps']}
+    from .recovery import read_only_ontology_review
+    if read_only_ontology_review(definition):
+        actor = _authorize_workflow_review_control(request, record, definition, {'approved_by': 'workflow-supervisor'})
+    else:
+        actor = service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
     if record.get("status") not in {'running','queued'} or datetime.now(timezone.utc) >= datetime.fromisoformat(record["deadline_at"]):
         raise HTTPException(409, "Only an active workflow can be controlled")
     with workflow_controls.advisory_lock(run_id) as acquired:

@@ -3,11 +3,13 @@ import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import OntologyReleasePanel from './ontology/OntologyReleasePanel';
 
 export default function OntologyPublicationPanel({ ontologyId, onPublished, fromWorkflow = false }) {
   const [metadata, setMetadata] = useState(null), [publication, setPublication] = useState(null);
   const [actor, setActor] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [releaseOpen, setReleaseOpen] = useState(false);
   const [visible, setVisible] = useState(() => !document.hidden);
   useEffect(() => {
     const changed = () => setVisible(!document.hidden);
@@ -99,6 +101,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
     <div className="depo-panel__body"><p>Registration retains the source. Review and approval allow a separate publication to knowledge graph. The approver is the person authorised to accept this ontology; the agent cannot approve for you.</p>
       {fromWorkflow && <p><a href={`#/ontology?target=${encodeURIComponent(ontologyId)}`} target="_blank" rel="noopener noreferrer">View in Ontology Junction</a> (opens in a new tab). Review the ontology there, then return here to approve and publish.</p>}
       <label className="depo-field">Approver<input className="depo-input" value={actor} onChange={event => setActor(event.target.value)} placeholder="Your approval identity" /></label>
+      <details onToggle={event => setReleaseOpen(event.currentTarget.open)}><summary>Ontology release versions</summary>{releaseOpen && <OntologyReleasePanel key={ontologyId} ontologyId={ontologyId} actor={actor} />}</details>
       {busy && <p role="status" aria-live="polite">{activeAction === 'publish' ? 'Submitting background publication. Once queued, processing continues after you leave this page.' : 'Updating ontology lifecycle...'}</p>}
       {busy && activeAction === 'publish' && <p>Elapsed: {elapsedSeconds}s.{elapsedSeconds >= 60 && ' Large ontologies require RDF preparation and a graph transaction. If this continues, inspect ontology.err.log and graph.err.log for the current publication phase.'}</p>}
       {publication?.recovery_action === 'restore_retained_artifact' && <p role="alert">The registered ontology file is missing or unreadable. Restore the exact retained file from backup, then verify publication. Existing knowledge graph data has not been changed.</p>}

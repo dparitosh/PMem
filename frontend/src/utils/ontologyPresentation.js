@@ -1,20 +1,20 @@
-const OWLREADY_TEMP_SEGMENT_RE = /^tmp[a-z0-9_]{6,}[.:](.+)$/i;
-const OWLREADY_TEMP_TOKEN_RE = /^tmp[a-z0-9_]{6,}$/i;
+const TEMP_NAMESPACE_SEGMENT_RE = /^tmp[a-z0-9_]{6,}[.:](.+)$/i;
+const TEMP_NAMESPACE_TOKEN_RE = /^tmp[a-z0-9_]{6,}$/i;
 
 export function ontologyFragment(value = '') {
   return String(value || '').trim().split(/[/#]/).pop() || '';
 }
 
-export function stripOwlreadyTempSegment(value = '') {
+export function stripTemporaryNamespaceSegment(value = '') {
   const raw = String(value || '').trim();
-  const match = raw.match(OWLREADY_TEMP_SEGMENT_RE);
+  const match = raw.match(TEMP_NAMESPACE_SEGMENT_RE);
   return match ? match[1] : raw;
 }
 
 export function cleanOntologyPrefix(value = '', fallback = '') {
   const raw = String(value || '').trim();
-  if (!raw || OWLREADY_TEMP_TOKEN_RE.test(raw)) return String(fallback || '').trim();
-  return stripOwlreadyTempSegment(raw);
+  if (!raw || TEMP_NAMESPACE_TOKEN_RE.test(raw)) return String(fallback || '').trim();
+  return stripTemporaryNamespaceSegment(raw);
 }
 
 export function ontologyDisplayName(ref = {}) {
@@ -26,7 +26,7 @@ export function ontologyDisplayName(ref = {}) {
     || ontologyFragment(ref?.term_id || ref?.id)
     || ''
   ).trim();
-  return stripOwlreadyTempSegment(raw);
+  return stripTemporaryNamespaceSegment(raw);
 }
 
 export function ontologyTermId(ref = {}, prefixHint = '') {
@@ -34,10 +34,10 @@ export function ontologyTermId(ref = {}, prefixHint = '') {
   const uri = String(ref?.iri || ref?.uri || '').trim();
   const rawTermId = String(ref?.term_id || ref?.id || '').trim();
   const termLocal = rawTermId.includes(':') ? rawTermId.split(':').slice(1).join(':') : rawTermId;
-  const hasTempLocal = OWLREADY_TEMP_SEGMENT_RE.test(termLocal);
+  const hasTempLocal = TEMP_NAMESPACE_SEGMENT_RE.test(termLocal);
   const local = ontologyDisplayName({
     ...ref,
-    label: ref?.local_name || ref?.label || (uri ? ontologyFragment(uri) : stripOwlreadyTempSegment(termLocal)),
+    label: ref?.local_name || ref?.label || (uri ? ontologyFragment(uri) : stripTemporaryNamespaceSegment(termLocal)),
   });
 
   if (!hasTempLocal && rawTermId) return rawTermId;

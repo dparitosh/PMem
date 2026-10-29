@@ -1,0 +1,78 @@
+%% Current implemented flow, reconciled 2026-10-28. See DELIVERABLE_STATUS.md.
+%% Arrows show dependencies, not proof of production qualification.
+flowchart TD
+ UI["SPA question or task and selected scope"] -->|manual or distributed access| AUTH["Owner identity, input and immutable scope guards"]
+ UI -->|configured local mode| BROKER["Same-origin local delegate exchange; bounded authority timeout; initial children held until sign-in"]
+ BROKER --> AUTH
+ BROKER -->|unavailable| RECONNECT["Safe reconnect status; no unauthenticated initial service-read cascade"]
+ ROLES["16 catalog roles and 12 generated DT roles"] --> SP["proposal-v4 suggestion policy"]
+ ROLES --> GP["proposal-v4 read-goal policy"]
+
+ subgraph Companion["Knowledge Companion"]
+  RETR["Scoped business instances, paths, vocabulary and documents"] --> CE["Credential redaction and projected record citation IDs"]
+  CE --> CS["Business answer system policy and untrusted user evidence"]
+  CV["Summary bounds, supported Markdown block citations and record-ID membership"] --> CP["Required retained turn before response streaming"]
+  CP --> ANSWER["Business answer with sources and explicit limitations"]
+ end
+ AUTH --> RETR
+ DB["PostgreSQL scoped history and retained evidence"] --> RETR
+ GRAPH["Owning graph, ontology and document services"] --> RETR
+ AUTH --> TASK["Task, source context, attachments and live OpenAPI schemas"]
+ TASK --> SAN["Sanitized model-visible metadata and schemas; authoritative schemas unchanged"]
+ SAN --> SP
+
+ subgraph Goals["Server-owned bounded read investigation"]
+  GS["Owned durable goal, selected scope, source revisions and deadline"] --> MEM["Structured scratchpad; observation IDs preserved; recent results first; explicit omissions"]
+  MEM --> GP
+  GV["Validate action schema, allowed reads, pinned scope and completed observation IDs"] --> PLAN["goal.plan: retain bounded plan or revision"]
+  GV --> NEED["goal.needs_input or incomplete read: retain missing fields; stop without dispatch"]
+  GV --> PENDING["Persist pending observation before dispatch"]
+  PENDING --> READ["Authenticated allowlisted read; no mutation approval bypass"]
+  READ --> OBS["Persist result before replanning"]
+  OBS --> GS
+  PLAN --> GS
+  GV --> COMPLETE["goal.complete: retained advisory interpretation; semantic entailment unverified"]
+ end
+ AUTH --> GS
+ GS <--> DB
+
+ CS --> BUDGET["Configured model context limit; conservative UTF-8 upper bound plus completion and framing reserve"]
+ SP --> BUDGET
+ GP --> BUDGET
+ BUDGET --> ROUTE["Configured provider and model transport"]
+ BUDGET --> SIZE["Oversized context: safe diagnostic; retained evidence available"]
+ ROUTE --> OLLAMA["Ollama"]
+ ROUTE --> CLOUD["OpenAI or Mistral"]
+ ROUTE --> AOI["Optional PMem AOI adapter and unchanged opaque vendor helper"]
+ OLLAMA --> OUTPUT["Untrusted model output"]
+ CLOUD --> OUTPUT
+ AOI --> OUTPUT
+ OUTPUT --> CV
+ OUTPUT --> PV["Suggestion: validate against original authoritative tool schema"]
+ OUTPUT --> GV
+ PV --> PROPOSAL["Owner-bound retained proposal; not execution"]
+ PROPOSAL --> APPROVAL["Explicit execution, current grants, source revision and required mutation approval"]
+ APPROVAL --> EXEC["Owning-service tool dispatch"]
+ EXEC --> RECEIPT["Retained result or publication receipt; never inferred from a model claim"]
+
+ AUTH --> WF["Six deterministic server-defined workflow bindings"]
+ WF --> APPROVAL
+ API["57 default OpenAPI tools"] --> READ
+ API --> EXEC
+ MCP["Optional configured MCP tools; no default MCP tool bindings; sampling delegation rejected"] -.-> READ
+ OBS --> DB
+ PENDING --> DB
+ NEED --> VIEW["UI handles retained outcome without automatic replay"]
+ COMPLETE --> VIEW
+ ANSWER --> VIEW
+ RECEIPT --> VIEW
+ SIZE --> VIEW
+
+ LEGACY["Optional legacy vector and Cypher chains; retrieved context separated from system policy"] -.-> LHOST["Separate legacy host and model path; cost and latency still require review"]
+ YAML["QIF and MBSE metadata; standalone IIF RDF tools; obsolete Owlready2 binding removed"] -.-> HOST["Separate deterministic or external host; SDK integration not qualified here"]
+ LIMITS["Open qualification: model jailbreaks and factual entailment, customer model capacity, per-person identity, legacy cost and vendor internals"] -.-> VIEW
+
+ classDef implemented fill:#e8f4ed,stroke:#28734d,color:#173d2a
+ classDef pending fill:#fff4d6,stroke:#916400,color:#513800
+ class SAN,SP,GP,MEM,CV,GV,NEED,PV,BUDGET implemented
+ class AOI,LHOST,HOST,LIMITS pending

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from backend.artifact_store import ArtifactStore
+from backend.data_catalog_service.artifact_retention import ArtifactRetentionRegistry
 
 
 class Registry:
@@ -28,12 +29,7 @@ class RetentionRecovery(unittest.TestCase):
         self.artifacts = ArtifactStore(Path(self.temp.name))
         source = Path(self.temp.name) / 'source.txt'; source.write_text('retained evidence')
         self.artifact_id = self.artifacts.ingest(source)['artifact_id']
-        tree = ast.parse(Path('backend/data_catalog_service/artifact_retention.py').read_text(encoding='utf-8'))
-        node = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-        namespace = {'datetime':datetime, 'timedelta':timedelta, 'timezone':timezone, 'uuid':uuid,
-                     'Any':object, 'TIERS':{'hot', 'warm', 'cold', 'archive'}}
-        exec(compile(ast.Module(body=[node], type_ignores=[]), 'retention.py', 'exec'), namespace)
-        cls = namespace['ArtifactRetentionRegistry']; self.retention = cls.__new__(cls)
+        self.retention = ArtifactRetentionRegistry.__new__(ArtifactRetentionRegistry)
         self.retention.store = Registry(); self.retention.artifact_store = self.artifacts
         self.retention.register(self.artifact_id, {'retention_days':1, 'reason':'Approved policy'}, 'steward')
         self.retention._now = lambda: datetime.now(timezone.utc) + timedelta(days=2)

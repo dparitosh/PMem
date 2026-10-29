@@ -45,6 +45,7 @@ export default function AppShell({
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   const [verifyingAccess, setVerifyingAccess] = useState(false);
   const [accessState, setAccessState] = useState('unverified');
+  const [accessRevision, setAccessRevision] = useState(0);
   const [accessMessage, setAccessMessage] = useState(() => wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : '');
   const accessRequest = useRef(null);
   useEffect(() => () => { accessRequest.current?.abort(); accessRequest.current = null; }, []);
@@ -53,20 +54,20 @@ export default function AppShell({
     window.dispatchEvent(new CustomEvent('depo:admin-section', { detail: 'access' }));
     onPageChange('admin');
   };
-  const revalidateAccess = async () => {
+  const revalidateAccess = async ({ interactive = true } = {}) => {
     if (accessRequest.current) return;
     const controller = new AbortController(); accessRequest.current = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
     setVerifyingAccess(true); setAccessMessage('Checking stored API access…');
     try {
       const result = await verifyStoredAccess({ signal: controller.signal });
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && accessRequest.current === controller) {
         setAccessMessage(result.message);
         setAccessState(result.status);
         if(result.status==='verified')window.dispatchEvent(new Event('depo:access-verified'));
       }
-      if (result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
-    } catch { if (!controller.signal.aborted) { setAccessState('unverified'); setAccessMessage('Access could not be verified. Try again.'); } }
+      if (accessRequest.current === controller && interactive && result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
+    } catch { if (!controller.signal.aborted && accessRequest.current === controller) { setAccessState('unverified'); setAccessMessage('Access could not be verified. Try again.'); } }
     finally {
       clearTimeout(timeout);
       if (accessRequest.current === controller) {
@@ -85,13 +86,20 @@ export default function AppShell({
     return () => window.removeEventListener('depo:access-rejected', rejected);
   }, []);
   useEffect(() => {
-    const changed = event => { accessRequest.current?.abort();accessRequest.current=null;setVerifyingAccess(false);setAccessState('unverified'); setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
+    const changed = event => { accessRequest.current?.abort();accessRequest.current=null;setVerifyingAccess(false);setAccessState('unverified'); setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessRevision(value => value + 1); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);
     window.addEventListener('depo:session-expired', changed);
     window.addEventListener('depo:session-replaced', changed);
     return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); window.removeEventListener('depo:session-expired', changed);window.removeEventListener('depo:session-replaced', changed); };
   }, [onServiceAuthChange]);
+  // Verify the current session on load/replacement instead of leaving a valid
+  // connection labelled unverified until the user presses Revalidate.
+  const verifyCurrentAccess = useRef(revalidateAccess);
+  verifyCurrentAccess.current = revalidateAccess;
+  useEffect(() => {
+    if (apiAccessConfigured) void verifyCurrentAccess.current({ interactive: false });
+  }, [apiAccessConfigured, accessRevision]);
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';
     document.documentElement.dataset.ixColorSchema = colorSchema;
@@ -130,7 +138,7 @@ export default function AppShell({
     <>
       <a href="#main-content" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to main content</a>
       <IxApplication theme="classic" colorSchema={colorSchema}>
-        <IxApplicationHeader name="DEPO | Digital Thread">
+        <IxApplicationHeader name="DEPO | Semantic Intelligence">
           <div className="depo-app-mark" aria-label="DEPO">D</div>
           <IxBadge type="label" variant={statusVariant} label={statusLabel} role="status" aria-live="polite" />
           <IxButton

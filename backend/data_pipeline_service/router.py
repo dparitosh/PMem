@@ -4,6 +4,9 @@ from __future__ import annotations
 from backend.depo_platform.request_bodies import DocumentWorkflowBody, JobInputBody
 
 from backend.depo_platform.request_bodies import ApprovalBody, JobDefinitionBody, JobPublicationBody, ScheduleBody
+from backend.depo_platform.request_bodies import ReplayBody
+from contextlib import nullcontext
+import uuid
 
 import json
 import os
@@ -133,9 +136,9 @@ async def _reconcile_graph_publication(
         return None
 
 
-def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], correlation_id: str) -> dict[str, Any]:
+def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], correlation_id: str, *, run_id: str | None = None) -> dict[str, Any]:
     """Shared bounded dispatcher for OpenAPI requests and scheduled retries."""
-    run = run_records.start(definition, payload, correlation_id=correlation_id)
+    run = run_records.start(definition, payload, correlation_id=correlation_id, **({'run_id':run_id} if run_id else {}))
     if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
         standard = str(payload.get("standard") or "").strip().lower()
         if standard not in definition.get("allowed_standards", []):
@@ -364,14 +367,18 @@ def list_job_runs(limit: int = 100, offset: int = 0) -> dict[str, Any]:
 
 
 @router.get("/jobs/runs/{run_id}", dependencies=[Depends(graph_read_identity)], summary="Read a durable data-job run manifest")
-def get_job_run(run_id: str) -> dict[str, Any]:
+def get_job_run(run_id: str, request: Request = None) -> dict[str, Any]:
     try:
         record = run_records.get(run_id)
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
     if not record:
         raise HTTPException(status_code=404, detail="Data job run was not found")
-    return record
+    from backend.depo_platform.semantic_support import read_support
+    intent = (record.get('output_manifest') or {}).get('publication_intent') or {}
+    ontology_id = intent.get('ontology_id') or ((record.get('output_manifest') or {}).get('publication') or {}).get('ontology_id')
+    return {**record, 'semantic_support': read_support(ontology_id, dict(request.headers) if request else {}),
+            'semantic_support_scope': 'Current publication model; pipeline validation and graph delivery receipts remain separate'}
 
 
 @router.post("/jobs/runs/{run_id}/publish", summary="Publish an accepted semantic partition and advance its checkpoint")
@@ -464,9 +471,19 @@ async def publish_job_run(run_id: str, payload: JobPublicationBody, request: Req
 
 
 @router.post("/jobs/runs/{run_id}/replay", summary="Replay a retained immutable data-job input")
-def replay_job_run(run_id: str, request: Request, authorization: ApprovalBody | None = None) -> dict[str, Any]:
+def replay_job_run(run_id: str, request: Request, authorization: ReplayBody | None = None) -> dict[str, Any]:
     actor = approval_identity(request, authorization or {}, token_env="DATA_JOB_EXECUTION_TOKEN")
+    key = (authorization or {}).get('idempotency_key')
+    replay_id = str(uuid.uuid5(uuid.NAMESPACE_URL, json.dumps([actor,run_id,key]))) if key else None
     try:
+        # Receipt recovery does not need the original input or a still-enabled
+        # definition. Current authorization and the exact actor/source binding
+        # remain required; this branch never executes or enqueues work.
+        existing = run_records.get(replay_id) if replay_id else None
+        if existing:
+            if existing.get('run_id') != replay_id or existing.get('replay_of') != run_id or existing.get('executed_by') != actor:
+                raise HTTPException(409, 'Replay receipt does not match this submission')
+            return {'status':existing['status'], 'run':existing, 'run_manifest':existing, 'idempotent':True}
         previous = run_records.get(run_id)
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
@@ -482,10 +499,19 @@ def replay_job_run(run_id: str, request: Request, authorization: ApprovalBody | 
             raise LookupError("Data job definition was not found")
         if definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
             raise ValueError("Only an approved and enabled data-job definition can be replayed")
-        if _worker_execution_enabled():
-            queued = run_records.enqueue(definition, payload, correlation_id=getattr(request.state, "request_id", ""))
-            return {"status": "queued", "run": queued, "run_manifest": queued}
-        return execute_configured_job(definition, payload, getattr(request.state, "request_id", ""))
+        with (run_records.store.advisory_lock('replay:' + replay_id) if replay_id else nullcontext(True)) as acquired:
+            if acquired is False:
+                raise HTTPException(409, 'Replay submission is already being reconciled; retry the same idempotency key')
+            existing = run_records.get(replay_id) if replay_id else None
+            if existing:
+                if existing.get('run_id') != replay_id or existing.get('replay_of') != run_id or existing.get('executed_by') != actor:
+                    raise HTTPException(409, 'Replay receipt does not match this submission')
+                return {'status':existing['status'], 'run':existing, 'run_manifest':existing, 'idempotent':True}
+            options = {'run_id':replay_id} if replay_id else {}
+            if _worker_execution_enabled():
+                queued = run_records.enqueue(definition, payload, correlation_id=getattr(request.state, "request_id", ""), **options)
+                return {"status": "queued", "run": queued, "run_manifest": queued}
+            return execute_configured_job(definition, payload, getattr(request.state, "request_id", ""), **options)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

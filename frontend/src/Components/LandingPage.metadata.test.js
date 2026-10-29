@@ -45,6 +45,15 @@ test('published scope retains declared RDF counts', () => {
   expect(screen.queryByText(/RDF projection not published/)).not.toBeInTheDocument();
 });
 
+test('annotation declarations and business instance records remain distinct', () => {
+  render(<GraphProfileMetrics metrics={{ resources: 50, annotation_properties: 0, named_individuals: 0, business_instances: 18, ontology_breakdown: [] }} />);
+  expect(screen.getByText('Declared annotation properties')).toBeVisible();
+  expect(screen.getByText('Declared named individuals')).toBeVisible();
+  expect(screen.getByText('Business instance records')).toBeVisible();
+  expect(screen.getByText('18')).toBeVisible();
+  expect(screen.getByText(/Zero annotation-property declarations does not mean/)).toBeVisible();
+});
+
 test('empty scope states missing records without a misleading zero metric grid', () => {
   render(<GraphProfileMetrics metrics={{ resources: 0, existing_ontology: { resources: 0 } }} />);
   expect(screen.getByText('No ontology graph records are available for this scope.')).toBeVisible();

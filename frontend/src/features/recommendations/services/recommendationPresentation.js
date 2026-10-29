@@ -39,6 +39,7 @@ const normalizeRecommendationResult = (service, payload) => {
     for(const key of ['path','engineering_comparisons','configuration_review']){
       if(row[key]!=null){
         if(!Array.isArray(row[key])||row[key].some(value=>!isRecord(value)))invalid();
+        if(key!=='path' && row[key].some(value=>!Array.isArray(value.source)||!Array.isArray(value.candidate)))invalid();
         row[key].forEach(checkRecord);
       }
     }

@@ -54,5 +54,6 @@ def completion_evidence(context, observations, evidence_steps):
         policy = result.get('decision_policy')
         if isinstance(policy, dict) and policy.get('status') in POLICY_STATES:
             return {'recommendation_observation_id': observation['id'],
+                    **({'semantic_support': result['semantic_support']} if isinstance(result.get('semantic_support'), dict) else {}),
                     'decision_policy_status': policy['status'], 'advisory_only': True}
     raise ValueError('Complete only after citing selected recommendation evidence with a policy assessment')

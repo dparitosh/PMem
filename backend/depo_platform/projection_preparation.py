@@ -2,41 +2,57 @@
 from typing import Any
 import json
 from rdflib import Literal, URIRef, BNode
-from .ontology_semantics import kind
-from rdflib.namespace import OWL, RDF, RDFS
+from .ontology_semantics import CLASS_TYPES, PROPERTY_TYPES, META_TYPES
+from rdflib.namespace import OWL, RDF, RDFS, XSD
 
 
 def build_projection(rdf_graph):
-    # Stable preference: English, then untagged labels, then other languages.
-    # Sorting also resolves multiple labels in the same language predictably.
-    label_rows = sorted(rdf_graph.subject_objects(RDFS.label), key=lambda pair: (
-        str(pair[0]), 0 if (getattr(pair[1], 'language', None) or '').lower().split('-')[0] == 'en'
-        else 1 if not getattr(pair[1], 'language', None) else 2,
-        (getattr(pair[1], 'language', None) or '').lower(), str(pair[1])))
-    labels = {}
-    for subject, label in label_rows:
-        labels.setdefault(str(subject), str(label))
-    terms_by_id = {str(n): n for triple in rdf_graph for n in (triple[0], triple[2]) if not isinstance(n, Literal)}
-    resource_iris = {str(value) for triple in rdf_graph for value in (triple[0], triple[2]) if not isinstance(value, Literal)}
+    # Index once instead of repeatedly querying RDF types for each resource.
+    terms_by_id, labels, types, comments, sources = {}, {}, {}, {}, {}
+    source_predicate = URIRef('https://depo.example.org/ceim/0.1/sourceStandard')
     literal_properties: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for subject, predicate, value in rdf_graph:
+        identity = str(subject)
+        terms_by_id[identity] = subject
+        if not isinstance(value, Literal):
+            terms_by_id[str(value)] = value
+        if predicate == RDF.type:
+            types.setdefault(subject, set()).add(value)
+        if predicate == RDFS.label:
+            language = (getattr(value, 'language', None) or '').lower()
+            rank = (0 if language.split('-')[0] == 'en' else 1 if not language else 2, language, str(value))
+            if identity not in labels or rank < labels[identity]: labels[identity] = rank
+        if predicate == RDFS.comment:
+            comments[identity] = min(comments.get(identity, str(value)), str(value))
+        if predicate == source_predicate:
+            sources[identity] = min(sources.get(identity, str(value)), str(value))
         if isinstance(value, Literal):
-            literal_properties.setdefault(str(subject), {}).setdefault(str(predicate), []).append({
+            literal_properties.setdefault(identity, {}).setdefault(str(predicate), []).append({
                 "value": str(value), "datatype": str(value.datatype) if value.datatype else None,
                 "language": value.language,
             })
     for predicates in literal_properties.values():
         for values in predicates.values():
             values.sort(key=lambda value: (value['value'], value['datatype'] or '', value['language'] or ''))
+    declared_classes = {term for term, values in types.items() if values & CLASS_TYPES}
+    def indexed_kind(subject):
+        values = types.get(subject, set())
+        if values & CLASS_TYPES: return 'class'
+        if values & PROPERTY_TYPES: return 'property'
+        if OWL.Restriction in values: return 'restriction'
+        if OWL.Axiom in values: return 'axiom'
+        if str(subject).startswith(str(XSD)) or RDFS.Datatype in values: return 'datatype'
+        if OWL.NamedIndividual in values or any(t not in META_TYPES and t in declared_classes for t in values): return 'individual'
+        if any(str(t).startswith('http://www.w3.org/2003/11/swrl#') for t in values): return 'rule'
+        return 'expression' if isinstance(subject, BNode) else 'resource'
     resources = [
-        {"iri": iri, "label": labels.get(iri, iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]),
-         "requirement": (URIRef(iri), RDF.type, URIRef('https://depo.example.org/ceim/0.1/Requirement')) in rdf_graph,
-         "source": min((str(value) for value in rdf_graph.objects(URIRef(iri), URIRef('https://depo.example.org/ceim/0.1/sourceStandard'))), default=None),
-         "description": min((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), default=None),
-         "kind": kind(rdf_graph, terms_by_id[iri]),
-         "rdf_types": sorted(str(t) for t in rdf_graph.objects(terms_by_id[iri], RDF.type)),
+        {"iri": iri, "label": labels[iri][2] if iri in labels else iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1],
+         "requirement": URIRef('https://depo.example.org/ceim/0.1/Requirement') in types.get(terms_by_id[iri], set()),
+         "source": sources.get(iri), "description": comments.get(iri),
+         "kind": indexed_kind(terms_by_id[iri]),
+         "rdf_types": sorted(str(t) for t in types.get(terms_by_id[iri], set())),
          "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
-        for iri in sorted(resource_iris)
+        for iri in sorted(terms_by_id)
     ]
     ceim_relationships = {
         "hasPart": "HAS_PART", "hasGeometry": "HAS_GEOMETRY", "hasFeature": "HAS_FEATURE",

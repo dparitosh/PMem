@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReadGoalPanel from '../ReadGoalPanel';
+import OntologyFoundationPanel from './OntologyFoundationPanel';
 import { UI_COLORS as C } from '../../styles/uiTokens';
 
 const INFERENCE_RULES = [
@@ -36,6 +37,7 @@ export default function OntologyInferenceWorkbench(props) {
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', minHeight: '360px' }}>
+      <OntologyFoundationPanel ontologyId={selectedOntologyApi} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
         <div>
           <div style={{ fontSize: '14px', fontWeight: 800, color: C.textPrimary }}>Ontology inference preview</div>

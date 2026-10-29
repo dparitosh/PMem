@@ -134,7 +134,7 @@ class OntologyCatalog:
         return metadata
 
     @staticmethod
-    def _parse_ontology(content: bytes, filename: str) -> dict[str, Any]:
+    def _parse_ontology(content: bytes, filename: str, *, include_graph=False) -> dict[str, Any]:
         """Reject malformed RDF/OWL before it becomes a governed artifact."""
         if len(content) > ontology_upload_limit():
             raise ValueError('Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES; increase the setting consistently across ingestion, ontology and graph services or partition the ontology')
@@ -161,7 +161,8 @@ class OntologyCatalog:
                 if not graph:
                     raise ValueError('Ontology artifact contains no RDF triples')
                 from backend.depo_platform.ontology_semantics import inventory
-                return {"rdf_format": rdf_format, "triple_count": len(graph), "semantic_inventory": inventory(graph)}
+                return {"rdf_format": rdf_format, "triple_count": len(graph), "semantic_inventory": inventory(graph),
+                        **({'graph': graph} if include_graph else {})}
             except Exception as exc:  # try the other supported syntax
                 last_error = exc
         raise ValueError('Ontology RDF/OWL parsing failed; check syntax and use inline JSON-LD contexts without XML DTDs') from last_error
@@ -368,15 +369,58 @@ class OntologyCatalog:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         return metadata
 
+    def resolve_artifact_path(self, ontology_id: str, metadata: dict[str, Any] | None = None) -> Path:
+        """Recover only a catalog-owned copy from its verified immutable content address."""
+        _safe_token(ontology_id, field='ontology_id')
+        metadata = metadata if metadata is not None else self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f'Ontology artifact not found: {ontology_id}')
+        directory = (self.root / ontology_id).resolve()
+        if not directory.is_relative_to(self.root.resolve()):
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        declared = Path(str(metadata.get('artifact_path') or '')).resolve()
+        if declared.is_relative_to(directory) and declared.is_file():
+            return declared
+        if declared.is_file():
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        filename = Path(str(metadata.get('original_filename') or declared.name).replace('\\', '/')).name
+        if (not filename or filename in {'.', '..', 'metadata.json'} or
+                any(ord(char) < 32 or char in '<>:"|?*' for char in filename)):
+            raise ValueError('Retained ontology artifact filename is invalid')
+        destination = directory / filename
+        if not destination.resolve().is_relative_to(directory):
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        # The stable catalog identity survives relocation. Reuse its current
+        # owned copy rather than rewriting it on every taxonomy/status read.
+        if destination.is_file():
+            return destination
+        artifact_id = metadata.get('artifact_id')
+        if not isinstance(artifact_id, str) or not artifact_id:
+            raise ValueError(f'Ontology artifact is missing: {ontology_id}')
+        with self._operation_lock(str(directory)):
+            _, retained = artifact_store.resolve(artifact_id)
+            limit = ontology_upload_limit()
+            if retained.stat().st_size > limit:
+                raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+            with retained.open('rb') as source:
+                content = source.read(limit + 1)
+            if len(content) > limit or 'sha256:' + hashlib.sha256(content).hexdigest() != artifact_id:
+                raise ValueError('Retained ontology artifact content does not match its immutable identity')
+            directory.mkdir(parents=True, exist_ok=True)
+            if destination.is_file():
+                return destination
+            # Reuse the tested Windows sharing-violation retry and atomic replacement.
+            from backend.Services.import_task_persistence import atomic_bytes
+            atomic_bytes(destination, content)
+            logging.getLogger(__name__).info('Recovered retained ontology artifact ontology_id=%s', ontology_id)
+            return destination
+
     def read_artifact(self, ontology_id: str) -> tuple[dict[str, Any], bytes]:
         metadata = self.get(ontology_id)
         if metadata is None:
             raise ValueError(f"Ontology artifact not found: {ontology_id}")
-        path = Path(str(metadata["artifact_path"]))
-        if not path.resolve().is_relative_to((self.root / ontology_id).resolve()):
-            raise ValueError('Ontology artifact path is outside its catalog directory')
-        if not path.is_file():
-            raise ValueError(f"Ontology artifact is missing: {ontology_id}")
+        path = self.resolve_artifact_path(ontology_id, metadata)
+        metadata = {**metadata, 'artifact_path': str(path)}
         limit = ontology_upload_limit()
         if path.stat().st_size > limit:
             raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES; restore a sufficient limit before reading or publishing it')
@@ -391,9 +435,7 @@ class OntologyCatalog:
         metadata = self.get(ontology_id)
         if metadata is None:
             raise ValueError(f"Ontology artifact not found: {ontology_id}")
-        path = Path(str(metadata['artifact_path'])).resolve()
-        if not path.is_relative_to((self.root / ontology_id).resolve()):
-            raise ValueError('Ontology artifact path is outside its catalog directory')
+        path = self.resolve_artifact_path(ontology_id, metadata)
         with path.open('rb') as source:
             before = os.fstat(source.fileno())
             key = (str(path), before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)

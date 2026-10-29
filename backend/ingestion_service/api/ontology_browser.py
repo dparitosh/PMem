@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from backend.depo_platform.request_bodies import InferenceBody
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.depo_platform.authorization import graph_read_identity
 import os
 from backend.depo_platform.graph_access import GraphDatabase
@@ -170,7 +170,7 @@ def data_dictionary(ontology_id: str) -> dict:
         reasoning = OntologyReasoningService.get_reasoning(ontology_id)
     except ValueError:
         # Native standalone-service artifacts do not have the legacy
-        # Owlready cache.  Continue to the authoritative Neo4j projection
+        # semantic inspection cache.  Continue to the authoritative Neo4j projection
         # instead of returning a false "not found" response.
         reasoning = {}
 
@@ -197,7 +197,7 @@ def data_dictionary(ontology_id: str) -> dict:
     properties = rows((reasoning.get("datatype_properties") or []) + (reasoning.get("annotation_properties") or []), "DatatypeProperty")
     relationships = rows(reasoning.get("object_properties") or [], "ObjectProperty")
     # Older, already-published ontologies are persisted directly in Neo4j and
-    # may not have an Owlready cache.  Preserve their browse experience with a
+    # may not have an semantic inspection cache.  Preserve their browse experience with a
     # read-only projection of the authoritative graph records.
     if not (entities or properties or relationships):
         with GraphDatabase.driver(os.environ["NEO4J_URI"], auth=(os.environ["NEO4J_USER"], os.environ["NEO4J_PASS"])) as driver:
@@ -226,40 +226,62 @@ def data_dictionary(ontology_id: str) -> dict:
             "data": {"entities": entities, "properties": properties, "relationships": relationships}}
 
 
-def bounded_taxonomy(payload: dict, node_limit: int = 10000, edge_limit: int = 20000) -> dict:
+def bounded_taxonomy(payload: dict, node_limit: int = 10000, edge_limit: int = 20000, offset: int = 0, query: str = '', kind: str = 'all') -> dict:
     """Bound only the browser response; retained inventory/mapping stays complete."""
     nodes, edges = payload.get('nodes', []), payload.get('edges', [])
     # Keep declared terms ahead of anonymous expression/literal expansion.
     priority = {'class': 0, 'property': 1, 'datatype': 2, 'individual': 3}
-    kept = sorted(nodes, key=lambda n: priority.get(n.get('kind'), 4))[:node_limit]
+    needle = query.strip().casefold()
+    matching = [n for n in nodes if (kind == 'all' or n.get('kind') == kind) and
+                (not needle or any(needle in str(n.get(key) or '').casefold()
+                for key in ('label', 'term_id', 'iri', 'uri', 'definition')))]
+    ordered = sorted(matching, key=lambda n: (priority.get(n.get('kind'), 4), str(n.get('term_id', ''))))
+    kept = ordered[offset:offset + node_limit]
     ids = {n['term_id'] for n in kept}
+    declarations = {term: {'domain': [], 'range': [], 'parents': [], 'children_count': 0,
+                           'complete': not bool(payload.get('summary', {}).get('truncated'))} for term in ids}
+    for edge in edges:
+        source, target = edge.get('source_term'), edge.get('target_term')
+        relation = str(edge.get('mapping_type') or edge.get('type') or '').lower()
+        if source in declarations and relation in {'domain', 'range', 'subclassof', 'subclass_of'}:
+            field = 'parents' if relation in {'subclassof', 'subclass_of'} else relation
+            declarations[source][field].append({'term_id': target, 'label': edge.get('target_label') or target})
+        if target in declarations and relation in {'subclassof', 'subclass_of'}:
+            declarations[target]['children_count'] += 1
+    kept = [{**node, 'browse_declarations': declarations[node['term_id']]} for node in kept]
     links = [e for e in edges if e.get('source_term') in ids and e.get('target_term') in ids][:edge_limit]
     summary = {**payload.get('summary', {}), 'terms': len(kept), 'taxonomy_links': len(links),
                'total_terms': payload.get('summary', {}).get('total_terms', len(nodes)),
                'total_taxonomy_links': payload.get('summary', {}).get('total_taxonomy_links', len(edges)),
                'truncated': bool(payload.get('summary', {}).get('truncated') or len(kept)<len(nodes) or len(links)<len(edges))}
-    return {**payload, 'nodes': kept, 'edges': links, 'summary': summary}
+    return {**payload, 'nodes': kept, 'edges': links, 'summary': summary,
+            'page': {'offset': offset, 'limit': node_limit, 'matching_terms': len(ordered),
+                     'next_offset': offset + len(kept) if offset + len(kept) < len(ordered) else None,
+                     'query': query, 'kind': kind, 'scope': 'retained-taxonomy-slice'}}
 
 
 @router.get("/{ontology_id}/taxonomy")
-def taxonomy(ontology_id: str) -> dict:
+def taxonomy(ontology_id: str, limit: int = Query(10000, ge=1, le=10000),
+             offset: int = Query(0, ge=0), query: str = Query('', max_length=200),
+             kind: str = Query('all', pattern='^(all|class|property|datatype|individual)$')) -> dict:
     resolved_id = _resolve_ontology_id(ontology_id)
     try:
-        return bounded_taxonomy(OntologyTaxonomyService.get_taxonomy(resolved_id))
+        return OntologyTaxonomyService.get_taxonomy(resolved_id,
+            project=lambda payload: bounded_taxonomy(payload, limit, 20000, offset, query, kind))
     except ValueError:
         # The graph projection is indexed by ontology prefix, whereas the API
         # receives an immutable upload id. Resolve the prefix before falling
         # back so AP242 and other graph-native ontologies remain browseable.
         dictionary_taxonomy = _taxonomy_from_dictionary(resolved_id)
         if dictionary_taxonomy["nodes"]:
-            return dictionary_taxonomy
+            return bounded_taxonomy(dictionary_taxonomy, limit, 20000, offset, query, kind)
         metadata = OntologyUploadManager.get_ontology(resolved_id).get("metadata") or {}
         prefix = str(metadata.get("prefix") or ontology_id)
         if resolved_id != prefix:
             raise HTTPException(409, 'No version-scoped taxonomy is available; a shared-prefix graph cannot represent this retained ontology version')
         result = _taxonomy_from_graph(prefix)
         result['scope'] = 'shared-prefix-projection'
-        return result
+        return bounded_taxonomy(result, limit, 20000, offset, query, kind)
 
 
 @router.get("/{ontology_id}/retained-inventory")

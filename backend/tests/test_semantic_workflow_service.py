@@ -414,7 +414,7 @@ def test_merge_exports_have_one_primary_ontology_header(monkeypatch, tmp_path):
     assert "target ontology: target" in ttl
 
 
-def test_instance_link_does_not_auto_apply_owlready_only_iri_targets(monkeypatch):
+def test_instance_link_does_not_auto_apply_semantic_only_iri_targets(monkeypatch):
     rows = [
         {
             "import_row_key": "row-iri-only",

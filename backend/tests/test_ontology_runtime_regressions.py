@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
+from backend.Services.ontology_semantic_runtime import OntologySemanticRuntime
 from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 from backend.Services.ontology_validator import OntologyValidator
 
@@ -50,11 +50,7 @@ def test_parse_rdf_handles_owl_extension_with_turtle_payload(tmp_path: Path):
     assert any(edge["mapping_type"] == "subClassOf" for edge in parsed["edges"])
 
 
-def test_owlready_reasoning_extracts_classes_properties_and_individuals(tmp_path: Path):
-    if not OwlreadyOntologyRuntime.is_available():
-        import pytest
-        pytest.skip("owlready2 is not installed in this Python environment")
-
+def test_semantic_runtime_reasoning_extracts_classes_properties_and_individuals(tmp_path: Path):
     owl_path = tmp_path / "reasoning.owl"
     owl_path.write_text(
         """<?xml version="1.0"?>
@@ -93,10 +89,10 @@ def test_owlready_reasoning_extracts_classes_properties_and_individuals(tmp_path
         encoding="utf-8",
     )
 
-    result = OwlreadyOntologyRuntime.inspect_ontology(owl_path, "reason")
+    result = OntologySemanticRuntime.inspect_ontology(owl_path, "reason")
 
     assert result["status"] == "success"
-    assert result["engine"] == "owlready2"
+    assert result["engine"] == "semantica"
     assert result["summary"]["classes"] == 2
     assert result["summary"]["object_properties"] == 1
     assert result["summary"]["datatype_properties"] == 1
@@ -108,11 +104,7 @@ def test_owlready_reasoning_extracts_classes_properties_and_individuals(tmp_path
     assert result["annotation_properties"][0]["label"] == "source system"
 
 
-def test_owlready_reasoning_ignores_unavailable_external_imports(tmp_path: Path):
-    if not OwlreadyOntologyRuntime.is_available():
-        import pytest
-        pytest.skip("owlready2 is not installed in this Python environment")
-
+def test_semantic_runtime_reasoning_ignores_unavailable_external_imports(tmp_path: Path):
     owl_path = tmp_path / "with_import.owl"
     owl_path.write_text(
         """<?xml version="1.0"?>
@@ -130,7 +122,7 @@ def test_owlready_reasoning_ignores_unavailable_external_imports(tmp_path: Path)
         encoding="utf-8",
     )
 
-    result = OwlreadyOntologyRuntime.inspect_ontology(owl_path, "local")
+    result = OntologySemanticRuntime.inspect_ontology(owl_path, "local")
 
     assert result["status"] == "success"
     assert result["summary"]["classes"] == 1
@@ -138,10 +130,6 @@ def test_owlready_reasoning_ignores_unavailable_external_imports(tmp_path: Path)
 
 
 def test_taxonomy_payload_includes_reasoning_summary(tmp_path: Path, monkeypatch):
-    if not OwlreadyOntologyRuntime.is_available():
-        import pytest
-        pytest.skip("owlready2 is not installed in this Python environment")
-
     owl_path = tmp_path / "mini.owl"
     owl_path.write_text(
         """<?xml version="1.0"?>
@@ -176,7 +164,7 @@ def test_taxonomy_payload_includes_reasoning_summary(tmp_path: Path, monkeypatch
     taxonomy = OntologyTaxonomyService.get_taxonomy("mini_1")
     reasoning = OntologyTaxonomyService.get_reasoning("mini_1")
 
-    assert taxonomy["extraction_source"] == "owlready2"
+    assert taxonomy["extraction_source"] == "rdf"
     assert taxonomy["reasoning_summary"]["classes"] == 2
     assert reasoning["summary"]["subclass_edges"] == 1
 
@@ -217,20 +205,16 @@ def test_taxonomy_and_reasoning_share_the_same_context_resolution(tmp_path: Path
     assert taxonomy["ontology_id"] == reasoning["ontology_id"] == "shared_1"
 
 
-def test_owlready_unsupported_payload_is_structured(tmp_path: Path):
-    if not OwlreadyOntologyRuntime.is_available():
-        import pytest
-        pytest.skip("owlready2 is not installed in this Python environment")
-
+def test_semantic_runtime_unsupported_payload_is_structured(tmp_path: Path):
     broken_path = tmp_path / "broken.owl"
     broken_path.write_text("this is not rdf", encoding="utf-8")
 
-    result = OwlreadyOntologyRuntime.inspect_ontology(broken_path, "broken")
+    result = OntologySemanticRuntime.inspect_ontology(broken_path, "broken")
 
-    assert result["engine"] == "owlready2"
+    assert result["engine"] == "rdflib"  # Parsing failed before Semantica validation could run.
     assert result["available"] is True
     assert result["status"] in {"unsupported", "success"}
     assert "diagnostics" in result
     if result["status"] == "unsupported":
         assert result["summary"]["classes"] == 0
-        assert result["diagnostics"][0]["category"] == "load"
+        assert result["diagnostics"][0]["category"] == "rdf_parse"

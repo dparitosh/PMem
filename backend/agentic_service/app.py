@@ -59,6 +59,8 @@ app.include_router(create_odata_catalog_router(service_name="DEPOAgentic", capab
 app.include_router(router)
 from .bridge_router import router as bridge_router
 app.include_router(bridge_router)
+from .learning_router import router as learning_router
+app.include_router(learning_router)
 
 from .goal_routes import router as goal_router
 app.include_router(goal_router)

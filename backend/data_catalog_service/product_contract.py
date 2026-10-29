@@ -1,4 +1,5 @@
 """Versioned product content is immutable; lifecycle is separate metadata."""
+from backend.depo_platform.product_lineage import validate_lineage
 
 SERVER_FIELDS = {"product_id", "version", "updated_at"}
 MUTABLE_FIELDS = {"lifecycle_state"}
@@ -20,7 +21,7 @@ def public_record(record):
     # Allowlisted reader contract also protects legacy credential-bearing records.
     fields = {'product_id', 'version', 'updated_at', 'name', 'domain', 'owner', 'classification', 'steward',
               'lifecycle_state', 'sla', 'quality_status', 'sources', 'ontologies', 'semantic_releases',
-              'manifest', 'product_kind', 'analytics_readiness', 'product_url', 'description'}
+              'manifest', 'product_kind', 'analytics_readiness', 'product_url', 'description', 'lineage_verification'}
     def clean(value):
         if isinstance(value, dict):
             result = {}
@@ -39,6 +40,7 @@ def public_record(record):
 
 def validate_registration(payload: dict) -> None:
     reject_secrets(payload)
+    validate_lineage(payload)
     for name in ("name", "domain", "owner", "classification", "steward"):
         if not isinstance(payload.get(name), str) or not payload[name].strip():
             raise ValueError(f"{name} must be a non-empty string")
@@ -56,7 +58,12 @@ def validate_revision(existing: dict, proposed: dict) -> None:
     def content(record):
         return {k: v for k, v in record.items() if k not in SERVER_FIELDS | MUTABLE_FIELDS}
 
-    if content(existing) != content(proposed):
+    # Repair only the previously omitted reader field when its exact text was
+    # already retained in this immutable version's unchanged manifest.
+    normalized = dict(existing)
+    if 'description' not in existing and proposed.get('description') is not None and (existing.get('manifest') or {}).get('description') == proposed['description']:
+        normalized['description'] = proposed['description']
+    if content(normalized) != content(proposed):
         raise ValueError("Product version content is immutable; register a new version")
     if existing.get("lifecycle_state") == "revoked" and proposed.get("lifecycle_state") != "revoked":
         raise ValueError("A revoked product version cannot be reactivated")

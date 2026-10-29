@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from starlette.concurrency import run_in_threadpool
 
 from .catalog import catalog, ontology_upload_limit
+from .releases import OntologyReleases
+from backend.depo_platform.request_bodies import OntologyReleaseBody
 from .intelligence import SemanticIntelligence
 from .merge_service import GovernedMergeService
 from .business_context import BusinessContextService
@@ -34,6 +36,31 @@ intelligence = SemanticIntelligence(semantica.workspace.root)
 merges = GovernedMergeService(catalog, intelligence, catalog.root)
 business_context = BusinessContextService(catalog.root)
 graph_publications = PostgresRegistry('ontology_graph_publications_v1')
+releases = OntologyReleases(catalog)
+
+
+@router.get('/{ontology_id}/releases', summary='Read immutable ontology release lineage')
+def ontology_release_history(ontology_id: str) -> dict:
+    try:
+        if catalog.get(ontology_id) is None:
+            raise LookupError('Ontology artifact not found')
+        return releases.describe(ontology_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post('/{ontology_id}/releases', summary='Declare a release version without approving or publishing it')
+@ontology_writer
+def declare_ontology_release(ontology_id: str, payload: OntologyReleaseBody, request: Request) -> dict:
+    actor = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+    try:
+        return releases.declare(ontology_id, payload, actor)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get('/{ontology_id}/publication', summary='Verify a retained ontology graph publication')
@@ -130,13 +157,14 @@ async def publish_registered_ontology(ontology_id: str, payload: ApprovalBody, r
             metadata, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
             if metadata.get('lifecycle_status') != 'approved' or metadata.get('status') == 'superseded':
                 raise HTTPException(409, 'Approve the ontology before graph publication')
+            await run_in_threadpool(releases.verify_artifact, ontology_id, hashlib.sha256(content).hexdigest())
             from fastapi.responses import JSONResponse
             job = await run_in_threadpool(publication_jobs.submit, ontology_id, hashlib.sha256(content).hexdigest(), actor)
             return JSONResponse(status_code=202, content=job)
         return await run_in_threadpool(catalog.with_publication_lock, ontology_id,
             lambda: asyncio.run(_publish_registered_ontology(ontology_id, payload, request)))
     except ValueError as exc:
-        raise HTTPException(409, 'Ontology lifecycle is being updated; refresh before publication') from exc
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post('/{ontology_id}/publication-jobs/{job_id}/cancel', summary='Cancel a queued publication before dispatch')
@@ -157,10 +185,16 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
     from backend.depo_platform.rdf_preparation import prepare_publication_turtle
     _, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
     publication_id = hashlib.sha256(content).hexdigest()
+    try:
+        release = await run_in_threadpool(releases.verify_artifact, ontology_id, publication_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     if expected_sha256 is not None and publication_id != expected_sha256:
         raise HTTPException(409, 'Retained artifact changed after publication was queued; review again')
     previous = await run_in_threadpool(graph_publications.get, ontology_id)
     record = {'ontology_id': ontology_id, 'publication_id': publication_id, 'artifact_sha256': publication_id, 'approved_by': actor, 'status': 'publishing', 'phase': 'rdf_preparation'}
+    if release:
+        record['ontology_release'] = {key: release[key] for key in ('family_id', 'version', 'predecessor_id', 'artifact_sha256')}
     if previous and previous.get('publication_id') == publication_id:
         record['approved_by'] = previous.get('approved_by') or actor
     graph_root = service_url('GRAPH_SERVICE_URL', 'http://127.0.0.1:8013').rstrip('/')
@@ -242,6 +276,38 @@ def health() -> dict:
 @router.get("/capabilities", summary="Ontology generation and validation capabilities")
 def capabilities() -> dict:
     return semantica.capabilities()
+
+
+@router.get('/foundation', summary='Embedded IDO foundation and DEPO business vocabulary')
+def embedded_foundation(query: str = '', limit: int = 12) -> dict:
+    from .foundation import foundation_summary
+    from .owl_dl import capabilities as reasoner_capabilities
+    if len(query) > 300 or not 1 <= limit <= 30: raise HTTPException(422, 'Narrow the foundation term query')
+    return {**foundation_summary(query, limit), 'owl_dl':reasoner_capabilities()}
+
+
+@router.get('/{ontology_id}/semantic-evidence', summary='Current retained reasoning evidence for business review; no execution')
+@ontology_writer
+async def semantic_evidence(ontology_id: str) -> dict:
+    from .owl_dl import current_evidence
+    from backend.depo_platform.semantic_support import assessment
+    try:
+        evidence = await run_in_threadpool(current_evidence, ontology_id, catalog, PostgresRegistry('ontology_dl_evidence_v1'))
+        return assessment(evidence)
+    except (ValueError, OSError):
+        raise HTTPException(422, 'Restore the retained source artifact before reviewing its semantic evidence') from None
+
+
+@router.get('/{ontology_id}/consistency', summary='Check retained ontology with embedded foundation using OWL-DL')
+@ontology_writer
+async def owl_dl_consistency(ontology_id: str, target_iri: list[str] = Query(default=[])) -> dict:
+    from .owl_dl import inspect_retained
+    registry = PostgresRegistry('ontology_dl_evidence_v1')
+    try:
+        return await run_in_threadpool(inspect_retained, ontology_id, catalog, registry, target_iris=target_iri)
+    except (ValueError, OSError) as exc:
+        logging.getLogger(__name__).warning('OWL-DL artifact unavailable; error_class=%s',type(exc).__name__)
+        raise HTTPException(422,'Retained ontology artifact is unavailable or invalid; restore the source before checking consistency') from None
 
 
 @router.post("/generate", summary="Generate, validate, evaluate and export an ontology using Semantica")
@@ -624,7 +690,9 @@ def ontology_revision(ontology_id: str) -> dict:
         metadata = catalog.get(ontology_id)
         if metadata is None:
             raise HTTPException(404, 'Ontology artifact not found')
+        from backend.ontology_service.owl_dl import semantic_dependencies
         return {'ontology_id': ontology_id, 'artifact_sha256': catalog.artifact_digest(ontology_id),
+                'semantic_dependencies': semantic_dependencies(),
                 'lifecycle_status': metadata.get('lifecycle_status'), 'status': metadata.get('status')}
     return catalog.with_publication_lock(ontology_id, snapshot)
 

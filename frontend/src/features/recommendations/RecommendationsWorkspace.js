@@ -1,3 +1,4 @@
+import SemanticSupport from '../../Components/SemanticSupport';
 import { ManufacturingResult } from "./ManufacturingResult.js";
 import { SimilarPartsResult } from "./SimilarPartsResult.js";
 import { ChangeImpactResult } from "./ChangeImpactResult.js";
@@ -28,6 +29,7 @@ const RecommendationsWorkspace = () => {
   const tabId=useId();
   const [inputValue, setInputValue] = useState('');
   const [objectContext, setObjectContext] = useState({});
+  const [objectMatches, setObjectMatches] = useState(null);
   const analysisGeneration = useRef(0);
   const analysisController = useRef(null);
 
@@ -46,7 +48,7 @@ const RecommendationsWorkspace = () => {
   const [agentError,setAgentError]=useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setAgentRun(null); setError(''); setLoading(false); }, [activeService, inputValue, topN, objectContext]);
+  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setAgentRun(null); setError(''); setLoading(false); setObjectMatches(null); }, [activeService, inputValue, topN, objectContext]);
 
   useEffect(()=>{
     const controller=new AbortController();setAgentTools(null);setAgentContract(false);setAgentError('');
@@ -103,6 +105,7 @@ const RecommendationsWorkspace = () => {
       setResult(null);
       setAgentRun(null);
       setError('');
+      setObjectMatches(null);
       setLoading(false);
       setHealth(null);
       setHealthLoading(true);
@@ -112,7 +115,7 @@ const RecommendationsWorkspace = () => {
     window.addEventListener('depo:credentials-cleared', resetSession);
     window.addEventListener('depo:session-expired', resetSession);
     window.addEventListener('depo:session-replaced', resetSession);
-    const rejected=()=>{setAccessRejected(true);analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setAgentRun(null);};
+    const rejected=()=>{setAccessRejected(true);analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setAgentRun(null);setObjectMatches(null);};
     const verified=()=>{setAccessRejected(false);setHealthRevision(value=>value+1);};
     window.addEventListener('depo:access-rejected',rejected);
     window.addEventListener('depo:access-verified',verified);
@@ -156,6 +159,22 @@ const RecommendationsWorkspace = () => {
     };
   }, []);
 
+  const loadObjectMatches = async (controller, generation) => {
+    const {data} = await API_METHODS.recommendations.resolve(inputValue.trim(), {}, {signal:controller.signal,timeout:30000});
+    if (!Array.isArray(data?.matches) || data.matches.length > 20 || typeof data.truncated !== 'boolean' || data.matches.some(row => !row || typeof row.node_id !== 'string' || !row.node_id || typeof row.name !== 'string' || !row.scope || typeof row.scope !== 'object' || Array.isArray(row.scope) || Object.keys(row.scope).some(key => !['ontology_id','ontology_prefix'].includes(key)) || Object.values(row.scope).some(value => typeof value !== 'string' || value.length>256))) throw new Error('Business object search returned invalid results. Retry after checking the graph service.');
+    if (!controller.signal.aborted && generation === analysisGeneration.current) setObjectMatches(data);
+  };
+  const findObjects = async () => {
+    if (!inputValid || !canAnalyse) return;
+    analysisController.current?.abort();
+    const controller = new AbortController(); analysisController.current = controller;
+    const generation = ++analysisGeneration.current;
+    setLoading(true); setError(''); setObjectMatches(null);
+    try { await loadObjectMatches(controller, generation); }
+    catch (failure) { if (!controller.signal.aborted && generation===analysisGeneration.current) setError(apiErrorMessage(failure)); }
+    finally { if (!controller.signal.aborted && generation===analysisGeneration.current) setLoading(false); }
+  };
+
   const handleAnalyse = useCallback(async () => {
     const generation = ++analysisGeneration.current;
     if (!inputValue.trim() || !activeService) return;
@@ -177,7 +196,13 @@ const RecommendationsWorkspace = () => {
       }
       if (generation === analysisGeneration.current) setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {
-      if (generation === analysisGeneration.current) setError(apiErrorMessage(err));
+      if (generation === analysisGeneration.current && !controller.signal.aborted) {
+        setError(apiErrorMessage(err));
+        if (err.response?.status===409 && !objectContext.node_id) {
+          try { await loadObjectMatches(controller,generation); }
+          catch (failure) { if (!controller.signal.aborted && generation===analysisGeneration.current) setError(apiErrorMessage(failure)); }
+        }
+      }
     } finally {
       if (generation === analysisGeneration.current) setLoading(false);
     }
@@ -215,19 +240,27 @@ const RecommendationsWorkspace = () => {
         <label>{activeService==='change-impact'?'Changed item':activeService==='similar-parts'?'Reference part':'Part or assembly'}<input value={inputValue} maxLength={500} onChange={event=>{setObjectContext({});setInputValue(event.target.value);}} placeholder="Enter an existing graph object name" autoComplete="off"/></label>
         {activeService==='similar-parts'&&<label className="recommendation-query__limit">Results<input type="number" min="1" max="50" step="1" value={topN} onChange={event=>setTopN(event.target.value===''?'':Number(event.target.value))}/></label>}
         {executionMode==='graph'&&<button type="submit" disabled={loading||!inputValid||!limitValid||!canAnalyse}>{loading?'Analysing…':'Analyse'}</button>}
+        <button type="button" disabled={loading||!inputValid||!canAnalyse} onClick={findObjects}>Find business objects</button>
       </form>
+      {objectContext.node_id&&<p role="status">Selected object: {inputValue}. Identity and source scope will be used for both analysis methods.</p>}
+      {objectMatches&&<section className="recommendation-object-matches" aria-label="Matching business objects">
+        <h3>Select the business object to analyse</h3>
+        <p>{objectMatches.matches.length?`Found ${objectMatches.matches.length} business objects. Select the intended record before analysing.`:'No matching business objects were found. Try a part number or a more specific name.'}{objectMatches.truncated?' More matches exist; refine the name if your object is not listed.':''}</p>
+        {objectMatches.matches.length>0&&<table><thead><tr><th>Business object</th><th>Source scope</th><th>Record identity</th><th>Action</th></tr></thead><tbody>{objectMatches.matches.map(row=><tr key={row.node_id}><td>{row.name}</td><td>{row.scope.ontology_id||row.scope.ontology_prefix||'Imported graph record'}</td><td>{row.node_id}</td><td><button type="button" onClick={()=>{setInputValue(row.name);setObjectContext({node_id:row.node_id,...row.scope});setObjectMatches(null);setError('');}}>Use this object</button></td></tr>)}</tbody></table>}
+      </section>}
       {!limitValid&&<p role="alert">Choose a whole number of results from 1 to 50.</p>}
       {inputValue.trim().length>500&&<p role="alert">Enter an object name of at most 500 characters.</p>}
       {executionMode==='agent'&&<>
         {agentError&&<p role="alert">{agentError}</p>}
         {agentTools&&(!agentContract||!agentTools.has(recommendationTools[activeService]))&&<p role="status">Agent investigation is awaiting the updated PMem backend. Restart PMem, then retry readiness. Direct graph analysis remains available when graph context is ready.</p>}
-        <ReadGoalPanel agent="graph-analyst" task={inputValue.trim()?recommendationTask(goalContext):''} context={goalContext} compact startLabel="Analyse with agent" disabled={!canAnalyse||!inputValid||!limitValid||!agentContract||!agentTools?.has(recommendationTools[activeService])} onRunChange={setAgentRun} onStateChange={setAgentStatus}/>
+        {!objectContext.node_id&&inputValid&&<p role="status">Use Find business objects and select the intended record before starting an agent investigation.</p>}
+        <ReadGoalPanel agent="graph-analyst" task={inputValue.trim()?recommendationTask(goalContext):''} context={goalContext} compact startLabel="Analyse with agent" disabled={!objectContext.node_id||!canAnalyse||!inputValid||!limitValid||!agentContract||!agentTools?.has(recommendationTools[activeService])} onRunChange={setAgentRun} onStateChange={setAgentStatus}/>
         {agentRun?.status==='completed'&&!agentEvidence&&<p role="alert">The investigation completed without usable evidence for this selection. Review the retained task; no recommendation result is established.</p>}
       </>}
       {error&&<div role="alert" className="recommendation-notice recommendation-notice--error"><p>{error}</p><a href="#/graph">Select a business object in Graph Explorer</a><p>Choose the object's identity and ontology scope before retrying this analysis.</p></div>}
       {loading&&<p role="status">Reading graph context for {inputValue}. Changing the object or analysis cancels this request.</p>}
-      {!result&&!loading&&!error&&canAnalyse&&inputValid&&limitValid&&!(executionMode==='agent'&&(agentRun||agentStatus.error||agentStatus.busy||agentStatus.pending||!agentContract||!agentTools?.has(recommendationTools[activeService])))&&<div className="recommendation-empty"><strong>Ready to analyse</strong><p>Run the analysis to inspect matching evidence.</p><a href="#/graph">Find an object in Graph Explorer</a></div>}
-      {result&&<section className="recommendation-results" aria-label="Recommendation evidence"><div className="recommendation-result-heading"><h3>{selectedService.label} results</h3><span>Object: {inputValue}</span></div><AIInsightBanner service={activeService} data={result}/><details className="recommendation-method"><summary>Analysis method & scope</summary><p>{result.traceability || result.ranking_scope || 'Graph-derived read-only analysis. The response does not record additional method or coverage details.'}</p><p>Scores are heuristics, not calibrated confidence. The graph tool returns evidence and a shared decision-policy assessment. In agent mode, the existing Graph Analyst plans the investigation and cites the retained tool observation.</p></details><DecisionPolicyAssessment report={result.decision_policy}/>
+      {!result&&!loading&&!error&&canAnalyse&&inputValid&&limitValid&&(executionMode!=='agent'||!!objectContext.node_id)&&!(executionMode==='agent'&&(agentRun||agentStatus.error||agentStatus.busy||agentStatus.pending||!agentContract||!agentTools?.has(recommendationTools[activeService])))&&<div className="recommendation-empty"><strong>Ready to analyse</strong><p>Run the analysis to inspect matching evidence.</p><a href="#/graph">Find an object in Graph Explorer</a></div>}
+      {result&&<section className="recommendation-results" aria-label="Recommendation evidence"><div className="recommendation-result-heading"><h3>{selectedService.label} results</h3><span>Object: {inputValue}</span></div><AIInsightBanner service={activeService} data={result}/><details className="recommendation-method"><summary>Analysis method & scope</summary><p>{result.traceability || result.ranking_scope || 'Graph-derived read-only analysis. The response does not record additional method or coverage details.'}</p><p>Scores are heuristics, not calibrated confidence. The graph tool returns evidence and a shared decision-policy assessment. In agent mode, the existing Graph Analyst plans the investigation and cites the retained tool observation.</p></details><DecisionPolicyAssessment report={result.decision_policy}/><SemanticSupport report={result.semantic_support}/>
         {activeService==='change-impact'&&<ChangeImpactResult data={result}/>}
         {activeService==='similar-parts'&&<SimilarPartsResult data={result}/>}
         {activeService==='manufacturing'&&<ManufacturingResult data={result}/>}

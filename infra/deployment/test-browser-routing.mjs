@@ -37,10 +37,15 @@ for (const mode of ['local', 'gateway']) {
 console.log('PASS: all ten browser routes in local/gateway mode; runtime overrides stale build configuration.');
 
 const authSource = fs.readFileSync(new URL('../../frontend/src/services/serviceAuth.js', import.meta.url), 'utf8')
-  .replace("import { config } from '../config';", "const config = globalThis.__DEPO_AUTH_TEST_CONFIG__;")
+  .replace("import { config, buildSemanticServiceUrl } from '../config';", "const config = globalThis.__DEPO_AUTH_TEST_CONFIG__; const buildSemanticServiceUrl = () => { throw new Error('Renewal is outside this routing fixture'); };")
   .replace("import { operationForUrl } from './serviceContractRegistry';", 'const operationForUrl = () => null;');
-globalThis.__DEPO_AUTH_TEST_CONFIG__ = { gatewayUrl: 'https://gateway.example/depo' };
+globalThis.__DEPO_AUTH_TEST_CONFIG__ = { gatewayUrl: 'https://gateway.example/depo',
+  semanticServiceUrls: {graph:'https://gateway.example/depo/graph',agentic:'https://gateway.example/depo/agentic'} };
 globalThis.window.dispatchEvent = () => {};
+globalThis.window.addEventListener = () => {};
+globalThis.window.sessionStorage = { getItem: () => null, removeItem: () => {}, setItem: () => {} };
+globalThis.document = { visibilityState: 'visible', addEventListener: () => {} };
+assert.doesNotMatch(authSource, /^import\s/m, 'Update authentication routing fixture imports to match current source');
 const auth = await import(`data:text/javascript;base64,${Buffer.from(authSource).toString('base64')}`);
 auth.setServiceAuthToken('fixture-read');
 auth.setGatewaySubscriptionKey('fixture-subscription');
@@ -61,7 +66,10 @@ globalThis.__DEPO_BRIDGE_AUTH__ = auth.serviceAuthHeaders;
 const bridgeSource = fs.readFileSync(new URL('../../frontend/src/services/bridgeApi.js', import.meta.url), 'utf8')
   .replace("import axios from 'axios';", 'const axios = globalThis.__DEPO_BRIDGE_AXIOS__;')
   .replace("import { buildUrl } from '../config';", 'const buildUrl = path => path;')
-  .replace("import { serviceAuthHeaders } from './serviceAuth';", 'const serviceAuthHeaders = globalThis.__DEPO_BRIDGE_AUTH__;');
+  .replace("import { serviceAuthHeaders } from './serviceAuth';", 'const serviceAuthHeaders = globalThis.__DEPO_BRIDGE_AUTH__;')
+  .replace("import agenticAPI from './agenticApi';", 'const agenticAPI = {};')
+  .replace("import { agentToolResult, validBridgePolicy } from './agentToolResult';", 'const agentToolResult = () => {}; const validBridgePolicy = () => false;');
+assert.doesNotMatch(bridgeSource, /^import\s/m, 'Update Bridge routing fixture imports to match current source');
 await import(`data:text/javascript;base64,${Buffer.from(bridgeSource).toString('base64')}`);
 const scoped = bridgeInterceptor({ url: 'https://gateway.example/depo/agentic/api/v1/workflows/bridge/previews', headers: { Authorization: 'Bearer explicit-read' } });
 assert.equal(scoped.headers.Authorization, 'Bearer explicit-read');

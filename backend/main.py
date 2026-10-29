@@ -2571,7 +2571,7 @@ async def get_uploaded_ontology_taxonomy(ontology_id: str):
 
 @app.get("/api/v1/ontology/{ontology_id}/reason")
 async def get_uploaded_ontology_reasoning(ontology_id: str):
-    """Return cached Owlready2-backed classes, properties, individuals, and diagnostics."""
+    """Return cached semantic runtime-backed classes, properties, individuals, and diagnostics."""
     try:
         from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 
@@ -2582,7 +2582,7 @@ async def get_uploaded_ontology_reasoning(ontology_id: str):
         logger.exception("Ontology reasoning degraded for %s: %s", ontology_id, e)
         return {
             "status": "degraded",
-            "engine": "owlready2",
+            "engine": "semantica",
             "available": False,
             "ontology_id": ontology_id,
             "prefix": ontology_id,
@@ -2629,7 +2629,7 @@ def get_registered_ontology_data_dictionary(ontology_id: str):
                 "kind": kind,
                 "domain": row.get("domain") or [],
                 "range": row.get("range") or [],
-                "source": "owlready2_reasoning",
+                "source": "semantic_inspection",
             }
 
         entities = {}

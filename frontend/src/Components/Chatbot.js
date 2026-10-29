@@ -22,7 +22,7 @@ const CHAT_COLORS = {
     textMuted: 'var(--theme-color-soft-text, #66788a)',
 };
 
-const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '' }) => {
+const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '', nodeId = '', runId = '', productId = '', productVersion = '', contextLabel = '' }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
@@ -37,9 +37,11 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     const followLatestRef = useRef(true);
     const [followingLatest, setFollowingLatest] = useState(true);
     const sessionIdRef = useRef(getClientSessionId());
-    const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
+    const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || '';
     const scopePrefix = ontologyPrefix || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
-    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix, page: pageId });
+    const scopeNodeId = nodeId || graphData?.root_node_id || graphData?.view?.root_node_id || '';
+    const recordScope = JSON.stringify([runId, productId, productVersion]);
+    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope });
     const resetConversation = useCallback(() => {
         abortRef.current?.abort();
         abortRef.current = null;
@@ -57,10 +59,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     }, [setChatResults]);
 
     useEffect(() => {
-        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix && scopeRef.current.page === pageId) return;
-        scopeRef.current = { id: scopeId, prefix: scopePrefix, page: pageId };
+        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix && scopeRef.current.page === pageId && scopeRef.current.node === scopeNodeId && scopeRef.current.record === recordScope) return;
+        scopeRef.current = { id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope };
         resetConversation();
-    }, [scopeId, scopePrefix, pageId, resetConversation]);
+    }, [scopeId, scopePrefix, pageId, scopeNodeId, recordScope, resetConversation]);
 
     useEffect(() => {
         let readKey = getCredentialProfile('GRAPH_READ_TOKEN');
@@ -108,7 +110,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         const controller = new AbortController();
         let active = true;
         const timeout = setTimeout(() => controller.abort(), 10000);
-        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history?ontology_id=${encodeURIComponent(scopeId)}&ontology_prefix=${encodeURIComponent(scopePrefix)}&page=${encodeURIComponent(pageId)}`);
+        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history?ontology_id=${encodeURIComponent(scopeId)}&ontology_prefix=${encodeURIComponent(scopePrefix)}&page=${encodeURIComponent(pageId)}&node_id=${encodeURIComponent(scopeNodeId)}&run_id=${encodeURIComponent(runId)}&product_id=${encodeURIComponent(productId)}&product_version=${encodeURIComponent(productVersion)}`);
         const headers=serviceAuthHeaders(url);
         fetch(url, { headers, signal: controller.signal, credentials: 'omit', redirect: 'error' })
             .then(async response => {
@@ -132,7 +134,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             }).catch(error => { if (active && !controller.signal.aborted && credential===getCredentialProfile('GRAPH_READ_TOKEN') && error.name !== 'AbortError') setError(error.message); })
             .finally(() => clearTimeout(timeout));
         return () => { active = false; clearTimeout(timeout); controller.abort(); };
-    }, [scopeId, scopePrefix, pageId, historyVersion]);
+    }, [scopeId, scopePrefix, pageId, scopeNodeId, runId, productId, productVersion, historyVersion]);
 
     const [sampleQueries, setSampleQueries] = useState(companionFallbackPrompts);
 
@@ -191,7 +193,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
 
             let activeSessionId = getClientSessionId() || sessionIdRef.current;
             sessionIdRef.current = activeSessionId;
-            const graphContext = (scopeId || pageId) ? { ontology: scopeId, ontology_prefix: scopePrefix, ...(pageId ? {page:pageId}: {}) } : null;
+            const graphContext = (scopeId || scopePrefix || pageId || scopeNodeId || runId || productId) ? { ontology: scopeId, ontology_prefix: scopePrefix, ...(pageId ? {page:pageId}: {}), ...(scopeNodeId ? {node_id:scopeNodeId}: {}), ...(runId ? {run_id:runId}: {}), ...(productId ? {product_id:productId,product_version:productVersion}: {}) } : null;
             let requestAuthorization = '';
             const sendRequest = (sessionId) => {
                 const authHeaders = serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post');
@@ -456,6 +458,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Sparkles size={14} />
                     <span style={{ fontSize: 13, fontWeight: 600 }}>Evidence-grounded answers</span>
+                    {contextLabel && <span style={{fontSize:12}} aria-label="Selected answer context">Context: {contextLabel}</span>}
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,

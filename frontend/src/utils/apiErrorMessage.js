@@ -27,7 +27,18 @@ function serviceMessage(error, fallback) {
   if (status === 503) return 'The service or a required dependency is unavailable. Check Admin service diagnostics and server logs.';
   if (status >= 500) return 'The service failed while processing this request. Check its server logs.';
   if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') return 'The request timed out. Refresh operation status before retrying a write.';
-  if (error?.code === 'ERR_NETWORK') return 'No usable service response. Check service listeners, network access and CORS configuration.';
+  if (error?.code === 'ERR_NETWORK') {
+    // Browsers intentionally do not distinguish a blocked CORS response from a
+    // refused connection here. Do not diagnose either as an API-key rejection.
+    let target;
+    try { target = new URL(error?.config?.url, typeof window !== 'undefined' ? window.location.href : undefined); } catch (_) { /* No trustworthy endpoint. */ }
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && target?.protocol === 'http:') {
+      return 'The HTTPS page is targeting an HTTP service. Configure HTTPS service URLs or the HTTPS gateway, then rebuild the frontend.';
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'The browser is offline. Restore the network connection, then refresh status before retrying a write.';
+    const endpoint = target && ['http:', 'https:'].includes(target.protocol) ? ` from ${target.origin}` : '';
+    return `No usable service response${endpoint}. The browser cannot distinguish an unreachable listener, blocked network or CORS rejection. Check deployment diagnostics and the failed request in Network; reconnecting credentials alone may not resolve it.`;
+  }
   const message = error?.message;
   return typeof message === 'string' && message.trim() ? message : fallback;
 }

@@ -16,6 +16,7 @@ from typing import Any
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 
 store = PostgresRegistry("data_job_runs")
@@ -50,8 +51,9 @@ def _input_count(payload: dict[str, Any]) -> int:
     return len(list(payload.get("entities") or [])) + len(list(payload.get("relationships") or []))
 
 
-def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running") -> dict[str, Any]:
-    run_id = str(uuid.uuid4())
+@ontology_writer
+def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running", run_id: str | None = None) -> dict[str, Any]:
+    run_id = run_id or str(uuid.uuid4())
     checkpoint = payload.get("checkpoint")
     if checkpoint is not None and not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must be an object when supplied")
@@ -111,9 +113,9 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
     return store.put(run_id, record)
 
 
-def enqueue(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+def enqueue(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, run_id: str | None = None) -> dict[str, Any]:
     """Persist work before acknowledging submission to the caller."""
-    return start(definition, payload, correlation_id=correlation_id, status="queued")
+    return start(definition, payload, correlation_id=correlation_id, status="queued", **({'run_id':run_id} if run_id else {}))
 
 
 def claim_next(*, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | None:
@@ -202,6 +204,7 @@ def _retain_analytics_evidence_pending(record, result):
     return _persist_execution(record, {**record, 'status': 'completed', 'completed_at': _now(), 'output_manifest': output})
 
 
+@ontology_writer
 def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     if record.get('job_type') == 'xml-analytics-materialize' and result.get('evidence_status') == 'pending':
         return _retain_analytics_evidence_pending(record, result)

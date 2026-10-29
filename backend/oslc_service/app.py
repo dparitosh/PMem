@@ -4,6 +4,7 @@ from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_
 from backend.routes.oslc_routes import router as server_router
 from .router import router as client_router
 from .lifecycle import router as lifecycle_router
+from .change_control import router as change_control_router
 
 # Lifecycle resources and the default TRS store are PostgreSQL-backed. Keep
 # readiness aligned with the capabilities advertised by this service.
@@ -16,8 +17,10 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Remote query", "/api/v1/oslc/remote/query/{resource_type}", "POST", "Query a configured OSLC provider"),
         ServiceCapability("Stage remote sync", "/api/v1/oslc/remote/sync/{resource_type}", "POST", "Pull and stage a remote OSLC snapshot"),
         ServiceCapability("OSLC server catalog", "/oslc/catalog", description="DEPO OSLC service provider catalog"),
+        ServiceCapability("Change control evidence", "/api/v1/change-control/records", description="Read retained review, execution and delivery evidence across workspaces"),
     ],
 ))
 app.include_router(server_router)
 app.include_router(lifecycle_router)
+app.include_router(change_control_router)
 app.include_router(client_router, prefix="/api/v1")

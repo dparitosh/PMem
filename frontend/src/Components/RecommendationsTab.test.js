@@ -5,7 +5,7 @@ import RecommendationsTab from "../features/recommendations/RecommendationsWorks
 import {agenticClient} from '../services/agenticApi';
 import {API_METHODS} from '../services/apiClient';
 vi.mock('../services/agenticApi',()=>({agenticClient:{get:vi.fn(),post:vi.fn()}}));
-vi.mock('../services/apiClient',()=>({API_METHODS:{recommendations:{health:vi.fn(),changeImpact:vi.fn(),similarParts:vi.fn(),manufacturing:vi.fn()}}}));
+vi.mock('../services/apiClient',()=>({API_METHODS:{recommendations:{health:vi.fn(),resolve:vi.fn(),changeImpact:vi.fn(),similarParts:vi.fn(),manufacturing:vi.fn()}}}));
 test('readiness can be retried after dependencies recover',async()=>{
  API_METHODS.recommendations.health.mockResolvedValueOnce({data:{status:'degraded',readiness:{scenario_ready:false,message:'Service offline'}}})
  .mockResolvedValueOnce({data:{status:'degraded',readiness:{scenario_ready:false,message:'Service recovering'}}});
@@ -33,6 +33,61 @@ test('credential changes abort readiness and fetch a current session result', as
 const ready=()=>API_METHODS.recommendations.health.mockResolvedValue({data:{status:'ok',readiness:{scenario_ready:true,message:'Graph available',service_readiness:{'change-impact':true,'similar-parts':true,manufacturing:true}}}});
 beforeEach(()=>{vi.clearAllMocks();sessionStorage.clear();agenticClient.get.mockResolvedValue({data:{read_goal_capabilities:{recommendation_evidence:1},tools:[{id:'recommendation.change_impact'},{id:'recommendation.similar_parts'},{id:'recommendation.manufacturing'}]}});});
 const direct=()=>fireEvent.change(screen.getByLabelText('Analysis method'),{target:{value:'graph'}});
+const selectObject=(name,service='change-impact')=>fireEvent(window,new CustomEvent('dt-rec-prefill',{detail:{service,name,node_id:'selected-object'}}));
+
+test.each(['Change Impact','Similar Parts','Process Context'])('agent requires selected business identity in %s',async tab=>{
+ ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.click(screen.getByRole('tab',{name:tab}));
+ const label=tab==='Change Impact'?'Changed item':tab==='Similar Parts'?'Reference part':'Part or assembly';
+ fireEvent.change(screen.getByLabelText(label),{target:{value:'Motor'}});
+ expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
+ expect(screen.queryByText('Ready to analyse')).toBeNull();
+ expect(agenticClient.post).not.toHaveBeenCalled();
+ selectObject('Motor',tab==='Change Impact'?'change-impact':tab==='Similar Parts'?'similar-parts':'manufacturing');
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeEnabled());
+ fireEvent.change(screen.getByLabelText(label),{target:{value:'Another motor'}});
+ expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
+});
+
+test('ambiguous direct search shows business objects and retries using the selected identity',async()=>{
+ ready();
+ API_METHODS.recommendations.similarParts.mockRejectedValueOnce({response:{status:409,data:{detail:'Graph search is bounded; select its node_id and ontology scope'}}})
+  .mockResolvedValueOnce({data:{message:'No similar candidates',similar_parts:[]}});
+ API_METHODS.recommendations.resolve.mockResolvedValue({data:{matches:[{node_id:'motor-2',name:'INDUCTION MOTOR',scope:{ontology_id:'plant-b'}}],truncated:true}});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');direct();
+ fireEvent.click(screen.getByRole('tab',{name:'Similar Parts'}));
+ fireEvent.change(screen.getByLabelText('Reference part'),{target:{value:'induction motor'}});
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ await screen.findByRole('region',{name:'Matching business objects'});
+ fireEvent.click(screen.getByRole('button',{name:'Use this object'}));
+ fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
+ await waitFor(()=>expect(API_METHODS.recommendations.similarParts).toHaveBeenLastCalledWith('INDUCTION MOTOR',10,{node_id:'motor-2',ontology_id:'plant-b'},expect.anything()));
+});
+
+test('inline selected identity is included in the agent context',async()=>{
+ ready();
+ API_METHODS.recommendations.resolve.mockResolvedValue({data:{matches:[{node_id:'motor-2',name:'Motor',scope:{ontology_id:'plant-b'}}],truncated:false}});
+ agenticClient.post.mockResolvedValue({data:{run_id:'goal-selection',status:'running'}});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Motor'}});
+ fireEvent.click(screen.getByRole('button',{name:'Find business objects'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Use this object'}));
+ fireEvent.click(screen.getByRole('button',{name:'Analyse with agent'}));
+ await waitFor(()=>expect(agenticClient.post).toHaveBeenCalledWith(expect.stringContaining('/agents/graph-analyst/goals'),expect.objectContaining({context:expect.objectContaining({node_id:'motor-2',ontology_id:'plant-b'})}),expect.anything()));
+});
+
+test('editing a query discards a slow object lookup response',async()=>{
+ ready();let resolve;
+ API_METHODS.recommendations.resolve.mockImplementation(()=>new Promise(done=>{resolve=done;}));
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Motor'}});
+ fireEvent.click(screen.getByRole('button',{name:'Find business objects'}));
+ const signal=API_METHODS.recommendations.resolve.mock.calls[0][2].signal;
+ fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ resolve({data:{matches:[{node_id:'old',name:'Motor',scope:{}}],truncated:false}});
+ await waitFor(()=>expect(signal.aborted).toBe(true));
+ expect(screen.queryByRole('region',{name:'Matching business objects'})).toBeNull();
+});
 
 test('graph prefill retains identity and scope until the user edits the object',async()=>{
  ready(); API_METHODS.recommendations.changeImpact.mockResolvedValue({data:{message:'No linked evidence'}});
@@ -101,13 +156,13 @@ test('empty graph results do not claim a successful structured recommendation',a
 });
 
 test('agent mode submits the selected analysis through the existing read-goal endpoint and renders cited policy evidence',async()=>{
- ready();const context={page:'quality',recommendation_service:'change-impact',recommendation_object:'Motor',recommendation_top_n:10};
+ ready();const context={page:'quality',node_id:'selected-object',recommendation_service:'change-impact',recommendation_object:'Motor',recommendation_top_n:10};
  agenticClient.post.mockResolvedValue({data:{run_id:'goal-recommendation',goal:'Inspect Motor',status:'completed',context,
   observations:[{id:'observation-2',tool_id:'recommendation.change_impact',status:'completed',result:{message:'No matching graph term was found.',decision_policy:{status:'not_configured'}}}],
   result:{summary:'No matching object was returned.',evidence_steps:['observation-2'],recommendation_observation_id:'observation-2'}}});
  render(<RecommendationsTab/>);await screen.findByText('Graph available');
  expect(screen.getByLabelText('Analysis method')).toHaveValue('agent');
- fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Motor'}});
+ selectObject('Motor');
  fireEvent.click(await screen.findByRole('button',{name:'Analyse with agent'}));
  expect(await screen.findByRole('heading',{name:'Change Impact results'})).toBeVisible();
  expect(agenticClient.post).toHaveBeenCalledWith(expect.stringContaining('/agents/graph-analyst/goals'),expect.objectContaining({context,submission_id:expect.any(String)}),expect.anything());
@@ -152,7 +207,7 @@ test('an access rejection blocks analysis until access has been verified',async(
 test('agent errors do not leave a contradictory ready-to-analyse message',async()=>{
  ready();agenticClient.post.mockRejectedValue(new Error('Service access was rejected'));
  render(<RecommendationsTab/>);await screen.findByText('Graph available');
- fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ selectObject('Bearing');
  fireEvent.click(await screen.findByRole('button',{name:'Analyse with agent'}));
  await screen.findByText('Service access was rejected');
  expect(screen.queryByText('Ready to analyse')).toBeNull();
@@ -162,6 +217,7 @@ test('invalid similarity limits do not disable other agent analyses',async()=>{
  ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');
  fireEvent.click(screen.getByRole('tab',{name:'Similar Parts'}));
  fireEvent.change(screen.getByLabelText('Reference part'),{target:{value:'Bearing'}});
+ selectObject('Bearing','similar-parts');
  fireEvent.change(screen.getByLabelText('Results'),{target:{value:''}});
  expect(screen.getByRole('button',{name:'Analyse with agent'})).toBeDisabled();
  expect(screen.getByText('Choose a whole number of results from 1 to 50.')).toBeVisible();
@@ -199,7 +255,7 @@ test.each([null,[],{impacted_parts:[null]},{change_entity:{name:{raw:'wrong'}}},
 test('unusable completed agent evidence is explicitly reported',async()=>{
  ready();agenticClient.post.mockResolvedValue({data:{run_id:'goal-missing',status:'completed',result:{summary:'No cited observation'}}});
  render(<RecommendationsTab/>);await screen.findByText('Graph available');
- fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Bearing'}});
+ selectObject('Bearing');
  fireEvent.click(screen.getByRole('button',{name:'Analyse with agent'}));
  expect(await screen.findByText(/completed without usable evidence/)).toBeVisible();
  expect(screen.queryByRole('heading',{name:'Change Impact results'})).toBeNull();

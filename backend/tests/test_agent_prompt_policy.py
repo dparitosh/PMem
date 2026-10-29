@@ -11,8 +11,9 @@ class PromptPolicyTests(unittest.TestCase):
         self.assertTrue(identifiers)
         self.assertEqual(len(identifiers), len(set(identifiers)))
         for agent in source['agents']:
-            self.assertIn(agent['id'],agent['system_prompt'])
-            self.assertEqual(agent['prompt_policy_version'],'proposal-v3')
+            self.assertTrue(agent['system_prompt'].strip())
+            self.assertTrue(agent['tools'])
+            self.assertEqual(agent['prompt_policy_version'],'proposal-v4')
             for mode in ('native','structured'):
                 text=proposal_instructions(agent,mode)
                 self.assertIn(agent['system_prompt'],text)

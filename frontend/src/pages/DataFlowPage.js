@@ -1,4 +1,6 @@
-import { getCredentialProfile } from '../services/serviceAuth';
+import SemanticSupport from "../Components/SemanticSupport";
+import { getCredentialProfile, publicationRecoveryScope } from '../services/serviceAuth';
+import { createSubmissionId } from '../utils/submissionId';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dataPipelineAPI, metadataRegistryAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
@@ -82,13 +84,17 @@ function QualityOverview({ runs, accepted, rejected, unavailable }) {
   </article>;
 }
 
-export default function DataFlowPage() {
+export default function DataFlowPage({ onCompanionRecordChange }) {
   const [workspace,setWorkspace]=useState('runs');
   const [health, setHealth] = useState(null);
   const [telemetry, setTelemetry] = useState(null);
   const [runs, setRuns] = useState([]);
   const [definitions, setDefinitions] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
+  useEffect(() => {
+    onCompanionRecordChange?.({ page: 'data-flow', run_id: selectedRun?.run_id || '' });
+    return () => onCompanionRecordChange?.(null);
+  }, [onCompanionRecordChange, selectedRun?.run_id]);
   const [runStatus,setRunStatus]=useState('all');
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -104,12 +110,27 @@ export default function DataFlowPage() {
   const [semanticReleases, setSemanticReleases] = useState([]);
   const [releaseIndex, setReleaseIndex] = useState('');
   const [publicationSource, setPublicationSource] = useState('');
+  const sessionGeneration = useRef(0);
+  const operationLock = useRef(false);
+  const releaseSequence = useRef(0);
+  const pendingReplays = useRef(new Map());
+  const replayIntent = runId => {
+    const key = `depo.pipeline.replay:${publicationRecoveryScope()}:${runId}`;
+    let id = pendingReplays.current.get(key);
+    try { id = id || sessionStorage.getItem(key); } catch { /* Memory remains available. */ }
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(String(id||''))) id = createSubmissionId();
+    pendingReplays.current.set(key,id);
+    try { sessionStorage.setItem(key,id); } catch { /* Retain in memory. */ }
+    return {key,id};
+  };
   const loadReleases = async () => {
+    const generation=sessionGeneration.current, sequence=++releaseSequence.current;
     try {
       const response = await metadataRegistryAPI.list({ limit: 200, lifecycle_status: 'approved' });
+      if(generation!==sessionGeneration.current||sequence!==releaseSequence.current)return;
       setSemanticReleases((responsePayload(response)?.assets || []).filter((asset) => asset.lifecycle_status === 'approved'));
       setReleaseIndex('');
-    } catch (failure) { setReplayError(apiErrorMessage(failure, 'Approved releases could not be loaded.')); }
+    } catch (failure) { if(generation===sessionGeneration.current&&sequence===releaseSequence.current)setReplayError(apiErrorMessage(failure, 'Approved releases could not be loaded.')); }
   };
   const preferredRunId = useRef('');
   const loadSequence = useRef(0);
@@ -178,17 +199,26 @@ export default function DataFlowPage() {
     load({ initial: true });
     const interval = window.setInterval(() => { if (!document.hidden) load(); }, REFRESH_INTERVAL_MS);
     const credentialsChanged = () => {
+      sessionGeneration.current += 1; releaseSequence.current += 1;
       loadSequence.current += 1; loadInFlight.current = false;
       setHealth(null); setTelemetry(null); setRuns([]); setDefinitions([]); setSelectedRun(null);
       setSemanticReleases([]); setReleaseIndex(''); setReplayError('');
+      setReplayApprover(''); setPublicationSource(''); preferredRunId.current='';
       load({ initial: true });
     };
-    window.addEventListener('depo:credentials-changed', credentialsChanged);
-    window.addEventListener('depo:credentials-cleared', credentialsChanged);
+    const events=['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
+    events.forEach(event=>window.addEventListener(event,credentialsChanged));
+    const verified=()=>{
+      // A successful reconnect supersedes reads started before verification.
+      loadSequence.current+=1; loadInFlight.current=false;
+      load({initial:true});
+    };
+    window.addEventListener('depo:access-verified',verified);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener('depo:credentials-changed', credentialsChanged);
-      window.removeEventListener('depo:credentials-cleared', credentialsChanged);
+      events.forEach(event=>window.removeEventListener(event,credentialsChanged));
+      window.removeEventListener('depo:access-verified',verified);
+      sessionGeneration.current += 1; releaseSequence.current += 1;
       loadSequence.current += 1;
       loadInFlight.current = false;
     };
@@ -214,24 +244,31 @@ export default function DataFlowPage() {
   );
 
   const replay = async (run) => {
+    if(operationLock.current)return;
+    operationLock.current=true;
+    const generation=sessionGeneration.current;
     setReplayingId(run.run_id);
     setReplayError('');
     try {
       const approvalToken = getCredentialProfile('DATA_JOB_EXECUTION_TOKEN').trim();
-      const response = await dataPipelineAPI.replay(run.run_id, approvalToken ? {
+      const intent=replayIntent(run.run_id);
+      const response = await dataPipelineAPI.replay(run.run_id, {idempotency_key:intent.id,...(approvalToken ? {
         approved_by: replayApprover.trim(),
         approval_token: approvalToken,
-      } : {});
+      } : {})});
       const replayed = requireRunManifest(responsePayload(response));
+      pendingReplays.current.delete(intent.key);
+      try { sessionStorage.removeItem(intent.key); } catch { /* Optional storage. */ }
+      if(generation!==sessionGeneration.current)return;
       preferredRunId.current = replayed.run_id;
       setSelectedRun(replayed);
 
       setWorkspace('runs');
       await load();
     } catch (replayFailure) {
-      setReplayError(apiErrorMessage(replayFailure, 'Replay could not be started.'));
+      if(generation===sessionGeneration.current)setReplayError(apiErrorMessage(replayFailure, 'Replay was not confirmed. Retry uses the same submission reference; check retained status before starting other work.'));
     } finally {
-      setReplayingId('');
+      operationLock.current=false; setReplayingId('');
     }
   };
 
@@ -241,8 +278,10 @@ export default function DataFlowPage() {
   };
 
   const manageDefinition = async (definition, action) => {
-    if (definitionLock.current) return;
+    if (definitionLock.current||operationLock.current) return;
     definitionLock.current = true;
+    operationLock.current=true;
+    const generation=sessionGeneration.current;
     const key = `${definition.job_id}:${definition.version}:${action}`;
     setDefinitionActionId(key);
     setReplayError('');
@@ -261,23 +300,32 @@ export default function DataFlowPage() {
       if (action === 'run') {
         const priorRun = runs.find(run => run.job_id === definition.job_id && run.job_version === definition.version);
         if (!priorRun) throw new Error('Supply job inputs through the matching import or analytics page first. After that, this action replays retained inputs.');
-        const result = await dataPipelineAPI.replay(priorRun.run_id, approval());
-        const run = requireRunManifest(responsePayload(result));
+        const intent=replayIntent(priorRun.run_id);
+        const result = await dataPipelineAPI.replay(priorRun.run_id, {...approval(),idempotency_key:intent.id});
+        const confirmedRun=requireRunManifest(responsePayload(result));
+        pendingReplays.current.delete(intent.key);
+        try { sessionStorage.removeItem(intent.key); } catch { /* Optional storage. */ }
+        if(generation!==sessionGeneration.current)return;
+        const run = confirmedRun;
         preferredRunId.current = run.run_id;
         setSelectedRun(run);
       }
 
 
-      await load();
+      if(generation===sessionGeneration.current)await load();
     } catch (actionFailure) {
-      setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
+      if(generation===sessionGeneration.current)setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
     } finally {
       definitionLock.current = false;
+      operationLock.current=false;
       setDefinitionActionId('');
     }
   };
 
   const publish = async (run) => {
+    if(operationLock.current)return;
+    operationLock.current=true;
+    const generation=sessionGeneration.current;
     setPublishingId(run.run_id);
     setReplayError('');
     try {
@@ -289,10 +337,11 @@ export default function DataFlowPage() {
         source_system: publicationSource.trim() || run.source_system,
       }, approval(getCredentialProfile('CEIM_PUBLISH_APPROVAL_TOKEN')));
 
-      await load();
+      if(generation===sessionGeneration.current)await load();
     } catch (publishFailure) {
-      setReplayError(apiErrorMessage(publishFailure, 'Run could not be published.'));
+      if(generation===sessionGeneration.current)setReplayError(apiErrorMessage(publishFailure, 'Run could not be published.'));
     } finally {
+      operationLock.current=false;
       setPublishingId('');
     }
   };
@@ -307,7 +356,7 @@ export default function DataFlowPage() {
           <p>Monitor processing, manage pipeline jobs and turn validated outputs into reusable evidence. Refreshes every 15 seconds.</p>
         </div>
         <div className="data-flow-page__actions">
-          <Status value={health?.status || health?.spark?.status || 'checking'} />
+          <span>Execution engine <Status value={health?.status || health?.spark?.status || 'checking'} /></span>
           <button className="data-flow-button" type="button" onClick={() => load()} disabled={refreshing}>
             <ix-icon name="refresh" aria-hidden="true" /> {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -384,6 +433,7 @@ export default function DataFlowPage() {
                 <dt>Product approval</dt><dd>{selectedRun.output_manifest.data_product_draft.publication_requirements?.join('; ') || 'Awaiting data-product approval'}</dd>
               </>}
             </dl>
+            <SemanticSupport report={selectedRun.semantic_support}/>
             <p className="data-flow-help">Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.</p>
             {(() => { try { productDraftFromRun(selectedRun); return <a href={`#/data-products?run_id=${encodeURIComponent(selectedRun.run_id)}`}>Create product from retained run evidence</a>; } catch { return <p>A completed run with retained output artifacts is required to create a product draft.</p>; } })()}
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}

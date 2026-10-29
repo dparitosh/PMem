@@ -8,6 +8,7 @@ export default function BrowserAccessBoundary({ children }) {
   const [mode, setMode] = useState('manual');
   const [message, setMessage] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [connected, setConnected] = useState(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let stopped = false;
@@ -33,6 +34,7 @@ export default function BrowserAccessBoundary({ children }) {
     };
     const disconnected = () => {
       stopped = true; generation += 1;
+      setConnected(false);
       try { sessionStorage.setItem(DISCONNECTED, 'true'); } catch { /* Memory-only logout still applies. */ }
       if (local) setMessage('Local access is disconnected.');
     };
@@ -46,6 +48,7 @@ export default function BrowserAccessBoundary({ children }) {
         if (!response.ok) throw new Error(body.detail || 'Local access could not connect.');
         if (!cancelled && !stopped && version === generation) {
           installBrowserSession(body);
+          setConnected(true);
           window.dispatchEvent(new Event('depo:credentials-changed'));
           setMessage('');
         }
@@ -100,5 +103,5 @@ export default function BrowserAccessBoundary({ children }) {
   return <>{mode === 'local' && message && <div role="status" style={{padding:'8px 12px',borderBottom:'1px solid var(--ui-border,#d5dfe9)',fontSize:12}}>{message} <button type="button" disabled={connecting} onClick={() => {
     try { sessionStorage.removeItem(DISCONNECTED); } catch { /* Storage is optional. */ }
     setRetry(value => value + 1);
-  }}>{connecting ? 'Connecting…' : 'Reconnect local access'}</button></div>}{children}</>;
+  }}>{connecting ? 'Connecting…' : 'Reconnect local access'}</button></div>}{mode !== 'local' || connected ? children : null}</>;
 }

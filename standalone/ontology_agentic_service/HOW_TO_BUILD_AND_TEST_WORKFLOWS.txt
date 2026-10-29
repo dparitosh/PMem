@@ -11,12 +11,10 @@ AGENT AND TOOL MAPPING
 ----------------------
 Ontology Intake Agent
   - ontology_inspect                 local RDFLib
-  - owlready2_analyze                local Owlready2; reasoning is optional
   - external_registered_ontologies   external HTTP API
 
 Ontology Review Agent
   - ontology_review                  local RDFLib
-  - owlready2_analyze                local Owlready2; reasoning is optional
 
 Ontology Alignment Agent
   - ontology_alignment_plan          local RDFLib, read-only planning
@@ -103,11 +101,13 @@ Set either URL for a remote MCP endpoint or COMMAND plus JSON arguments/environm
 MCP process. Disabled MCP returns no tools. If security filtering is enabled, writes are denied
 unless NEO4J_MCP_ALLOW_WRITES=true; NEO4J_MCP_ALLOWED_TOOLS can further allow-list tool names.
 
-OWLREADY2 REASONING
--------------------
-Owlready2 structural loading is local. HermiT/Pellet reasoning additionally needs a working Java
-runtime. Imported ontologies must be resolvable locally because remote imports are disabled.
-Use ../../backend/requirements.txt for every supported tool.
+STRUCTURAL REVIEW SCOPE
+-----------------------
+The obsolete Owlready2/Java tool has been removed from this standalone pack. Remove any old
+owlready2_analyze registration and coded-tool file when upgrading an existing IIF registry.
+Intake and review use RDFLib for asserted facts. They do not establish full OWL-DL consistency.
+Core PMem provides its separate Semantica/RDF review tools; this pack does not claim to replace
+a full logical reasoner. Use ../../backend/requirements.txt for supported dependencies.
 
 DEPENDENCY SETS
 ---------------
@@ -164,6 +164,11 @@ TESTING
 From this folder:
   python -m pip install -r ../../backend/requirements.txt
   python -m pytest -q
+
+Run these commands with the existing IIF host's Python environment. That host must provide
+llama_index.core.tools.FunctionTool; the PMem backend manifest intentionally does not install
+the separate IIF orchestration SDK. A PMem-only environment can run the registry/source checks,
+but cannot qualify actual IIF tool registration until the host SDK is available.
 
 Validate against IIF's registry contract without starting IIF:
   python D:\Download\IIF_v1\AgentsRegistry\validate_registry.py --root D:\Depo_Onto_Engine\standalone\ontology_agentic_service

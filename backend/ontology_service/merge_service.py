@@ -180,6 +180,17 @@ class GovernedMergeService:
                       "limitations": ["Different IRIs are not automatically equivalent",
                           "Logical consistency and domain/range compatibility require separate validation"]},
                   "turtle": merged.serialize(format="turtle")}
+        if payload.get('owl_dl_check') is True and not defer_semantics:
+            from .owl_dl import inspect_graph
+            from backend.depo_platform.semantic_support import assessment
+            result = inspect_graph(merged, artifact_sha256=hashlib.sha256(record['turtle'].encode('utf-8')).hexdigest())
+            record['owl_dl_evidence'] = result
+            record['semantic_support'] = assessment(result)
+            from .owl_dl import semantic_dependencies
+            record['semantic_dependencies'] = semantic_dependencies()
+            record['validation']['formal_reasoning_performed'] = result.get('deductive_reasoner_executed') is True
+            if record['semantic_support']['disposition'] != 'ready_for_review':
+                record['publish_recommended'] = False
         values = {} if self.registry is not None else self._load()
         values[preview_id] = record
         self._save(values, preview_id)
@@ -237,6 +248,8 @@ class GovernedMergeService:
         shared = self._decision_policy(record)
         governance['decision_policy'] = shared
         reasons = []
+        if record.get('semantic_support', {}).get('disposition') in {'conflict', 'unverified'}:
+            reasons.append('owl_dl_' + record['semantic_support']['disposition'])
         if shared['blocking']: reasons.append('decision_policy_' + shared['status'])
         if governance['overall_verdict'] != 'APPROVED': reasons.append('steward_governance_hold')
         if conflicts or record.get('conflicts'): reasons.append('unresolved_rdf_owl_conflicts')
@@ -284,6 +297,12 @@ class GovernedMergeService:
             raise ValueError("Merge preview not found")
         if record["conflicts"]:
             raise ValueError("Merge preview contains unresolved RDF/OWL conflicts")
+        if record.get('semantic_support', {}).get('disposition') == 'conflict':
+            raise ValueError('Correct the logical conflicts in the reviewed union before applying this merge')
+        if record.get('semantic_support'):
+            from .owl_dl import semantic_dependencies
+            if record.get('semantic_dependencies') != semantic_dependencies():
+                raise ValueError('Semantic foundation or reasoner changed; prepare a new merge review')
         if record.get('applied_result'):
             return record['applied_result']
         if record.get('background_validation'):

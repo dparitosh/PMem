@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from contextlib import nullcontext
+from backend.depo_platform.network import bounded_timeout_seconds
 
 from backend.data_pipeline_service.schema_limits import read_schema_bytes
 
@@ -55,7 +57,7 @@ class DataJobAudit(unittest.TestCase):
         store = SimpleNamespace(resolve=lambda a:({'filename':'sample.nt'},Path('sample.nt').resolve()))
         ns = {'Any':object, 'ArtifactStore':lambda:store, 're':re, 'time':time, 'uuid':uuid}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual RDF runner>','exec'),ns)
-        runner = SimpleNamespace(_lock=threading.Lock(), _spark_session=lambda:SimpleNamespace(sparkContext=SimpleNamespace(textFile=lambda p:lines)),
+        runner = SimpleNamespace(_lock=threading.Lock(), _work=nullcontext, _spark_session=lambda:SimpleNamespace(sparkContext=SimpleNamespace(textFile=lambda p:lines)),
             _now=lambda:'2026-10-06', _runs=deque())
         result = ns['rdf_quality_statistics'](runner,{'artifact_id':'sha256:test'},correlation_id='test')
         self.assertEqual(result['counts']['distinct_predicates'],75)
@@ -82,7 +84,7 @@ class DataJobAudit(unittest.TestCase):
             if telemetry_fails and kw.get('status') == 'busy':
                 raise RuntimeError('telemetry offline')
         execute = Mock()
-        ns = {'os':os, 'logging':logging, 'signal':SimpleNamespace(SIGINT=signal.SIGINT, SIGTERM=signal.SIGTERM, signal=lambda *a:None),
+        ns = {'os':os, 'logging':logging, 'bounded_timeout_seconds':bounded_timeout_seconds, 'signal':SimpleNamespace(SIGINT=signal.SIGINT, SIGTERM=signal.SIGTERM, signal=lambda *a:None),
               'threading':Threads, 'run_records':records, 'worker_status':SimpleNamespace(put=telemetry),
               'job_definitions':SimpleNamespace(get=lambda *a:{'enabled':True,'lifecycle_state':'approved','retry_policy':{'max_attempts':2}}),
               'runner':SimpleNamespace(health=lambda:{},shutdown=lambda:None), 'execute_claimed_job':execute}

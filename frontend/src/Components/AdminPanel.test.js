@@ -11,6 +11,8 @@ vi.mock('../services/apiClient', () => ({ API_METHODS: { admin: {
   clearCache: vi.fn(),
   clearImportWorkflows: vi.fn(),
   resetDatabase: vi.fn(),
+  previewVanillaReset: vi.fn(),
+  resetVanilla: vi.fn(),
 }, agentic: { isConfigured: () => false } } }));
 vi.mock('../contexts/OntologyContext', () => ({ useOntologies: () => ({ fetchOntologies: async () => {} }) }));
 
@@ -28,6 +30,39 @@ test('clearing import workflows requires confirmation and clears saved browser h
   fireEvent.click(confirm);
   await screen.findByText(/Import workflows cleared: 3/);
   expect(window.localStorage.getItem('depo.import.jobs.v2')).toBeNull();
+});
+
+test('vanilla reset previews scope and cannot execute outside isolated maintenance', async () => {
+  API_METHODS.admin.previewVanillaReset.mockResolvedValue({ data: { registry_records: { agentic_workflow_runs: 4 }, table_rows: {}, retained_files: { uploads: 2 }, can_execute: false, maintenance_instruction: 'Stop services and open isolated maintenance.' } });
+  render(<AdminPanel />);
+  const preview = screen.getByRole('button', { name: 'Preview vanilla reset' });
+  await waitFor(() => expect(preview).toBeEnabled());
+  fireEvent.click(preview);
+  await screen.findByText('agentic_workflow_runs');
+  expect(screen.getByRole('button', { name: 'Reset DEPO to vanilla state' })).toBeDisabled();
+  expect(screen.getByText('Stop services and open isolated maintenance.')).toBeVisible();
+  expect(API_METHODS.admin.resetVanilla).not.toHaveBeenCalled();
+});
+
+test('vanilla reset requires exact phrase and submits the preview identity once', async () => {
+  sessionStorage.setItem('depo.browserSession.v1', 'existing-delegated-access');
+  sessionStorage.setItem('bridge-workflow:old', 'obsolete-run');
+  API_METHODS.admin.previewVanillaReset.mockResolvedValue({ data: { registry_records: {}, table_rows: {}, retained_files: {}, can_execute: true, preview_digest: 'preview-identity' } });
+  API_METHODS.admin.resetVanilla.mockResolvedValue({ data: { status: 'completed', run_id: 'vanilla-test' } });
+  render(<AdminPanel />);
+  const preview = screen.getByRole('button', { name: 'Preview vanilla reset' });
+  await waitFor(() => expect(preview).toBeEnabled());
+  fireEvent.click(preview);
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset DEPO to vanilla state' }));
+  const confirm = screen.getByRole('button', { name: 'Delete application data' });
+  expect(confirm).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Confirmation phrase'), { target: { value: 'RESET DEPO TO VANILLA' } });
+  fireEvent.click(confirm);
+  await screen.findByText(/Vanilla reset completed. Receipt: vanilla-test/);
+  expect(API_METHODS.admin.resetVanilla).toHaveBeenCalledWith('preview-identity');
+  expect(API_METHODS.admin.resetVanilla).toHaveBeenCalledTimes(1);
+  expect(sessionStorage.getItem('bridge-workflow:old')).toBeNull();
+  expect(sessionStorage.getItem('depo.browserSession.v1')).toBe('existing-delegated-access');
 });
 
 test('failed import cleanup retains browser history and displays the error', async () => {

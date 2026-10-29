@@ -988,6 +988,53 @@ class ClearImportWorkflowsRequest(BaseModel):
     confirm: str
 
 
+class VanillaResetRequest(BaseModel):
+    confirm: str
+    preview_digest: str
+
+
+@router.get('/reset-vanilla/preview', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def preview_vanilla_reset():
+    from backend.depo_platform.vanilla_reset import inventory, assert_isolated
+    from backend.mesh_store import PostgresRegistry
+    try:
+        with PostgresRegistry('maintenance_state')._connect() as db:
+            plan = inventory(db, _project_root())
+        try:
+            assert_isolated(_project_root())
+            plan['can_execute'] = True
+        except ValueError as exc:
+            plan.update(can_execute=False, maintenance_instruction=str(exc))
+        return plan
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post('/reset-vanilla', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def reset_vanilla(body: VanillaResetRequest):
+    if body.confirm != 'RESET DEPO TO VANILLA':
+        raise HTTPException(400, 'Typed reset confirmation is required')
+    from backend.depo_platform.vanilla_reset import reset
+    from backend.mesh_store import PostgresRegistry
+    try:
+        cleaner = Neo4jSchemaCleaner()
+        try:
+            with PostgresRegistry('maintenance_state')._connect() as db:
+                return reset(db, _project_root(), expected_digest=body.preview_digest,
+                             graph_reset=lambda: cleaner.reset_database(recreate_indexes=True))
+        finally:
+            cleaner.close()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Vanilla reset failed before completion')
+        raise HTTPException(500, 'Reset could not complete; inspect logs/vanilla-reset before recovery') from exc
+
+
 @router.post('/clear-import-workflows', dependencies=[Depends(require_admin_api_key)])
 @_maintenance_worker
 @ontology_cleanup

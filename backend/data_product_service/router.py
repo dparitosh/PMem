@@ -19,6 +19,8 @@ from backend.mesh_store import PostgresRegistry
 from backend.depo_platform.authorization import approval_identity, graph_read_identity, service_write_identity
 from backend.depo_platform.semantic_registry import release_reference, resolve_approved_release
 from .packaging import build_package, publication_digest, verify_package
+from backend.depo_platform.product_lineage import validate_lineage, resolve_lineage
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 logger = logging.getLogger(__name__)
 
@@ -143,13 +145,15 @@ def _validate(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
         errors.append('version must use semantic versioning')
     try: _reject_secrets(payload)
     except ValueError as exc: errors.append(str(exc))
+    try: validate_lineage(payload)
+    except ValueError as exc: errors.append(str(exc))
     artifacts, artifact_errors = _artifact_records(payload)
     return artifacts, errors + artifact_errors + _semantic_release_errors(payload)
 
 
 def _catalog_payload(record: dict) -> dict:
     fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "semantic_releases", "manifest")
-    return {field: record.get(field) for field in fields} | {field: record[field] for field in ("product_kind", "analytics_readiness") if record.get(field) is not None} | {"product_url": f"/api/v1/data-products/{record['product_id']}:{record['version']}"}
+    return {field: record.get(field) for field in fields} | {field: record[field] for field in ("description", "product_kind", "analytics_readiness", "lineage_verification") if record.get(field) is not None} | {"product_url": f"/api/v1/data-products/{record['product_id']}:{record['version']}"}
 
 
 async def _register_catalog(record: dict) -> dict:
@@ -229,24 +233,27 @@ def _preview_identity(request: Request):
 
 @router.post("/preview", dependencies=[Depends(_preview_identity)])
 async def preview(payload: ProductPublicationBody) -> dict:
-    _, errors = await _product_io(_validate, payload)
+    artifacts, errors = await _product_io(_validate, payload)
+    lineage = None
     if not errors:
         try:
+            lineage = await resolve_lineage(payload, artifacts)
             for release in payload['semantic_releases']:
                 await resolve_approved_release(release)
         except ValueError as exc:
             errors.append(str(exc))
         except RuntimeError as exc:
             raise HTTPException(503, str(exc)) from exc
-    return {"valid": not errors, "errors": errors, "lineage": payload.get("sources", []), "ontologies": payload.get("ontologies", [])}
+    return {"valid": not errors, "errors": errors, "lineage": payload.get("sources", []), "ontologies": payload.get("ontologies", []), 'lineage_verification': lineage}
 
 
 @router.post("/publish")
+@ontology_writer
 async def publish(payload: ProductPublicationBody, request: Request) -> dict:
+    approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     artifacts, errors = await _product_io(_validate, payload)
     if errors:
         raise HTTPException(422, {"errors": errors})
-    approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     key = _key(payload)
     async with _product_lock(key) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
@@ -264,6 +271,7 @@ async def publish(payload: ProductPublicationBody, request: Request) -> dict:
         if existing:
             raise HTTPException(409, "A product version is immutable; retry catalog delivery or publish a new version")
         try:
+            lineage = await resolve_lineage(payload, artifacts)
             semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
         except ValueError as exc:
             raise HTTPException(422, detail=str(exc)) from exc
@@ -277,6 +285,7 @@ async def publish(payload: ProductPublicationBody, request: Request) -> dict:
         safe_payload['approved_by'] = approver
         record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
         record['publication_digest'] = package['manifest']['publication_digest']
+        record['lineage_verification'] = lineage
         await _product_io(store.put_with_related, key, record, related_namespace=approval_store.namespace,
             related_key=f"{key}:{record['published_at']}", related_value={"product": key, "approved_by": approver, "approved_at": _now()})
         return _public_product(await _product_io(store.put, key, await _register_catalog(record)))
@@ -362,8 +371,13 @@ def download(product_version: str) -> FileResponse:
 
 
 @router.get("/{product_version}", dependencies=[Depends(graph_read_identity)])
-def get_product(product_version: str) -> dict:
+def get_product(product_version: str, request: Request = None) -> dict:
     record = store.get(product_version)
     if not record:
         raise HTTPException(404, "Data product not found")
-    return _public_product(record)
+    from backend.depo_platform.semantic_support import read_support
+    refs = record.get('ontologies') or []
+    references = [ref if isinstance(ref, str) else ref.get('ontology_id') for ref in refs if isinstance(ref, (str, dict))]
+    ids = list(dict.fromkeys(key for key in references if isinstance(key, str) and key))[:2]
+    return {**_public_product(record), 'semantic_support': [read_support(key, dict(request.headers) if request else {}) for key in ids],
+            'semantic_support_scope': 'Up to two current referenced models; does not revalidate immutable product contents or replace approved semantic releases'}

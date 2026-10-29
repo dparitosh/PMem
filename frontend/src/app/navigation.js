@@ -3,6 +3,7 @@ import { ixIconName } from '../ui/ixIconRegistry';
 export const navigationItems = [
   { id: 'home', label: 'Home', icon: ixIconName.home },
   { id: 'import', label: 'Import', icon: ixIconName.cloudUpload },
+  { id: 'change-control', label: 'Change Control', icon: ixIconName.refreshSettings },
   { id: 'data-flow', label: 'Data Flow', icon: ixIconName.gauge },
   { id: 'ontology', label: 'Ontology Junction', icon: ixIconName.assetNetwork },
   { id: 'catalog', label: 'Data Catalog', icon: ixIconName.database },
@@ -21,6 +22,8 @@ export const navigationItems = [
 ];
 
 export const pageAliases = {
+  'change-control': 'change-control',
+  changes: 'change-control',
   'data-quality': 'data-quality',
   catalog: 'catalog',
   'data-catalog': 'catalog',

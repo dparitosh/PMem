@@ -7,7 +7,9 @@ export function formatChatMarkdown(text, evidence = []) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   const references = new Map();
-  evidence.forEach((item, index) => { for (const id of [item.resource_id, item.iri, item.properties?.iri, item.source_id]) if (id && !references.has(escapeHtml(id))) references.set(escapeHtml(id), index + 1); });
+  // Mirror prompt_security.citation_targets: aliases belong to projected records,
+  // never arbitrary nested business-property IDs.
+  evidence.forEach((item, index) => { for (const id of [item.resource_id, item.elementId, item.iri, item.properties?.iri, item.source_id]) if (typeof id === 'string' && id.length > 0 && id.length <= 2000 && !references.has(escapeHtml(id))) references.set(escapeHtml(id), index + 1); });
   const inline = (value) => escapeHtml(value)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')

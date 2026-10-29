@@ -388,7 +388,7 @@ class SPLMSchemaExtractor(OntologyExtractor):
         pass
 
 class OWLRDFExtractor(OntologyExtractor):
-    """Extract OWL/RDF ontologies through the canonical Owlready2 runtime."""
+    """Extract OWL/RDF ontologies through the canonical semantic runtime."""
 
     def __init__(self, source_path: str):
         super().__init__(source_path, OntologyFormat.OWL_RDF)
@@ -419,59 +419,11 @@ class OWLRDFExtractor(OntologyExtractor):
             return text.rsplit("/", 1)[0] + "/"
         return ""
 
-    def _rdflib_reasoning(self, file_path: Path, prefix: str) -> Dict[str, Any]:
-        from rdflib import Graph, URIRef
-        from rdflib.namespace import OWL, RDF, RDFS
-
-        graph = Graph()
-        ext = file_path.suffix.lower()
-        formats = ["turtle", "xml", "n3"] if ext == ".ttl" else ["xml", "turtle", "n3"]
-        last_error = None
-        for fmt in formats:
-            try:
-                graph.parse(str(file_path), format=fmt)
-                break
-            except Exception as exc:
-                last_error = exc
-        else:
-            raise ValueError(f"Could not parse RDF ontology {file_path}: {last_error}")
-
-        def ref(uri: URIRef) -> Dict[str, str]:
-            text = str(uri)
-            label = str(graph.value(uri, RDFS.label) or text.rsplit("#", 1)[-1].rsplit("/", 1)[-1])
-            return {"label": label, "iri": text}
-
-        classes = [ref(s) for s in set(graph.subjects(RDF.type, OWL.Class)) if isinstance(s, URIRef)]
-        object_properties = []
-        datatype_properties = []
-        for prop_type, target in ((OWL.ObjectProperty, object_properties), (OWL.DatatypeProperty, datatype_properties)):
-            for prop in set(graph.subjects(RDF.type, prop_type)):
-                if not isinstance(prop, URIRef):
-                    continue
-                row = ref(prop)
-                row["domain"] = [ref(o) for o in graph.objects(prop, RDFS.domain) if isinstance(o, URIRef)]
-                row["range"] = [ref(o) for o in graph.objects(prop, RDFS.range) if isinstance(o, URIRef)]
-                target.append(row)
-
-        subclass_edges = []
-        for child, _, parent in graph.triples((None, RDFS.subClassOf, None)):
-            if isinstance(child, URIRef) and isinstance(parent, URIRef):
-                subclass_edges.append({"source_label": ref(child)["label"], "target_label": ref(parent)["label"]})
-
-        return {
-            "engine": "rdflib_fallback",
-            "prefix": prefix,
-            "classes": classes,
-            "object_properties": object_properties,
-            "datatype_properties": datatype_properties,
-            "annotation_properties": [],
-            "subclass_edges": subclass_edges,
-        }
     def extract(self) -> Dict[str, Any]:
         try:
-            from .owlready_runtime import OwlreadyOntologyRuntime
+            from .ontology_semantic_runtime import OntologySemanticRuntime
         except Exception:
-            from Services.owlready_runtime import OwlreadyOntologyRuntime
+            from Services.ontology_semantic_runtime import OntologySemanticRuntime
 
         files = self._source_files()
         if not files:
@@ -479,9 +431,9 @@ class OWLRDFExtractor(OntologyExtractor):
 
         for file_path in files:
             prefix = file_path.stem
-            reasoning = OwlreadyOntologyRuntime.inspect_ontology(file_path, prefix)
-            if reasoning.get("status") in {"unsupported", "unavailable"} or not (reasoning.get("classes") or reasoning.get("object_properties") or reasoning.get("datatype_properties")):
-                reasoning = self._rdflib_reasoning(file_path, prefix)
+            reasoning = OntologySemanticRuntime.inspect_ontology(file_path, prefix)
+            if reasoning.get("status") != "success":
+                raise ValueError("Ontology inspection failed; check the retained artifact syntax, size and access")
 
             for row in reasoning.get("classes") or []:
                 name = self._label(row)
@@ -491,7 +443,7 @@ class OWLRDFExtractor(OntologyExtractor):
                     name=name,
                     entity_type="OntologyClass",
                     namespace=self._namespace(row.get("iri") or row.get("uri") or ""),
-                    description=str(row.get("comment") or ""),
+                    description=str(row.get("definition") or row.get("comment") or ""),
                     metadata={"iri": row.get("iri") or row.get("uri"), "source_file": file_path.name},
                 ))
                 self.entity_types.add("OntologyClass")
@@ -523,7 +475,7 @@ class OWLRDFExtractor(OntologyExtractor):
                                 entity.add_attribute(Attribute(
                                     name=prop_name,
                                     data_type=", ".join(ranges) if ranges else "literal",
-                                    description=str(prop.get("comment") or ""),
+                                    description=str(prop.get("definition") or prop.get("comment") or ""),
                                     metadata={"iri": prop.get("iri") or prop.get("uri"), "source_file": file_path.name},
                                 ))
                     else:
@@ -535,7 +487,7 @@ class OWLRDFExtractor(OntologyExtractor):
                                         source=domain,
                                         target=range_label,
                                         relation_type=relation_type,
-                                        description=str(prop.get("comment") or ""),
+                                        description=str(prop.get("definition") or prop.get("comment") or ""),
                                         metadata={"iri": prop.get("iri") or prop.get("uri"), "source_file": file_path.name},
                                     ))
 

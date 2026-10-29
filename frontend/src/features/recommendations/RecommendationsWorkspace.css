@@ -10,3 +10,7 @@
 .recommendation-method {padding:12px 0;margin:12px 0;border-top:1px solid var(--ui-border,#d9e2ec);background:transparent;}.recommendation-method summary {cursor:pointer;font-weight:600;}.recommendation-method p {font-size:13px;line-height:1.6;color:var(--ui-muted,#526679);}
 
 .recommendation-mode {display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:16px 0;}.recommendation-mode label {display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:12px;}.recommendation-mode select {padding:9px;border:1px solid var(--ui-border,#aab8c5);border-radius:5px;background:var(--ui-surface,#fff);color:inherit;}.recommendation-mode p {font-size:13px;line-height:1.6;color:var(--ui-muted,#526679);flex:1;min-width:220px;}.read-goal-compact {padding:14px 0;}.read-goal-compact>button {margin:0 10px 8px 0;}.read-goal-compact .page-task-progress {padding:16px;border:1px solid var(--ui-border,#d9e2ec);border-radius:8px;background:var(--ui-surface,#fff);}
+.recommendation-object-matches { overflow-x: auto; margin-block: 1rem; }
+.recommendation-object-matches table { width: 100%; border-collapse: collapse; text-align: left; }
+.recommendation-object-matches th, .recommendation-object-matches td { padding: .65rem; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; vertical-align: top; }
+.recommendation-object-matches th { color: var(--ui-text); font-weight: 600; }

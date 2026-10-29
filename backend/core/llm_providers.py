@@ -106,6 +106,8 @@ async def post_cloud_chat(client, provider, body):
             'Return only JSON conforming to this schema: ' + json.dumps(body['format'])}] + payload['messages']
     from backend.agentic_service.prompt_limits import bounded_prompt_json
     bounded_prompt_json(payload)
+    from backend.core.payload_limits import check_model_budget
+    check_model_budget({**payload, 'options': {'num_predict': payload[token_key]}})
     from backend.core.ollama_auth import ollama_timeout
     from backend.depo_platform.operations import current_operation
     from backend.core.ollama_limits import request_slot

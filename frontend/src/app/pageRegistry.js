@@ -4,6 +4,7 @@ import { lazy } from 'react';
 // Keeping imports lazy preserves a fast initial shell while each page remains
 // independently owned and testable.
 const DataProductsPage = lazy(() => import('../pages/DataProductsPage'));
+const ChangeControlPage = lazy(() => import('../pages/ChangeControlPage'));
 const ImportPage = lazy(() => import('../pages/ImportPage'));
 const DataFlowPage = lazy(() => import('../pages/DataFlowPage'));
 const OntologyJunctionPage = lazy(() => import('../pages/OntologyJunctionPage'));
@@ -20,12 +21,13 @@ const RequirementsPage = lazy(() => import('../pages/RequirementsPage'));
 const QifPage = lazy(() => import('../pages/QifPage'));
 
 export const pageRegistry = {
+  'change-control': {component:ChangeControlPage},
   'data-quality': { component: QualityPage },
   catalog: { component: DataProductsPage, props: () => ({ mode: 'catalog' }) },
   'data-products': { component: DataProductsPage },
   import: { component: ImportPage },
   'data-flow': { component: DataFlowPage },
-  ontology: { component: OntologyJunctionPage },
+  ontology: { component: OntologyJunctionPage, props: ({ onOntologyContextChange }) => ({ onCompanionContextChange:onOntologyContextChange }) },
   registry: { component: MetadataRegistryPage },
   graph: { component: GraphExplorerPage, props: ({ graphProps }) => graphProps },
   'code-audit': { component: CodeAuditPage },

@@ -11,6 +11,15 @@ vi.mock('../utils/apiErrorMessage', () => ({apiErrorMessage: e => e.message}));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
 afterEach(()=>{clearServiceAuthToken();vi.unstubAllGlobals();});
 
+test.each(['blocked','timed_out','budget_exhausted','needs_input'])('renders retained terminal state %s without rejecting or replaying it', async status => {
+  agenticClient.get.mockResolvedValue({data:{run_id:'goal-terminal', goal:'Inspect selected source', status,
+    ...(status==='needs_input'?{missing_fields:['ontology_id']}:{})}});
+  render(<ReadGoalPanel agent="reviewer" task="Inspect" initialRunId="goal-terminal"/>);
+  await screen.findByText(new RegExp('Status: '+status.replaceAll('_',' ')));
+  expect(agenticClient.post).not.toHaveBeenCalled();
+  if(status==='needs_input') expect(screen.getByRole('alert')).toHaveTextContent('ontology id');
+});
+
 test('expiry and reconnect retain an uncertain submission without automatically resubmitting it',async()=>{
  installBrowserSession({token:'depo_session_old',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()});
  agenticClient.post.mockRejectedValueOnce(new Error('Response lost')).mockResolvedValueOnce({data:{run_id:'goal-recovered',status:'completed',goal:'Recovered'}});

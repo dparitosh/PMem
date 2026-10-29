@@ -57,6 +57,12 @@ const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
         ? ontologyType.replace(/_instances$/, '')
         : ontologyType;
       response = await graphApi.getOntologyGraph(ontologyId, limit, controller.signal);
+      const body = response.data;
+      if (!body || !Array.isArray(body.nodes) || ![body.relationships, body.edges, body.links].some(Array.isArray)) {
+        throw new Error('Graph service returned an invalid projection contract.');
+      }
+      const returnedScope = body.ontology_id || body.view?.ontology_id;
+      if (returnedScope && returnedScope !== ontologyId) throw new Error('Graph projection scope does not match the selected ontology.');
       const dataSet = normalizeGraphDataset(response.data);
       if (controller.signal.aborted || requestId !== graphScopeRequestIdRef.current) return;
       if (dataSet.nodes.length > 0) {

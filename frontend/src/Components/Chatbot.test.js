@@ -8,6 +8,68 @@ import { setClientSessionId,getClientSessionId } from '../services/apiClient';
 
 global.TextDecoder = TextDecoder;
 
+test('selected run travels to Companion and changing it cancels an in-flight answer', async () => {
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','record-scope-key');
+ let sent, signal;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sent=JSON.parse(options.body);signal=options.signal;
+  return new Promise(()=>{});
+ });
+ const view=render(<Chatbot pageId="data-flow" runId="run-A"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain selected evidence'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sent?.graph_context.run_id).toBe('run-A'));
+ view.rerender(<Chatbot pageId="data-flow" runId="run-B"/>);
+ await waitFor(()=>expect(signal.aborted).toBe(true));
+ expect(screen.queryByText('Explain selected evidence')).not.toBeInTheDocument();
+});
+
+test('product scope includes the exact selected version', async () => {
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','product-scope-key');
+ let sent;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sent=JSON.parse(options.body);return new Promise(()=>{});
+ });
+ render(<Chatbot pageId="data-products" productId="plant" productVersion="2.0.0"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain selected product'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sent?.graph_context).toMatchObject({product_id:'plant',product_version:'2.0.0'}));
+});
+
+test('prefix-only graph scope is not sent as an ontology identity',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','scope-key');
+ let sentBody;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sentBody=JSON.parse(options.body);
+  return Promise.resolve({ok:false,status:503,headers:{get:()=>null},json:async()=>({detail:'fixture stop'})});
+ });
+ render(<Chatbot graphData={{view:{ontology_prefix:'qif'}}} pageId="graph"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Housing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sentBody).toBeDefined());
+ expect(sentBody.graph_context.ontology).toBe('');
+ expect(sentBody.graph_context.ontology_prefix).toBe('qif');
+});
+
+test('selected business identity travels with the request and changes reset the conversation',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','node-scope-key');
+ let sentBody;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sentBody=JSON.parse(options.body);
+  return Promise.resolve({ok:false,status:503,headers:{get:()=>null},json:async()=>({detail:'fixture stop'})});
+ });
+ const view=render(<Chatbot graphData={{root_node_id:'selected'}} pageId="graph"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Tell me more'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sentBody?.graph_context.node_id).toBe('selected'));
+ view.rerender(<Chatbot graphData={{root_node_id:'another'}} pageId="graph"/>);
+ await waitFor(()=>expect(screen.queryByText('Tell me more')).not.toBeInTheDocument());
+});
+
 test('reconnect releases a stalled chat and ignores its late session-retry response',async()=>{
  window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','old-key');
  let resolveRetry,posts=0;

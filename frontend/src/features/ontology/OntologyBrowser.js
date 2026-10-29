@@ -9,7 +9,7 @@ import WorkspaceTabs from "../../Components/WorkspaceTabs";
 import { normalizeOntologyBrowserNode, isOntologyClassNode, ontologyDisplayName, ontologyTermId } from "../../utils/ontologyPresentation";
 import { UI_COLORS as C } from "../../styles/uiTokens";
 
-function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
+function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onTableModeChange }) {
   const [selectedTermId, setSelectedTermId] = useState('');
   const [tableMode, setTableMode] = useState('classes');
   const inspectorRef = useRef(null);
@@ -24,7 +24,18 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     whiteSpace: 'nowrap',
     lineHeight: '32px',
   }), []);
-  const termIdFromRef = useCallback((ref) => ontologyTermId(ref, taxonomy?.ontology_prefix || ''), [taxonomy]);
+  const retainedTermIds = useMemo(() => new Map(
+    (taxonomy?.nodes?.length ? taxonomy.nodes : nodes || []).flatMap(node => {
+      const iri = node.iri || node.uri;
+      return iri ? [[iri, ontologyTermId(node, taxonomy?.ontology_prefix || '')]] : [];
+    })
+  ), [nodes, taxonomy]);
+  const termIdFromRef = useCallback((ref) => {
+    const iri = ref?.iri || ref?.uri;
+    // Prefer taxonomy transport IDs for existing rows; otherwise preserve the
+    // full IRI so same-local-name terms cannot overwrite each other in grids.
+    return (iri && (retainedTermIds.get(iri) || iri)) || ontologyTermId(ref, taxonomy?.ontology_prefix || '');
+  }, [retainedTermIds, taxonomy]);
   const refLabel = useCallback((ref) => ontologyDisplayName(ref), []);
 
   const reasoningClassNodes = useMemo(() => (reasoning?.classes || []).map((cls) => ({
@@ -33,7 +44,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     label: refLabel(cls),
     definition: cls.definition || '',
     ontology_prefix: cls.ontology_prefix || taxonomy?.ontology_prefix || '',
-    source: 'owlready2-class',
+    source: 'semantic-class',
   })).filter((node) => node.term_id), [reasoning, refLabel, taxonomy, termIdFromRef]);
 
   const reasoningPropertyNodes = useMemo(() => [
@@ -46,7 +57,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     label: refLabel(prop),
     definition: prop.definition || '',
     ontology_prefix: prop.ontology_prefix || taxonomy?.ontology_prefix || '',
-    source: prop.property_kind === 'DatatypeProperty' ? 'owlready2-datatype-property' : 'owlready2-object-property',
+    source: prop.property_kind === 'DatatypeProperty' ? 'semantic-datatype-property' : 'semantic-object-property',
   })).filter((node) => node.term_id), [reasoning, refLabel, taxonomy, termIdFromRef]);
 
   const taxonomyNodes = useMemo(() => {
@@ -151,7 +162,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         prefix: node.ontology_prefix || '',
         depth,
         indent: `${'  '.repeat(Math.min(depth, 8))}${depth > 0 ? '|- ' : ''}`,
-        children: children.length,
+        children: node.browse_declarations?.children_count ?? children.length,
         path: [...path, node.label || termId].join(' / '),
       });
       children.forEach((childId) => pushBranch(childId, depth + 1, [...path, node.label || termId]));
@@ -203,14 +214,14 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         termId: node.term_id,
         label,
         prefix: node.ontology_prefix || '',
-        parents: parents.map((id) => nodeById.get(id)?.label || id).join(', ') || 'Thing',
+        parents: (node.browse_declarations?.parents || parents.map(id=>({label:nodeById.get(id)?.label || id}))).map(parent=>parent.label).join(', ') || (node.browse_declarations?.complete ? 'No declared parent' : taxonomy?.page ? 'Outside slice or undeclared' : 'Thing'),
         children: children.length,
         definition: node.definition || node.comment || '',
         type: 'Class',
         node,
       };
     });
-  }, [classNodes, hierarchy, nodeById]);
+  }, [classNodes, hierarchy, nodeById, taxonomy?.page]);
 
   const reasoningPropertyRows = useMemo(() => [
     ...(reasoning?.object_properties || []).map((prop) => ({ ...prop, property_kind: 'ObjectProperty' })),
@@ -238,9 +249,9 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
           property: node.label || String(node.term_id || '').split(':').pop(),
           prefix: node.ontology_prefix || '',
           kind: String(node.source || '').includes('datatype') ? 'DatatypeProperty' : 'ObjectProperty',
-          domain: 'Not declared',
-          range: 'Not declared',
-          axiomCount: 0,
+          domain: node.browse_declarations?.domain?.map(value=>value.label).join(', ') || (node.browse_declarations?.complete ? 'Not declared' : taxonomy?.page ? 'Outside slice or undeclared' : 'Not declared'),
+          range: node.browse_declarations?.range?.map(value=>value.label).join(', ') || (node.browse_declarations?.complete ? 'Not declared' : taxonomy?.page ? 'Outside slice or undeclared' : 'Not declared'),
+          axiomCount: (node.browse_declarations?.domain?.length || 0) + (node.browse_declarations?.range?.length || 0),
         }]),
     );
     const byProperty = new Map();
@@ -267,12 +278,13 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         ...(declared || {}),
         ...row,
         kind: declared?.kind || 'Property',
-        domain: row.domain.join(', ') || 'Not declared',
-        range: row.range.join(', ') || 'Not declared',
+        axiomCount: nodeById.get(row.id)?.browse_declarations ? declared.axiomCount : row.axiomCount,
+        domain: nodeById.get(row.id)?.browse_declarations ? declared.domain : row.domain.join(', ') || (taxonomy?.page ? 'Outside slice or undeclared' : 'Not declared'),
+        range: nodeById.get(row.id)?.browse_declarations ? declared.range : row.range.join(', ') || (taxonomy?.page ? 'Outside slice or undeclared' : 'Not declared'),
       });
     });
     return mergePropertyAxiomRows(Array.from(declaredById.values()), reasoningPropertyRows);
-  }, [edgeRows, reasoningPropertyRows, visibleNodes]);
+  }, [edgeRows, reasoningPropertyRows, visibleNodes, taxonomy?.page, nodeById]);
 
   const selectedPropertyRow = useMemo(() => {
     if (!selectedTerm) return null;
@@ -432,10 +444,10 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
 
       {taxonomy?.summary?.truncated && <p role="status">Showing {taxonomy.summary.terms} of {taxonomy.summary.total_terms} terms and {taxonomy.summary.taxonomy_links} of {taxonomy.summary.total_taxonomy_links} relationships. Declared classes and properties are prioritized; this is a bounded browser slice. Export the retained ontology for complete content.</p>}
       <div className="ontology-browser-table-tabs">
-        <WorkspaceTabs idPrefix={tableId} label="Ontology term tables" tabs={[{id:'classes',label:'Classes'},{id:'properties',label:'Properties'},{id:'axioms',label:'Axioms'}]} value={tableMode} onChange={setTableMode} />
+        <WorkspaceTabs idPrefix={tableId} label="Ontology term tables" tabs={[{id:'classes',label:'Classes'},{id:'properties',label:'Properties'},{id:'axioms',label:'Axioms'}]} value={tableMode} onChange={value=>{setTableMode(value);onTableModeChange?.(value);}} />
       </div>
-      <div className="owl-browser-layout">
-        <section className="ontology-browser-pane">
+      <div className="owl-browser-layout" style={tableMode === 'classes' ? undefined : {gridTemplateColumns:'minmax(0, 1fr)'}}>
+        {tableMode === 'classes' && <section className="ontology-browser-pane">
           <header className="ontology-browser-pane-heading"><h3>{`Class Hierarchy (${hierarchy.rows.length} of ${classRows.length} loaded classes)`}</h3><p>Browse ontology depth and select a focal term.</p></header>
           <div className="ontology-browser-pane-grid">
             <DataGridWidget
@@ -449,7 +461,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
               emptyLabel="No class hierarchy available"
             />
           </div>
-        </section>
+        </section>}
 
         <section className="ontology-browser-pane">
           <header className="ontology-browser-pane-heading"><h3>{activeTitle}</h3><p>{tableMode === 'properties' ? 'Domain, range, and property semantics' : tableMode === 'axioms' ? 'Resolved relationships and OWL expressions' : 'Classes with parent and child coverage'}</p></header>
@@ -489,11 +501,11 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
             </section>
             <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{hierarchy.parentByChild.get(selectedTerm.term_id)?.length || 0}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{selectedTerm.browse_declarations?.parents?.length ?? hierarchy.parentByChild.get(selectedTerm.term_id)?.length ?? 0}</div>
             </div>
             <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{selectedTerm.browse_declarations?.children_count ?? hierarchy.childrenByParent.get(selectedTerm.term_id)?.length ?? 0}</div>
             </div>
             <section style={{ display: 'grid', gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Related Axioms</div>

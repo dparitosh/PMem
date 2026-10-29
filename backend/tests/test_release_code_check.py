@@ -38,7 +38,7 @@ class ReleaseCheckTests(unittest.TestCase):
                 (package / '__init__.py').write_text('dependency_version = 1\n')
             self.assertEqual(before, check(root)['backend_fingerprint'])
             source = root / 'backend/ontology_service'
-            source.mkdir()
+            source.mkdir(exist_ok=True)
             (source / 'app.py').write_text('source_version = 2\n')
             self.assertNotEqual(before, check(root)['backend_fingerprint'])
 

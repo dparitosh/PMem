@@ -14,7 +14,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 Write-Host 'Starting DEPO: checking backend release files (dependency runtimes are excluded)...' -ForegroundColor Cyan
+if ($env:DEPO_VANILLA_MAINTENANCE -eq 'true') { throw 'Close the isolated reset maintenance host before starting normal services. Do not persist DEPO_VANILLA_MAINTENANCE in environment files.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+if (Test-Path -LiteralPath (Join-Path $root 'logs/vanilla-reset/active.json')) { throw 'A vanilla reset has an incomplete or unverified outcome. Inspect logs/vanilla-reset and reconcile it in isolated maintenance before starting application services.' }
+$resetLockPath = Join-Path $root 'logs/windows-services/vanilla-maintenance.lock'
+if (Test-Path -LiteralPath $resetLockPath) {
+  try {
+    $resetProbe = [IO.File]::Open($resetLockPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $resetProbe.Dispose()
+  } catch { throw 'Isolated vanilla-reset maintenance is active. Close its console before starting application services.' }
+}
 $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
 $codeCheck = Join-Path $root 'backend\depo_platform\release_code_check.py'
@@ -31,6 +40,7 @@ Write-Host 'Backend release fingerprint verified. Loading deployment configurati
 . (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
 Assert-DepoWindowsManagementAccess
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+if ($env:DEPO_VANILLA_MAINTENANCE -eq 'true') { throw 'DEPO_VANILLA_MAINTENANCE is reserved for the isolated maintenance launcher. Remove it from the environment file before normal startup.' }
 $configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
 $corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
 if (-not $corsProbeOrigin) { throw 'ALLOWED_ORIGINS must contain at least one browser origin.' }
@@ -70,6 +80,14 @@ try {
 
 
 $requestedSparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
+
+Write-Host 'Checking embedded semantic foundation and bounded OWL-DL runtime...'
+Push-Location $root
+try {
+  $foundationPython = Get-DepoServicePython -Root $root -ServiceId 'ontology'
+  & $foundationPython -B -m backend.ontology_service.foundation
+  if ($LASTEXITCODE -ne 0) { throw 'Embedded foundation validation failed. Restore matching foundation files and the verified worker before starting services.' }
+} finally { Pop-Location }
 
 $manifestPath = Join-Path $root "infra\deployment\services.json"
 if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not found: $manifestPath" }

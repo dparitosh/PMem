@@ -8,6 +8,11 @@ HOME_PROMPTS = [
     'Find source provenance and lineage for ingested engineering data.',
 ]
 PAGE_PROMPTS = {
+    'recommendations': [
+        'Compare the selected part with alternatives using recorded dimensions, materials and units; identify conflicts and missing evidence.',
+        'Trace the selected changed item to affected assemblies, requirements and processes; cite recorded paths and configuration limitations.',
+        'Explain the selected part or assembly process context from recorded business relationships; distinguish missing links from verified absence.',
+    ],
     'catalog': [
         'Which data products are listed in the catalog, and what status is recorded?',
         'Show source and lineage evidence available for cataloged data.',
@@ -57,6 +62,6 @@ PAGE_PROMPTS = {
 
 
 def sample_queries(page='home'):
-    page={'data-catalog':'catalog','recommendations':'quality'}.get(page,page)
+    page={'data-catalog':'catalog','quality':'data-quality'}.get(page,page)
     return {'queries':list(PAGE_PROMPTS.get(page, HOME_PROMPTS)),
             'data_available':None,'mode':'evidence-grounded','page':page}

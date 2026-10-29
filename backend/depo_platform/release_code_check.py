@@ -8,12 +8,21 @@ from pathlib import Path
 
 
 REQUIRED_MODULES = (
+    'backend/oslc_service/change_control.py',
+    'backend/ontology_service/domain/taxonomy_cache.py',
+    'backend/depo_platform/product_lineage.py', 'backend/depo_platform/artifact_references.py',
+    'backend/ontology_service/releases.py',
     'backend/agentic_service/context_envelope.py', 'backend/agentic_service/context_scope.py',
     'backend/agentic_service/memory_maintenance.py', 'backend/agentic_service/source_revisions.py',
+    'backend/agentic_service/selected_record.py',
+    'backend/agentic_service/learning_review.py', 'backend/agentic_service/learning_router.py',
     'backend/depo_platform/cleanup_receipts.py', 'backend/depo_platform/plm_questions.py',
+    'backend/depo_platform/vanilla_reset.py',
     'backend/agentic_service/business_answers.py', 'backend/graph_service/plm_answers.py',
     'backend/Services/schema_dependencies.py', 'backend/Services/schema_upload_paths.py',
     'backend/Services/import_task_persistence.py',
+    'backend/ontology_service/foundation.py','backend/ontology_service/owl_dl.py',
+    'backend/depo_platform/semantic_support.py', 'backend/ontology_service/semantic_merge.py',
     'backend/graph_service/recommendation_engine.py', 'backend/graph_service/engineering_comparison.py',
     'backend/Services/recommendation_compat.py',
     'backend/ceim/ap242_pmi.py',

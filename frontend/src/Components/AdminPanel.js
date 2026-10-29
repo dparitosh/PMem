@@ -4,6 +4,7 @@ import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 import { UI_COLORS } from '../styles/uiTokens';
 import { getCredentialProfile } from '../services/serviceAuth';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 
 const colors = {
   blue: UI_COLORS.primaryText,
@@ -113,6 +114,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const [deleteBatchSize, setDeleteBatchSize] = useState(10000);
   const [deletePreview, setDeletePreview] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
+  const [vanillaPreview, setVanillaPreview] = useState(null);
+  const vanillaBusy = useRef(false);
   const adminLoadControllerRef = useRef(null);
   const confirmationResolverRef = useRef(null);
   const resolveConfirmation = useCallback((accepted) => {
@@ -203,6 +206,43 @@ export default function AdminPanel({ onSchemaCleaned }) {
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally { setLoading(false); }
   }, [requestConfirmation]);
+
+  const previewVanillaReset = async () => {
+    if (vanillaBusy.current) return;
+    vanillaBusy.current = true;
+    setLoading(true); setError(''); setVanillaPreview(null);
+    try {
+      const response = await API_METHODS.admin.previewVanillaReset();
+      setVanillaPreview(response.data);
+    } catch (err) { setError(apiErrorMessage(err, 'Reset preview unavailable')); }
+    finally { vanillaBusy.current = false; setLoading(false); }
+  };
+  const resetVanilla = async () => {
+    if (vanillaBusy.current || !vanillaPreview?.can_execute) return;
+    vanillaBusy.current = true;
+    try {
+      const accepted = await requestConfirmation({ title: 'Reset DEPO to vanilla state?',
+        description: 'Permanently delete application graph data, application records, workflow and agent history, and retained uploads shown in the preview. Preserve credentials, configuration, embedded foundation and installation/reset logs. This cannot be undone.',
+        phrase: 'RESET DEPO TO VANILLA', confirmLabel: 'Delete application data' });
+      if (!accepted) return;
+      setLoading(true); setError(''); setMessage('');
+      const { data } = await API_METHODS.admin.resetVanilla(vanillaPreview.preview_digest);
+      if (data.status !== 'completed') throw new Error(`Reset incomplete. Receipt: ${data.run_id}. Keep maintenance isolated and inspect logs/vanilla-reset before recovery.`);
+      try {
+        for (const key of ['depo.import.jobs.v2', 'depo.import.ontologies.v1']) window.localStorage.removeItem(key);
+        for (const key of Object.keys(window.sessionStorage)) {
+          if (key.startsWith('depo:') || key.startsWith('["depo:') || key.startsWith('bridge-') || ['depo.sessionId.v1', 'depo.sessionScope.v1'].includes(key)) window.sessionStorage.removeItem(key);
+        }
+      } catch { setError('Server reset completed. Browser storage could not be cleared; close this tab and reconnect after normal startup.'); }
+      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
+      setMessage(`Vanilla reset completed. Receipt: ${data.run_id}. Close the maintenance host and start DEPO normally. Credentials and embedded foundation were preserved.`);
+      setVanillaPreview(null);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Reset outcome unavailable. Inspect logs/vanilla-reset before retrying.'));
+      setVanillaPreview(null); // Never replay using an old confirmation.
+    } finally { vanillaBusy.current = false; setLoading(false); }
+  };
 
   const cleanSchema = useCallback(async () => {
     const accepted = await requestConfirmation({
@@ -646,7 +686,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             Destructive Reset Actions
           </div>
           <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
-            Graph Reset retains Import history. Full Schema Cleanup also clears quiescent instance-import tasks, their owned artifact folders and PostgreSQL manifests. Governed ontology artifacts and separate agent audit history remain retained.
+            Graph Reset retains Import history. Full Schema Cleanup also clears quiescent instance-import tasks and owned files. Use vanilla reset to also clear application records, agent history and retained ontology artifacts while preserving credentials and the embedded foundation.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button type="button" onClick={resetGraphDatabase} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
@@ -660,7 +700,19 @@ export default function AdminPanel({ onSchemaCleaned }) {
               <Trash2 size={10} />
               Full Schema Cleanup
             </button>
+            <button type="button" onClick={previewVanillaReset} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, color: colors.danger }}>
+              Preview vanilla reset
+            </button>
           </div>
+          {vanillaPreview && <section aria-label="Vanilla reset preview" style={{ marginTop: 12 }}>
+            <h3>Reset DEPO to vanilla state</h3>
+            <p>Deletes application graph data, workflow and agent history, application records and retained uploads. Credentials and the embedded foundation remain.</p>
+            <table><thead><tr><th>Storage</th><th>Records or files to delete</th></tr></thead><tbody>
+              {Object.entries({ ...vanillaPreview.registry_records, ...vanillaPreview.table_rows, ...vanillaPreview.retained_files }).map(([name, count]) => <tr key={name}><td>{name}</td><td>{count}</td></tr>)}
+            </tbody></table>
+            {!vanillaPreview.can_execute && <p role="status">{vanillaPreview.maintenance_instruction}</p>}
+            <button type="button" onClick={resetVanilla} disabled={loading || !maintenanceConnected || !vanillaPreview.can_execute} style={{ ...buttonStyle, color: colors.danger }}>Reset DEPO to vanilla state</button>
+          </section>}
         </section>
       </div>
     </div>

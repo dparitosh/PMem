@@ -11,7 +11,8 @@ function checkedGoal(data, expectedId) {
   const text=value=>value==null||typeof value==='string';
   if(!record(data)||typeof data.run_id!=='string'||!data.run_id.startsWith('goal-')||
     (expectedId&&data.run_id!==expectedId)||
-    !['queued','running','interrupted','completed','failed','cancelled'].includes(data.status)||
+    !['queued','running','interrupted','completed','failed','cancelled','blocked','timed_out','budget_exhausted','needs_input'].includes(data.status)||
+    (data.missing_fields!=null&&(!Array.isArray(data.missing_fields)||data.missing_fields.some(field=>typeof field!=='string')))||
     !text(data.goal)||!text(data.result?.summary)||
     (data.observations!=null&&(!Array.isArray(data.observations)||data.observations.some(item=>!record(item)||!text(item.message)||!text(item.error_message))))||
     (data.plans!=null&&(!Array.isArray(data.plans)||data.plans.some(plan=>!record(plan)||!Array.isArray(plan.subtasks)||plan.subtasks.some(step=>typeof step!=='string'))))) {

@@ -126,7 +126,7 @@ def test_engineering_conversion_retains_resolved_closure_and_original(monkeypatc
             artifacts.append(row)
             return row
     monkeypatch.setattr(schema_conversion, 'ArtifactStore', Store)
-    monkeypatch.setattr(owl_generation_service, '_inspect_with_owlready', lambda *args: {})
+    monkeypatch.setattr(owl_generation_service, '_inspect_semantics', lambda *args: {})
     root = xsd('<xs:include schemaLocation="https://schemas.example/types.xsd"/><xs:element name="Part" type="p:PartType"/>')
     remote = xsd('<xs:complexType name="PartType"><xs:attribute name="mass" type="xs:decimal"/></xs:complexType>')
     with patch.object(schemas, '_download', return_value=(remote, 'https://schemas.example/types.xsd')) as fetch:

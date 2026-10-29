@@ -3,6 +3,27 @@ import json
 import os
 
 
+class PromptBudgetExceeded(ValueError):
+    """Safe diagnostic: the selected model cannot receive this evidence envelope."""
+
+
+def check_model_budget(body):
+    """Conservative UTF-8 token upper bound with completion/framing reserve.
+
+    Operators must set this to the verified usable context of their provider/model.
+    This intentionally prefers rejecting an oversized request to silent truncation.
+    """
+    context = int(os.getenv('AGENTIC_MODEL_CONTEXT_TOKENS', '32768'))
+    if not 1024 <= context <= 2097152:
+        raise ValueError('AGENTIC_MODEL_CONTEXT_TOKENS must be between 1024 and 2097152')
+    completion = (body.get('options') or {}).get('num_predict', 1024)
+    if type(completion) is not int or completion <= 0:
+        raise ValueError('A positive bounded model completion budget is required')
+    size = len(json.dumps(body, ensure_ascii=False, allow_nan=False).encode('utf-8'))
+    if size + completion + 2048 > context:
+        raise PromptBudgetExceeded('Prompt exceeds the configured model context budget; narrow evidence or tool selection')
+
+
 def bounded_prompt_json(value):
     limit = int(os.getenv('AGENTIC_MAX_PROMPT_BYTES', '262144'))
     if not 16384 <= limit <= 1048576:

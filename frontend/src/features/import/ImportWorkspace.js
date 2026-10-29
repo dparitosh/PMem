@@ -251,6 +251,25 @@ export default function ImportWorkspace() {
   }, [loadOntologyOptions]);
 
   useEffect(() => {
+    const invalidate=()=>{
+      fileSelectionGeneration.current+=1;
+      ontologyLoadAbortRef.current?.abort();
+      importRequestControllersRef.current.forEach(controller=>controller.abort());
+      artifactWorkflowRequest.current=null;
+      setWorkflowRun(null); setWorkflowLoading(false); setAvailableOntologies([]);
+      setWorkflowOntologyId(''); setWorkflowTargetOntologyId(''); setWorkflowSourceFileId('');
+      setPreviewsByTask({}); setConfirmingImport(null); setCommitApprover('');
+      window.localStorage.removeItem(IMPORT_ONTOLOGIES_CACHE_KEY);
+      setOntologyCatalogState({loading:false,stale:true,source:'none',message:'Reconnect access to refresh ontology choices.',lastLoadedAt:null});
+    };
+    const refresh=()=>{resumedPersistedJobsRef.current=false;setStartedFiles(previous=>new Set(previous));loadOntologyOptions({forceLive:true});};
+    const events=['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
+    events.forEach(event=>window.addEventListener(event,invalidate));
+    window.addEventListener('depo:access-verified',refresh);
+    return()=>{events.forEach(event=>window.removeEventListener(event,invalidate));window.removeEventListener('depo:access-verified',refresh);};
+  },[loadOntologyOptions]);
+
+  useEffect(() => {
     const loadWorkflowOptions = async () => {
       try {
         const response = await API_METHODS.workflow.getOptions();
@@ -615,7 +634,7 @@ export default function ImportWorkspace() {
       return;
     }
     if (!(ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'))) {
-      setError('Enter INGESTION_WRITE_TOKEN in Admin / Service credentials before starting.');
+      setError('Upload access is not connected. Reconnect in Admin / Service credentials with governed write access enabled. If INGESTION_WRITE_TOKEN is not granted, the administrator must check its central credential profile.');
       return;
     }
     const fileId = file.fileId;
@@ -2411,7 +2430,7 @@ export default function ImportWorkspace() {
                       {file.name}
                     </div>
                     <div style={{ fontSize: '10px', color: C.textSec, marginTop: '2px' }}>
-                      {status.message || 'Running...'}
+                      {typeof status.message==='string' ? status.message.replace(/\bNeo4j\b/gi,'knowledge graph') : 'Running...'}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -2845,7 +2864,7 @@ export default function ImportWorkspace() {
               fontSize: '10px',
               lineHeight: 1.45,
             }}>
-              <strong>STEP/AP242 guidance:</strong> 1. Start this import and commit the CAD graph. 2. Switch workflow to <strong>Link instances to ontology</strong>. 3. Select the completed STEP import as source instance. 4. Select <strong>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>. 5. Create a Bridge preview, review candidate IDs, and publish approved mappings.
+              <strong>STEP/AP242 guidance:</strong> 1. Run validation. 2. Open the retained run in Data Flow and review publication. 3. After a publication receipt is retained, open <strong>Link instances to ontology</strong>. 4. Select the published source and <strong>{ap242OntologyOption?.name || 'AP242 Domain Model'}</strong>. 5. Review and publish approved mappings.
               {!ap242OntologyOption && (
                 <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
                   AP242 ontology is not visible in the catalog yet. Upload/register it before semantic linking.
@@ -3029,7 +3048,7 @@ export default function ImportWorkspace() {
                           whiteSpace: 'normal',
                           overflowWrap: 'anywhere',
                         }}>
-                          {status.message || 'Persisted job monitor'}{status.dataJobRunId && <a href={pipelineRunLink(status.dataJobRunId)}> View run</a>}{file.persisted && !file.fileObj && status.error ? ' Re-attach the source file to retry.' : ''}
+                          {typeof status.message==='string' ? status.message.replace(/\bNeo4j\b/gi,'knowledge graph') : 'Persisted job monitor'}{status.dataJobRunId && <a href={pipelineRunLink(status.dataJobRunId)}> View run</a>}{file.persisted && !file.fileObj && status.error ? ' Re-attach the source file to retry.' : ''}
                         </div>
                       )}
                       <details style={{ fontSize: '10px', marginTop: 4 }}>

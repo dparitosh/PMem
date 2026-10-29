@@ -55,13 +55,13 @@ const ChangeImpactResult = ({ data }) => {
             <td style={TD}>{item.name}</td><td style={TD}>{item.path_names?.join(' → ') || item.link_type}
               <details><summary>Path evidence</summary><ol>{(item.path || []).map(edge=><li key={edge.relationship_id}>{edge.predicate || edge.relationship_type} · reference {edge.relationship_id}</li>)}</ol></details>
             </td><td style={TD}>{item.review_status === 'configuration_conflict' ? 'Conflicting configuration evidence; review required' : 'Effectivity review required'}
-              {item.configuration_review?.map(entry=><p key={entry.property}>{entry.property}: {entry.source.join('; ') || 'Not recorded'} / {entry.candidate.join('; ') || 'Not recorded'} — {entry.status}</p>)}
+              {item.configuration_review?.map(entry=><p key={entry.property}>{entry.property}: {Array.isArray(entry.source) ? entry.source.join('; ') || 'Not recorded' : 'Not recorded'} / {Array.isArray(entry.candidate) ? entry.candidate.join('; ') || 'Not recorded' : 'Not recorded'} — {entry.status}</p>)}
             </td></tr>)}</tbody>
         </table>
       </section>
 
       {/* Result sub-tabs */}
-      <ResultTabBar tabs={tabs} active={tab} onChange={setTab} />
+      <ResultTabBar tabs={tabs} active={tab} onChange={setTab}>
 
       {tab === 'overview' && <DependencyPathGraph data={data} />}
 
@@ -97,7 +97,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.assembly_impact.map((a, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{a.assembly_name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{a.name || a.assembly_name || 'Unnamed assembly'}</span></td>
                     <td style={TD}><span style={{ fontWeight: 600, color: C.textSec }}>{a.depth}</span></td>
                     <td style={TD}>{a.from_part || 'Ã¢â‚¬â€'}</td>
                   </tr>
@@ -170,6 +170,7 @@ const ChangeImpactResult = ({ data }) => {
           </div>
         ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No realization chain found.</div>
       )}
+      </ResultTabBar>
     </div>
   );
 };

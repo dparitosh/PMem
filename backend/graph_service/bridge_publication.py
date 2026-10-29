@@ -64,7 +64,28 @@ def publish(command):
         # mutate the timeout on the shared transaction function.
         def write(tx):
             return _publish_transaction(tx, command)
-        return graph.execute_write(unit_of_work(timeout=timeout)(write))
+        from backend.depo_platform.graph_publication_lock import publication_lock
+        with publication_lock(command['ontology_id']) as acquired:
+            if not acquired:
+                raise ValueError('Ontology projection is changing; refresh before publishing mappings')
+            return graph.execute_write(unit_of_work(timeout=timeout)(write))
+
+
+def verify_semantic_projection(tx, command):
+    """Bind model evidence to the currently published projection before any links."""
+    binding = command.get('semantic_binding')
+    if binding is None:
+        return  # Existing explicitly unverified/manual policy is unchanged.
+    import re
+    artifact = binding.get('artifact_sha256') if isinstance(binding, dict) else None
+    if not isinstance(artifact, str) or not re.fullmatch('[0-9a-f]{64}', artifact):
+        raise ValueError('Invalid semantic artifact binding')
+    result = tx.run('''MATCH (p:OntologyPublication {ontology_id:$ontology_id})
+        WHERE p.current=true AND p.status='published'
+          AND coalesce(p.artifact_sha256,p.publication_id)=$artifact_sha256
+        RETURN count(p) AS matched''', ontology_id=command['ontology_id'], artifact_sha256=artifact).single()
+    if not result or result['matched'] != 1:
+        raise ValueError('Reasoned artifact differs from the current graph projection; republish the reviewed model')
 
 
 def _publish_transaction(tx, command):
@@ -76,6 +97,7 @@ def _publish_transaction(tx, command):
         if state['digest'] != command['request_digest']:
             raise ValueError('Publication ID already belongs to another approval.')
         return json.loads(state['receipt'])
+    verify_semantic_projection(tx, command)
     counts = tx.run('''UNWIND $rows AS row
         MATCH (n {import_row_key:row.import_row_key, import_id:row.import_id})
         MATCH (target) WHERE elementId(target)=row.ontology_class_element_id
@@ -144,6 +166,9 @@ def _publish_transaction(tx, command):
     result = {'publication_id': publication_id, 'request_digest': command['request_digest'],
               'applied_links': len(command['rows']), 'approved_by': command['approved_by'],
               'completed_at': datetime.now(timezone.utc).isoformat()}
+    if command.get('semantic_binding') is not None:
+        result['semantic_binding'] = command['semantic_binding']
+        result['graph_projection_verified'] = True
     # Receipt and durable change event commit with the links. Consumers can read
     # the event by publication_id; retries do not create duplicate notifications.
     tx.run('''MATCH (p:DepoBridgePublication {publication_id:$id})

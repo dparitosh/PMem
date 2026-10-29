@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import AppShell from './AppShell';
 import { graphApi } from '../services/graphApi';
 vi.mock('../services/graphApi', () => ({ graphApi: { verifyAccess: vi.fn() } }));
-import { clearServiceAuthToken, getServiceAuthToken } from '../services/serviceAuth';
+import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken } from '../services/serviceAuth';
 import { verifyStoredAccess } from '../services/readAccessVerification';
 vi.mock('../services/readAccessVerification', () => ({ verifyStoredAccess: vi.fn() }));
 
@@ -30,6 +30,17 @@ beforeEach(() => {
   sessionStorage.clear();
   window.localStorage.clear();
   document.documentElement.dataset.ixColorSchema = 'light';
+});
+
+test('late verification cannot overwrite a newer service rejection', async () => {
+  let finish;
+  verifyStoredAccess.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<AppShell activePage="catalog" onPageChange={vi.fn()} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+  fireEvent.click(screen.getByRole('button', {name:'Revalidate or reconnect API access'}));
+  fireEvent(window, new Event('depo:access-rejected'));
+  await act(async () => finish({status:'verified', message:'Obsolete verification'}));
+  expect(screen.queryByText('Obsolete verification')).toBeNull();
+  expect(screen.getByText(/A service rejected the current access/)).toBeVisible();
 });
 
 test('opens central Admin credentials instead of a duplicate key dialog', () => {
@@ -98,6 +109,20 @@ test('header revalidates stored access without navigating or executing workflows
   await screen.findByText('Read access verified.');
   expect(navigate).not.toHaveBeenCalled();
   expect(verifyStoredAccess).toHaveBeenCalledTimes(1);
+});
+
+test('a restored credential is verified automatically without navigating on rejection', async () => {
+  setServiceAuthToken('read-fixture');
+  verifyStoredAccess.mockResolvedValue({status:'reconnect_required', message:'Stored access was rejected.'});
+  const navigate = vi.fn();
+  render(<AppShell activePage="home" onPageChange={navigate} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+  await screen.findByText('Stored access was rejected.');
+  expect(verifyStoredAccess).toHaveBeenCalledTimes(1);
+  expect(navigate).not.toHaveBeenCalled();
+  verifyStoredAccess.mockResolvedValue({status:'verified', message:'Replacement access verified.'});
+  fireEvent(window, new Event('depo:session-replaced'));
+  await screen.findByText('Replacement access verified.');
+  expect(screen.getByRole('button',{name:'Configure API access'})).toHaveTextContent('API access verified');
 });
 
 test('reconnect aborts old access verification and cannot display its late success',async()=>{

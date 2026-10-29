@@ -76,8 +76,8 @@ END-ISO-10303-21;
             print(f"   ✗ OWL output validation failed")
             pytest.fail("OWL output validation failed")
 
-        assert metadata.get("owlready2", {}).get("engine") == "owlready2"
-        assert "summary" in metadata.get("owlready2", {})
+        assert metadata.get("semantica", {}).get("engine") == "semantica"
+        assert "summary" in metadata.get("semantica", {})
         
     except Exception as e:
         print(f"   ✗ STEP parsing failed: {e}")
@@ -103,7 +103,7 @@ END_SCHEMA;
         print(f"   ✓ EXPRESS parsing still works")
         print(f"     - Schema name: {metadata.get('schema_name')}")
         print(f"     - Entity count: {metadata['entity_count']}")
-        assert metadata.get("owlready2", {}).get("engine") == "owlready2"
+        assert metadata.get("semantica", {}).get("engine") == "semantica"
         assert metadata["entity_count"] == 1
         assert "TestEntity" in owl_ttl
     except Exception as e:
@@ -473,7 +473,7 @@ def test_xsd_to_owl_generates_rich_semantics():
     generated.parse(data=ttl, format="turtle")
     demo = Namespace("http://example.com/demo#")
     assert (demo.MachinedPart, RDFS.subClassOf, demo.Part) in generated
-    assert metadata.get("owlready2", {}).get("engine") == "owlready2"
+    assert metadata.get("semantica", {}).get("engine") == "semantica"
 
 
 def test_xsd_target_namespace_overrides_generated_fallback():

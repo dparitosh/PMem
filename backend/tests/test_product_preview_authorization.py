@@ -4,6 +4,19 @@ from fastapi.testclient import TestClient
 from backend.data_product_service import router as product
 
 
+def test_publication_checks_approval_before_reading_or_hashing_artifacts(monkeypatch):
+    monkeypatch.setenv('AUTH_MODE','token')
+    monkeypatch.setenv('DEPO_CREDENTIAL_STORE','environment')
+    monkeypatch.setenv('DATA_PRODUCT_APPROVAL_TOKEN','test-product-token')
+    app=FastAPI();app.include_router(product.router)
+    with patch.object(product,'_validate') as validate:
+        response=TestClient(app).post('/data-products/publish',json={
+            'product_id':'fixture','version':'1.0.0','name':'Fixture','domain':'engineering',
+            'owner':'owner','steward':'steward','classification':'internal','lifecycle_state':'published'})
+    assert response.status_code==403
+    validate.assert_not_called()
+
+
 def test_product_preview_requires_auth_before_artifact_reads(monkeypatch):
     monkeypatch.setenv('AUTH_MODE', 'token')
     monkeypatch.setenv('DEPO_CREDENTIAL_STORE', 'environment')

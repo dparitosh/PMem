@@ -35,11 +35,14 @@ export function GraphProfileMetrics({ metrics }) {
   }
   return <>
                 <div className="ix-landing-page__metric-row" aria-label="Published ontology metrics">
-                  {[['classes', 'Declared classes'], ['object_properties', 'Object properties'], ['data_properties', 'Data properties'], ['annotation_properties', 'Annotation properties'], ['named_individuals', 'Declared named individuals'], ['resources', 'Graph resources'], ['relationships', 'Resource relationships']].map(([key, label]) =>
+                  {[['classes', 'Declared classes'], ['object_properties', 'Object properties'], ['data_properties', 'Data properties'], ['annotation_properties', 'Declared annotation properties'], ['named_individuals', 'Declared named individuals'], ['business_instances', 'Business instance records'], ['resources', 'Graph resources'], ['relationships', 'Resource relationships']].map(([key, label]) =>
                     <div key={key}><strong>{fmt(metrics?.[key])}</strong><span>{label}</span></div>)}
                 </div>
-                <p className="ix-landing-page__projection-note">{metrics?.definition}</p>
-                <p className="ix-landing-page__projection-note">Complete counts for the published projection; inferred axioms and unpublished registry artifacts are excluded.</p>
+                <p className="ix-landing-page__projection-note">Zero annotation-property declarations does not mean labels or descriptions are missing. Business instances can have a domain class without an explicit named-individual declaration.</p>
+                <details className="ix-landing-page__projection-note"><summary>How these counts are defined</summary>
+                  <p>{metrics?.definition}</p>
+                  <p>Complete counts for the published projection; inferred axioms and unpublished registry artifacts are excluded.</p>
+                </details>
 
 
                 <BreakdownTable title="Graph resources by ontology" rows={metrics?.ontology_breakdown || []} colKey="ontology" colLabel="Resources" />
@@ -223,8 +226,9 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       <section className="ix-landing-page__intro" aria-label="Platform overview">
         <div>
           <IxBadge type="label" variant="info" label="Digital thread workspace" />
-          <h2>Knowledge at the point of engineering work</h2>
+          <h2>Engineering knowledge, connected. Decisions, grounded.</h2>
           <p>Govern ontology assets and expose traceable product knowledge across PLM, MBSE, and manufacturing.</p>
+          <p>Built on an embedded industrial vocabulary connecting physical parts, designs, documents and activities through reviewed mappings.</p>
         </div>
         <div className="ix-landing-page__intro-actions">
           {lastRefreshed && <span>Updated {lastRefreshed.toLocaleTimeString()}</span>}

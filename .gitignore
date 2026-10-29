@@ -83,11 +83,15 @@ data/ontology_service/
 Thumbs.db
 
 # Build
+infra/reasoner/target/
+backend/ontology_service/resources/reasoner/*.jar
 .dist/
 build/
 dist/
 
 # Cache
+.vite*/
+frontend/.vite-*/
 .cache/
 .npm/
 *.cache

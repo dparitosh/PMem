@@ -1,6 +1,6 @@
 """Shared Companion scope projection; selection never grants authorization."""
 
-SCOPE_FIELDS = ('ontology', 'ontology_prefix', 'page')
+SCOPE_FIELDS = ('ontology', 'ontology_prefix', 'page', 'node_id', 'run_id', 'product_id', 'product_version')
 
 
 def companion_scope(context):

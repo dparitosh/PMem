@@ -353,14 +353,14 @@ _INTERNAL_PROPS = {"ontology_prefix", "ontology_id", "ontology_name", "source_on
                    "prefix", "source_format", "source_file"}
 
 
-def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
+def _semantic_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
     """Build dictionary from uploaded OWL semantics when Neo4j projection is empty."""
     try:
         from backend.ontology_service.domain.reasoning import OntologyReasoningService
 
         reasoning = OntologyReasoningService.get_reasoning(prefix)
     except Exception as exc:
-        logger.debug("Owlready2 dictionary fallback unavailable for %s: %s", prefix, exc)
+        logger.debug("semantic runtime dictionary fallback unavailable for %s: %s", prefix, exc)
         return None
 
     entities: Dict[str, Any] = {}
@@ -376,7 +376,7 @@ def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
             "concept_type": "Class",
             "namespace": reasoning.get("ontology_iri") or prefix,
             "ontology_prefix": reasoning.get("prefix") or prefix,
-            "source": "owlready2",
+            "source": "semantica",
             "iri": row.get("iri"),
             "definition": row.get("definition") or "",
             "properties": [],
@@ -393,7 +393,7 @@ def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
             "classes": domains,
             "iri": row.get("iri"),
             "range": row.get("range") or [],
-            "source": "owlready2",
+            "source": "semantica",
         }
         for domain in domains:
             if domain in entities and label not in entities[domain]["properties"]:
@@ -413,7 +413,7 @@ def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
         relationships[label] = {
             "type": label,
             "iri": row.get("iri"),
-            "source": "owlready2",
+            "source": "semantica",
             "connections": connections,
         }
 
@@ -430,7 +430,7 @@ def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
         "entity_count": len(entities),
         "relationship_count": len(relationships),
         "property_count": len(all_props),
-        "source": "owlready2_reasoning",
+        "source": "semantic_inspection",
     }
 
 
@@ -711,9 +711,9 @@ async def get_generic_data_dictionary(
                         all_props[p]["classes"].append(lbl)
 
         if not entities and not all_props and not relationships:
-            owlready_payload = _owlready_data_dictionary(normalized_prefix)
-            if owlready_payload:
-                return owlready_payload
+            semantic_payload = _semantic_data_dictionary(normalized_prefix)
+            if semantic_payload:
+                return semantic_payload
             raise HTTPException(
                 status_code=404,
                 detail=f"No data found in Neo4j for ontology prefix '{normalized_prefix}'. "

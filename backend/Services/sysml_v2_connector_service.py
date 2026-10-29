@@ -112,7 +112,7 @@ class SysMLV2ConnectorService:
                 "Authentication and OpenAPI compatibility are verified",
                 "License posture for any generated client is approved",
             ],
-            "not_a_replacement_for": ["XMI parser", "MDXML parser", "Owlready2", "RDFLib", "SHACL", "Neo4j"],
+            "not_a_replacement_for": ["XMI parser", "MDXML parser", "semantic runtime", "RDFLib", "SHACL", "Neo4j"],
             "recommended_flow": [
                 "projects / branches / commits",
                 "roots / elements / relationships / query-results",

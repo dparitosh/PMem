@@ -8,7 +8,7 @@ DEPO turns changing engineering data into a shared, traceable semantic model. Th
 - STEP/STPX or PLMXML instance data
 - ReqIF requirements where available
 - Neo4j for connected context and impact tracing
-- Owlready2/RDFLib for ontology inspection and export
+- Semantica for structural ontology validation; RDFLib for asserted ontology inspection and export
 - Knowledge Companion for graph-grounded answers
 
 The central message is:

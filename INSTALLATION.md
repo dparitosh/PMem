@@ -1,5 +1,11 @@
 # DEPO customer installation
 
+Lineage/projection updates include `backend/depo_platform/product_lineage.py` and `artifact_references.py`. Deploy them with the owning catalog/product/graph code through the normal `update-depo.ps1` workflow and restart services; release preflight verifies their presence. No new PostgreSQL table, credential rotation or automatic data deletion is required. Product source references now resolve through configured `ONTOLOGY_SERVICE_URL` and `DATA_PIPELINE_SERVICE_URL`. Retention refuses referenced/provenanced artifacts; do not bypass that protection by deleting files manually. See [lineage and projection qualification](docs/audits/lineage-projection-fixes-2026-10-29.md).
+
+For ontology upgrades, follow [Ontology release versions](docs/ONTOLOGY_RELEASES.md): register a replacement, declare its family/version/predecessor, validate and review, then approve/publish separately. `update-depo.ps1` installs the code; it does not invent versions or migrate mappings automatically. Release records use the existing PostgreSQL registry table. Preserve that table, ontology files and graph receipts together in backups; see [local recovery qualification and remaining gates](docs/audits/recovery-qualification-2026-10-29.md).
+
+For a destructive test-environment reset, use [Reset to vanilla state](docs/VANILLA_RESET.md). This separately confirmed Admin operation clears application records, agent/workflow history and retained uploads while preserving credentials and the embedded foundation. Installation and update never perform this reset automatically.
+
 Follow this runbook in order. Commands use `E:\App\PMem` as the example release root; replace that directory with your installation location. Use **Setup-DEPO.cmd** for Windows installation, update, repair, Start, Stop and Restart. Linux, gateways, remote databases and optional components have separate procedures in the [operator reference](docs/installation/OPERATOR_REFERENCE.md).
 
 ## 1. Prepare the machine
@@ -131,6 +137,17 @@ Expected final messages include `DEPO Windows installation completed successfull
 - Test an instance import, review its ontology links, and complete its approved graph load.
 - Send a small request to the configured LLM. HTTP 429 or unavailable local models means AI verification is incomplete even if installation succeeded.
 
+For model-assisted investigations, set `AGENTIC_MODEL_CONTEXT_TOKENS` in the repository-root `.env.local`
+to the selected provider/model's verified usable context window before restarting services. The example
+value is `32768`; this is a configuration limit, not automatic detection of the model's capacity.
+Requests use a conservative UTF-8 token upper bound, reserving the requested completion and 2,048 tokens
+for framing. Oversized prompts stop before inference; narrow the evidence/tool selection rather than
+raising the limit above the model's supported window. Goal memory retains observation identities and
+prioritizes recent results; omitted or partial results are explicitly marked. A `needs input` outcome
+asks for missing source fields and performs no write. Supply them and start a new investigation.
+Model summaries remain advisory: valid evidence references do not independently verify every claim.
+Shared service credentials represent one principal; use individual identities for person-specific history.
+
 An **ontology upgrade review** notice means corrected drafts require review. It is not an installation error. Review `logs/installation/ontology-upgrade-v2/plan.json` through Ontology Junction lifecycle controls. Existing publications remain until reviewed replacements are published. Setup does not automatically approve mappings, replace active publications or relink existing instances.
 
 In Admin → Maintenance, **Clear Import Workflows** removes quiescent instance-import and schema-set task history, task-owned files and PostgreSQL artifact manifests. Full Schema Cleanup includes this operation. Running tasks and uncertain publication outcomes block cleanup. Graph Reset alone retains Import history. Published ontology artifacts, data products and separate agent audit history are retained. Small deletion receipts prevent stale workers from restoring cleared workflows.
@@ -176,6 +193,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFi
 
 Use `-InstallDependencies` on the second command when dependency files changed. Do not use `-SkipFrontend` for this release's import, workflow-access or graph-display fixes. The updater validates agentic settings before shutdown, applies pending database migrations/indexes, rebuilds the UI and restarts services. It retains credentials, artifacts, workflow history and publication decisions. It does not replay failed imports or approve pending mappings.
 
+Ontology inspection now uses `backend/Services/ontology_semantic_runtime.py`; the former optional Owlready runtime is removed. Semantica 0.6.7 is already pinned in `backend/requirements.txt`, `backend/requirements-lock.txt` and the ontology, graph and schema-sets service profiles. Do not install Owlready to resolve an ontology error. If those service environments predate the pinned profiles, run `update-depo.ps1 -EnvFile .\.env.local -InstallDependencies`. Lightweight conversion services can inspect asserted RDF with RDFLib; their result explicitly reports when Semantica validation has not run. Structural validation does not prove logical consistency. Existing SHACL, OWL-RL, lifecycle and publication checks remain separate.
+
+OSLC read endpoints negotiate `application/json`, `text/turtle`, `application/rdf+xml` and `application/ld+json` using the `Accept` header. For example, request a built-in requirements shape with `Accept: application/ld+json` at `/oslc/shapes/requirements` under the configured OSLC service base URL. JSON-LD responses can be arrays or objects. Ontology JSON-LD input must use inline contexts: remote `@context` URLs and `@import` are rejected before parsing, including during legacy namespace detection and OSLC shape projection. Bundle the context definitions locally when preparing an offline customer deployment. This policy is separate from bounded remote XSD dependency resolution.
+
 After success, press Ctrl+F5, choose **Revalidate access**, then check Import, Ontology Junction's Semantic Bridge, all four Graph Explorer views, Knowledge Companion and Recommendations. Confirm pending publication is distinguished from completed validation. Review a retained workflow before retrying an uncertain write. Customer acceptance requires these checks against the customer's URLs, credentials and data; an offline regression pass does not replace them.
 
 ### Customer browser errors and release acceptance
@@ -191,6 +212,31 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\setup-de
 This preserves configuration and data. Review migration history and backups after a schema migration failure. Do not restart an older release against a newer schema without a reviewed rollback procedure.
 
 ## 6. Resolve errors
+
+### Browser registry, listener, CORS and reconnect failures
+
+`No usable service response` means the browser could not expose an HTTP response. It does not prove an invalid API key. Browser JavaScript cannot distinguish a refused connection, a firewall/proxy failure and a CORS-blocked response from that error alone. A visible HTTP 401/403 is a different, authentication-related result. An HTTP 503 indicates a reachable service reporting unavailability.
+
+Use this sequence on the deployed server; substitute the actual release directory for `E:\App\PMem`:
+
+1. Open PowerShell and run `Set-Location 'E:\App\PMem'`. Keep the existing root `.env.local`; do not regenerate credentials to repair a network error.
+2. Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 -EnvFile .\.env.local`. Inspect the first failed stage and its reported log path. Confirm the application listener address matches `DEPO_SERVICE_HOST`. Backend peer URLs and browser-facing gateway URLs have different reachability requirements.
+3. Inspect listeners with `Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -in 8011,8014 } | Select-Object LocalAddress,LocalPort,OwningProcess`. A listener on `127.0.0.1` cannot receive connections addressed to the server's private network IP. Do not kill an unverified process or remove PID tracking files.
+4. Set `ALLOWED_ORIGINS` to every exact browser origin in root `.env.local`, for example `http://127.0.0.1:3000,http://localhost:3000,https://portal.example.com`. Scheme, host and port must match; no paths, trailing slash or `*`. CORS does not open Windows Firewall ports and does not authorize API operations.
+5. After changing backend configuration, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local`. This uses managed process identity checks; database servers remain running. For browser URL/build changes use the documented installer/update procedure so the frontend routing is regenerated.
+6. Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .\.env.local`. The current diagnostic validates service readiness and authenticated CORS preflight for **every** configured origin, including `Authorization`, `Content-Type`, `X-API-Key` and `X-Request-ID`. Preflight itself sends no credentials and executes no write.
+7. Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-browser-session.ps1 -EnvFile .\.env.local`. For the configured gateway add `-Gateway`. It creates and disconnects a temporary read-only session; it does not approve or publish data. Local success does not establish that a customer browser can reach the gateway.
+8. From the actual customer browser, inspect DevTools → Network. Confirm the ingestion registry request `/api/v1/ontology/registered` routes to ingestion and `/api/v1/ontologies` routes to ontology. Confirm OPTIONS succeeds, the returned `Access-Control-Allow-Origin` matches the page origin, and the response request ID is visible. For a public frontend use externally reachable HTTPS gateway URLs; private `10.x.x.x` addresses and HTTP services behind an HTTPS page will fail for external users.
+
+The local session broker is available only with loopback frontend binding and local routing. It grants only configured scopes, uses a bounded 12-second authority read timeout, and does not expose its administrator key. Public/gateway deployments use their configured authentication flow. Revalidate access preserves the last visible registry while refreshing; expiry, sign-out, identity replacement and explicit schema cleanup clear it. Failed registry reads display an error or partial-list warning and are not proof that artifacts were deleted.
+
+### Semantic validation scope
+
+RDFLib remains required for RDF/XML, Turtle, JSON-LD, graph operations and serialization, including paths used inside Semantica 0.6.7. Semantica provides structural checks and SHACL data validation. Neither successful parsing nor a structural/SHACL result proves full OWL-DL logical consistency. DEPO now includes a separate HermiT worker; capability `owl_dl_consistency_supported` is true only when Java 17+ and the digest-verified worker are available. Ordinary asserted inspection still returns `consistency_verified=false`; an explicit consistency check has its own executed result and artifact/foundation scope.
+
+After an upgrade, follow [Semantic evidence in engineering work](docs/SEMANTIC_DECISION_LOOP.md) to verify the closed review loop. Deploy the complete source release, then run the normal repository-root `update-depo.ps1` path to verify the runtime, rebuild the frontend and restart services. This change requires no new SQL migration or database reset. Preserve the complete foundation bundle and verified reasoner JAR/manifest. Restart the owning services after updating code; do not copy only the frontend. Existing agent investigations pin source and semantic dependency revisions and can require a new review after an upgrade. Use the current-evidence endpoint before claiming a prior check still applies. Product and Data Flow model panels are advisory; existing approved semantic-release, instance-validation and delivery-receipt checks remain separate.
+
+Do not remove RDFLib from requirements or relabel structural validation as a reasoner result. See [embedded foundation and OWL-DL operation](docs/EMBEDDED_SEMANTIC_FOUNDATION.md) for the bundled IDO/DEPO vocabulary, Java prerequisite, build/release sequence, offline import rules, memory/deadline bounds and agent/UI behavior. Timeouts, missing imports and unsupported inputs never become successful consistency checks. Existing customer ontologies are not automatically remapped or certified by this update.
 
 ### Schema upload configuration
 
@@ -247,6 +293,12 @@ Build releases from the reviewed commit and validate the actual artifact. Before
 
 ## Feature-specific verification
 
+The [governed mapping feedback workflow](docs/GOVERNED_LEARNING.md) uses the existing agentic service and PostgreSQL registry. No new migration, credential, broker or LLM provider is needed. Deploy `backend/agentic_service/learning_review.py` and `learning_router.py` together with their service/catalog/frontend changes; release preflight requires both modules. In Semantic Bridge, expand **Learning from reviewed mappings** after publication. Verify feedback → pending hint → authorized approval → revision-scoped reuse → revocation. An amended assessment must preserve the original audit record and invalidate hints based on that older assessment. Do not label review counts as model accuracy or enable model training to test this flow.
+
+For the L0–L4 semantic/context fixes, deploy the complete release using the existing repository-root `update-depo.ps1`; no PostgreSQL schema reset or credential rotation is required. Release preflight now also requires `backend/depo_platform/semantic_support.py`, `backend/ontology_service/semantic_merge.py` and `backend/agentic_service/selected_record.py`. Keep the bundled `backend/ontology_service/resources/reasoner/depo-owl-dl.jar` and its `manifest.json` from the same release.
+
+After restart, verify Data Flow run selection and Data Products version selection before opening the Companion. Switching the selected record must reset its conversation; a failed selected-record read must not display an unrelated record. A semantic hold surviving reconnect/restart is intentional: resolve the class/model conflict and create a new reviewed proposal. For an incomplete unsatisfiable-class list, run the ontology consistency operation with the exact `target_iri`; an absent class remains unknown. If publication reports a graph/artifact revision mismatch, review and republish the retained ontology rather than clearing credentials or deleting data. See [L0–L4 remediation and storage ownership](docs/audits/l0-l4-remediation-2026-10-28.md).
+
 If the frontend is ready but **Existing ontology upgrade review** reports `WinError 10061`, the ontology inventory connection was refused. Frontend readiness does not establish ontology service availability. Verify that `ONTOLOGY_SERVICE_URL` in the selected `.env.local` points to the running service listener. For a backend bound specifically to `10.0.2.16`, the direct peer URL is `http://10.0.2.16:8011/api/v1`; use that example only when it matches the actual backend binding. Keep the configured gateway URL when routing through a gateway. Inspect `logs/windows-services/ontology.err.log` and `ontology.out.log`, restore the service or correct the peer URL, then rerun the same repository-root updater. Existing publications and the previous review plan are retained. The updated reviewer logs its chosen endpoint and retries transient inventory reads within a bounded budget; registration writes are not automatically retried.
 
 For engineering similarity, change-dependency paths and decision-policy examples, follow the [engineering recommendation review](docs/recommendation-engineering-review.md). The complete release must include `backend/graph_service/recommendation_engine.py`, `backend/graph_service/engineering_comparison.py` and `backend/Services/recommendation_compat.py`; the normal updater verifies them and rebuilds the customer UI. Domain policies are reviewed configuration and are not installed automatically. Direct graph analysis can run while the configured language model is unavailable; agent investigation requires the model.
@@ -254,3 +306,19 @@ For engineering similarity, change-dependency paths and decision-policy examples
 The [Recommendations customer audit](docs/recommendations-customer-audit.md) records input, browser, session, agent, evidence, process-scope and decision-policy checks plus the remaining customer acceptance procedure. Deploy the matching frontend and backend together; Process Context now applies scope before limiting neighbors and reports bounded coverage. A passed local suite does not establish customer API authorization or model availability.
 
 After installation, use the [operator reference](docs/installation/OPERATOR_REFERENCE.md) for ontology governance, microservice checks, credentials, browser access, XMI import and PLM Companion acceptance. The [PLM response contract](docs/PLM_COMPANION_RESPONSE_CONTRACT.md) contains the implemented system instructions and evidence rules. For the optional separate AOI provider, follow [AOI adapter configuration from PMem](docs/installation/AOI_GATEWAY.md).
+
+## Taxonomy browser performance update (29 October 2026)
+
+Deploy the complete release through the repository-root `update-depo.ps1` with the existing customer environment file. Include `backend/ontology_service/domain/taxonomy.py`, `backend/ontology_service/domain/taxonomy_cache.py`, `backend/ingestion_service/api/ontology_browser.py`, `backend/depo_platform/release_code_check.py` and the rebuilt frontend together. Do not copy only the frontend bundle; the new browser uses taxonomy limit/offset/query parameters. Startup rejects a release missing the cache module.
+
+Ontology Junction requests 500 terms per slice. Use Previous/Next terms or the taxonomy search field to access additional retained terms. Relationships and hierarchy describe the displayed slice, not a complete logical closure. Export remains available for the retained artifact.
+
+The first browse builds a disposable gzip cache beside the retained ontology artifact (`.<artifact-name>.taxonomy-v1.json.gz`). Subsequent process starts validate source content digests, ontology metadata, implementation and RDFLib version before reusing it. Corrupt or mismatched caches rebuild automatically; unavailable cache writes do not prevent browsing. This cache is not a publication receipt, approval record or OWL-DL consistency result. Existing credentials, schema and graph data are preserved; no migration or new dependency is required for this change.
+
+### Change Control visibility
+
+The workflow follow-up patch also updates `backend/data_pipeline_service/router.py` and `frontend/src/pages/DataFlowPage.js`: access revalidation supersedes pending page reads, and retrying a retained replay reference can recover its existing status even if the original input has expired. Current authorization and actor/source/run identity checks still apply; fresh execution still requires approved job definitions and retained inputs.
+
+Workflow reconnect/replay fixes must be deployed as a matching frontend and backend release using repository-root `update-depo.ps1`, then restart application services. This includes `backend/data_pipeline_service/router.py`, `run_records.py`, `backend/depo_platform/request_bodies.py`, and the rebuilt Import/Data Flow frontend. No schema drop, credential rotation, new dependency or migration is required. Replay requests may include `idempotency_key`; retries with the same actor, source run and key return the retained run. Clients that omit the key retain the existing new-run-per-request behavior. The UI retains an unconfirmed replay reference in same-tab session storage; after clearing browser storage or using another tab, inspect retained runs before resubmitting. Cancelling a browser request does not cancel or roll back server execution.
+
+The OSLC service supplies the central Change Control page. Deploy `backend/oslc_service/change_control.py` with the matching OSLC app and rebuilt frontend through the normal repository-root `update-depo.ps1` process. Release preflight rejects a package missing this module. No new dependency, credential or PostgreSQL schema migration is required; existing retained records are read from their owned namespaces. The page does not grant approvals, publish data, delete history or automatically convert historical records into change orders. See `docs/architecture/OSLC_LIFECYCLE_RELEASE.md` for API scope and the remaining central CR/CO enforcement phase.

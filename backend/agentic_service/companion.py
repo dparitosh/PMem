@@ -16,6 +16,9 @@ def descriptive_properties(properties):
     """Bound descriptive evidence; never forward arbitrary credential properties."""
     allowed = {'iri', 'definition', 'description', 'comment', 'domain', 'range',
                'datatype', 'unit', 'units', 'value', 'prefLabel', 'altLabel', 'prefix', 'updated_at', 'publication_revision'}
+    from backend.graph_service.search_evidence import BUSINESS_FIELDS, search_properties
+    allowed |= BUSINESS_FIELDS
+    properties = {**properties, **search_properties(properties)}
     result = {}
     for key in sorted(allowed):
         value = properties.get(key)
@@ -39,7 +42,7 @@ class KnowledgeCompanion:
         configured = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         return configured if configured.endswith("/api/v1") else f"{configured}/api/v1"
 
-    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', ontology_prefix: str = '', page: str = '', on_token=None) -> dict[str, Any]:
+    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = '', run_id: str = '', product_id: str = '', product_version: str = '', on_token=None) -> dict[str, Any]:
         import hashlib
         from datetime import datetime, timezone
         query = " ".join(str(message or "").split())
@@ -47,10 +50,34 @@ class KnowledgeCompanion:
             raise ValueError("message is required")
         if headers is None:
             headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
+        if run_id or product_id:
+            from .selected_record import answer
+            try:
+                selected = await answer({'run_id': run_id, 'product_id': product_id, 'product_version': product_version}, headers)
+            except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
+                selected = {'status': 'unavailable', 'answerable': False,
+                    'response': 'The selected record could not be verified. Refresh its owning service and access before retrying; no other record was substituted.',
+                    'evidence': [], 'sources': [], 'generation': {'enabled': False, 'status': 'not_requested'}}
+            if on_token: await on_token(selected['response'])
+            return selected
+        from .companion_context import semantic_context
+        try:
+            semantic = await semantic_context(query, headers=headers, ontology_id=ontology_id)
+        except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
+            semantic = {'status': 'unavailable', 'answerable': False,
+                'response': 'Semantic evidence could not be checked. Verify read access and ontology-service readiness; no consistency conclusion was generated.',
+                'evidence': [], 'sources': [], 'generation': {'enabled': False, 'status': 'not_requested'}}
+        if semantic is not None:
+            if on_token: await on_token(semantic['response'])
+            return semantic
         from backend.depo_platform.plm_questions import intent
         business_intent=intent(query)
         from .companion_context import mapping_context
         context = {'evidence': [], 'status': 'unavailable'}
+        model_support = None
+        if ontology_id:
+            from backend.depo_platform.semantic_support import read_support
+            model_support = await asyncio.to_thread(read_support, ontology_id, headers)
         try:
             context = await mapping_context(query, headers=headers, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
         except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
@@ -67,7 +94,7 @@ class KnowledgeCompanion:
         if business_intent:
             try:
                 from .companion_context import plm_context
-                context['evidence'].append(await plm_context(query,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix))
+                context['evidence'].append(await plm_context(query,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix,**({'node_id':node_id} if node_id else {})))
             except (httpx.HTTPError,TimeoutError,ValueError,RuntimeError):
                 logging.getLogger(__name__).warning('Companion typed PLM read unavailable')
         document_result={'status':'unavailable','evidence':[]}
@@ -89,9 +116,14 @@ class KnowledgeCompanion:
                                  'semantic_entailment_verified':False},
                     'generation':{'enabled':False,'status':'not_requested'}}
         graph_status = 'not_requested' if typed_answer else 'available'
+        resolved_context = None
         try:
             if typed_answer:
                 graph={'nodes':[],'relationships':[],'view':{'truncated':bool((typed_answer.get('coverage') or {}).get('has_more'))}}
+            elif node_id:
+                from .companion_context import business_context
+                resolved_context, endpoint = await business_context(node_id,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+                graph = resolved_context
             else:
                 from backend.depo_platform.network import bounded_timeout_seconds
                 timeout = bounded_timeout_seconds("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", default=15, maximum=120)
@@ -117,16 +149,16 @@ class KnowledgeCompanion:
         identities=[node.get('elementId') for node in nodes]
         if any(not isinstance(value,str) or not value.strip() or len(value)>2000 for value in identities) or len(identities)!=len(set(identities)):
             raise RuntimeError('Graph retrieval returned invalid or duplicate evidence identities')
-        if ontology_id and any(node['properties'].get('ontology_id') != ontology_id for node in nodes):
+        if ontology_id and any(ontology_id not in (node['properties'].get('ontology_id'),node['properties'].get('source_ontology')) for node in nodes):
             raise RuntimeError('Graph retrieval returned evidence outside the selected ontology scope')
-        if ontology_prefix and any(node['properties'].get('prefix') != ontology_prefix for node in nodes):
+        if ontology_prefix and any(ontology_prefix not in (node['properties'].get('prefix'),node['properties'].get('ontology_prefix')) for node in nodes):
             raise RuntimeError('Graph retrieval returned evidence outside the selected prefix scope')
         if any(not isinstance(edge.get('start'), str) or not isinstance(edge.get('end'), str)
                or edge['start'] not in identities or edge['end'] not in identities for edge in relationships):
             raise RuntimeError('Graph retrieval returned a relationship outside its evidence resources')
         query_tokens = self._tokens(query)
         # Do not turn a legacy/unfiltered search response into a business fact.
-        schema_kinds = {'class','objectproperty','datatypeproperty','annotationproperty','restriction','property'}
+        schema_kinds = {'class','ontologyclass','objectproperty','datatypeproperty','annotationproperty','restriction','property','datatype','expression','axiom'}
         nodes = [node for node in nodes if str((node.get('properties') or {}).get('kind') or '').lower() not in schema_kinds
                  and not set(node.get('labels') or []) & {'OntologyClass','ObjectProperty','DatatypeProperty','Restriction'}]
         business_ids = {node['elementId'] for node in nodes}
@@ -135,7 +167,7 @@ class KnowledgeCompanion:
         for node in nodes:
             properties = dict(node.get("properties") or {})
             text = " ".join(str(properties.get(key) or "") for key in ("label", "iri", "kind", "ontology_id"))
-            score = int(properties.get("search_score") or len(query_tokens & self._tokens(text)))
+            score = 1 if node_id else int(properties.get("search_score") or len(query_tokens & self._tokens(text)))
             if score:
                 scored.append((score, node))
         scored.sort(key=lambda item: (-item[0], str((item[1].get("properties") or {}).get("label") or item[1].get("elementId"))))
@@ -143,14 +175,17 @@ class KnowledgeCompanion:
         business_status='not_requested'
         inclusion={}
         context_coverage={}
-        if page == 'graph' and selected:
+        if selected and (page in {'graph','whereused','modeling','requirements','qif'} or node_id):
             exact=[node for node in selected if str(node['properties'].get('label') or '').casefold()==query.casefold()]
-            roots=(exact if len(exact)==1 else selected if len(nodes)==1 else []) if not (graph.get('view') or {}).get('truncated') else []
+            roots = [node for node in nodes if node['elementId'] == node_id] if node_id else ((exact if len(exact)==1 else selected if len(nodes)==1 else []) if not (graph.get('view') or {}).get('truncated') else [])
             business_status='ambiguous' if not roots else 'unavailable'
             if roots:
                 try:
                     from .companion_context import business_context
-                    connected,context_endpoint=await business_context(roots[0]['elementId'],headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
+                    if resolved_context is not None:
+                        connected,context_endpoint=resolved_context,endpoint
+                    else:
+                        connected,context_endpoint=await business_context(roots[0]['elementId'],headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
                     root_id=roots[0]['elementId']
                     selected=sorted(connected['nodes'],key=lambda n:(n['elementId']!=root_id,n['elementId']))[:max(1,min(6,self.max_evidence//2))]
                     relationships=connected['relationships']
@@ -178,9 +213,14 @@ class KnowledgeCompanion:
         evidence.extend({
             "evidence_type": "graph_relationship", "resource_id":str(edge.get('elementId') or ''), "source_id": str(edge.get("start") or ""),
             "target_id": str(edge.get("end") or ""), "relationship": str((edge.get('properties') or {}).get('predicate') or edge.get("type") or "RELATED_TO"), "source": endpoint,
+            "business_label": edge.get('business_label') or (edge.get('properties') or {}).get('business_label'),
         } for edge in selected_edges)
         from .prompt_security import protect
         evidence = protect(context['evidence'] + evidence)[:26]
+        if model_support is not None and evidence:
+            evidence.append({'evidence_type': 'semantic_assessment', 'resource_id': 'semantic:' + str(model_support.get('evidence_id') or ontology_id),
+                'label': 'Selected model assessment', 'description': model_support['business_summary'],
+                'source': 'ontology-service:current-semantic-evidence', 'assessment': model_support})
         selection_truncated = len(scored)>len(selected) or len(relationships)>len(selected_edges)
         retrieval = {"nodes_examined": len(nodes), "relationships_examined": len(relationships), "truncated": bool((graph.get("view") or {}).get("truncated")), 'graph_status': graph_status, 'mapping_history_status': context['status'], 'page_evidence_status': page_result['status'], 'page':page, 'selection_truncated': selection_truncated, 'selected_resources': len(selected), 'selected_relationships': len(selected_edges), 'answer_scope': 'bounded_retrieval', 'semantic_entailment_verified': False, 'retrieved_at': datetime.now(timezone.utc).isoformat(), 'evidence_sha256': hashlib.sha256(json.dumps(evidence,sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
         retrieval['page_representation'] = page_result.get('representation', 'not_available')
@@ -190,6 +230,7 @@ class KnowledgeCompanion:
         retrieval['business_context_coverage'] = context_coverage
         retrieval['page_coverage'] = page_result.get('coverage')
         retrieval['source_revision_status'] = 'unverified'
+        retrieval['semantic_support'] = model_support
         if not evidence:
             return {
                 "status": "no_evidence", "answerable": False,
@@ -211,7 +252,8 @@ class KnowledgeCompanion:
             response_text+=('\n\n' if response_text else '')+'\n'.join(item['description']+f" [evidence:{item['resource_id']}]" for item in application_items)
         excerpts=[item for item in evidence if item['evidence_type'] in {'document_excerpt','graph_excerpt'}]
         if excerpts:
-            response_text+=('\n\n' if response_text else '')+'Retrieved excerpts (source freshness is unverified):\n'+'\n'.join(item['description'][:1000]+f" [evidence:{item['resource_id']}]" for item in excerpts[:3])
+            from .business_answers import business_text
+            response_text+=('\n\n' if response_text else '')+'Retrieved excerpts (source freshness is unverified):\n'+'\n'.join(business_text(item['description'])[:1000]+f" [evidence:{item['resource_id']}]" for item in excerpts[:3])
         business_items=[item for item in evidence if item['evidence_type']=='business_answer']
         if business_items:
             from .business_answers import render
@@ -222,8 +264,21 @@ class KnowledgeCompanion:
             for item in evidence:
                 if item['evidence_type'] != 'graph_resource': continue
                 props = item.get('properties') or {}
-                description = props.get('description') or props.get('value') or props.get('comment')
-                response_text += f"\n| {cell(item['label'])} | {cell(description)} | [evidence:{item['resource_id']}] |"
+                description = props.get('description') or props.get('definition') or props.get('value') or props.get('comment')
+                attributes=[]
+                if props.get('value') is not None:
+                    attributes.append('Value: '+cell(props['value'])+' '+cell(props.get('units') or props.get('unit') or '').replace('Not recorded',''))
+                for key in ('revision','material','mass','weight','diameter','length','tolerance','status'):
+                    if props.get(key) is not None:attributes.append(key.capitalize()+': '+cell(props[key]))
+                details='; '.join([cell(description),*attributes]) if attributes else cell(description)
+                response_text += f"\n| {cell(item['label'])} | {details} | [evidence:{item['resource_id']}] |"
+            connections=[item for item in evidence if item['evidence_type']=='graph_relationship']
+            if connections:
+                from .business_answers import connection_label
+                names={item['resource_id']:item['label'] for item in evidence if item['evidence_type']=='graph_resource'}
+                response_text+='\n\n| From | Recorded relationship | To | Evidence |\n|---|---|---|---|'
+                for edge in connections:
+                    response_text+=f"\n| {cell(names.get(edge['source_id']))} | {connection_label({'business_label':edge.get('business_label'),'type':edge['relationship']})} | {cell(names.get(edge['target_id']))} | [evidence:{edge['source_id']}] [evidence:{edge['target_id']}] |"
         if retrieval['truncated'] or selection_truncated: response_text += '\n\nThis answer uses a limited evidence selection; it does not establish whole-graph counts, completeness or absence of other matches.'
         if page_result.get('representation') == 'postgres_business_context':
             response_text += '\n\nBusiness-context evidence comes from the PostgreSQL-backed Semantica context graph; synchronization with Neo4j is not established.'
@@ -239,19 +294,26 @@ class KnowledgeCompanion:
         elif business_status=='ambiguous':
             response_text += '\n\nSeveral business objects may match. Select a specific graph node and use Investigate with agent to preserve its identity and retrieve its context.'
         generation = {'enabled': False, 'status': 'disabled', 'action': 'This is a retrieval answer. Enable COMPANION_LLM_ENABLED=true with a configured provider for cited model summaries.'}
-        if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
+        if os.getenv('COMPANION_LLM_ENABLED','false').lower()=='true' and business_items and not any(item.get('rows') for item in business_items):
+            generation={'enabled':True,'status':'not_requested','action':'No verified business rows were returned; the model was not asked to invent an answer.'}
+        if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true' and (not business_items or any(item.get('rows') for item in business_items)):
             prompt_details = {}
             try:
                 from .local_llm import summarize
                 summary = await summarize(query, evidence, prompt_details=prompt_details)
-                response_text = summary
+                # The model may explain typed facts; it must not replace their
+                # deterministic table or erase recorded uncertainty/coverage.
+                response_text = response_text + '\n\nModel interpretation (not independently verified):\n\n' + summary if business_items else summary
                 generation = {'enabled': True, 'status': 'completed', 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'prompt_details': prompt_details, 'grounding': 'citation-identifiers-checked', 'semantic_entailment_verified': False}
             except Exception as failure:
                 from .local_llm import failure_status, failure_action
                 status = failure_status(failure)
                 logging.getLogger(__name__).warning('Companion generation failed: stage=generation status=%s error_type=%s', status, type(failure).__name__)
                 generation = {'enabled': True, 'status': status, 'prompt_details': prompt_details, 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'action': failure_action(failure, os.getenv('USE_LLM', 'ollama').strip().lower())}
-                response_text += '\n\nThe configured language model is unavailable; the retrieved evidence above remains available.'
+                response_text += ('\n\nThe evidence exceeds the configured model context. Narrow the question or selected scope; retrieved business evidence remains available.'
+                                  if status == 'context_budget_exceeded' else '\n\nThe configured language model is unavailable; the retrieved evidence above remains available.')
+        if model_support is not None:
+            response_text += '\n\nModel evidence: ' + str(model_support.get('status', 'unknown')) + '. ' + model_support['business_summary'] + ' [evidence:semantic:' + str(model_support.get('evidence_id') or ontology_id) + ']'
         if on_token:
             await on_token(response_text)
         return {

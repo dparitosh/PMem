@@ -28,14 +28,18 @@ async def test_required_retention_precedes_optional_memory(monkeypatch, fail_ret
     monkeypatch.setattr(routes, '_finish_observation', lambda *a, **kw: None)
     monkeypatch.setattr(routes, 'companion_job_store', SimpleNamespace(put=retain))
     monkeypatch.setattr(routes, 'AgentMemoryService', SimpleNamespace(enabled=lambda:True, record_chat_turn=enrich))
-    monkeypatch.setattr(routes, 'companion', SimpleNamespace(_graph_root=lambda:'http://fixture', ask=AsyncMock(return_value={'response':'answer', 'evidence':[], 'sources':[], 'answerable':False})))
+    async def ask(*args, **kwargs):
+        if kwargs.get('on_token'):await kwargs['on_token']('answer')
+        return {'response':'answer', 'evidence':[], 'sources':[], 'answerable':False}
+    async def emit(text):events.append('stream')
+    monkeypatch.setattr(routes, 'companion', SimpleNamespace(_graph_root=lambda:'http://fixture', ask=ask))
     request=SimpleNamespace(state=SimpleNamespace(request_id='request'))
     if fail_retention:
-        with pytest.raises(HTTPException) as failure: await routes._companion_chat(ChatRequest(message='test'), request)
+        with pytest.raises(HTTPException) as failure: await routes._companion_chat(ChatRequest(message='test'), request, on_token=emit)
         assert failure.value.status_code == 503
         assert events == ['postgres']
     else:
-        result=await routes._companion_chat(ChatRequest(message='test'), request)
-        assert events == ['postgres','graph']
+        result=await routes._companion_chat(ChatRequest(message='test'), request, on_token=emit)
+        assert events == ['postgres','graph','stream']
         assert result['retention']['status'] == 'retained'
         assert result['memory_enrichment'] == {'status':'unavailable', 'required':False}

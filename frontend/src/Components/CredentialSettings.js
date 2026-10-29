@@ -6,7 +6,7 @@ import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getG
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
 import { verifyStoredReadAccess } from '../services/readAccessVerification';
 import './CredentialSettings.css';
-import { installBrowserSession } from '../services/serviceAuth';
+import { installBrowserSession, getBrowserAccessPreferences, setBrowserAccessPreferences } from '../services/serviceAuth';
 
 const profiles = Object.keys(credentialServices);
 export default function CredentialSettings() {
@@ -21,10 +21,12 @@ export default function CredentialSettings() {
   const [expiry, setExpiry] = useState('');
   const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_') ? '' : getCredentialProfile('ADMIN_API_KEY'));
   const [includeMaintenance, setIncludeMaintenance] = useState(() => {
+    const preference = getBrowserAccessPreferences();
+    if (preference) return preference.includeMaintenance;
     const session = getBrowserSessionStatus();
     return session ? session.profiles.includes('ADMIN_API_KEY') : true;
   });
-  const [includeWrites, setIncludeWrites] = useState(() => (getBrowserSessionStatus()?.profiles || []).some(profile => !['GRAPH_READ_TOKEN', 'ADMIN_API_KEY'].includes(profile)));
+  const [includeWrites, setIncludeWrites] = useState(() => getBrowserAccessPreferences()?.includeWrites ?? (getBrowserSessionStatus()?.profiles || []).some(profile => !['GRAPH_READ_TOKEN', 'ADMIN_API_KEY'].includes(profile)));
   const [sessionStatus, setSessionStatus] = useState(() => {
     const session = getBrowserSessionStatus();
     return session ? `Session restored: ${session.profiles.length} delegated scopes. Expires ${new Date(session.expiresAt).toLocaleTimeString()}. Services verify access on each request.` : '';
@@ -88,11 +90,12 @@ export default function CredentialSettings() {
       const failures = checks.flatMap((check, index) => check.status === 'rejected' ? [`${services[index]}: ${check.reason?.name === 'AbortError' ? 'timed out' : check.reason?.message || 'transport failure'}`] : []);
       if (checks.some(check => check.status === 'rejected' && check.reason?.authenticationRejected)) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
       installBrowserSession(body, subscription);
+      setBrowserAccessPreferences({includeWrites,includeMaintenance});
       pendingSession = null;
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
       setSessionAdminKey('');
-      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}.${failures.length ? ` Unavailable services: ${failures.join('; ')}. Healthy services remain usable.` : ''} Credential rotation still requires the separate admin key.`);
+      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}.${includeWrites && !body.profiles.includes('INGESTION_WRITE_TOKEN') ? ' Upload access is unavailable: the server did not grant INGESTION_WRITE_TOKEN. Check that profile in the central credential store before uploading.' : ''}${failures.length ? ` Unavailable services: ${failures.join('; ')}. Healthy services remain usable.` : ''} Credential rotation still requires the separate admin key.`);
       window.dispatchEvent(new Event('depo:credentials-changed'));
     } catch (error) {
       if (pendingSession && sessionUrl) {

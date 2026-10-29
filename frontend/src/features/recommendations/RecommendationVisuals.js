@@ -1,5 +1,5 @@
 import { CARD, SectionHeader, ResultEmptyState } from "./RecommendationPrimitives.js";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import { BarChart2 } from "lucide-react";
 import { UI_COLORS as C } from "../../styles/uiTokens";
@@ -8,6 +8,17 @@ const FLOW_COLORS = { direct: C.primary, instance: C.orange, related: C.amber };
 
 const ProcessFlowTimeline = ({ data }) => {
   const svgRef = useRef(null);
+  const [layoutWidth, setLayoutWidth] = useState(700);
+  useEffect(() => {
+    const element = svgRef.current;
+    if (!element) return;
+    const measure = () => setLayoutWidth(Math.max(320, element.clientWidth || 700));
+    measure();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    observer?.observe(element.parentElement);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, [data]);
 
   useEffect(() => {
     if (!svgRef.current || !data?.part) return;
@@ -23,7 +34,7 @@ const ProcessFlowTimeline = ({ data }) => {
 
     const itemH = 28, groupPad = 40, headerH = 30, leftPad = 160;
     const totalH = groups.reduce((h, g) => h + headerH + g.items.length * itemH + groupPad, 0) + 20;
-    const width = svgRef.current.clientWidth || 700;
+    const width = layoutWidth;
     svg.attr('width', width).attr('height', totalH);
 
     let yOffset = 15;
@@ -65,7 +76,7 @@ const ProcessFlowTimeline = ({ data }) => {
           .attr('x', leftPad + 10).attr('y', iy + 2)
           .attr('width', Math.min(width - leftPad - 40, 400)).attr('height', itemH - 5)
           .attr('rx', 4)
-          .attr('fill', '#fff').attr('stroke', group.color).attr('stroke-width', 1);
+          .attr('fill', C.surface).attr('stroke', group.color).attr('stroke-width', 1);
         // Name
         g.append('text')
           .attr('x', leftPad + 18).attr('y', iy + itemH / 2 + 4)
@@ -83,7 +94,7 @@ const ProcessFlowTimeline = ({ data }) => {
       });
       yOffset += group.items.length * itemH + groupPad;
     });
-  }, [data]);
+  }, [data, layoutWidth]);
 
   if (!data?.part) {
     return (
@@ -101,16 +112,16 @@ const ProcessFlowTimeline = ({ data }) => {
       <ResultEmptyState
         icon={BarChart2}
         title="No process timeline available"
-        message="The manufacturing response loaded successfully, but there are no direct, instance, or related processes to draw in the timeline."
+        message="No assessed process links were returned for this timeline. Unassessed categories do not establish that process links are absent."
         color={C.green}
       />
     );
   }
 
   return (
-    <div style={{ ...CARD, padding: '12px' }}>
+    <div style={{ ...CARD, padding: '12px', overflowX: 'auto' }}>
       <SectionHeader icon={BarChart2} label="Process links by category" color={C.primary} />
-      <svg ref={svgRef} style={{ width: '100%', minHeight: '200px' }} />
+      <svg ref={svgRef} role="img" aria-label="Recorded processes by category" style={{ width: '100%', minWidth: 320, minHeight: '200px' }} />
     </div>
   );
 };

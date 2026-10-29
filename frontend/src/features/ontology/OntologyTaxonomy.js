@@ -16,7 +16,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
     label: refLabel(cls),
     definition: cls.definition || cls.comment || '',
     ontology_prefix: cls.ontology_prefix || taxonomy?.ontology_prefix || '',
-    source: 'owlready2-class',
+    source: 'semantic-class',
   })).filter((node) => node.term_id), [reasoning, refLabel, taxonomy, termIdFromRef]);
 
   const reasoningPropertyNodes = useMemo(() => [
@@ -259,7 +259,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
       {reasoning?.status === 'success' && (
         <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, overflow: 'hidden' }}>
           <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Owlready2 Semantics</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Ontology semantics</span>
             <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
               {reasoning.summary?.classes || 0} classes  |  {reasoning.summary?.subclass_edges || 0} subclass links
             </span>
@@ -311,9 +311,9 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
                 Taxonomy: {taxonomy.extraction_source}
               </span>
             )}
-            {reasoning?.engine === 'owlready2' && (
+            {reasoning?.engine === 'semantica' && (
               <span style={{ fontSize: '10px', fontWeight: 700, color: C.primaryText, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
-                Reasoned ontology
+                Asserted ontology · structural validation
               </span>
             )}
           </div>
