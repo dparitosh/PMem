@@ -32,3 +32,4 @@
 .data-cockpit .evidence-product-options {margin-top:0;}.data-cockpit .evidence-product-options h3 {font-size:17px;}.data-cockpit .evidence-product-options p {line-height:1.6;}
 
 .product-overview__action {border:0;background:transparent;color:var(--ui-primary,#006f87);font:inherit;font-size:12px;padding:0;text-align:left;text-decoration:underline;cursor:pointer;}
+.product-publication__release-help{margin:16px 0;padding:14px 16px;border-left:4px solid var(--ui-primary,#0068a8);background:var(--ui-surface-alt,#edf5fa);display:grid;gap:6px}.product-publication__release-help p{margin:0;color:var(--ui-muted,#62788a)}.product-publication__release-help a{color:var(--ui-primary,#0068a8);font-weight:600}.product-publication__release-help [role=alert]{color:var(--ui-danger,#a32121)}
