@@ -12,6 +12,31 @@ vi.mock('../services/productService', () => ({readProductCollection:vi.fn(),PROD
 vi.mock('../Components/SchemaProductPublisher', () => ({default: ({draft}) => draft ? <div data-testid="retained-draft">{JSON.stringify(draft)}</div> : null}));
 vi.mock('../Components/AgentProposalPanel', () => ({default: ({context}) => <div data-testid="governor-context">{JSON.stringify(context)}</div>}));
 beforeEach(() => { vi.clearAllMocks(); window.location.hash = '#/data-products'; });
+afterEach(() => cleanup());
+it('hides empty collection and discovery controls until the list finishes loading', async () => {
+  let resolve;
+  readProductCollection.mockReturnValue(new Promise(done => { resolve = done; }));
+  render(<DataProductsPage />);
+  expect(screen.getByText('Loading products…')).toBeVisible();
+  expect(screen.queryByLabelText('Discover product versions')).toBeNull();
+  await act(async () => resolve({rows:[],total:0,warning:''}));
+  expect(screen.getByLabelText('Discover product versions')).toBeVisible();
+  expect(screen.getByRole('link',{name:'Connect publication access'})).toBeVisible();
+});
+it('session replacement reloads run evidence and discards an older response', async () => {
+  window.location.hash = '#/data-products?run_id=loaded';
+  readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+  let oldResolve;
+  dataPipelineAPI.getRun.mockReturnValueOnce(new Promise(done => { oldResolve = done; }))
+    .mockResolvedValue({data:{run_id:'loaded',status:'completed',output_manifest:{ods_receipt:{schema:'current_schema',counts:{entities:2},business_views:[]}}}});
+  render(<DataProductsPage />);
+  await waitFor(() => expect(dataPipelineAPI.getRun).toHaveBeenCalledTimes(1));
+  await act(async () => window.dispatchEvent(new Event('depo:session-replaced')));
+  expect(await screen.findByText('current_schema')).toBeVisible();
+  await act(async () => oldResolve({data:{run_id:'loaded',status:'completed',output_manifest:{ods_receipt:{schema:'old_schema',counts:{entities:1}}}}}));
+  expect(screen.queryByText('old_schema')).toBeNull();
+  expect(dataPipelineAPI.getRun.mock.calls.length).toBeGreaterThanOrEqual(2);
+});
 it.each(['removed', 'retained', 'failed'])('background refresh handles a %s product snapshot', async (outcome) => {
   let poll;
   const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
@@ -51,6 +76,26 @@ it('reloads retained Data Flow evidence through the pipeline service', async () 
   await waitFor(() => expect(screen.getByTestId('retained-draft')).toHaveTextContent('retained-1'));
   expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('run-1', expect.objectContaining({timeout:15000}));
   expect(screen.getByTestId('retained-draft')).toHaveTextContent('requires_review');
+});
+
+it.each(['available', 'pending'])('shows an existing analytics load when evidence is %s', async (evidenceStatus) => {
+  window.location.hash = '#/data-products?run_id=loaded';
+  readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+  dataPipelineAPI.getRun.mockResolvedValue({data:{run_id:'loaded',status:'completed',output_manifest:{evidence_status:evidenceStatus,partition_artifacts:{accepted:'receipt'},ods_receipt:{schema:'analytics_parts',analytics_readiness:'structural-data-loaded',counts:{entities:42},business_views:[]}}}});
+  render(<DataProductsPage />);
+  expect(await screen.findByText('analytics_parts')).toBeVisible();
+  expect(screen.getByText('42')).toBeVisible();
+  expect(screen.getByText('Prepare a separate analytics load').closest('details')).not.toHaveAttribute('open');
+});
+
+it('resolves older run artifacts using retained input roles and dependency paths', async () => {
+  window.location.hash = '#/data-products?run_id=legacy';
+  readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+  dataPipelineAPI.getRun.mockResolvedValue({data:{run_id:'legacy',status:'completed',analytics_inputs:{schema_artifact_id:'schema-old',xml_artifact_id:'xml-old',schema_dependencies:{'types.xsd':'dependency-old'}},output_manifest:{partition_artifacts:{accepted:'receipt-old'}}}});
+  render(<DataProductsPage />);
+  await waitFor(()=>expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('schema-old'));
+  expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('xml-old');
+  expect(screen.getByLabelText('Schema dependencies (relative path → artifact ID, JSON)')).toHaveValue('{"types.xsd":"dependency-old"}');
 });
 
 it('visible evidence actions expand the relevant product workflow',async()=>{

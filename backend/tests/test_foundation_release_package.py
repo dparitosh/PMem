@@ -24,7 +24,7 @@ def test_customer_package_includes_verified_generated_worker_and_foundation(tmp_
         destination=tmp_path/name; destination.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(ROOT/name,destination)
     entries=''.join(f'100644 {"0"*40} 0\t{name}\0' for name in sorted(names)).encode()
-    with patch.object(module.subprocess,'check_output',return_value=entries):
+    with patch.object(module.subprocess,'check_output',side_effect=lambda command, **kwargs: entries if 'ls-files' in command else b''):
         selected=module.package(tmp_path,tmp_path/'customer.zip')
         assert jar in selected
         with zipfile.ZipFile(tmp_path/'customer.zip') as package:

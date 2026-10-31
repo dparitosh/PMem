@@ -402,12 +402,14 @@ const SERVICE_HEALTH_ENDPOINTS = Object.freeze({
   catalog: '/healthz',
   dataProducts: '/healthz',
   ceim: '/healthz',
-  dataPipeline: '/api/v1/pipeline/health',
+  // The pipeline capability endpoint reports optional Spark state. The shell
+  // checks service/database readiness, while Data Flow shows Spark separately.
+  dataPipeline: '/readyz',
 });
 
 function isUsableHealthResponse(response) {
   const status = String(response?.data?.status || '').toLowerCase();
-  return !['not_configured', 'offline', 'unavailable', 'error', 'failed'].includes(status);
+  return ['ok', 'healthy', 'ready', 'online', 'available', 'up', 'running', 'enabled'].includes(status);
 }
 
 export const platformAPI = {
@@ -459,6 +461,11 @@ export const qifAPI = {
 // Telemetry describes processing-job execution; it is not application usage
 // telemetry and does not grant graph write authority.
 export const dataPipelineAPI = {
+  restSources: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources'), options),
+  restSubmission: (submissionId, token) => apiClient.get(buildUrl(`/api/v1/pipeline/rest-sources/submissions/${encodeURIComponent(submissionId)}`), { headers: { Authorization: `Bearer ${token}` } }),
+  registerRestSource: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/rest-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),
+  previewRestSource: (sourceId, token) => apiClient.post(buildUrl(`/api/v1/pipeline/rest-sources/${encodeURIComponent(sourceId)}/preview`), {}, { headers: { Authorization: `Bearer ${token}` } }),
+  createDefinition: (definition, token) => apiClient.post(buildUrl('/api/v1/pipeline/jobs/definitions'), definition, { headers: { Authorization: `Bearer ${token}` } }),
   health: () => apiClient.get(buildUrl('/api/v1/pipeline/health')),
   telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
   definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
@@ -675,9 +682,13 @@ export const modelingAPI = {
 
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
-  resolve: (name, scope = {}, options = {}) => apiClient.post(buildUrl(API.recommendations.resolve), {
-    part_name: name, ...recommendationIdentity(scope),
-  }, options),
+  resolve: (name, scope = {}, options = {}) => {
+    const { analysis, ...transport } = options;
+    if (analysis && !['change-impact','similar-parts','manufacturing'].includes(analysis)) throw new Error('Invalid recommendation analysis');
+    return apiClient.post(buildUrl(API.recommendations.resolve), {
+      part_name: name, ...recommendationIdentity(scope), ...(analysis ? {analysis} : {}),
+    }, transport);
+  },
   changeImpact: (changeName, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.changeImpact), {
       change_name: changeName,

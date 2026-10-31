@@ -16,12 +16,15 @@ from backend.tests.test_read_goal_runner import record
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = load_catalog()
-SCHEMAS = {t['id']: t['schema'] for t in json.loads((ROOT/'docs/audits/prompt-audit-2026-10-28/live-openapi-contracts.json').read_text())['tools'] if t['status'] == 'resolved'}
+SCHEMAS = json.loads((ROOT/'backend/tests/fixtures/prompt-tool-schemas.json').read_text(encoding='utf-8'))
 # The original audit capture remains historical. New foundation tools use the
 # current owning service's real OpenAPI contract, not a fabricated empty schema.
 from backend.ontology_service.app import app as ontology_app
+from backend.agentic_service.app import app as agentic_app
 from backend.agentic_service.proposal_contracts import input_schema
 for tool in CATALOG['tools']:
+    if tool['id'] == 'learning.lessons':
+        SCHEMAS[tool['id']] = input_schema(agentic_app.openapi(), tool)
     if tool['id'] in {'ontology.foundation.inspect','ontology.consistency.check','ontology.semantic.evidence'}:
         SCHEMAS[tool['id']] = input_schema(ontology_app.openapi(),tool)
 
@@ -86,7 +89,7 @@ async def test_companion_runtime_redacts_retrieved_credentials_and_rejects_uncit
 
 @pytest.mark.asyncio
 async def test_goal_completion_labels_entailment_limit_explicitly():
-    state = record(plans=[{'subtasks': ['Inspect']}], observations=[{'id': 'observation-2', 'status': 'completed', 'result': {'diameter_mm': 10}}])
+    state = record(plans=[{'subtasks': ['Inspect']}], observations=[{'id': 'observation-2', 'tool_id': 'graph.search', 'status': 'completed', 'result': {'diameter_mm': 10}}])
     result = await goal_runner.drive(state, propose=AsyncMock(return_value={'tool_id': 'goal.complete',
         'inputs': {'summary': 'Recorded diameter is 10 mm.', 'evidence_steps': ['observation-2']}}),
         dispatch=AsyncMock(), save=AsyncMock(), tools=[])

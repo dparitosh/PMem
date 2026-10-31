@@ -160,7 +160,12 @@ const RecommendationsWorkspace = () => {
   }, []);
 
   const loadObjectMatches = async (controller, generation) => {
-    const {data} = await API_METHODS.recommendations.resolve(inputValue.trim(), {}, {signal:controller.signal,timeout:30000});
+    const {data} = await API_METHODS.recommendations.resolve(inputValue.trim(), {}, {signal:controller.signal,timeout:30000,analysis:activeService});
+    if ((data?.selection_scope !== undefined && (typeof data.selection_scope !== 'string' || data.selection_scope.length > 256)) ||
+        (data?.filtered_out !== undefined && (!Number.isInteger(data.filtered_out) || data.filtered_out < 0 || data.filtered_out > 20)) ||
+        (Array.isArray(data?.matches) && data.matches.some(row => ['business_type','source','revision'].some(key => row?.[key] !== undefined && (typeof row[key] !== 'string' || row[key].length > 256))))) {
+      throw new Error('Business object search returned invalid selection evidence. Retry after checking the graph service.');
+    }
     if (!Array.isArray(data?.matches) || data.matches.length > 20 || typeof data.truncated !== 'boolean' || data.matches.some(row => !row || typeof row.node_id !== 'string' || !row.node_id || typeof row.name !== 'string' || !row.scope || typeof row.scope !== 'object' || Array.isArray(row.scope) || Object.keys(row.scope).some(key => !['ontology_id','ontology_prefix'].includes(key)) || Object.values(row.scope).some(value => typeof value !== 'string' || value.length>256))) throw new Error('Business object search returned invalid results. Retry after checking the graph service.');
     if (!controller.signal.aborted && generation === analysisGeneration.current) setObjectMatches(data);
   };
@@ -245,8 +250,9 @@ const RecommendationsWorkspace = () => {
       {objectContext.node_id&&<p role="status">Selected object: {inputValue}. Identity and source scope will be used for both analysis methods.</p>}
       {objectMatches&&<section className="recommendation-object-matches" aria-label="Matching business objects">
         <h3>Select the business object to analyse</h3>
+        {objectMatches.selection_scope && <p>{objectMatches.selection_scope}. {objectMatches.filtered_out > 0 ? `${objectMatches.filtered_out} other or unverified record types were excluded from this selection.` : ''}</p>}
         <p>{objectMatches.matches.length?`Found ${objectMatches.matches.length} business objects. Select the intended record before analysing.`:'No matching business objects were found. Try a part number or a more specific name.'}{objectMatches.truncated?' More matches exist; refine the name if your object is not listed.':''}</p>
-        {objectMatches.matches.length>0&&<table><thead><tr><th>Business object</th><th>Source scope</th><th>Record identity</th><th>Action</th></tr></thead><tbody>{objectMatches.matches.map(row=><tr key={row.node_id}><td>{row.name}</td><td>{row.scope.ontology_id||row.scope.ontology_prefix||'Imported graph record'}</td><td>{row.node_id}</td><td><button type="button" onClick={()=>{setInputValue(row.name);setObjectContext({node_id:row.node_id,...row.scope});setObjectMatches(null);setError('');}}>Use this object</button></td></tr>)}</tbody></table>}
+        {objectMatches.matches.length>0&&<table><thead><tr><th>Business object</th><th>Type / revision</th><th>Source</th><th>Action</th></tr></thead><tbody>{objectMatches.matches.map(row=><tr key={row.node_id}><td>{row.name}<details><summary>Record identity</summary>{row.node_id}</details></td><td>{row.business_type || 'Type not supplied'}{row.revision && <div>Revision {row.revision}</div>}</td><td>{row.source || row.scope.ontology_id||row.scope.ontology_prefix||'Imported graph record'}<details><summary>Ontology scope</summary>{row.scope.ontology_id||row.scope.ontology_prefix||'Not recorded'}</details></td><td><button type="button" onClick={()=>{setInputValue(row.name);setObjectContext({node_id:row.node_id,...row.scope});setObjectMatches(null);setError('');}}>Use this object</button></td></tr>)}</tbody></table>}
       </section>}
       {!limitValid&&<p role="alert">Choose a whole number of results from 1 to 50.</p>}
       {inputValue.trim().length>500&&<p role="alert">Enter an object name of at most 500 characters.</p>}

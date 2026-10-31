@@ -37,7 +37,7 @@ def summary() -> dict[str, Any]:
 
 
 def execution_readiness() -> dict[str, Any]:
-    if os.getenv('DEPO_PIPELINE_EXECUTION_MODE', 'inline').strip().lower() != 'worker':
+    if os.getenv('DEPO_PIPELINE_EXECUTION_MODE', 'worker').strip().lower() != 'worker':
         return {'status': 'ready', 'execution_mode': 'inline', 'worker_required': False}
     evidence = summary()
     return {'status': 'ready' if evidence['worker_count'] else 'not_ready', 'execution_mode': 'worker', 'worker_required': True, **evidence}

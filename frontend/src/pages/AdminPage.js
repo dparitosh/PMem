@@ -12,8 +12,9 @@ import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
 import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
 import WorkspaceTabs from '../Components/WorkspaceTabs';
+import RestSourcesPanel from '../Components/RestSourcesPanel';
 
-const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
+const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
 
 const routeColumns = [
   { field: 'method', width: 100 },
@@ -247,7 +248,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       <WorkspaceTabs label="Admin sections" tabs={adminTabs} value={section} onChange={setSection} idPrefix="depo-admin" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12, color: widgetColors.muted, lineHeight: 1.4, maxWidth: 720 }}>
-          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current knowledge graph schema status.'}[section]}
+          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', sources:'Register REST sources, preview records and submit approved acquisition jobs.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current knowledge graph schema status.'}[section]}
         </div>
         <button
           type="button"
@@ -276,6 +277,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       )}
 
       <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
+      {section === 'sources' && <RestSourcesPanel />}
       <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip

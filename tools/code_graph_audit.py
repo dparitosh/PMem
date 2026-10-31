@@ -34,6 +34,9 @@ def files() -> list[Path]:
     result = []
     for directory, dirs, names in os.walk(ROOT):
         dirs[:] = [name for name in dirs if name not in EXCLUDED]
+        if Path(directory).relative_to(ROOT).parts[:2] == ('docs', 'audits'):
+            dirs[:] = []
+            continue
         result.extend(
             Path(directory) / name for name in names
             if Path(name).suffix.lower() in SOURCE_SUFFIXES
@@ -44,6 +47,9 @@ def files() -> list[Path]:
 def repository_files(suffixes: set[str]):
     for directory, dirs, names in os.walk(ROOT):
         dirs[:] = [name for name in dirs if name not in EXCLUDED]
+        if Path(directory).relative_to(ROOT).parts[:2] == ('docs', 'audits'):
+            dirs[:] = []
+            continue
         for name in names:
             path = Path(directory) / name
             if path.suffix.lower() in suffixes:
@@ -116,15 +122,28 @@ class PythonFacts(ast.NodeVisitor):
         self.dynamic_execution: list[dict] = []
         self.current_class: list[str] = []
         self.function_depth = 0
+        self.entrypoint_depth = 0
         self.definition_stack: list[dict] = []
 
     def visit_Import(self, node: ast.Import) -> None:
-        kind = "lazy_import" if self.function_depth else "import"
+        kind = "entrypoint_import" if self.entrypoint_depth else "lazy_import" if self.function_depth else "import"
         self.imports.extend((alias.name, 0, kind) for alias in node.names)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        kind = "lazy_import" if self.function_depth else "import"
+        kind = "entrypoint_import" if self.entrypoint_depth else "lazy_import" if self.function_depth else "import"
         self.imports.append((node.module, node.level, kind))
+
+    def visit_If(self, node: ast.If) -> None:
+        if ast.unparse(node.test) in {"__name__ == '__main__'", "'__main__' == __name__"}:
+            self.visit(node.test)
+            self.entrypoint_depth += 1
+            for child in node.body:
+                self.visit(child)
+            self.entrypoint_depth -= 1
+            for child in node.orelse:
+                self.visit(child)
+        else:
+            self.generic_visit(node)
 
     def _definition(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         decisions = sum(isinstance(n, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.BoolOp, ast.Match, ast.comprehension)) for n in ast.walk(node))
@@ -302,6 +321,7 @@ def audit() -> dict:
     language_counts = Counter(path.suffix.lower() or "(extensionless)" for path in source_files)
     module_map = {py_module(p): rel(p) for p in source_files if p.suffix == ".py"}
     graph = nx.DiGraph()
+    eager_imports: set[tuple[str, str]] = set()
     findings: list[dict] = []
     facts_by_file: dict[str, dict] = {}
     backend_routes: list[dict] = []
@@ -344,13 +364,15 @@ def audit() -> dict:
                 target = resolve_python_import(path, module, level, module_map)
                 if target and target != name:
                     graph.add_edge(name, target, kind=import_kind)
+                    if import_kind == 'import':
+                        eager_imports.add((name, target))
             for definition in facts.definitions:
                 if definition["complexity_proxy"] >= 35:
-                    findings.append({"severity": "high", "kind": "high_complexity_function", "file": name, **definition})
+                    findings.append({**definition, "symbol_kind": definition['kind'], "severity": "high", "kind": "high_complexity_function", "file": name})
                 elif definition["complexity_proxy"] >= 20:
-                    findings.append({"severity": "medium", "kind": "complex_function", "file": name, **definition})
+                    findings.append({**definition, "symbol_kind": definition['kind'], "severity": "medium", "kind": "complex_function", "file": name})
                 if definition["end_line"] - definition["line"] + 1 > 250:
-                    findings.append({"severity": "high", "kind": "oversized_function", "file": name, **definition})
+                    findings.append({**definition, "symbol_kind": definition['kind'], "severity": "high", "kind": "oversized_function", "file": name})
             for line in facts.broad_excepts:
                 findings.append({"severity": "low", "kind": "broad_exception", "file": name, "line": line})
             for line in facts.silent_excepts:
@@ -378,6 +400,7 @@ def audit() -> dict:
                 target = js_target(path, spec, known)
                 if target and target != name:
                     graph.add_edge(name, target, kind="import")
+                    eager_imports.add((name, target))
             for match in re.finditer(r"(?:fetch|axios\.(?:get|post|put|delete|patch)|apiClient\.(?:get|post|put|delete|patch))\s*\(\s*[`'\"]([^`'\"]+)", text):
                 frontend_paths.append({"file": name, "line": text[:match.start()].count("\n") + 1, "path": match.group(1)})
             for match in re.finditer(r"\bAPI\.(\w+)\.(\w+)\b", text):
@@ -432,10 +455,12 @@ def audit() -> dict:
         graph.add_edge(source, target, kind="api_call", endpoints=sorted(endpoints))
 
     app_graph = graph.subgraph([n for n, d in graph.nodes(data=True) if not d["test"]]).copy()
+    # File references, API calls and lazy imports do not establish an eager
+    # module-import cycle. Keep this evidence separate from display edges,
+    # whose kind may be replaced when the same pair has several relationships.
     import_time_graph = nx.DiGraph(
-        (source, target, attrs)
-        for source, target, attrs in app_graph.edges(data=True)
-        if attrs.get("kind") != "lazy_import"
+        (source, target) for source, target in eager_imports
+        if source in app_graph and target in app_graph
     )
     import_time_graph.add_nodes_from(app_graph.nodes(data=True))
     cycles = [sorted(c) for c in nx.strongly_connected_components(import_time_graph) if len(c) > 1]

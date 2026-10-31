@@ -4,6 +4,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MetadataRegistryPage from './MetadataRegistryPage';
 import { API_METHODS } from '../services/apiClient';
 
+it('does not report a registry outage while its initial request is pending', async () => {
+  let finish;
+  API_METHODS.metadataRegistry.list.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  render(<MetadataRegistryPage />);
+  expect(screen.getByText('Loading governed registry assets…')).toBeVisible();
+  expect(screen.queryByText(/The governed registry is unavailable/)).toBeNull();
+  finish({data:{assets:[],has_more:false}});
+  await waitFor(() => expect(screen.queryByText('Loading governed registry assets…')).toBeNull());
+  expect(screen.getByText('No governed metadata assets are registered yet.')).toBeVisible();
+});
+
 vi.mock('../contexts/OntologyContext', () => ({
   useOntologies: () => ({
     ontologies: [{ ontology_id: 'onto-1', label: 'Fallback Ontology', prefix: 'fallback', status: 'approved' }],

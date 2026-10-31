@@ -54,19 +54,15 @@ and approved Semantic Bridge facts.
 
 ## API Endpoints
 
-- `GET /api/v1/agent-memory/status`
-- `GET /api/v1/agent-memory/sessions/{session_id}/context?limit=6`
-- `DELETE /api/v1/agent-memory/sessions/{session_id}`
+- `GET /api/v1/memory/status` on the agentic service (normally port 8012),
+  with configured graph-read authorization.
+- `GET /api/v1/memory/maintenance` reports the retained maintenance receipt.
 
-The context and delete endpoints require the server-issued `X-Session-ID` value
-to match the path. Delete the current conversation from PowerShell with:
-
-```powershell
-$sessionId = "paste-the-X-Session-ID-value"
-Invoke-RestMethod -Method Delete `
-  -Uri "http://127.0.0.1:8000/api/v1/agent-memory/sessions/$sessionId" `
-  -Headers @{ "X-Session-ID" = $sessionId }
-```
+The older `/api/v1/agent-memory/sessions/...` examples belonged to the
+compatibility host. Do not use them for a current microservice deployment.
+Use the Companion's Clear conversation control for its current conversation.
+Resolve service addresses from the selected deployment configuration rather
+than assuming the former port 8000 host is running.
 
 ## Stored Graph Labels
 

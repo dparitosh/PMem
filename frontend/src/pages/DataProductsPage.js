@@ -48,6 +48,8 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
   const [runDraft, setRunDraft] = useState(null);
+  const [analyticsProjection, setAnalyticsProjection] = useState(null);
+  const [runInputs, setRunInputs] = useState(null);
   const [runDraftError, setRunDraftError] = useState('');
   const listRequest = useRef(null);
   const detailRequest = useRef(null);
@@ -111,14 +113,13 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     load();
     const interval = window.setInterval(() => { if (!document.hidden) load(true); }, PRODUCT_REFRESH_MS);
     window.addEventListener(PRODUCT_CHANGED_EVENT, load);
-    window.addEventListener('depo:credentials-changed', load);
-    window.addEventListener('depo:credentials-cleared', load);
+    const sessionEvents = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
+    sessionEvents.forEach(event => window.addEventListener(event, load));
     return () => {
       listRequest.current?.abort(); detailRequest.current?.abort();
       window.clearInterval(interval);
       window.removeEventListener(PRODUCT_CHANGED_EVENT, load);
-      window.removeEventListener('depo:credentials-changed', load);
-      window.removeEventListener('depo:credentials-cleared', load);
+      sessionEvents.forEach(event => window.removeEventListener(event, load));
     };
   }, [load]);
 
@@ -130,23 +131,35 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       const current = ++sequence;
       request?.abort();
       const controller = new AbortController(); request = controller;
-      setRunDraft(null); setRunDraftError('');
+      setRunDraft(null); setRunInputs(null); setAnalyticsProjection(null); setRunDraftError('');
       const runId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('run_id');
       if (catalog || !runId) return;
       try {
         const response = await dataPipelineAPI.getRun(runId, { signal: controller.signal, timeout: 15000 });
         const run = response?.data?.data || response?.data || response;
         if (run?.run_id !== runId) throw new Error('Pipeline returned a different run identity.');
+        if (active && current === sequence) setAnalyticsProjection(run.output_manifest?.ods_receipt || null);
+        let inputEvidence = run.output_manifest?.data_product_draft || null;
+        if (run.analytics_inputs) {
+          const inputs = run.analytics_inputs;
+          inputEvidence = {artifacts: [
+            {kind:'schema', artifact_id:inputs.schema_artifact_id},
+            {kind:'instance', artifact_id:inputs.xml_artifact_id},
+            ...Object.entries(inputs.schema_dependencies || {}).map(([relative_path,artifact_id])=>({kind:'schema-dependency',relative_path,artifact_id}))].filter(item=>item?.artifact_id)};
+        }
+        if (active && current === sequence) setRunInputs(inputEvidence);
         const value = productDraftFromRun(run);
-        if (active && current === sequence) setRunDraft(value);
+        if (active && current === sequence) {
+          setRunDraft(value);
+        }
       } catch (error) { if (active && current === sequence) setRunDraftError(apiErrorMessage(error, 'Retained run evidence is unavailable.')); }
     };
     const refresh = () => { loadRunDraft(); };
     loadRunDraft();
     window.addEventListener('hashchange', refresh);
-    window.addEventListener('depo:credentials-changed', refresh);
-    window.addEventListener('depo:credentials-cleared', refresh);
-    return () => { active = false; request?.abort(); window.removeEventListener('hashchange', refresh); window.removeEventListener('depo:credentials-changed', refresh); window.removeEventListener('depo:credentials-cleared', refresh); };
+    const sessionEvents = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
+    sessionEvents.forEach(event => window.addEventListener(event, refresh));
+    return () => { active = false; sequence += 1; request?.abort(); window.removeEventListener('hashchange', refresh); sessionEvents.forEach(event => window.removeEventListener(event, refresh)); };
   }, [catalog]);
 
   async function showDetail(key, background = false) {
@@ -189,11 +202,11 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     <DataWorkspace label={catalog?'Catalog workspace':'Product workspace'} active={workspace} onChange={setWorkspace}
       tabs={catalog?[{id:'sources',label:'Ingested sources'},{id:'library',label:'Published products'},{id:'create',label:'Product opportunities'},{id:'governance',label:'Governance'}]:[{id:'library',label:'Product portfolio'},{id:'create',label:'Create & review'},{id:'governance',label:'Governance'}]}>
       {{sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
-    <section aria-label="Discover product versions">
+    {!state.loading && <section aria-label="Discover product versions">
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}
       <p>Select a row to inspect ownership, readiness, source evidence and delivery.</p>
-      <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={columns} height={320} showFilter={false} onRowClicked={row=>{if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />
+      {!state.error && <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={columns} height={320} showFilter={false} onRowClicked={row=>{if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />}
       <label htmlFor="product-detail">Product details and versions</label>
       <select style={{padding:8,margin:8}} id="product-detail" value={selected} onChange={event=>showDetail(event.target.value)}>
         <option value="">Select a product</option>{keys.map(key=><option key={key} value={key}>{key}</option>)}
@@ -201,16 +214,24 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       {detailLoading&&<p role="status">Loading product details…</p>}
       {detailError&&<div role="alert">{detailError}</div>}
       {detail&&<><SemanticSupport report={detail.semantic_support}/><ProductEvidenceDetails detail={detail}/></>}
-    </section>
-      {!state.loading&&!state.error&&!state.rows.length&&!catalog&&<div className="data-cockpit__empty" aria-label="First governed product workflow"><h3>Start with retained evidence</h3><p>No retained packages or published products are available yet. Complete these governed steps in order:</p><ol><li><a href="#/admin">Connect Admin credentials</a> with ingestion and data-product approval scopes.</li><li><button type="button" className="product-overview__link" onClick={()=>{setWorkspace('create'); window.setTimeout(()=>structuralRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),0);}}>Inspect and validate the schema drafts</button> or <a href="#/data-flow">review a completed Data Flow run</a>.</li><li><a href="#/ontology">Obtain an approved semantic release</a>, then return here to publish.</li></ol><button type="button" className="depo-button" onClick={()=>setWorkspace('create')}>Open Create &amp; review</button></div>}
+    </section>}
+      {!state.loading&&!state.error&&!state.rows.length&&!catalog&&<div className="data-cockpit__empty" aria-label="First governed product workflow"><h3>Start with retained evidence</h3><p>No retained packages or published products are available yet. Complete these governed steps in order:</p><ol><li><a href="#/admin">Connect publication access</a> with ingestion and data-product approval scopes. Admin maintenance access is separate.</li><li><button type="button" className="product-overview__link" onClick={()=>{setWorkspace('create'); window.setTimeout(()=>structuralRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),0);}}>Inspect and validate the schema drafts</button> or <a href="#/data-flow">review a completed Data Flow run</a>.</li><li><a href="#/ontology">Obtain an approved semantic release</a>, then return here to publish.</li></ol><button type="button" className="depo-button" onClick={()=>setWorkspace('create')}>Open Create &amp; review</button></div>}
       {!state.loading&&!state.error&&!state.rows.length&&catalog&&<div className="data-cockpit__empty"><h3>No published products yet</h3><p>Ingested sources remain discoverable in the Ingested sources tab. Published products appear here after approval and catalog delivery.</p><button type="button" className="depo-button" onClick={()=>setWorkspace('sources')}>Browse ingested sources</button></div>}
       </>,create:<>
       <div className="data-cockpit__guidance"><div><strong>Build from evidence, then review and publish</strong><p>Select structural analytics or pipeline evidence, inspect the retained source, then validate the publication contract.</p></div><a href="#/data-flow">Review Data Flow runs</a></div>
     <EvidenceProductOptions catalog={catalog} rows={state.rows} loading={state.loading} error={state.error}
       draftCount={ontologyLoading||ontologyError||ontologyWarning?null:drafts.length}
       onStructural={()=>revealEvidence('structural')} onPipeline={()=>revealEvidence('pipeline')}/>
-    {!catalog && <details ref={pipelineRef} className="product-workspace-details" open={Boolean(runDraft)}><summary>Pipeline evidence: create a product from Data Flow</summary><section aria-label="Pipeline product evidence">
-      <XmlAnalyticsLoader />
+    {!catalog && <details ref={pipelineRef} className="product-workspace-details" open={Boolean(runDraft || analyticsProjection || runDraftError)}><summary>Pipeline evidence: create a product from Data Flow</summary><section aria-label="Pipeline product evidence">
+      {analyticsProjection ? <section aria-label="Existing analytics projection">
+        <h3>Analytics data is already loaded</h3>
+        <dl><dt>Analytics schema</dt><dd>{analyticsProjection.schema}</dd>
+          <dt>Readiness</dt><dd>{analyticsProjection.analytics_readiness}</dd>
+          <dt>Loaded records</dt><dd>{analyticsProjection.counts?.entities ?? 'Not recorded'}</dd>
+          <dt>Business views</dt><dd>{analyticsProjection.business_views?.length ?? 0}</dd></dl>
+        <p>Review this retained result before creating another load. Product approval and publication are available below.</p>
+        <details><summary>Prepare a separate analytics load</summary><XmlAnalyticsLoader runEvidence={runInputs} /></details>
+      </section> : <XmlAnalyticsLoader runEvidence={runInputs} />}
       <h3>Data Flow evidence</h3><p>Select a completed run in <a href="#/data-flow">Data Flow</a> to create a draft from its retained artifacts. Graph publication and product packaging are separate approved operations.</p>
       {runDraftError && <p role="alert">{runDraftError}</p>}
       {runDraft && <SchemaProductPublisher draft={runDraft} />}

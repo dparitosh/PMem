@@ -4,8 +4,61 @@ from fastapi import HTTPException
 from backend.graph_service import context_router as api
 
 
+@pytest.fixture(autouse=True)
+def isolated_mapping_reads():
+    with patch.object(api.publisher, '_session_rows', return_value=[]):
+        yield
+
+
+@pytest.mark.parametrize('declared', ['RequirementSpecification', 'Document', 'Specification', 'Test', 'QualityMeasurement'])
+def test_specific_nonpart_type_overrides_generic_product(declared):
+    product = node('record', 'Motor', 'plant')
+    product['labels'] = ['Product']
+    with patch.object(api.publisher, 'search', return_value={'nodes': [product], 'view': {}}), \
+         patch.object(api.publisher, '_session_rows', return_value=[{'id': 'record', 'mapped_types': [declared]}]):
+        result = api.resolve_recommendation_object({'part_name': 'Motor', 'analysis': 'similar-parts'})
+    assert result['matches'] == []
+    assert result['filtered_out'] == 1
+
+
+def test_scalar_declared_type_is_not_split_into_characters():
+    from backend.graph_service.engineering_comparison import kind
+    assert kind({'labels': ['Product'], 'properties': {'rdf_types': 'https://example.org/RequirementSpecification'}}) == 'requirement'
+    assert kind({'labels': ['Product'], 'properties': {'semantic_role': 'requirement_specification'}}) == 'requirement'
+
+
 def node(identity, name, source):
     return {'elementId': identity, 'labels': ['Part'], 'properties': {'name': name, 'ontology_id': source}}
+
+
+def test_similar_parts_selection_excludes_requirements_but_keeps_declared_parts():
+    part = node('part', 'Motor', 'plant')
+    requirement = {**node('req', 'Motor requirement', 'plant'), 'labels': ['Requirement']}
+    part['properties'].update(source_file='parts.xml', source_revision='B')
+    with patch.object(api.publisher, 'search', return_value={'nodes':[part,requirement],'view':{'truncated':True}}):
+        result = api.resolve_recommendation_object({'part_name':'Motor','analysis':'similar-parts'})
+    assert [row['node_id'] for row in result['matches']] == ['part']
+    assert result['matches'][0]['business_type'] == 'part'
+    assert result['matches'][0]['revision'] == 'B'
+    assert result['matches'][0]['source'] == 'parts.xml'
+    assert result['filtered_out'] == 1
+    assert result['truncated'] is True
+
+
+def test_mapped_part_remains_eligible_without_a_direct_part_label():
+    mapped = {**node('mapped','Motor','plant'), 'labels':['NamedIndividual']}
+    with patch.object(api.publisher,'search',return_value={'nodes':[mapped],'view':{}}), \
+         patch.object(api.publisher,'_session_rows',return_value=[{'id':'mapped','mapped_types':['https://example.org/Part']}]) as read:
+        result = api.resolve_recommendation_object({'part_name':'Motor','analysis':'similar-parts'})
+    assert result['matches'][0]['business_type'] == 'part'
+    assert read.call_args.kwargs['ids'] == ['mapped']
+
+
+def test_change_impact_still_offers_requirements():
+    requirement = {**node('req','Motor requirement','plant'), 'labels':['Requirement']}
+    with patch.object(api.publisher,'search',return_value={'nodes':[requirement],'view':{}}):
+        result = api.resolve_recommendation_object({'part_name':'Motor','analysis':'change-impact'})
+    assert result['matches'][0]['business_type'] == 'requirement'
 
 
 def test_bounded_business_search_exposes_selectable_identities_without_picking_one():

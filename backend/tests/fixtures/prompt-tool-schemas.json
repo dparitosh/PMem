@@ -1,0 +1,2433 @@
+{
+  "bridge.mapping.preview": {
+    "properties": {
+      "ontology_id": {
+        "type": "string",
+        "maxLength": 256,
+        "minLength": 1,
+        "title": "Ontology Id"
+      },
+      "import_task_id": {
+        "type": "string",
+        "maxLength": 256,
+        "minLength": 1,
+        "title": "Import Task Id"
+      },
+      "manual_mappings": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "maxItems": 2000,
+        "title": "Manual Mappings"
+      },
+      "candidate_offset": {
+        "type": "integer",
+        "minimum": 0.0,
+        "title": "Candidate Offset",
+        "default": 0
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "ontology_id",
+      "import_task_id"
+    ],
+    "title": "PreviewInput"
+  },
+  "bridge.mapping.publish": {
+    "properties": {
+      "approved_candidate_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "maxItems": 2000,
+        "minItems": 1,
+        "title": "Approved Candidate Ids"
+      },
+      "preview_id": {
+        "type": "string",
+        "title": "Preview Id"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+      "approved_candidate_ids",
+      "preview_id"
+    ],
+    "title": "ApprovalInput"
+  },
+  "ontology.register": {
+    "type": "object",
+    "properties": {
+      "form": {
+        "properties": {
+          "ontology_name": {
+            "type": "string",
+            "title": "Ontology Name"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "api"
+          },
+          "extra_metadata": {
+            "type": "string",
+            "title": "Extra Metadata",
+            "default": "{}"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ontology_name",
+          "prefix"
+        ],
+        "title": "Body_register_ontology_api_v1_ontologies_register_post"
+      },
+      "file": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_base64"
+        ]
+      }
+    },
+    "required": [
+      "file"
+    ]
+  },
+  "ontology.transition": {
+    "properties": {
+      "target": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Target"
+      },
+      "reason": {
+        "type": "string",
+        "title": "Reason"
+      },
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "required": [
+      "target",
+      "ontology_id"
+    ],
+    "title": "TransitionBody"
+  },
+  "ontology.export": {
+    "type": "object",
+    "properties": {
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "format": {
+        "type": "string",
+        "default": "ttl",
+        "title": "Format"
+      }
+    },
+    "required": [
+      "ontology_id"
+    ]
+  },
+  "oslc.graph_rag": {
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Query"
+      },
+      "resource_type": {
+        "type": "string",
+        "title": "Resource Type"
+      },
+      "limit": {
+        "type": "integer",
+        "maximum": 1000.0,
+        "minimum": 1.0,
+        "title": "Limit"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "required": [
+      "query"
+    ],
+    "title": "OslcRetrievalBody"
+  },
+  "ontology.generate": {
+    "properties": {
+      "data": {
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Data"
+      },
+      "entities": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Entities"
+      },
+      "relationships": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Relationships"
+      },
+      "name": {
+        "type": "string",
+        "title": "Name"
+      },
+      "base_uri": {
+        "type": "string",
+        "title": "Base Uri"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "GenerateOntologyBody",
+    "required": []
+  },
+  "ontology.merge.preview": {
+    "properties": {
+      "background": {
+        "type": "boolean",
+        "title": "Background"
+      },
+      "source_ontology_ids": {
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": "array",
+        "maxItems": 16,
+        "minItems": 2,
+        "title": "Source Ontology Ids"
+      },
+      "entity_mappings": {
+        "items": {
+          "properties": {
+            "source_iri": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Source Iri"
+            },
+            "target_iri": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Target Iri"
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "source_iri",
+            "target_iri"
+          ],
+          "title": "EntityMapping"
+        },
+        "type": "array",
+        "maxItems": 200,
+        "title": "Entity Mappings"
+      },
+      "ontology_name": {
+        "type": "string",
+        "title": "Ontology Name"
+      },
+      "prefix": {
+        "type": "string",
+        "title": "Prefix"
+      },
+      "description": {
+        "type": "string",
+        "title": "Description"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "required": [
+      "source_ontology_ids"
+    ],
+    "title": "MergePreviewBody"
+  },
+  "ontology.merge.apply": {
+    "properties": {
+      "publish": {
+        "type": "boolean",
+        "title": "Publish"
+      },
+      "preview_id": {
+        "type": "string",
+        "title": "Preview Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "MergeApplyBody",
+    "required": [
+      "preview_id"
+    ]
+  },
+  "context.upsert": {
+    "properties": {
+      "nodes": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Nodes"
+      },
+      "edges": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Edges"
+      },
+      "relationships": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Relationships"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "BusinessContextBody",
+    "required": []
+  },
+  "context.search": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "title": "Query"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 50,
+        "title": "Limit"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "context.where_used": {
+    "type": "object",
+    "properties": {
+      "object_id": {
+        "type": "string",
+        "title": "Object Id"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 200,
+        "title": "Limit"
+      }
+    },
+    "required": [
+      "object_id"
+    ]
+  },
+  "engineering.inspect": {
+    "type": "object",
+    "properties": {
+      "form": {
+        "properties": {
+          "dependencies": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Dependencies",
+            "default": []
+          },
+          "dependency_paths": {
+            "type": "string",
+            "title": "Dependency Paths",
+            "description": "JSON relative XSD paths, in the same order as dependency files",
+            "default": "[]"
+          }
+        },
+        "type": "object",
+        "required": [],
+        "title": "Body_inspect_engineering_schema_api_v1_schema_conversions_inspect_post"
+      },
+      "file": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_base64"
+        ]
+      }
+    },
+    "required": [
+      "file"
+    ]
+  },
+  "engineering.publish": {
+    "type": "object",
+    "properties": {
+      "form": {
+        "properties": {
+          "ontology_name": {
+            "type": "string",
+            "title": "Ontology Name",
+            "default": ""
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "register_ontology": {
+            "type": "boolean",
+            "title": "Register Ontology",
+            "default": true
+          },
+          "publish": {
+            "type": "boolean",
+            "title": "Publish",
+            "default": false
+          },
+          "enforce_quality": {
+            "type": "boolean",
+            "title": "Enforce Quality",
+            "default": true
+          },
+          "policy_exception_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Policy Exception Ids",
+            "default": []
+          },
+          "dependencies": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Dependencies",
+            "default": []
+          },
+          "dependency_paths": {
+            "type": "string",
+            "title": "Dependency Paths",
+            "default": "[]"
+          },
+          "include_conversion": {
+            "type": "boolean",
+            "title": "Include Conversion",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [],
+        "title": "Body_run_engineering_workflow_api_v1_engineering_workflows_post"
+      },
+      "file": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_base64"
+        ]
+      }
+    },
+    "required": [
+      "file"
+    ]
+  },
+  "profile.inspect": {
+    "type": "object",
+    "properties": {
+      "form": {
+        "properties": {},
+        "type": "object",
+        "required": [],
+        "title": "Body_inspect_source_profile_api_v1_source_profiles_inspect_post"
+      },
+      "file": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_base64"
+        ]
+      }
+    },
+    "required": [
+      "file"
+    ]
+  },
+  "profile.execute": {
+    "type": "object",
+    "properties": {
+      "form": {
+        "properties": {},
+        "type": "object",
+        "required": [],
+        "title": "Body_execute_source_profile_api_v1_source_profiles__profile_id__execute_post"
+      },
+      "file": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_base64"
+        ]
+      },
+      "profile_id": {
+        "type": "string",
+        "title": "Profile Id"
+      }
+    },
+    "required": [
+      "file",
+      "profile_id"
+    ]
+  },
+  "graph.analytics": {
+    "type": "object",
+    "properties": {
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 3000,
+        "title": "Limit"
+      }
+    },
+    "required": [
+      "ontology_id"
+    ]
+  },
+  "graph.neighborhood": {
+    "type": "object",
+    "properties": {
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "iri": {
+        "type": "string",
+        "title": "Iri"
+      },
+      "max_hops": {
+        "type": "integer",
+        "default": 3,
+        "title": "Max Hops"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 200,
+        "title": "Limit"
+      }
+    },
+    "required": [
+      "ontology_id",
+      "iri"
+    ]
+  },
+  "oslc.remote.catalog": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "oslc.remote.query": {
+    "properties": {
+      "oslc.where": {
+        "type": "string",
+        "title": "Oslc.Where"
+      },
+      "oslc.select": {
+        "type": "string",
+        "title": "Oslc.Select"
+      },
+      "oslc.orderBy": {
+        "type": "string",
+        "title": "Oslc.Orderby"
+      },
+      "oslc.searchTerms": {
+        "type": "string",
+        "title": "Oslc.Searchterms"
+      },
+      "oslc.paging": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Oslc.Paging"
+      },
+      "oslc.pageSize": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Oslc.Pagesize"
+      },
+      "oslc.pageNum": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Oslc.Pagenum"
+      },
+      "resource_type": {
+        "type": "string",
+        "title": "Resource Type"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "OslcQueryBody",
+    "required": [
+      "resource_type"
+    ]
+  },
+  "oslc.remote.sync": {
+    "properties": {
+      "oslc.where": {
+        "type": "string",
+        "title": "Oslc.Where"
+      },
+      "oslc.select": {
+        "type": "string",
+        "title": "Oslc.Select"
+      },
+      "oslc.orderBy": {
+        "type": "string",
+        "title": "Oslc.Orderby"
+      },
+      "oslc.searchTerms": {
+        "type": "string",
+        "title": "Oslc.Searchterms"
+      },
+      "oslc.paging": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Oslc.Paging"
+      },
+      "oslc.pageSize": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Oslc.Pagesize"
+      },
+      "oslc.pageNum": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "title": "Oslc.Pagenum"
+      },
+      "resource_type": {
+        "type": "string",
+        "title": "Resource Type"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "OslcQueryBody",
+    "required": [
+      "resource_type"
+    ]
+  },
+  "qif.catalog": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "qif.reference.task": {
+    "properties": {
+      "ontology_name": {
+        "type": "string",
+        "title": "Ontology Name",
+        "default": "QIF 3.0 Ontology"
+      },
+      "prefix": {
+        "type": "string",
+        "title": "Prefix",
+        "default": ""
+      },
+      "description": {
+        "type": "string",
+        "title": "Description",
+        "default": "Consolidated ontology generated from the QIF 3.0 schema set."
+      }
+    },
+    "type": "object",
+    "title": "Body_start_reference_task_api_v1_qif_tasks_reference_post",
+    "required": []
+  },
+  "qif.task.status": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "title": "Task Id"
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  },
+  "qif.task.commit": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "title": "Task Id"
+      }
+    },
+    "required": [
+      "task_id"
+    ]
+  },
+  "schema-set.standards": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "schema-set.upload": {
+    "type": "object",
+    "properties": {
+      "form": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "One or more XSD files for a standard or custom schema set"
+          },
+          "ontology_name": {
+            "type": "string",
+            "title": "Ontology Name"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "default": ""
+          },
+          "standard_id": {
+            "type": "string",
+            "title": "Standard Id",
+            "default": "auto"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "ontology_name"
+        ],
+        "title": "Body_start_schema_set_api_v1_qif_schema_sets_upload_post"
+      },
+      "file": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "content_base64"
+        ]
+      }
+    },
+    "required": [
+      "file"
+    ]
+  },
+  "data.catalog.products": {
+    "type": "object",
+    "properties": {
+      "domain": {
+        "type": "string",
+        "default": "",
+        "title": "Domain"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 100,
+        "title": "Limit"
+      },
+      "offset": {
+        "type": "integer",
+        "default": 0,
+        "title": "Offset"
+      }
+    },
+    "required": []
+  },
+  "data.product.preview": {
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Name"
+      },
+      "domain": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Domain"
+      },
+      "owner": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Owner"
+      },
+      "classification": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Classification"
+      },
+      "steward": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Steward"
+      },
+      "lifecycle_state": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Lifecycle State"
+      },
+      "sla": {
+        "title": "Sla"
+      },
+      "quality_status": {
+        "title": "Quality Status"
+      },
+      "sources": {
+        "items": {},
+        "type": "array",
+        "title": "Sources"
+      },
+      "ontologies": {
+        "items": {},
+        "type": "array",
+        "title": "Ontologies"
+      },
+      "semantic_releases": {
+        "items": {
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Asset Id"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Version"
+            },
+            "lifecycle_status": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Lifecycle Status"
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "asset_id",
+            "version",
+            "lifecycle_status"
+          ],
+          "title": "SemanticReleaseReference"
+        },
+        "type": "array",
+        "title": "Semantic Releases"
+      },
+      "manifest": {
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Manifest"
+      },
+      "product_kind": {
+        "type": "string",
+        "title": "Product Kind"
+      },
+      "analytics_readiness": {
+        "anyOf": [
+          {
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "additionalProperties": true,
+            "type": "object",
+            "nullable": true
+          }
+        ],
+        "title": "Analytics Readiness"
+      },
+      "product_url": {
+        "type": "string",
+        "title": "Product Url"
+      },
+      "description": {
+        "type": "string",
+        "title": "Description"
+      },
+      "product_id": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Product Id"
+      },
+      "version": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Version"
+      },
+      "artifacts": {
+        "items": {
+          "properties": {
+            "artifact_id": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Artifact Id"
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "artifact_id"
+          ],
+          "title": "ArtifactReference"
+        },
+        "type": "array",
+        "title": "Artifacts"
+      },
+      "idempotency_key": {
+        "type": "string",
+        "title": "Idempotency Key"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "required": [
+      "name",
+      "domain",
+      "owner",
+      "classification",
+      "steward",
+      "lifecycle_state",
+      "product_id",
+      "version"
+    ],
+    "title": "ProductPublicationBody"
+  },
+  "data.product.publish": {
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Name"
+      },
+      "domain": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Domain"
+      },
+      "owner": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Owner"
+      },
+      "classification": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Classification"
+      },
+      "steward": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Steward"
+      },
+      "lifecycle_state": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Lifecycle State"
+      },
+      "sla": {
+        "title": "Sla"
+      },
+      "quality_status": {
+        "title": "Quality Status"
+      },
+      "sources": {
+        "items": {},
+        "type": "array",
+        "title": "Sources"
+      },
+      "ontologies": {
+        "items": {},
+        "type": "array",
+        "title": "Ontologies"
+      },
+      "semantic_releases": {
+        "items": {
+          "properties": {
+            "asset_id": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Asset Id"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Version"
+            },
+            "lifecycle_status": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Lifecycle Status"
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "asset_id",
+            "version",
+            "lifecycle_status"
+          ],
+          "title": "SemanticReleaseReference"
+        },
+        "type": "array",
+        "title": "Semantic Releases"
+      },
+      "manifest": {
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Manifest"
+      },
+      "product_kind": {
+        "type": "string",
+        "title": "Product Kind"
+      },
+      "analytics_readiness": {
+        "anyOf": [
+          {
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "additionalProperties": true,
+            "type": "object",
+            "nullable": true
+          }
+        ],
+        "title": "Analytics Readiness"
+      },
+      "product_url": {
+        "type": "string",
+        "title": "Product Url"
+      },
+      "description": {
+        "type": "string",
+        "title": "Description"
+      },
+      "product_id": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Product Id"
+      },
+      "version": {
+        "type": "string",
+        "minLength": 1,
+        "title": "Version"
+      },
+      "artifacts": {
+        "items": {
+          "properties": {
+            "artifact_id": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Artifact Id"
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "artifact_id"
+          ],
+          "title": "ArtifactReference"
+        },
+        "type": "array",
+        "title": "Artifacts"
+      },
+      "idempotency_key": {
+        "type": "string",
+        "title": "Idempotency Key"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "required": [
+      "name",
+      "domain",
+      "owner",
+      "classification",
+      "steward",
+      "lifecycle_state",
+      "product_id",
+      "version"
+    ],
+    "title": "ProductPublicationBody"
+  },
+  "data.product.revoke": {
+    "properties": {
+      "reason": {
+        "type": "string",
+        "title": "Reason"
+      },
+      "idempotency_key": {
+        "type": "string",
+        "title": "Idempotency Key"
+      },
+      "product_version": {
+        "type": "string",
+        "title": "Product Version"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "ReasonApprovalBody",
+    "required": [
+      "product_version"
+    ]
+  },
+  "ceim.contract": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "ceim.normalize.batch": {
+    "properties": {
+      "standard": {
+        "type": "string",
+        "title": "Standard"
+      },
+      "representation": {
+        "type": "string",
+        "nullable": true,
+        "title": "Representation"
+      },
+      "entities": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Entities"
+      },
+      "relationships": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Relationships"
+      },
+      "ceim_version": {
+        "type": "string",
+        "nullable": true,
+        "title": "Ceim Version"
+      },
+      "resolution_case_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "nullable": true,
+        "title": "Resolution Case Ids"
+      },
+      "semantic_release": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Asset Id"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Version"
+          },
+          "lifecycle_status": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Lifecycle Status"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "asset_id",
+          "version",
+          "lifecycle_status"
+        ],
+        "title": "SemanticReleaseReference"
+      },
+      "prefix": {
+        "type": "string",
+        "nullable": true,
+        "title": "Prefix"
+      },
+      "source_system": {
+        "type": "string",
+        "nullable": true,
+        "title": "Source System"
+      },
+      "ontology_id": {
+        "type": "string",
+        "nullable": true,
+        "title": "Ontology Id"
+      },
+      "publication_id": {
+        "type": "string",
+        "nullable": true,
+        "title": "Publication Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "CeimBatchBody",
+    "required": []
+  },
+  "pipeline.telemetry": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "pipeline.transform": {
+    "properties": {
+      "schema_prefix": {
+        "type": "string",
+        "title": "Schema Prefix"
+      },
+      "constraint_policy": {
+        "type": "string",
+        "enum": [
+          "strict",
+          "validated-source"
+        ],
+        "title": "Constraint Policy"
+      },
+      "business_views": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Name"
+            },
+            "entity_id": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Entity Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "aggregate",
+                "fact",
+                "dimension"
+              ],
+              "title": "Kind"
+            },
+            "grain": {
+              "type": "string",
+              "enum": [
+                "entity-instance",
+                "business-key"
+              ],
+              "title": "Grain"
+            },
+            "group_by": {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "title": "Group By"
+            },
+            "measures": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "title": "Name"
+                  },
+                  "aggregate": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "sum",
+                      "avg",
+                      "min",
+                      "max"
+                    ],
+                    "title": "Aggregate"
+                  },
+                  "property": {
+                    "type": "string",
+                    "nullable": true,
+                    "title": "Property"
+                  }
+                },
+                "additionalProperties": true,
+                "type": "object",
+                "required": [
+                  "name",
+                  "aggregate"
+                ],
+                "title": "AnalyticsMeasure"
+              },
+              "type": "array",
+              "title": "Measures"
+            },
+            "keys": {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "title": "Keys"
+            },
+            "attributes": {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "title": "Attributes"
+            },
+            "history_policy": {
+              "type": "string",
+              "title": "History Policy",
+              "enum": [
+                "immutable"
+              ]
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "name",
+            "entity_id",
+            "grain"
+          ],
+          "title": "AnalyticsBusinessView"
+        },
+        "type": "array",
+        "maxItems": 20,
+        "title": "Business Views"
+      },
+      "records": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Records"
+      },
+      "artifact_id": {
+        "type": "string",
+        "title": "Artifact Id"
+      },
+      "artifact_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "title": "Artifact Ids"
+      },
+      "standard": {
+        "type": "string",
+        "title": "Standard"
+      },
+      "entities": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Entities"
+      },
+      "relationships": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Relationships"
+      },
+      "representation": {
+        "type": "string",
+        "title": "Representation"
+      },
+      "ceim_version": {
+        "type": "string",
+        "title": "Ceim Version"
+      },
+      "schema_artifact_id": {
+        "type": "string",
+        "title": "Schema Artifact Id"
+      },
+      "business_schema_artifact_id": {
+        "type": "string",
+        "title": "Business Schema Artifact Id"
+      },
+      "xml_artifact_id": {
+        "type": "string",
+        "title": "Xml Artifact Id"
+      },
+      "schema_dependencies": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object",
+        "title": "Schema Dependencies"
+      },
+      "documents": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Documents"
+      },
+      "evidence_artifact_id": {
+        "type": "string",
+        "title": "Evidence Artifact Id"
+      },
+      "proposal_artifact_id": {
+        "type": "string",
+        "title": "Proposal Artifact Id"
+      },
+      "source_system": {
+        "type": "string",
+        "title": "Source System"
+      },
+      "checkpoint": {
+        "title": "Checkpoint"
+      },
+      "next_checkpoint": {
+        "title": "Next Checkpoint"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "JobInputBody",
+    "required": []
+  },
+  "ontology.agent.orchestrate": {
+    "properties": {
+      "workflow_id": {
+        "type": "string",
+        "title": "Workflow Id"
+      },
+      "ontology_path": {
+        "type": "string",
+        "title": "Ontology Path"
+      },
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "import_task_id": {
+        "type": "string",
+        "title": "Import Task Id"
+      },
+      "instance_metadata": {
+        "additionalProperties": true,
+        "type": "object",
+        "nullable": true,
+        "title": "Instance Metadata"
+      },
+      "artifact_digest": {
+        "type": "string",
+        "title": "Artifact Digest"
+      },
+      "graph_digest": {
+        "type": "string",
+        "title": "Graph Digest"
+      },
+      "data_source": {
+        "type": "string",
+        "title": "Data Source"
+      },
+      "qif_ontology_id": {
+        "type": "string",
+        "title": "Qif Ontology Id"
+      },
+      "ap242_ontology_id": {
+        "type": "string",
+        "title": "Ap242 Ontology Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "OntologyAgentBody",
+    "required": []
+  },
+  "ontology.agent.intake": {
+    "properties": {
+      "workflow_id": {
+        "type": "string",
+        "title": "Workflow Id"
+      },
+      "ontology_path": {
+        "type": "string",
+        "title": "Ontology Path"
+      },
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "import_task_id": {
+        "type": "string",
+        "title": "Import Task Id"
+      },
+      "instance_metadata": {
+        "additionalProperties": true,
+        "type": "object",
+        "nullable": true,
+        "title": "Instance Metadata"
+      },
+      "artifact_digest": {
+        "type": "string",
+        "title": "Artifact Digest"
+      },
+      "graph_digest": {
+        "type": "string",
+        "title": "Graph Digest"
+      },
+      "data_source": {
+        "type": "string",
+        "title": "Data Source"
+      },
+      "qif_ontology_id": {
+        "type": "string",
+        "title": "Qif Ontology Id"
+      },
+      "ap242_ontology_id": {
+        "type": "string",
+        "title": "Ap242 Ontology Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "OntologyAgentBody",
+    "required": []
+  },
+  "ontology.agent.review": {
+    "properties": {
+      "workflow_id": {
+        "type": "string",
+        "title": "Workflow Id"
+      },
+      "ontology_path": {
+        "type": "string",
+        "title": "Ontology Path"
+      },
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "import_task_id": {
+        "type": "string",
+        "title": "Import Task Id"
+      },
+      "instance_metadata": {
+        "additionalProperties": true,
+        "type": "object",
+        "nullable": true,
+        "title": "Instance Metadata"
+      },
+      "artifact_digest": {
+        "type": "string",
+        "title": "Artifact Digest"
+      },
+      "graph_digest": {
+        "type": "string",
+        "title": "Graph Digest"
+      },
+      "data_source": {
+        "type": "string",
+        "title": "Data Source"
+      },
+      "qif_ontology_id": {
+        "type": "string",
+        "title": "Qif Ontology Id"
+      },
+      "ap242_ontology_id": {
+        "type": "string",
+        "title": "Ap242 Ontology Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "OntologyAgentBody",
+    "required": []
+  },
+  "ontology.agent.bridge-plan": {
+    "properties": {
+      "workflow_id": {
+        "type": "string",
+        "title": "Workflow Id"
+      },
+      "ontology_path": {
+        "type": "string",
+        "title": "Ontology Path"
+      },
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      },
+      "import_task_id": {
+        "type": "string",
+        "title": "Import Task Id"
+      },
+      "instance_metadata": {
+        "additionalProperties": true,
+        "type": "object",
+        "nullable": true,
+        "title": "Instance Metadata"
+      },
+      "artifact_digest": {
+        "type": "string",
+        "title": "Artifact Digest"
+      },
+      "graph_digest": {
+        "type": "string",
+        "title": "Graph Digest"
+      },
+      "data_source": {
+        "type": "string",
+        "title": "Data Source"
+      },
+      "qif_ontology_id": {
+        "type": "string",
+        "title": "Qif Ontology Id"
+      },
+      "ap242_ontology_id": {
+        "type": "string",
+        "title": "Ap242 Ontology Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "OntologyAgentBody",
+    "required": []
+  },
+  "pipeline.run": {
+    "properties": {
+      "schema_prefix": {
+        "type": "string",
+        "title": "Schema Prefix"
+      },
+      "constraint_policy": {
+        "type": "string",
+        "enum": [
+          "strict",
+          "validated-source"
+        ],
+        "title": "Constraint Policy"
+      },
+      "business_views": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Name"
+            },
+            "entity_id": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Entity Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "aggregate",
+                "fact",
+                "dimension"
+              ],
+              "title": "Kind"
+            },
+            "grain": {
+              "type": "string",
+              "enum": [
+                "entity-instance",
+                "business-key"
+              ],
+              "title": "Grain"
+            },
+            "group_by": {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "title": "Group By"
+            },
+            "measures": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "title": "Name"
+                  },
+                  "aggregate": {
+                    "type": "string",
+                    "enum": [
+                      "count",
+                      "sum",
+                      "avg",
+                      "min",
+                      "max"
+                    ],
+                    "title": "Aggregate"
+                  },
+                  "property": {
+                    "type": "string",
+                    "nullable": true,
+                    "title": "Property"
+                  }
+                },
+                "additionalProperties": true,
+                "type": "object",
+                "required": [
+                  "name",
+                  "aggregate"
+                ],
+                "title": "AnalyticsMeasure"
+              },
+              "type": "array",
+              "title": "Measures"
+            },
+            "keys": {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "title": "Keys"
+            },
+            "attributes": {
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": "array",
+              "title": "Attributes"
+            },
+            "history_policy": {
+              "type": "string",
+              "title": "History Policy",
+              "enum": [
+                "immutable"
+              ]
+            }
+          },
+          "additionalProperties": true,
+          "type": "object",
+          "required": [
+            "name",
+            "entity_id",
+            "grain"
+          ],
+          "title": "AnalyticsBusinessView"
+        },
+        "type": "array",
+        "maxItems": 20,
+        "title": "Business Views"
+      },
+      "records": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Records"
+      },
+      "artifact_id": {
+        "type": "string",
+        "title": "Artifact Id"
+      },
+      "artifact_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array",
+        "title": "Artifact Ids"
+      },
+      "standard": {
+        "type": "string",
+        "title": "Standard"
+      },
+      "entities": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Entities"
+      },
+      "relationships": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Relationships"
+      },
+      "representation": {
+        "type": "string",
+        "title": "Representation"
+      },
+      "ceim_version": {
+        "type": "string",
+        "title": "Ceim Version"
+      },
+      "schema_artifact_id": {
+        "type": "string",
+        "title": "Schema Artifact Id"
+      },
+      "business_schema_artifact_id": {
+        "type": "string",
+        "title": "Business Schema Artifact Id"
+      },
+      "xml_artifact_id": {
+        "type": "string",
+        "title": "Xml Artifact Id"
+      },
+      "schema_dependencies": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object",
+        "title": "Schema Dependencies"
+      },
+      "documents": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array",
+        "title": "Documents"
+      },
+      "evidence_artifact_id": {
+        "type": "string",
+        "title": "Evidence Artifact Id"
+      },
+      "proposal_artifact_id": {
+        "type": "string",
+        "title": "Proposal Artifact Id"
+      },
+      "source_system": {
+        "type": "string",
+        "title": "Source System"
+      },
+      "checkpoint": {
+        "title": "Checkpoint"
+      },
+      "next_checkpoint": {
+        "title": "Next Checkpoint"
+      },
+      "job_id": {
+        "type": "string",
+        "title": "Job Id"
+      },
+      "version": {
+        "type": "string",
+        "title": "Version"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "JobInputBody",
+    "required": [
+      "job_id",
+      "version"
+    ]
+  },
+  "bridge.mapping.evaluate": {
+    "type": "object",
+    "properties": {
+      "preview_id": {
+        "type": "string",
+        "title": "Preview Id"
+      }
+    },
+    "required": [
+      "preview_id"
+    ]
+  },
+  "bridge.mapping.publish_automatic": {
+    "properties": {
+      "preview_id": {
+        "type": "string",
+        "title": "Preview Id"
+      }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "AutomaticApprovalInput",
+    "required": [
+      "preview_id"
+    ]
+  },
+  "ontology.merge.evaluate": {
+    "type": "object",
+    "properties": {
+      "preview_id": {
+        "type": "string",
+        "title": "Preview Id"
+      }
+    },
+    "required": [
+      "preview_id"
+    ]
+  },
+  "ontology.merge.apply_automatic": {
+    "properties": {
+      "preview_id": {
+        "type": "string",
+        "title": "Preview Id"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "ApprovalBody",
+    "required": [
+      "preview_id"
+    ]
+  },
+  "ontology.inference.preview": {
+    "allOf": [
+      {
+        "properties": {
+          "rules": {
+            "properties": {
+              "transitive_subclass": {
+                "type": "boolean",
+                "title": "Transitive Subclass"
+              },
+              "domain_range_typing": {
+                "type": "boolean",
+                "title": "Domain Range Typing"
+              },
+              "equivalence": {
+                "type": "boolean",
+                "title": "Equivalence"
+              },
+              "disjointness": {
+                "type": "boolean",
+                "title": "Disjointness"
+              },
+              "individual_type_closure": {
+                "type": "boolean",
+                "title": "Individual Type Closure"
+              },
+              "inverse_properties": {
+                "type": "boolean",
+                "title": "Inverse Properties"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "title": "InferenceRules"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 25.0,
+            "title": "Limit"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "InferenceBody"
+      }
+    ],
+    "type": "object",
+    "nullable": true,
+    "title": "Body",
+    "properties": {
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      }
+    },
+    "required": [
+      "ontology_id"
+    ]
+  },
+  "ontology.reasoning.inspect": {
+    "type": "object",
+    "properties": {
+      "ontology_id": {
+        "type": "string",
+        "title": "Ontology Id"
+      }
+    },
+    "required": [
+      "ontology_id"
+    ]
+  },
+  "recommendation.change_impact": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "ontology_prefix": {
+            "type": "string",
+            "title": "Ontology Prefix"
+          },
+          "ontology_id": {
+            "type": "string",
+            "title": "Ontology Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "GraphScope"
+      },
+      "change_name": {
+        "type": "string",
+        "title": "Change Name"
+      },
+      "part_name": {
+        "type": "string",
+        "title": "Part Name"
+      },
+      "node_id": {
+        "type": "string",
+        "title": "Node Id"
+      },
+      "element_id": {
+        "type": "string",
+        "title": "Element Id"
+      },
+      "top_n": {
+        "type": "integer",
+        "maximum": 500.0,
+        "minimum": 1.0,
+        "title": "Top N"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "ContextBody",
+    "required": []
+  },
+  "recommendation.similar_parts": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "ontology_prefix": {
+            "type": "string",
+            "title": "Ontology Prefix"
+          },
+          "ontology_id": {
+            "type": "string",
+            "title": "Ontology Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "GraphScope"
+      },
+      "change_name": {
+        "type": "string",
+        "title": "Change Name"
+      },
+      "part_name": {
+        "type": "string",
+        "title": "Part Name"
+      },
+      "node_id": {
+        "type": "string",
+        "title": "Node Id"
+      },
+      "element_id": {
+        "type": "string",
+        "title": "Element Id"
+      },
+      "top_n": {
+        "type": "integer",
+        "maximum": 500.0,
+        "minimum": 1.0,
+        "title": "Top N"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "ContextBody",
+    "required": []
+  },
+  "recommendation.manufacturing": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "ontology_prefix": {
+            "type": "string",
+            "title": "Ontology Prefix"
+          },
+          "ontology_id": {
+            "type": "string",
+            "title": "Ontology Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "GraphScope"
+      },
+      "change_name": {
+        "type": "string",
+        "title": "Change Name"
+      },
+      "part_name": {
+        "type": "string",
+        "title": "Part Name"
+      },
+      "node_id": {
+        "type": "string",
+        "title": "Node Id"
+      },
+      "element_id": {
+        "type": "string",
+        "title": "Element Id"
+      },
+      "top_n": {
+        "type": "integer",
+        "maximum": 500.0,
+        "minimum": 1.0,
+        "title": "Top N"
+      }
+    },
+    "additionalProperties": true,
+    "type": "object",
+    "title": "ContextBody",
+    "required": []
+  },
+  "graph.search": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "title": "Query"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 50,
+        "title": "Limit"
+      },
+      "ontology_id": {
+        "type": "string",
+        "default": "",
+        "title": "Ontology Id"
+      },
+      "ontology_prefix": {
+        "type": "string",
+        "default": "",
+        "title": "Ontology Prefix"
+      },
+      "business_only": {
+        "type": "boolean",
+        "default": false,
+        "title": "Business Only"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "graph.business_context": {
+    "type": "object",
+    "properties": {
+      "node_id": {
+        "type": "string",
+        "maxLength": 256,
+        "title": "Node Id"
+      },
+      "ontology_id": {
+        "type": "string",
+        "maxLength": 128,
+        "default": "",
+        "title": "Ontology Id"
+      },
+      "ontology_prefix": {
+        "type": "string",
+        "maxLength": 128,
+        "default": "",
+        "title": "Ontology Prefix"
+      },
+      "depth": {
+        "type": "integer",
+        "maximum": 2,
+        "minimum": 1,
+        "default": 1,
+        "title": "Depth"
+      },
+      "limit": {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 20,
+        "default": 60,
+        "title": "Limit"
+      }
+    },
+    "required": [
+      "node_id"
+    ]
+  },
+  "graph.document_evidence": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "title": "Query"
+      },
+      "ontology_id": {
+        "type": "string",
+        "maxLength": 128,
+        "default": "",
+        "title": "Ontology Id"
+      },
+      "ontology_prefix": {
+        "type": "string",
+        "maxLength": 128,
+        "default": "",
+        "title": "Ontology Prefix"
+      },
+      "node_id": {
+        "type": "string",
+        "maxLength": 256,
+        "default": "",
+        "title": "Node Id"
+      },
+      "limit": {
+        "type": "integer",
+        "maximum": 10,
+        "minimum": 1,
+        "default": 6,
+        "title": "Limit"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "graph.business_answer": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "title": "Query"
+      },
+      "ontology_id": {
+        "type": "string",
+        "maxLength": 128,
+        "default": "",
+        "title": "Ontology Id"
+      },
+      "ontology_prefix": {
+        "type": "string",
+        "maxLength": 128,
+        "default": "",
+        "title": "Ontology Prefix"
+      },
+      "node_id": {
+        "type": "string",
+        "maxLength": 256,
+        "default": "",
+        "title": "Node Id"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "pipeline.definitions": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "pipeline.runs": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "default": 100,
+        "title": "Limit"
+      },
+      "offset": {
+        "type": "integer",
+        "default": 0,
+        "title": "Offset"
+      }
+    },
+    "required": []
+  },
+  "pipeline.run.evidence": {
+    "type": "object",
+    "properties": {
+      "run_id": {
+        "type": "string",
+        "title": "Run Id"
+      }
+    },
+    "required": [
+      "run_id"
+    ]
+  },
+  "data.catalog.product": {
+    "type": "object",
+    "properties": {
+      "product_id": {
+        "type": "string",
+        "title": "Product Id"
+      }
+    },
+    "required": [
+      "product_id"
+    ]
+  }
+}

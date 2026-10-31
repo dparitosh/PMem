@@ -4,7 +4,6 @@ import './App.css';
 import './CSS/TCSColors.css';
 import ErrorBoundary from './Components/ErrorBoundary';
 import BrowserAccessBoundary from './Components/BrowserAccessBoundary';
-import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
@@ -15,6 +14,7 @@ import { platformAPI } from './services/apiClient';
 
 const PageTaskWorkspace = lazy(() => import('./Components/PageTaskWorkspace'));
 const Chatbot = lazy(() => import('./Components/Chatbot'));
+const LandingPage = lazy(() => import('./Components/LandingPage'));
 
 
 const NAV_STORAGE_KEY = 'depo.activePage';
@@ -260,7 +260,7 @@ function App() {
             >
               <Suspense fallback={null}><PageTaskWorkspace key={`tasks-${page === 'home' ? 'home' : activePage}-${serviceAuthRevision}`} page={page === 'home' ? 'home' : activePage} /></Suspense>
               {page === 'home' ? (
-                <LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} />
+                <Suspense fallback={<PageFallback />}><LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} /></Suspense>
               ) : (
                 <AppPageOutlet
                   key={`${activePage}-${serviceAuthRevision}`}

@@ -27,7 +27,7 @@ Ontology Export Agent
 WHY THE TOOLS ARE SEPARATE
 --------------------------
 Each file under CodedTools is self-contained and exposes exactly one same-named UI tool object.
-The RDFLib and Owlready2 tools run inside the IIF Python process. The two external_* tool files
+The RDFLib tools run inside the IIF Python process. The two external_* tool files
 contain their own explicit HTTP API functions.
 MCPTools/neo4j_mcp.py discovers tools from a separately configured Neo4j MCP server.
 This separation prevents local ontology functions from silently depending on an HTTP service.
@@ -69,7 +69,7 @@ so agents can be dragged into or removed from a workflow without editing YAML de
 INPUTS
 ------
 Local tools receive an absolute ontology file path visible to the IIF process. Supported RDFLib
-extensions: .owl, .rdf, .xml, .ttl, .nt, .n3, .jsonld. Owlready2 accepts .owl, .rdf, .xml, .nt.
+extensions: .owl, .rdf, .xml, .ttl, .nt, .n3, .jsonld. Owlready2 is not a supported dependency.
 The alignment planner accepts instance_metadata with optional arrays named entities, attributes,
 relationships, and metadata. It returns a draft plan and required validation names; it does not
 claim those validations ran and does not write to Neo4j.

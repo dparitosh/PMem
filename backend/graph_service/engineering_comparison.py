@@ -132,12 +132,17 @@ def name_score(a, b):
 def kind(record):
     """Only declared types/roles classify a business object; names are not types."""
     props = record.get('properties') or {}
-    types = [*record.get('labels', []), *props.get('rdf_types', []), *record.get('mapped_types', []),
+    def declared_values(value):
+        return value if isinstance(value, (list, tuple, set)) else [value] if isinstance(value, str) else []
+    types = [*declared_values(record.get('labels')), *declared_values(props.get('rdf_types')), *declared_values(record.get('mapped_types')),
              props.get('element_type', ''), props.get('semantic_role', '')]
     names = {local(value).removesuffix('type') for value in types}
     groups = [('requirement', {'requirement', 'requirementspecification'}),
               ('process', {'process', 'operation', 'processinstance', 'manufacturingprocess', 'workplan'}),
               ('change', {'change', 'changerequest', 'changenotice', 'engineeringchange'}),
+              ('document', {'document', 'specification', 'documentspecification'}),
+              ('test', {'test', 'testcase', 'testresult'}),
+              ('measurement', {'measurement', 'qualitymeasurement'}),
               ('assembly', {'assembly', 'productassembly'}),
               ('part', {'part', 'product', 'productrevision', 'productinstance', 'component', 'item', 'itemrevision'}),
               ('carrier', {'generalrelation', 'relationshipcarrier'})]

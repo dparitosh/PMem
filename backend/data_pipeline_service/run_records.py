@@ -225,6 +225,7 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         provenance={"run_id": record["run_id"], "job_id": record["job_id"], "job_version": record["job_version"], "correlation_id": record.get("correlation_id")},
     )
     contracts = {
+        "rest-source-ingest": "rest-source-records-v1",
         "normalize-ceim": "normalized-ceim-batch-v1",
         "data-quality-assessment": "data-quality-report-v1",
         "schema-analytics-product": "schema-analytics-data-product-draft-v1",

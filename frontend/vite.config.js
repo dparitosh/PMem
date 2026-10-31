@@ -74,6 +74,8 @@ export default defineConfig(({ mode }) => {
             // Let Rollup follow IX's component imports and lazy boundaries.
             // A single manual IX chunk pulls deferred components into startup.
             if (id.includes('@siemens')) return undefined;
+            // Keep deferred chart rendering out of the shared transport/core bundle.
+            if (id.includes('/echarts/') || id.includes('/zrender/')) return 'vendor-charts';
             if (id.includes('ag-grid')) return 'vendor-data-grid';
             if (id.includes('@xyflow') || id.includes('/d3')) return 'vendor-graph';
             if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';

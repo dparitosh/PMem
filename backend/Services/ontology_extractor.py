@@ -126,6 +126,11 @@ class OntologyExtractor(ABC):
                 if rel.target not in entity.relationships:
                     entity.add_relationship(rel.target, rel.relation_type)
         
+        self._connect_shared_attributes()
+        logger.info(f"Built connections: {sum(len(e.relationships) for e in self.entities.values())} total")
+
+    def _connect_shared_attributes(self) -> None:
+        """Connect shared-attribute neighbors without changing explicit-edge rules."""
         # Build implicit connections from shared attributes
         attr_to_entities = defaultdict(list)
         for entity_name, entity in self.entities.items():
@@ -142,8 +147,6 @@ class OntologyExtractor(ABC):
                             if other_entity != entity_name and other_entity not in entity.relationships:
                                 entity.add_relationship(other_entity, "shares_attribute")
         
-        logger.info(f"Built connections: {sum(len(e.relationships) for e in self.entities.values())} total")
-    
     def to_dict(self) -> Dict[str, Any]:
         """Convert ontology to dictionary format"""
         return {

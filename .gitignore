@@ -92,6 +92,7 @@ dist/
 # Cache
 .vite*/
 frontend/.vite-*/
+frontend/.depo-build-*/
 .cache/
 .npm/
 *.cache
@@ -133,3 +134,12 @@ release-dist/
 # Optional AOI gateway private runtime and unchanged licensed wrapper copies
 .aoi_venv/
 data/aoi-gateway/
+
+# Generated local audit evidence; maintained regression fixtures live in tests.
+docs/audits/**/*.json
+docs/audits/**/*.xml
+docs/audits/**/*.png
+docs/audits/**/*.jpg
+docs/audits/**/*.jpeg
+docs/audits/**/*.webp
+docs/audits/**/*.html

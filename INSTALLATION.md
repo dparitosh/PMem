@@ -322,3 +322,102 @@ The workflow follow-up patch also updates `backend/data_pipeline_service/router.
 Workflow reconnect/replay fixes must be deployed as a matching frontend and backend release using repository-root `update-depo.ps1`, then restart application services. This includes `backend/data_pipeline_service/router.py`, `run_records.py`, `backend/depo_platform/request_bodies.py`, and the rebuilt Import/Data Flow frontend. No schema drop, credential rotation, new dependency or migration is required. Replay requests may include `idempotency_key`; retries with the same actor, source run and key return the retained run. Clients that omit the key retain the existing new-run-per-request behavior. The UI retains an unconfirmed replay reference in same-tab session storage; after clearing browser storage or using another tab, inspect retained runs before resubmitting. Cancelling a browser request does not cancel or roll back server execution.
 
 The OSLC service supplies the central Change Control page. Deploy `backend/oslc_service/change_control.py` with the matching OSLC app and rebuilt frontend through the normal repository-root `update-depo.ps1` process. Release preflight rejects a package missing this module. No new dependency, credential or PostgreSQL schema migration is required; existing retained records are read from their owned namespaces. The page does not grant approvals, publish data, delete history or automatically convert historical records into change orders. See `docs/architecture/OSLC_LIFECYCLE_RELEASE.md` for API scope and the remaining central CR/CO enforcement phase.
+# Existing deployments: optional XML analytics permissions
+
+The control-plane role created by `infra/postgres/create-depo-database.sql`
+owns its application schema but cannot create additional analytics schemas.
+Installing updated code does not change that privilege automatically.
+
+Before enabling versioned XML analytics, have the database owner review and run:
+
+```powershell
+psql -U postgres -d depo -v depo_role=depo_app -f infra/postgres/enable-depo-analytics.sql
+```
+
+Replace `depo` and `depo_app` with the existing database and runtime role.
+This grants CREATE in that database; it does not grant superuser or CREATEDB.
+Customers who cannot grant database CREATE should leave materialization disabled
+until a separately reviewed pre-provisioned-schema implementation is available.
+Existing workflows, credentials and records must be preserved during upgrade.
+
+For isolated acceptance testing, an administrator can run
+`infra/postgres/create-depo-test-database.sql` with `-v depo_role=depo_app`.
+Set `DEPO_TEST_DATABASE_URL` privately to `depo_acceptance_test`, then run
+`python -m pytest backend/tests/test_xml_analytics_postgres.py -q`.
+The test creates uniquely named schemas and rolls back its test objects.
+Do not put the connection string or password in logs, Git, or screenshots.
+
+### Dependency size and safe cache maintenance
+
+The default Windows runtime uses `backend/requirements-lock.txt`. Its 190 pinned
+packages exclude nine OCR-only dependencies. `-EnableOcr` adds the complete
+`backend/requirements-ocr-lock.txt` overlay. All existing versions and hashes are
+preserved. Do not install the development profile on a customer runtime.
+
+`DEPO_SERVICE_RUNTIME_MODE=shared` reuses `backend/.dt_venv` across service
+processes. `isolated` keeps independent per-service environments and their
+reviewed locks in `backend/dependency-profiles/`. Isolation can increase total
+disk usage because several services need the same semantic dependencies. Do not
+use `--system-site-packages` or link writable package directories between them.
+
+From the repository root, inspect the selected environment without changing it:
+
+```powershell
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\runtime-footprint.py --output logs\installation\runtime-footprint.json
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\build-service-locks.py --check
+```
+
+The footprint report separates runtime, optional OCR and outside-lock packages.
+Its RECORD sizes can double-count shared files and do not establish uninstall
+safety. Torch, spaCy and Transformers remain dependencies of pinned Semantica.
+Pytest and pytest-asyncio are for acceptance/development, not the standard lock.
+Pip remains necessary for managed installation and updates.
+
+An upgrade installs the new dependency closure but does **not** uninstall old
+packages from a reused environment. Obtain the smaller footprint with a fresh,
+locked environment during a planned service stop and run the normal installer
+and readiness checks before resuming. Preserve the previous environment for
+rollback. Do not uninstall either OpenCV distribution from an active shared
+environment: optional EasyOCR and Semantica can own overlapping `cv2` files.
+
+Preview reproducible checkout caches, then remove them after tests/builds finish:
+
+```powershell
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\clean-build-caches.py
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\clean-build-caches.py --apply
+```
+
+This command preserves dependency environments, `node_modules`, built `dist`,
+uploads, data, logs and deliverables. It skips symlinks/junctions and refuses
+caches containing them. It never clears workflow history or retained artifacts.
+Use the authorized Admin retention workflows for business-data cleanup.
+
+The release packager excludes build caches and generated JSON/XML/image/HTML
+captures under `docs/audits/`, while preserving authored Markdown audits,
+foundation resources and mapping configuration. Keep old served frontend assets
+until existing browser sessions have finished using them.
+
+`infra/windows/build-depo-frontend.ps1` builds in a temporary staging directory,
+copies new assets into `frontend/dist`, and replaces `index.html` last. A failed
+compilation leaves the served release intact. It retains old hashed assets for
+already-open tabs; do not manually purge `dist/assets` while users are active.
+
+# REST source configuration
+
+Customer source releases must be built with
+`python infra/deployment/build-release-package.py --output <new-zip-path>`
+from a clean, committed, reviewed checkout. The older
+`tools/build_customer_release.py` command delegates to the same policy.
+Without `--output`, the command only checks file selection; this is not release
+certification. Commit the complete reviewed change set, including new required
+modules, before building a ZIP. Generated Maven `target` outputs, legacy
+`tools/import` helpers and direct graph loader scripts are development-only and
+are excluded from customer releases. Use the supported Import and Data Flow
+workflows for customer data loading and publication.
+
+Admin → Data sources can register HTTP(S) sources and submit acquisition through
+the existing pipeline worker. Set `DEPO_REST_ALLOWED_HOSTS` and dedicated
+`DEPO_REST_SECRET_*` references in the selected server environment, then restart.
+Registration and run manifests use existing PostgreSQL registry tables; no new
+schema migration is required. For exact setup, key-header examples, user steps
+and current limits, see [REST source setup](docs/REST-SOURCES.md).

@@ -401,7 +401,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
                     <td><Status value={qualityStatus(run)} />{run.output_manifest?.publication?.status==='published' && <span className="data-flow-status">Published · receipt retained</span>}</td>
                     <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
-                  {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
+                  {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{error?'Run history could not be verified. Restore service access and refresh; retained runs may still exist.':runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
                 </tbody>
               </table>
             </div>

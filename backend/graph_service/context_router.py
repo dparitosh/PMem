@@ -76,21 +76,53 @@ def resolve_recommendation_object(payload: ContextBody) -> dict:
     if not query or len(query) > 500:
         raise HTTPException(422, 'Enter a business object name of at most 500 characters')
     scope = payload.get('scope') or {}
+    analysis = payload.get('analysis')
+    if analysis is not None and analysis not in {'change-impact', 'similar-parts', 'manufacturing'}:
+        raise HTTPException(422, 'Choose a supported recommendation analysis')
     graph = publisher.search(query=query, limit=20, business_only=True,
                              ontology_id=str(scope.get('ontology_id') or ''),
                              ontology_prefix=str(scope.get('ontology_prefix') or scope.get('prefix') or ''))
+    from .engineering_comparison import kind
+    nodes = graph['nodes'][:20]
+    mapped_types = {}
+    unknown_ids = [str(node['elementId']) for node in nodes if kind(node) in {'unclassified', 'part', 'assembly'}]
+    if analysis == 'similar-parts' and unknown_ids:
+        # Reuse the analysis engine's declared mapping evidence. A missing
+        # direct type does not imply that a mapped instance is not a part.
+        rows = publisher._session_rows(
+            'MATCH (n) WHERE elementId(n) IN $ids '
+            'MATCH (n)-[:INSTANCE_OF|TYPED_BY|SEMANTICALLY_MAPPED_TO]->(cls) '
+            'WHERE NOT cls:StagedOntologyResource AND NOT cls:RetainedOntologyIdentity '
+            'RETURN elementId(n) AS id, collect(DISTINCT coalesce(cls.iri,cls.name,cls.label)) AS mapped_types',
+            ids=unknown_ids, _timeout_seconds=5)
+        mapped_types = {row['id']: row['mapped_types'] for row in rows}
     matches = []
-    for node in graph['nodes'][:20]:
+    excluded = 0
+    for node in nodes:
         properties = node.get('properties') or {}
+        business_type = kind({**node, 'mapped_types': mapped_types.get(str(node['elementId']), node.get('mapped_types', []))})
+        if analysis == 'similar-parts' and business_type not in {'part', 'assembly'}:
+            excluded += 1
+            continue
         identity = str(node['elementId'])
         selected_scope = {key: str(value) for key, value in {
             'ontology_id': properties.get('ontology_id') or properties.get('source_ontology'),
             'ontology_prefix': properties.get('ontology_prefix') or properties.get('prefix'),
         }.items() if value}
-        matches.append({'node_id': identity,
+        match = {'node_id': identity,
                         'name': str(properties.get('name') or properties.get('label') or identity),
-                        'scope': selected_scope})
-    return {'matches': matches, 'truncated': bool((graph.get('view') or {}).get('truncated'))}
+                        'scope': selected_scope}
+        if analysis:
+            match['business_type'] = business_type
+            for field, value in {'source': properties.get('source_file') or properties.get('filename'),
+                                 'revision': properties.get('source_revision') or properties.get('revision')}.items():
+                if isinstance(value, (str, int)) and not isinstance(value, bool):
+                    match[field] = str(value)[:256]
+        matches.append(match)
+    result = {'matches': matches, 'truncated': bool((graph.get('view') or {}).get('truncated'))}
+    if analysis:
+        result.update(filtered_out=excluded, selection_scope='Declared parts and assemblies within bounded name matches' if analysis == 'similar-parts' else 'Business objects within bounded name matches')
+    return result
 
 
 @router.get("/api/v1/graph/contextual-subgraph", summary="Search a bounded contextual engineering subgraph")

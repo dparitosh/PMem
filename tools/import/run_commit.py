@@ -43,6 +43,8 @@ def main() -> int:
     task_id = sys.argv[1]
     backend = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("BACKEND", "http://127.0.0.1:8000")
     pre_ok = call_pre_commit(task_id, backend)
+    if not pre_ok:
+        return 1
     commit_ok = call_commit(task_id, backend)
     return 0 if pre_ok and commit_ok else 1
 

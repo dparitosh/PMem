@@ -35,6 +35,19 @@ beforeEach(()=>{vi.clearAllMocks();sessionStorage.clear();agenticClient.get.mock
 const direct=()=>fireEvent.change(screen.getByLabelText('Analysis method'),{target:{value:'graph'}});
 const selectObject=(name,service='change-impact')=>fireEvent(window,new CustomEvent('dt-rec-prefill',{detail:{service,name,node_id:'selected-object'}}));
 
+test('Similar Parts requests eligible objects and displays business type, revision and source',async()=>{
+ ready();
+ API_METHODS.recommendations.resolve.mockResolvedValue({data:{matches:[{node_id:'part-b',name:'Motor',business_type:'part',revision:'B',source:'parts.xml',scope:{ontology_id:'plant'}}],truncated:true,filtered_out:2,selection_scope:'Declared parts and assemblies within bounded name matches'}});
+ render(<RecommendationsTab/>);await screen.findByText('Graph available');
+ fireEvent.click(screen.getByRole('tab',{name:'Similar Parts'}));
+ fireEvent.change(screen.getByLabelText('Reference part'),{target:{value:'Motor'}});
+ fireEvent.click(screen.getByRole('button',{name:'Find business objects'}));
+ expect(await screen.findByText('Revision B')).toBeVisible();
+ expect(screen.getByText('parts.xml')).toBeVisible();
+ expect(screen.getByText(/2 other or unverified record types were excluded/)).toBeVisible();
+ expect(API_METHODS.recommendations.resolve).toHaveBeenCalledWith('Motor',{},expect.objectContaining({analysis:'similar-parts'}));
+});
+
 test.each(['Change Impact','Similar Parts','Process Context'])('agent requires selected business identity in %s',async tab=>{
  ready();render(<RecommendationsTab/>);await screen.findByText('Graph available');
  fireEvent.click(screen.getByRole('tab',{name:tab}));

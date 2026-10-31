@@ -45,6 +45,18 @@ test('XML upload supplies its retained artifact identity without marking validat
   expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
 });
 
+test('completed run evidence fills schema and XML artifacts without manual lookup', async () => {
+  const view = render(<XmlAnalyticsLoader runEvidence={{ artifacts: [
+    { artifact_id: 'sha256:run-schema', kind: 'schema' },
+    { artifact_id: 'sha256:run-xml', kind: 'instance' },
+  ] }} />);
+  await waitFor(() => expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('sha256:run-schema'));
+  expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('sha256:run-xml');
+  view.rerender(<XmlAnalyticsLoader runEvidence={{ artifacts: [] }} />);
+  await waitFor(() => expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue(''));
+  expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('');
+});
+
 async function prepareSubmission() {
   dataPipelineAPI.definitions.mockResolvedValue({ data: { definitions: [{ job_id: 'load', version: '1.0.0', name: 'XML load', job_type: 'xml-analytics-materialize', lifecycle_state: 'approved', enabled: true }] } });
   const view = render(<XmlAnalyticsLoader />);
@@ -56,6 +68,18 @@ async function prepareSubmission() {
   fireEvent.change(screen.getByLabelText('Execution identity'), { target: { value: 'steward' } });
   return view;
 }
+
+test('reconnect rejects late job definitions from the previous session', async () => {
+  let finish;
+  dataPipelineAPI.definitions.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  render(<XmlAnalyticsLoader />);
+  fireEvent.click(screen.getByText('Load approved XML jobs'));
+  fireEvent(window, new Event('depo:session-replaced'));
+  finish({data:{definitions:[{job_id:'old',version:'1',name:'Stale job',job_type:'xml-analytics-materialize',lifecycle_state:'approved',enabled:true}]}});
+  await waitFor(()=>expect(screen.getByText('Load approved XML jobs')).not.toBeDisabled());
+  expect(screen.queryByText('Stale job (1)')).toBeNull();
+  expect(screen.getByRole('alert')).toHaveTextContent('Access changed');
+});
 
 test('unknown submission survives remount and must be reconciled before retrying', async () => {
   dataPipelineAPI.runDefinition.mockRejectedValue(new Error('network timeout'));

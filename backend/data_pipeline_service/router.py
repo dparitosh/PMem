@@ -32,7 +32,7 @@ router = APIRouter(prefix="/pipeline", tags=["data-pipeline"])
 
 
 def _worker_execution_enabled() -> bool:
-    return os.getenv("DEPO_PIPELINE_EXECUTION_MODE", "inline").strip().lower() == "worker"
+    return os.getenv("DEPO_PIPELINE_EXECUTION_MODE", "worker").strip().lower() == "worker"
 
 
 def _authorize_execution(request: Request, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -337,10 +337,15 @@ def run_configured_job(job_id: str, version: str, payload: JobInputBody, request
     correlation_id = getattr(request.state, "request_id", "")
     payload = {**payload, "execution_actor": actor}
     try:
+        if definition['job_type'] == 'rest-source-ingest':
+            from .rest_submissions import submit
+            return submit(definition, payload, actor, correlation_id)
         if _worker_execution_enabled():
             queued = run_records.enqueue(definition, payload, correlation_id=correlation_id)
             return {"status": "queued", "run": queued, "run_manifest": queued}
         return execute_configured_job(definition, payload, correlation_id)
+    except HTTPException:
+        raise
     except SparkUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc), headers=_run_identity_headers(exc)) from exc
     except ValueError as exc:
@@ -374,10 +379,17 @@ def get_job_run(run_id: str, request: Request = None) -> dict[str, Any]:
         raise _registry_error(exc) from exc
     if not record:
         raise HTTPException(status_code=404, detail="Data job run was not found")
+    analytics_inputs = None
+    if record.get('job_type') == 'xml-analytics-materialize':
+        try:
+            retained = run_records.replay_payload(record)
+            analytics_inputs = {key: retained.get(key) for key in ('schema_artifact_id', 'xml_artifact_id', 'schema_dependencies')}
+        except (RuntimeError, ValueError, OSError):
+            pass  # Retained status remains readable if the original payload is unavailable.
     from backend.depo_platform.semantic_support import read_support
     intent = (record.get('output_manifest') or {}).get('publication_intent') or {}
     ontology_id = intent.get('ontology_id') or ((record.get('output_manifest') or {}).get('publication') or {}).get('ontology_id')
-    return {**record, 'semantic_support': read_support(ontology_id, dict(request.headers) if request else {}),
+    return {**record, 'analytics_inputs': analytics_inputs, 'semantic_support': read_support(ontology_id, dict(request.headers) if request else {}),
             'semantic_support_scope': 'Current publication model; pipeline validation and graph delivery receipts remain separate'}
 
 

@@ -53,7 +53,8 @@ if ($ap242Pack.relationships.verified_pmi_characteristic.relationship -ne 'HAS_C
 
 $excludedDirectories = @('.git', '.codex', 'logs', 'ontology_uploads', 'uploads', 'release-dist', 'node_modules', '.release-test-tmp', '.pytest_cache',
   '__pycache__', '.venv', 'venv', '.dt_venv', '.mypy_cache', '.ruff_cache',
-  '.pptx-review-build', '.codex-build', '.codex-pptx-build')
+  '.pptx-review-build', '.codex-build', '.codex-pptx-build', 'outputs',
+  'data', 'external', 'dist', 'target', '.vite', '.vite-temp')
 $directories = [Collections.Generic.Stack[string]]::new()
 $directories.Push($root)
 $powerShellFiles = @(

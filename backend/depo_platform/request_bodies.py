@@ -19,6 +19,15 @@ class ApprovalBody(RequestBody, total=False):
 class ReplayBody(ApprovalBody, total=False):
     idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
 
+class RestSourceBody(ApprovalBody, total=False):
+    source_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+    name: Required[Annotated[str, Field(min_length=1, max_length=500)]]
+    endpoint: Required[Annotated[str, Field(min_length=1, max_length=500)]]
+    credential_ref: Annotated[str, Field(max_length=100)]
+    auth_header: Literal['Authorization', 'X-API-Key', 'api-key']
+    records_path: Annotated[str, Field(max_length=500)]
+    target_model: Annotated[str, Field(max_length=500)]
+
 class OntologyReleaseBody(ApprovalBody, total=False):
     family_id: Required[Text]
     version: Required[Text]
@@ -135,6 +144,7 @@ class GraphScope(RequestBody, total=False):
     ontology_id: str
 
 class ContextBody(RequestBody, total=False):
+    analysis: Literal['change-impact', 'similar-parts', 'manufacturing']
     scope: GraphScope
     change_name: str
     part_name: str
@@ -476,6 +486,8 @@ class AnalyticsBusinessView(RequestBody, total=False):
 
 
 class JobInputBody(ApprovalBody, total=False):
+    idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
+    source_id: str
     schema_prefix: str
     constraint_policy: Literal['strict', 'validated-source']
     business_views: Annotated[list[AnalyticsBusinessView], Field(max_length=20)]

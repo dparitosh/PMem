@@ -392,14 +392,14 @@ def _workflow_registry() -> list[dict]:
 def _package_registry() -> list[dict]:
     package_path = _project_root() / "frontend" / "package.json"
     keep = {
-        "@emotion/react",
-        "@emotion/styled",
-        "@mui/material",
-        "@mui/x-tree-view",
         "@testing-library/dom",
         "@testing-library/jest-dom",
         "@testing-library/react",
         "@testing-library/user-event",
+        "@siemens/ix",
+        "@siemens/ix-react",
+        "@xyflow/react",
+        "echarts",
         "ag-grid-community",
         "ag-grid-react",
         "axios",
@@ -410,7 +410,6 @@ def _package_registry() -> list[dict]:
         "react",
         "react-dom",
         "react-scripts",
-        "web-vitals",
     }
     remove_candidates = {
         "@neo4j-nvl/base",
@@ -447,10 +446,10 @@ def _package_registry() -> list[dict]:
             elif name in keep:
                 recommendation = "keep"
                 used = True
-                category = "active_runtime"
+                category = "maintained_runtime_or_test_dependency"
             else:
                 recommendation = "review"
-                used = False
+                used = None
                 category = "needs_import_audit"
             packages.append({
                 "name": name,

@@ -20,6 +20,7 @@ export function taskBookmarkKey(agent, context, task = '') {
   return 'depo:page-goal:' + (value >>> 0).toString(16);
 }
 export const pageTaskProfiles = {
+  'change-control': { native:true, steps:['Find the retained change request','Review authorization and execution evidence','Open the owning workflow to approve or recover'],link:'change-control',action:'Review changes below' },
   home: { agents:['graph-analyst','data-quality-monitor'], steps:['Choose a domain and source','Investigate retained evidence','Open the matching workflow'], link:'import', action:'Open Import' },
   import: { native:true, steps:['Select source files and ontology details','Validate and review the retained preview','Approve graph loading separately'], link:'import',action:'Use the import workspace below' },
   ontology: { native:true, steps:['Select ontology versions or an imported instance','Generate and review Governor/Steward evidence','Approve publication and verify its receipt'],link:'ontology',action:'Use Ontology Junction below' },

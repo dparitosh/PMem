@@ -9,11 +9,21 @@ import json
 EXCLUDED = {'.git', '.codex', 'logs', 'ontology_uploads', 'uploads',
             'node_modules', '__pycache__', '.pytest_cache', '.release-test-tmp',
             '.dt_venv', '.venv', 'venv', '.mypy_cache', '.ruff_cache', 'release-dist',
-            '.codex-build', '.codex-pptx-build', '.pptx-review-build'}
+            '.codex-build', '.codex-pptx-build', '.pptx-review-build',
+            '.vite', '.vite-temp', '.cache', 'audit-shots', 'release-evidence', 'target'}
+
+DEVELOPMENT_ONLY = {'scripts/load_ontology_to_neo4j.py',
+                    'scripts/load_mbse_xmi_instances.py', 'scripts/load_xpdmxml_instances.py'}
 
 
 def allowed(name):
     path = PurePosixPath(name)
+    if name in DEVELOPMENT_ONLY or path.parts[:2] == ('tools', 'import') or name == 'frontend/tools/check_backend.js':
+        return False
+    # Captured prompts, test XML and browser snapshots are workstation evidence,
+    # not runtime resources. Keep authored Markdown audits and source fixtures.
+    if name != 'docs/audits/api-crud-inventory-2026-10-10.json' and path.parts[:2] == ('docs', 'audits') and path.suffix.lower() in {'.json', '.xml', '.png', '.jpg', '.jpeg', '.webp', '.html'}:
+        return False
     return (not any(part in EXCLUDED or part.startswith('.dt_venv-') for part in path.parts)
             and path.name not in {'.env', '.env.local', '.env.production', '.env.development', '.env.test'}
             and not path.name.endswith('.local')
@@ -66,6 +76,10 @@ def package(root, output=None):
         if not path.resolve().is_relative_to(root) or not path.is_file() or path.is_symlink():
             raise ValueError(f'Release source is missing or unsafe: {name}')
     if output:
+        # Do not mix modified tracked files with an incomplete tracked file list.
+        status = subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all', '-z'], cwd=root)
+        if status.strip():
+            raise ValueError('Commit the complete reviewed change set before creating a customer ZIP; working tree is not clean')
         output = Path(output).resolve()
         if output.exists():
             raise ValueError('Output already exists; choose a new ZIP filename')

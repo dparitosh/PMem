@@ -304,7 +304,6 @@ export default function MetadataRegistryPage() {
       <section className="depo-panel depo-panel--workspace">
         <div className="depo-panel__header">
           <div>
-            <div className="depo-panel__title">Metadata Registry</div>
             <div className="depo-panel__meta">
               Governed catalog for definitions, ownership, lifecycle, versions, and physical implementations.
             </div>
@@ -366,7 +365,7 @@ export default function MetadataRegistryPage() {
                 setQuery={setQuery}
                 error={error}
                 registryLoaded={registryLoaded}
-                loading={loading}
+                loading={loading || registryLoading}
                 visibleRegistryAssets={visibleRegistryAssets}
                 registryAssets={registryAssets}
                 entries={entries}

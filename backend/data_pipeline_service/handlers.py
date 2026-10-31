@@ -40,6 +40,8 @@ def _method(name, **options):
 
 
 registry = HandlerRegistry()
+from .rest_sources import execute as acquire_rest_records
+registry.register('rest-source-ingest', JobHandler('registered-rest-source-v1', 'rest-source-records-v1', acquire_rest_records))
 for name, input_contract, output_contract, method, options in [
     ("interactive-quality-summary", "quality-records-v1", "quality-summary-v1", "transform_quality_summary", {}),
     ("data-quality-assessment", "quality-records-v1", "data-quality-report-v1", "assess_data_quality", {}),
