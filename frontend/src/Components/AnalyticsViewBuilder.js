@@ -16,7 +16,7 @@ export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd
   const [attributes, setAttributes] = useState([]);
   const [aggregate, setAggregate] = useState('count');
   const [property, setProperty] = useState('');
-  const [measureName, setMeasureName] = useState('Record count');
+  const [measureName, setMeasureName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const alive = useRef(true);
@@ -24,6 +24,8 @@ export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(()=>{const clear=()=>{version.current++;setModel(null);setEntityId('');};const events=['depo:session-replaced','depo:session-expired','depo:credentials-cleared','depo:credentials-changed'];events.forEach(event=>window.addEventListener(event,clear));return()=>events.forEach(event=>window.removeEventListener(event,clear));},[]);
   const entity = model?.tables.find(value => value.entity_id === entityId);
+  const selectedField=entity?.columns.find(column=>column.sql_name===property);
+  const suggestedMeasure=aggregate==='count'?'Record count':`${{sum:'Total',avg:'Average',min:'Lowest',max:'Highest'}[aggregate]} ${selectedField?.name||'value'}`;
   const suggestedName=entity?`${entity.name||'Records'} ${kind==='dimension'?'groups':kind==='kpi'?'measure':'summary'}`:'';
   function resetFields() { setKeys([]); setAttributes([]); setProperty(''); }
   useEffect(() => { version.current++; setModel(null); setEntityId(''); resetFields(); }, [schemaArtifactId, ontology]);
@@ -51,9 +53,9 @@ export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd
         if (!keys.length || attributes.some(field => keys.includes(field))) throw new Error('Choose dimension keys and keep attributes separate from keys.');
         definition = { name: name.trim()||suggestedName, kind, entity_id: entityId, grain: 'business-key', keys, attributes, history_policy: 'immutable' };
       } else {
-        if (!measureName.trim() || (aggregate !== 'count' && !property)) throw new Error('Enter a measure name and select its property.');
+        if (aggregate !== 'count' && !property) throw new Error('Enter a measure name and select its property.');
         definition = { name: name.trim()||suggestedName, kind, entity_id: entityId, grain: 'entity-instance', group_by: keys,
-          measures: [{ name: measureName.trim(), aggregate, ...(property ? { property } : {}) }] };
+          measures: [{ name: measureName.trim()||suggestedMeasure, aggregate, ...(property ? { property } : {}) }] };
       }
       if(kind==='kpi'){if(!description.trim()||!unit.trim())throw new Error('Enter the business purpose and unit for this KPI.');definition={...definition,description:description.trim(),unit:unit.trim()};}
       onAdd(definition, schemaArtifactId); setName('');
@@ -80,7 +82,7 @@ export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd
           <fieldset><legend>Dimension attributes</legend>{entity.columns.map(column => <label key={column.sql_name}><input type="checkbox" checked={attributes.includes(column.sql_name)} onChange={() => toggle(setAttributes, column.sql_name)} />{column.source_kind || 'value'}: {column.source_qname || column.name}</label>)}</fieldset>
           <p>One row per business key. Null keys or changed attributes under an existing key reject the load. Slowly changing dimensions require a separately reviewed history policy.</p>
         </> : <>
-          <label>Measure label<input value={measureName} onChange={event => setMeasureName(event.target.value)} /></label>
+          <label>Measure label<input value={measureName||suggestedMeasure} onChange={event => setMeasureName(event.target.value)} /></label>
           <label>Aggregation<select value={aggregate} onChange={event => setAggregate(event.target.value)}>{Object.entries({count:'Number of records',sum:'Total',avg:'Average',min:'Lowest',max:'Highest'}).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
           <label>Value to measure<select value={property} onChange={event => setProperty(event.target.value)}><option value="">{aggregate === 'count' ? 'Count entity rows' : 'Select a property'}</option>{entity.columns.map(column => <option key={column.sql_name} value={column.sql_name}>{column.source_kind || 'value'}: {column.source_qname || column.name} ({column.sql_type})</option>)}</select></label>
           <p>Input grain: one validated entity instance. Output grain: selected grouping fields across loaded documents.</p>
