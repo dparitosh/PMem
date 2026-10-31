@@ -62,7 +62,7 @@ export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd
     <legend>Choose what to report</legend>
     <p>Choose which records to group and which values to summarise. This step is optional if you only need to browse the original records.</p>
     {ontologyId?<p>Reporting source: {sources.find(source=>source.ontology_id===ontologyId)?.label||'Selected source'}</p>:sources.length>0?<label>Imported schema<select value={ontology} onChange={event=>setOntology(event.target.value)}><option value="">Select a schema by name</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label>:<label>Registered XSD ontology ID<input value={ontology} onChange={event => { setOntology(event.target.value); setModel(null); setEntityId(''); resetFields(); }} /></label>}
-    <button type="button" disabled={disabled || busy || !ontology.trim() || !schemaArtifactId} onClick={load}>Load schema fields</button>
+    <button type="button" disabled={disabled || busy || !ontology.trim() || !schemaArtifactId} onClick={load}>Choose report fields</button>
     {model && <>
       {model.ddl_blockers?.length > 0 && <p role="status">Schema review requirements: {model.ddl_blockers.join('; ')}</p>}
       <label>Analytics entity<select value={entityId} onChange={event => { setEntityId(event.target.value); resetFields(); }}>

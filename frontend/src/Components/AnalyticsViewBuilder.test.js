@@ -15,7 +15,7 @@ async function load() {
   apiClient.get.mockResolvedValue({ data: { tables, ddl_blockers: [], schema_artifact_id: 'sha256:xsd' } });
   render(<AnalyticsViewBuilder schemaArtifactId="sha256:xsd" onAdd={onAdd} />);
   fireEvent.change(screen.getByLabelText('Registered XSD ontology ID'), { target: { value: 'parts-v1' } });
-  fireEvent.click(screen.getByText('Load schema fields'));
+  fireEvent.click(screen.getByText('Choose report fields'));
   await screen.findByLabelText('Analytics entity');
   fireEvent.change(screen.getByLabelText('Analytics entity'), { target: { value: '{parts}Part' } });
   fireEvent.change(screen.getByLabelText('View name'), { target: { value: 'Parts summary' } });
@@ -48,7 +48,7 @@ test('invalid schema reports cannot populate the field picker', async () => {
   apiClient.get.mockResolvedValue({ data: { tables: [{ entity_id: 'broken', columns: [{}] }] } });
   render(<AnalyticsViewBuilder schemaArtifactId="sha256:xsd" onAdd={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('Registered XSD ontology ID'), { target: { value: 'broken' } });
-  fireEvent.click(screen.getByText('Load schema fields'));
+  fireEvent.click(screen.getByText('Choose report fields'));
   expect(await screen.findByRole('alert')).toHaveTextContent('no usable entity fields');
   expect(screen.queryByLabelText('Analytics entity')).toBeNull();
 });
@@ -57,7 +57,7 @@ test('schema report must match the immutable selected artifact', async () => {
   apiClient.get.mockResolvedValue({ data: { tables, schema_artifact_id: 'sha256:other' } });
   render(<AnalyticsViewBuilder schemaArtifactId="sha256:xsd" onAdd={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('Registered XSD ontology ID'), { target: { value: 'other-version' } });
-  fireEvent.click(screen.getByText('Load schema fields'));
+  fireEvent.click(screen.getByText('Choose report fields'));
   expect(await screen.findByRole('alert')).toHaveTextContent('not bound to the selected retained XSD artifact');
   expect(screen.queryByLabelText('Analytics entity')).toBeNull();
 });

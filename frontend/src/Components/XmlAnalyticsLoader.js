@@ -96,7 +96,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
         if (response.data?.run_manifest?.run_id !== id) throw new Error('The evidence response does not match this run.');
         if (current()) setReceipt(response.data);
       } else if (submit === 'upload') {
-        if (!xmlFile) throw new Error('Select an XML instance file.');
+        if (!xmlFile) throw new Error('Select an Data file (XML).');
         const token = getCredentialProfile('INGESTION_WRITE_TOKEN');
         if (!token) throw new Error('Connect ingestion write access in Admin.');
         const body = new FormData(); body.append('file', xmlFile);
@@ -152,12 +152,12 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
   const Container=expanded?'section':'details';
   return <Container className="xml-analytics-loader" aria-label="Validated XML analytics loading">
     {!expanded&&<summary>Prepare and load analytics data</summary>}
-    <p>Use a completed Data Flow run whenever possible. Its retained schema and XML artifacts are filled in automatically; manual artifact IDs are only needed for older runs or external evidence.</p>
-    {sources.length>0&&<div><label>Source schema<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Use selected schema</button><p>{fields.schema_artifact_id?'Retained schema source resolved. Choose or retain the XML data, then define the required business views.':'Select a schema by name; the application resolves its retained source reference.'}</p></div>}
-    <button type="button" disabled={busy} onClick={() => perform(false)}>Load approved XML jobs</button>
-    <label>XML instance file<input type="file" accept=".xml" disabled={busy} onChange={event => setXmlFile(event.target.files[0] || null)} /></label>
-    <button type="button" disabled={busy || !xmlFile} onClick={() => perform('upload')}>Retain XML instance</button>
-    <label>Approved XML job<select value={job} disabled={busy} onChange={event => { setJob(event.target.value); if (!recovery) setReceipt(null); }}>
+    <p>Confirm the source, attach the data file you want to analyse, then choose the report fields you need.</p>
+    {sources.length>0&&<div><label>Data source<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Confirm source</button><p>{fields.schema_artifact_id?'Source confirmed. Attach your data file, then choose how to group and summarise its records.':'Confirm this source before adding data.'}</p></div>}
+    <button type="button" disabled={busy} onClick={() => perform(false)}>Refresh loading processes</button>
+    <label>Data file (XML)<input type="file" accept=".xml" disabled={busy} onChange={event => setXmlFile(event.target.files[0] || null)} /></label>
+    <button type="button" disabled={busy || !xmlFile} onClick={() => perform('upload')}>Attach data file</button>
+    <label>Loading process<select value={job} disabled={busy} onChange={event => { setJob(event.target.value); if (!recovery) setReceipt(null); }}>
       <option value="">Select a job</option>{jobs.map(value => <option key={`${value.job_id}:${value.version}`} value={`${value.job_id}:${value.version}`}>{value.name} ({value.version})</option>)}
     </select></label>
     {!busy&&!jobs.length&&<p role="status">A data steward needs to approve a loading process for this source before it can be used. <a href="#/data-flow">Review loading processes in Data Flow</a>.</p>}
@@ -167,7 +167,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
     </div>
     <label>Schema dependencies (relative path → artifact ID, JSON)<textarea value={dependencies} disabled={busy} onChange={event => { setDependencies(event.target.value); if (!recovery) setReceipt(null); }} /></label>
     </details>
-    <label>Execution identity<input value={fields.approved_by} disabled={busy} placeholder="Your authorised name or service identity" onChange={event=>setFields(previous=>({...previous,approved_by:event.target.value}))}/></label>
+    <label>Requested by<input value={fields.approved_by} disabled={busy} placeholder="Your authorised name or service identity" onChange={event=>setFields(previous=>({...previous,approved_by:event.target.value}))}/></label>
     <AnalyticsViewBuilder ontologyId={sourceId} sources={sources} disabled={busy} schemaArtifactId={fields.schema_artifact_id.trim()} onAdd={(definition, artifactId) => {
       const definitions = JSON.parse(business);
       if (!Array.isArray(definitions) || definitions.length >= 20) throw new Error('Business definitions must be an array with fewer than 20 views.');
@@ -175,13 +175,15 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
       if (definitions.some(value => value.name === definition.name)) throw new Error('Choose a unique view name.');
       setBusinessBinding(artifactId); setBusiness(JSON.stringify([...definitions, definition], null, 2)); if (!recovery) setReceipt(null);
     }} />
+    <details><summary>Advanced validation and report definitions</summary>
     <label><input type="checkbox" checked={constraintPolicy === 'validated-source'} disabled={busy} onChange={event => { setConstraintPolicy(event.target.checked ? 'validated-source' : 'strict'); if (!recovery) setReceipt(null); }} />Validate XSD facets and fixed values against source XML during loading</label>
     <p>This option preserves source validation; it does not generate equivalent PostgreSQL facet constraints. Unsupported choices, groups, temporal policies and source-key mapping remain blocked.</p>
     <details><summary>Review or edit business definitions</summary><label>Explicit business views (JSON, optional)<textarea value={business} disabled={busy} onChange={event => { setBusiness(event.target.value); setBusinessBinding(fields.schema_artifact_id.trim()); if (!recovery) setReceipt(null); }} /></label>
     </details>
     <p>Without explicit business views, readiness is structural data loaded. Cross-entity joins, units and history policies require a separate reviewed model.</p>
     <details><summary>Business view example</summary><pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify([{ name: 'Entity count', entity_id: '{your-namespace}YourEntity', grain: 'entity-instance', group_by: [], measures: [{ name: 'count', aggregate: 'count' }] }], null, 2)}</pre><p>Use entity IDs from the retained structural model. Supported aggregates: count, sum, avg, min, max. A new business definition requires a different schema prefix.</p></details>
-    <button type="button" disabled={busy || !job || !!recovery} onClick={() => perform(true)}>Validate and load XML</button>
+    </details>
+    <button type="button" disabled={busy || !job || !!recovery} onClick={() => perform(true)}>Check and prepare data</button>
     {recovery && <section aria-label="Retained analytics task">
       {runId ? <><p>Retained run: {runId}</p><button type="button" disabled={busy} onClick={() => perform('refresh')}>Refresh analytics run</button>
         <button type="button" disabled={busy} onClick={() => { remember(null); setReceipt(null); setError(''); }}>Prepare another analytics task</button></> : <>
@@ -195,7 +197,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
         </>}
     </section>}
     {evidenceStatus === 'pending' && <section aria-label="Analytics evidence recovery"><p>ODS data is committed. Evidence is pending; product publication remains blocked.</p><button type="button" disabled={busy || !runId} onClick={() => perform('reconcile')}>Rebuild analytics evidence</button></section>}
-    {busy && <p role="status">Processing XML analytics request…</p>}
+    {busy && <p role="status">Checking your request…</p>}
     {error && <p role="alert">{error}</p>}
     {receipt && <><p role="status">Job response: {receipt.status || 'received'}</p>{runId && <a href={pipelineRunLink(runId)}>View load run and evidence</a>}<details><summary>Technical load receipt</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 250, overflow: 'auto' }}>{JSON.stringify(receipt, null, 2)}</pre></details></>}
   </Container>;

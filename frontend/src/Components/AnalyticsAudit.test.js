@@ -13,10 +13,10 @@ test('AUD-01 source handoff must invalidate an older schema-resolution response'
  let finish;apiClient.get.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const sources=[{ontology_id:'a',label:'Schema A'},{ontology_id:'b',label:'Schema B'}];
  const view=render(<XmlAnalyticsLoader sources={sources} selectedSchemaId="a"/>);
- fireEvent.click(screen.getByText('Use selected schema'));
+ fireEvent.click(screen.getByText('Confirm source'));
  view.rerender(<XmlAnalyticsLoader sources={sources} selectedSchemaId="b"/>);
  await act(async()=>finish({data:{schema_artifact_id:'artifact-A'}}));
- expect(screen.getByLabelText('Source schema')).toHaveValue('b');
+ expect(screen.getByLabelText('Data source')).toHaveValue('b');
  expect(screen.getByLabelText('Retained XSD artifact ID')).not.toHaveValue('artifact-A');
 });
 test('AUD-02 an out-of-range page must not claim that the database is empty',async()=>{
