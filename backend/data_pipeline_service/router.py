@@ -31,6 +31,12 @@ from . import worker_status
 router = APIRouter(prefix="/pipeline", tags=["data-pipeline"])
 
 
+@router.get('/jobs/execution-identity', summary='Resolve the connected data-job execution identity')
+def execution_identity(request: Request):
+    actor = service_write_identity(request, token_env='DATA_JOB_EXECUTION_TOKEN', default_actor='data-job-executor')
+    return {'actor': actor, 'source': 'authenticated-connection'}
+
+
 def _worker_execution_enabled() -> bool:
     return os.getenv("DEPO_PIPELINE_EXECUTION_MODE", "worker").strip().lower() == "worker"
 

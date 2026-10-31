@@ -19,6 +19,8 @@ function retainedSubmission() {
 export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], selectedSchemaId = '', expanded = false }) {
   const [sourceId,setSourceId]=useState(selectedSchemaId);
 
+  const [previousRuns,setPreviousRuns]=useState([]),[selectedRun,setSelectedRun]=useState('');
+  const [identityError,setIdentityError]=useState('');
   const [jobs, setJobs] = useState([]);
   const [job, setJob] = useState('');
   const [fields, setFields] = useState({ schema_artifact_id: '', xml_artifact_id: '', schema_prefix: 'depo_analytics', approved_by: '' });
@@ -45,7 +47,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
   useEffect(() => {
     const invalidate = () => {
       generation.current += 1;
-      setJobs([]); setJob(''); setReceipt(null); setError('Access changed. Refresh the retained task before submitting another load.');
+      setJobs([]); setJob('');setPreviousRuns([]);setSelectedRun('');setFields(previous=>({...previous,approved_by:''})); setReceipt(null); setError('Access changed. Refresh the retained task before submitting another load.');
     };
     const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
     events.forEach(event => window.addEventListener(event, invalidate));
@@ -75,7 +77,13 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
     const current = () => mounted.current && startedGeneration === generation.current;
     let submitted = false;
     try {
-      if (submit === 'schema') {
+      if(submit==='reuse'){
+        if(!previousRuns.some(run=>run.run_id===selectedRun))throw new Error('Choose a retained analytics result.');
+        const response=await dataPipelineAPI.getRun(selectedRun,{timeout:15000});
+        const record=response.data;
+        if(record?.run_id!==selectedRun||record.status!=='completed'||!record.analytics_inputs?.xml_artifact_id)throw new Error('This result has no reusable data file. Choose another result or attach a file.');
+        if(current())setFields(previous=>({...previous,xml_artifact_id:record.analytics_inputs.xml_artifact_id}));
+      } else if (submit === 'schema') {
         const controller=new AbortController();sourceRequest.current=controller;
         const source=sources.find(value=>value.ontology_id===sourceId);
         if(!source)throw new Error('Select an imported schema.');
@@ -108,6 +116,20 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
         const values = response.data?.definitions;
         if (!Array.isArray(values)) throw new Error('Invalid job-definition response.');
         if (current()){const approved=values.filter(value => value.job_type === 'xml-analytics-materialize' && value.lifecycle_state === 'approved' && value.enabled);setJobs(approved);if(approved.length===1)setJob(`${approved[0].job_id}:${approved[0].version}`);}
+        if(expanded){
+          const token=getCredentialProfile('DATA_JOB_EXECUTION_TOKEN');
+          const results=await Promise.allSettled([
+            token?dataPipelineAPI.executionIdentity(token,{timeout:15000}):Promise.reject(new Error('Connect execution access in Admin to identify the requester.')),
+            dataPipelineAPI.runs(100,{timeout:15000}),
+          ]);
+          if(current()){
+            const [identity,runs]=results;
+            if(identity.status==='fulfilled'&&typeof identity.value.data?.actor==='string'&&identity.value.data.actor.trim()){
+              setFields(previous=>({...previous,approved_by:identity.value.data.actor}));setIdentityError('');
+            }else{setFields(previous=>({...previous,approved_by:''}));setIdentityError('Connect execution access in Admin, then refresh loading processes.');}
+            if(runs.status==='fulfilled'&&Array.isArray(runs.value.data?.runs))setPreviousRuns(runs.value.data.runs.filter(run=>run.status==='completed'&&run.job_type==='xml-analytics-materialize'));
+          }
+        }
       } else {
         if (recovery) throw new Error('Check the retained task before preparing another submission.');
         if (!recovery) setReceipt(null);
@@ -153,13 +175,14 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
   return <Container className="xml-analytics-loader" aria-label="Validated XML analytics loading">
     {!expanded&&<summary>Prepare and load analytics data</summary>}
     <p>Confirm the source, attach the data file you want to analyse, then choose the report fields you need.</p>
-    {sources.length>0&&<div><label>Data source<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Confirm source</button><p>{fields.schema_artifact_id?'Source confirmed. Attach your data file, then choose how to group and summarise its records.':'Confirm this source before adding data.'}</p></div>}
+    {sources.length>0&&<div className="analytics-form-row"><label>Data source<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Confirm source</button><p>{fields.schema_artifact_id?'Source confirmed. Attach your data file, then choose how to group and summarise its records.':'Confirm this source before adding data.'}</p></div>}
     <button type="button" disabled={busy} onClick={() => perform(false)}>Refresh loading processes</button>
-    <label>Data file (XML)<input type="file" accept=".xml" disabled={busy} onChange={event => setXmlFile(event.target.files[0] || null)} /></label>
-    <button type="button" disabled={busy || !xmlFile} onClick={() => perform('upload')}>Attach data file</button>
-    <label>Loading process<select value={job} disabled={busy} onChange={event => { setJob(event.target.value); if (!recovery) setReceipt(null); }}>
+    {previousRuns.length>0&&<div className="analytics-form-row"><label>Use previously prepared data<select value={selectedRun} disabled={busy||!!recovery} onChange={event=>setSelectedRun(event.target.value)}><option value="">Choose a previous result</option>{previousRuns.map(run=><option key={run.run_id} value={run.run_id}>{run.job_name||run.job_id||'Analytics data'} · {run.created_at||run.started_at||'Retained result'}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!selectedRun} onClick={()=>perform('reuse')}>Use this data</button></div>}
+    <div className="analytics-form-row"><label>Data file (XML)<input type="file" accept=".xml" disabled={busy} onChange={event => setXmlFile(event.target.files[0] || null)} /></label>
+    <button type="button" disabled={busy || !xmlFile} onClick={() => perform('upload')}>Attach data file</button></div>
+    <div className="analytics-form-row"><label>Loading process<select value={job} disabled={busy} onChange={event => { setJob(event.target.value); if (!recovery) setReceipt(null); }}>
       <option value="">Select a job</option>{jobs.map(value => <option key={`${value.job_id}:${value.version}`} value={`${value.job_id}:${value.version}`}>{value.name} ({value.version})</option>)}
-    </select></label>
+    </select></label></div>
     {!busy&&!jobs.length&&<p role="status">A data steward needs to approve a loading process for this source before it can be used. <a href="#/data-flow">Review loading processes in Data Flow</a>.</p>}
     <details><summary>Advanced source references and load settings</summary>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
@@ -167,7 +190,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
     </div>
     <label>Schema dependencies (relative path → artifact ID, JSON)<textarea value={dependencies} disabled={busy} onChange={event => { setDependencies(event.target.value); if (!recovery) setReceipt(null); }} /></label>
     </details>
-    <label>Requested by<input value={fields.approved_by} disabled={busy} placeholder="Your authorised name or service identity" onChange={event=>setFields(previous=>({...previous,approved_by:event.target.value}))}/></label>
+    {expanded?<div className="analytics-form-row"><label>Requested by<output>{fields.approved_by||'Execution access is not connected'}</output></label><span>Identified from your authenticated connection.</span>{identityError&&<p role="status">{identityError} <a href="#/admin">Manage access</a></p>}</div>:<label>Requested by<input value={fields.approved_by} disabled={busy} placeholder="Your authorised name or service identity" onChange={event=>setFields(previous=>({...previous,approved_by:event.target.value}))}/></label>}
     <AnalyticsViewBuilder ontologyId={sourceId} sources={sources} disabled={busy} schemaArtifactId={fields.schema_artifact_id.trim()} onAdd={(definition, artifactId) => {
       const definitions = JSON.parse(business);
       if (!Array.isArray(definitions) || definitions.length >= 20) throw new Error('Business definitions must be an array with fewer than 20 views.');

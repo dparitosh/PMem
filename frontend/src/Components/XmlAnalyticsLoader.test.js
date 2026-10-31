@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import XmlAnalyticsLoader from './XmlAnalyticsLoader';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
-vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn(), get: vi.fn() }, dataPipelineAPI: { definitions: vi.fn(), runDefinition: vi.fn(), getRun: vi.fn(), reconcileAnalytics: vi.fn() } }));
+vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn(), get: vi.fn() }, dataPipelineAPI: { definitions: vi.fn(), executionIdentity:vi.fn(), runs:vi.fn(), runDefinition: vi.fn(), getRun: vi.fn(), reconcileAnalytics: vi.fn() } }));
 vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'test-token' }));
 vi.mock('../config', () => ({ buildSemanticServiceUrl: (_service, path) => path }));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
@@ -145,5 +145,21 @@ test('named schema selection resolves retained reference without copying an arti
  fireEvent.click(screen.getByText('Confirm source'));
  await waitFor(()=>expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('sha256:resolved'));
  expect(apiClient.get).toHaveBeenCalledWith('/api/v1/reports/xsd-relational',expect.objectContaining({params:{ontology_id:'parts-v1'}}));
+ expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
+});
+
+
+test('business form selects retained data and resolves requester without typing identity',async()=>{
+ dataPipelineAPI.definitions.mockResolvedValue({data:{definitions:[{job_id:'load',version:'1',name:'Prepare records',job_type:'xml-analytics-materialize',lifecycle_state:'approved',enabled:true}]}});
+ dataPipelineAPI.executionIdentity.mockResolvedValue({data:{actor:'verified-operator',source:'authenticated-connection'}});
+ dataPipelineAPI.runs.mockResolvedValue({data:{runs:[{run_id:'old-run',job_id:'load',status:'completed',job_type:'xml-analytics-materialize'}]}});
+ dataPipelineAPI.getRun.mockResolvedValue({data:{run_id:'old-run',status:'completed',analytics_inputs:{xml_artifact_id:'sha256:existing-data'}}});
+ render(<XmlAnalyticsLoader expanded/>);
+ await screen.findByText('verified-operator');
+ expect(screen.queryByRole('textbox',{name:'Requested by'})).not.toBeInTheDocument();
+ expect(screen.getByLabelText('Loading process')).toHaveValue('load:1');
+ fireEvent.change(screen.getByLabelText('Use previously prepared data'),{target:{value:'old-run'}});
+ fireEvent.click(screen.getByText('Use this data'));
+ await waitFor(()=>expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('sha256:existing-data'));
  expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
 });

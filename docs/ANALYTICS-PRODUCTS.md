@@ -21,3 +21,10 @@ The ODS stores validated entity instances. Dimensions provide immutable business
 Run the normal repository-root `update-depo.ps1` with the selected `.env.local`. The migration runner applies `infra/postgres/migrations/014_analytics_discovery.sql` once to add the partial discovery index. Do not reset PostgreSQL or remove credentials. Existing completed XML-analytics run receipts become discoverable without reloading their data. Only receipt-backed, registered schemas are exposed; arbitrary database tables are excluded.
 
 The new GET endpoints are `/api/v1/pipeline/analytics`, `/{run_id}` and `/{run_id}/data?relation=...`. They require existing graph-read authorization. Previews allow only retained model relations, quote SQL identifiers, use read-only transactions, enforce a five-second statement timeout and bound rows, columns and cell sizes. They never accept SQL or expose source XML bytes. Missing ownership or physical relations must be reconciled before consumption.
+
+
+## Selection-based preparation form
+
+The focused preparation form aligns labels, controls and actions in consistent rows. It selects the source and approved loading process, offers reusable data from the latest 100 retained analytics runs, and resolves Requested by from authenticated execution credentials through `GET /api/v1/pipeline/jobs/execution-identity`. The server still authorizes every execution; a displayed identity does not grant permission. No requester needs to be typed in the focused form. A new upload remains available when no retained file is suitable.
+
+Report names are suggested from the selected records and report type; custom names remain optional. Record groups, values, aggregation and KPI units use selections. Advanced source references remain available for recovery, not required for the normal path. Reused files still undergo schema validation; selection does not certify compatibility with a different source.
