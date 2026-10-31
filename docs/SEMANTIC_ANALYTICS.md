@@ -66,3 +66,5 @@ The preparation baseline is resolved before the canonical execution input is ret
 Legacy completed runs may recover their baseline binding from a retained output receipt. A legacy preparation with no verified binding is rejected for replay; inspect its sources and submit a new preparation instead. Published products and original artifacts remain retained.
 
 A successful source review has execution status `completed` and a separate `assessment_status` such as `refresh_required` or `review_required`. Draft manifests retain configuration ID/context, and analysis source lineage carries them into packaging inputs. UI callbacks from an older session cannot overwrite current error feedback; late server-issued run receipts remain recoverable after reconnect or navigation.
+
+New baselines capture the TRS head **before** resolving selected sources. The first review starts at that position, so older graph-reset events do not invalidate a newly prepared snapshot. Events occurring during or after preparation remain eligible for assessment. Older baselines without a captured position remain explicitly uncertain; existing refresh findings are not silently cleared.

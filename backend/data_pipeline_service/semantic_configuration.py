@@ -9,6 +9,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from urllib.parse import quote, unquote, urlparse
+from psycopg import Error as DatabaseError
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
@@ -24,6 +25,22 @@ def configuration_store():
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def capture_trs_start():
+    """Capture before source resolution; earlier changes cannot invalidate a new baseline."""
+    from backend.Services.oslc_trs_service import OSLCTRSService
+    if not OSLCTRSService.is_enabled():
+        return {'state': 'disabled', 'order': None}
+    try:
+        page = OSLCTRSService.change_log(after=0, limit=1)
+        head = page.get('head_order')
+        if type(head) is not int or head < 0:
+            raise ValueError('TRS head position is unavailable')
+        return {'state': 'captured', 'order': head}
+    except (DatabaseError, RuntimeError, ValueError, OSError):
+        log.warning('Analytics baseline TRS position is unavailable', exc_info=True)
+        return {'state': 'unavailable', 'order': None}
 
 
 def bind_context(payload, header, job_type):
@@ -64,6 +81,7 @@ def freeze_configuration(selections, actor=None):
     from .semantic_datasets import resolve_source
     if not isinstance(selections, list) or not 1 <= len(selections) <= 20:
         raise ValueError('A configuration requires 1–20 registered input selections')
+    trs_start = capture_trs_start()
     frozen = []
     identities = set()
     for selection in selections:
@@ -95,6 +113,7 @@ def freeze_configuration(selections, actor=None):
                   'selections': frozen, 'created_at': now(), 'created_by': actor,
                   'configuration_context': '/oslc/lifecycle/analytics-baselines/' + identifier,
                   'approval_status': 'not_granted',
+                  'trs_start_order': trs_start['order'], 'trs_start_state': trs_start['state'],
                   'scope': 'Immutable declared selections only; no automatic dependency discovery or full OSLC Config conformance'}
         # Same registry transaction retains the baseline and its pending notification.
         store.put_many({identifier: record, 'event:' + identifier: {
@@ -190,7 +209,8 @@ def review_dataset(dataset_id, configuration_id=None):
             raise ValueError('This older snapshot needs a configuration baseline before change assessment')
         baseline = get_configuration(receipt['configuration_id'])
         previous = store.get(dataset_id) or {}
-        after = previous.get('trs_after', 0)
+        after = previous.get('trs_after', baseline.get('trs_start_order') or 0)
+        missing_start = baseline.get('trs_start_state') != 'captured'
         findings = []
         # Always reconcile selected source revisions: TRS publisher coverage is partial.
         for item in baseline['selections']:
@@ -222,10 +242,10 @@ def review_dataset(dataset_id, configuration_id=None):
             log.warning('TRS analytics assessment unavailable for dataset %s', dataset_id, exc_info=True)
         if previous.get('status') == 'refresh_required' and not findings:
             findings = [{'reason':'previous_assessment_requires_refresh','assessed_at':previous.get('assessed_at')}]
-        status = 'refresh_required' if findings or previous.get('status') == 'refresh_required' else 'review_required' if trs_state != 'page_assessed' or previous.get('trs_gap_unresolved') else 'no_selected_source_change_detected'
+        status = 'refresh_required' if findings or previous.get('status') == 'refresh_required' else 'review_required' if missing_start or trs_state != 'page_assessed' or previous.get('trs_gap_unresolved') else 'no_selected_source_change_detected'
         result = {'dataset_id': dataset_id, 'configuration_id': baseline['configuration_id'],
                   'status': status, 'findings': findings, 'trs_state': trs_state, 'trs_after': after,
-                  'trs_gap_unresolved': trs_state == 'gap_requires_review' or previous.get('trs_gap_unresolved', False),
+                  'trs_gap_unresolved': missing_start or trs_state == 'gap_requires_review' or previous.get('trs_gap_unresolved', False),
                   'assessed_at': now(), 'publication_changed': False,
                   'scope': 'Selected source revisions and one TRS page; not a completeness certificate. Existing published versions are retained.'}
         # Checkpoint and findings are one durable record. Lease failure cannot advance it.

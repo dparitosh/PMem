@@ -21,6 +21,7 @@ class ConfigurationTests(TestCase):
         self.reviews = InMemoryRegistry()
         self.start_patch(patch.object(configurations, 'configuration_store', return_value=self.baselines))
         self.start_patch(patch.object(configurations, 'ArtifactStore', return_value=self.artifacts))
+        self.start_patch(patch.object(configurations, 'capture_trs_start', return_value={'state':'captured','order':0}))
         self.resolve = self.start_patch(patch('backend.data_pipeline_service.semantic_datasets.resolve_source', return_value={'version':'1.0.0','revision':1}))
         self.baseline = configurations.freeze_configuration([self.selection], 'author')
         self.dataset = 'a' * 64
@@ -97,3 +98,22 @@ class ConfigurationTests(TestCase):
         result=configurations.review_dataset(self.dataset)
         self.assertTrue(result['trs_gap_unresolved'])
         self.assertEqual(result['status'],'review_required')
+
+    def test_first_review_starts_at_baseline_position_not_historical_resets(self):
+        baseline={**self.baseline,'trs_start_order':2}
+        self.baselines.put(baseline['configuration_id'],baseline)
+        def page(*,after,limit):
+            assert after==2
+            # Orders 1 and 2 were graph resets before this baseline existed.
+            return {'events':[],'next_after':2,'rebase_required':False,'head_order':2}
+        self.changes.side_effect=page
+        result=configurations.review_dataset(self.dataset)
+        self.assertEqual(result['status'],'no_selected_source_change_detected')
+        self.assertFalse(result['trs_gap_unresolved'])
+
+    def test_legacy_baseline_without_a_start_position_is_not_certified_fresh(self):
+        baseline={key:value for key,value in self.baseline.items() if not key.startswith('trs_start_')}
+        self.baselines.put(baseline['configuration_id'],baseline)
+        result=configurations.review_dataset(self.dataset)
+        self.assertEqual(result['status'],'review_required')
+        self.assertTrue(result['trs_gap_unresolved'])
