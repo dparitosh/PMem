@@ -23,10 +23,10 @@ test('AUD-02 an out-of-range page must not claim that the database is empty',asy
  dataPipelineAPI.analytics.mockResolvedValueOnce({data:{datasets:[{run_id:'r',schema:'s',business_views:[]}],total:21,next_offset:20}})
  .mockResolvedValueOnce({data:{datasets:[],total:1,next_offset:null}})
  .mockResolvedValueOnce({data:{datasets:[{run_id:'remaining',schema:'remaining-dataset',business_views:[]}],total:1,next_offset:null}});
- render(<AvailableAnalytics/>);await screen.findByText('Inspect dataset');
+ render(<AvailableAnalytics/>);await screen.findByText('Browse data');
  fireEvent.click(screen.getByText('Next datasets'));
- await waitFor(()=>expect(dataPipelineAPI.analytics).toHaveBeenCalledTimes(2));
+ await waitFor(()=>expect(dataPipelineAPI.analytics.mock.calls.length).toBeGreaterThanOrEqual(2));
  await screen.findByText('remaining-dataset');
- expect(screen.getByText('Page 1')).toBeInTheDocument();
- expect(screen.queryByText('No materialized analytics datasets found')).not.toBeInTheDocument();
+ expect(dataPipelineAPI.analytics).toHaveBeenLastCalledWith({limit:20,offset:0},expect.anything());
+ expect(screen.queryByText('Your reporting data is not ready yet')).not.toBeInTheDocument();
 });

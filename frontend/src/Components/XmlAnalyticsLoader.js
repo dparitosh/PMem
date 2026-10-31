@@ -16,7 +16,7 @@ function retainedSubmission() {
   } catch { /* Browser storage may be unavailable. */ }
   return null;
 }
-export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], selectedSchemaId = '' }) {
+export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], selectedSchemaId = '', expanded = false }) {
   const [sourceId,setSourceId]=useState(selectedSchemaId);
 
   const [jobs, setJobs] = useState([]);
@@ -67,6 +67,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
     setRecovery(value); setAbsenceConfirmed(false);
     try { if (value) sessionStorage.setItem(RECOVERY_KEY, JSON.stringify(value)); else sessionStorage.removeItem(RECOVERY_KEY); } catch { /* Keep the current run visible if storage is unavailable. */ }
   }
+  useEffect(()=>{if(expanded)perform(false);},[expanded]);
   async function perform(submit) {
     if (locked.current) return;
     locked.current = true; setBusy(true); setError('');
@@ -106,7 +107,7 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
         const response = await dataPipelineAPI.definitions();
         const values = response.data?.definitions;
         if (!Array.isArray(values)) throw new Error('Invalid job-definition response.');
-        if (current()) setJobs(values.filter(value => value.job_type === 'xml-analytics-materialize' && value.lifecycle_state === 'approved' && value.enabled));
+        if (current()){const approved=values.filter(value => value.job_type === 'xml-analytics-materialize' && value.lifecycle_state === 'approved' && value.enabled);setJobs(approved);if(approved.length===1)setJob(`${approved[0].job_id}:${approved[0].version}`);}
       } else {
         if (recovery) throw new Error('Check the retained task before preparing another submission.');
         if (!recovery) setReceipt(null);
@@ -148,24 +149,26 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
   const runId = recovery?.run_id || receipt?.run_manifest?.run_id || receipt?.run?.run_id;
   const currentRun = receipt?.run_manifest || receipt?.run;
   const evidenceStatus = currentRun?.output_manifest?.evidence_status || receipt?.evidence_status;
-  return <details className="xml-analytics-loader" aria-label="Validated XML analytics loading">
-    <summary>Prepare and load analytics data</summary>
+  const Container=expanded?'section':'details';
+  return <Container className="xml-analytics-loader" aria-label="Validated XML analytics loading">
+    {!expanded&&<summary>Prepare and load analytics data</summary>}
     <p>Use a completed Data Flow run whenever possible. Its retained schema and XML artifacts are filled in automatically; manual artifact IDs are only needed for older runs or external evidence.</p>
+    {sources.length>0&&<div><label>Source schema<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Use selected schema</button><p>{fields.schema_artifact_id?'Retained schema source resolved. Choose or retain the XML data, then define the required business views.':'Select a schema by name; the application resolves its retained source reference.'}</p></div>}
     <button type="button" disabled={busy} onClick={() => perform(false)}>Load approved XML jobs</button>
     <label>XML instance file<input type="file" accept=".xml" disabled={busy} onChange={event => setXmlFile(event.target.files[0] || null)} /></label>
     <button type="button" disabled={busy || !xmlFile} onClick={() => perform('upload')}>Retain XML instance</button>
     <label>Approved XML job<select value={job} disabled={busy} onChange={event => { setJob(event.target.value); if (!recovery) setReceipt(null); }}>
       <option value="">Select a job</option>{jobs.map(value => <option key={`${value.job_id}:${value.version}`} value={`${value.job_id}:${value.version}`}>{value.name} ({value.version})</option>)}
     </select></label>
-    {!jobs.length && <p>Create and approve an xml-analytics-materialize job with quality profile schema-analytics-v1 through Data Flow job definitions.</p>}
-    {sources.length>0&&<div><label>Source schema<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Use selected schema</button><p>{fields.schema_artifact_id?'Retained schema source resolved. Choose or retain the XML data, then define the required business views.':'Select a schema by name; the application resolves its retained source reference.'}</p></div>}
+    {!busy&&!jobs.length&&<p role="status">A data steward needs to approve a loading process for this source before it can be used. <a href="#/data-flow">Review loading processes in Data Flow</a>.</p>}
     <details><summary>Advanced source references and load settings</summary>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-      {Object.entries({ schema_artifact_id: 'Retained XSD artifact ID', xml_artifact_id: 'Retained XML artifact ID', schema_prefix: 'Analytics schema prefix', approved_by: 'Execution identity' }).map(([key, label]) => <label key={key}>{label}<input value={fields[key]} disabled={busy} onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); if (!recovery) setReceipt(null); }} /></label>)}
+      {Object.entries({ schema_artifact_id: 'Retained XSD artifact ID', xml_artifact_id: 'Retained XML artifact ID', schema_prefix: 'Analytics schema prefix' }).map(([key, label]) => <label key={key}>{label}<input value={fields[key]} disabled={busy} onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); if (!recovery) setReceipt(null); }} /></label>)}
     </div>
     <label>Schema dependencies (relative path → artifact ID, JSON)<textarea value={dependencies} disabled={busy} onChange={event => { setDependencies(event.target.value); if (!recovery) setReceipt(null); }} /></label>
     </details>
-    <AnalyticsViewBuilder sources={sources} disabled={busy} schemaArtifactId={fields.schema_artifact_id.trim()} onAdd={(definition, artifactId) => {
+    <label>Execution identity<input value={fields.approved_by} disabled={busy} placeholder="Your authorised name or service identity" onChange={event=>setFields(previous=>({...previous,approved_by:event.target.value}))}/></label>
+    <AnalyticsViewBuilder ontologyId={sourceId} sources={sources} disabled={busy} schemaArtifactId={fields.schema_artifact_id.trim()} onAdd={(definition, artifactId) => {
       const definitions = JSON.parse(business);
       if (!Array.isArray(definitions) || definitions.length >= 20) throw new Error('Business definitions must be an array with fewer than 20 views.');
       if (definitions.length && businessBinding && businessBinding !== artifactId) throw new Error('Clear definitions from the previous schema before adding fields.');
@@ -195,5 +198,5 @@ export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], s
     {busy && <p role="status">Processing XML analytics request…</p>}
     {error && <p role="alert">{error}</p>}
     {receipt && <><p role="status">Job response: {receipt.status || 'received'}</p>{runId && <a href={pipelineRunLink(runId)}>View load run and evidence</a>}<details><summary>Technical load receipt</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 250, overflow: 'auto' }}>{JSON.stringify(receipt, null, 2)}</pre></details></>}
-  </details>;
+  </Container>;
 }

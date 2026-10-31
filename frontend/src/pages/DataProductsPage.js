@@ -30,7 +30,7 @@ const columns = [
 
 export default function DataProductsPage({ mode = 'products', onCompanionRecordChange }) {
   const catalog = mode === 'catalog';
-  const [workspace,setWorkspace]=useState(()=>{const query=new URLSearchParams(window.location.hash.split('?')[1]||'');return mode==='catalog'?'sources':query.has('view')||query.has('run_id')?'create':'library';});
+  const [workspace,setWorkspace]=useState(()=>{const query=new URLSearchParams(window.location.hash.split('?')[1]||'');return mode==='catalog'?'sources':query.get('view')==='portfolio'?'library':query.has('view')||query.has('run_id')?'create':'analytics';});
   const title = catalog ? 'Data Catalog' : 'Data Products';
   const { ontologies, error: ontologyError, warning: ontologyWarning, loading: ontologyLoading } = useOntologies();
   const drafts = (ontologies || []).filter(ontology => ontology.data_product_draft?.contract);
@@ -67,7 +67,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   useEffect(()=>{
     const query=new URLSearchParams(window.location.hash.split('?')[1]||'');
     if(query.get('ontology_id'))setSelectedDraft(query.get('ontology_id'));
-    setWorkspace(catalog?'sources':query.has('view')||query.has('run_id')?'create':'library');
+    setWorkspace(catalog?'sources':query.get('view')==='portfolio'?'library':query.has('view')||query.has('run_id')?'create':'analytics');
     if(catalog)return;
     const reveal=()=>{const view=new URLSearchParams(window.location.hash.split('?')[1]||'').get('view');if(['structural','pipeline'].includes(view))revealEvidence(view);};
     reveal();window.addEventListener('hashchange',reveal);
@@ -189,21 +189,21 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const keys = [...new Set(state.rows.map(row => catalog ? row.product_id : `${row.product_id}:${row.version}`))];
   const visibleRows=state.rows.filter(row=>[row.product_id,row.name,row.domain,row.owner,row.version,row.status,row.lifecycle_state].some(value=>String(value || '').toLowerCase().includes(filter.toLowerCase())));
   return <section className="depo-panel data-cockpit" aria-label={title}>
-    <div className="data-cockpit__intro"><div><span className="data-cockpit__eyebrow">Data lifecycle cockpit</span><h2>{title}</h2><p>{catalog ? 'Find data to reuse: discover ingested sources, identify owners and inspect published product versions.' : 'Turn source evidence into a governed, reusable package: inspect the analytics design, validate the contract and track catalog delivery.'}</p></div><IxButton onClick={load} disabled={state.loading}>Refresh</IxButton></div>
-    <DataJourney current={catalog?'catalog':'products'}/>
+    <div className="data-cockpit__intro"><div><h2>{catalog?'Find trusted data':'Data for reporting and decisions'}</h2><p>{catalog ? 'Find data to reuse: discover ingested sources, identify owners and inspect published product versions.' : 'Find useful data, prepare reports and share approved results with your team.'}</p></div><IxButton onClick={load} disabled={state.loading}>Refresh</IxButton></div>
+    {(catalog||!['analytics','prepare'].includes(workspace))&&<><DataJourney current={catalog?'catalog':'products'}/>
     <div className="product-overview" aria-label="Workspace overview">
       <article><span>{catalog?'Catalog versions':'Retained package versions'}</span><strong>{state.loading||state.error?'—':state.total??'Unknown'}</strong><a href={catalog?'#/data-products':'#/catalog'}>{catalog?'Manage products and delivery':'Browse Data Catalog'}</a></article>
       <article><span>{catalog?'Registered ontologies (loaded)':'Imported schema drafts (loaded)'}</span><strong>{ontologyLoading||ontologyError||ontologyWarning?'—':catalog?(ontologies||[]).length:drafts.length}</strong><a href="#/import">Import source evidence</a></article>
       <article><span>{catalog?'Domains represented (loaded)':'Pending catalog delivery (loaded versions)'}</span><strong>{state.loading||state.error?'—':catalog?new Set(state.rows.map(row=>row.domain).filter(Boolean)).size:state.rows.filter(row=>row.status==='pending_catalog_registration').length}</strong>{catalog?<a href="#/data-products">Inspect package delivery</a>:<button type="button" className="product-overview__action" onClick={()=>setWorkspace('library')}>Inspect delivery status</button>}</article>
     </div>
-    <p>Totals count product versions. Catalog entries and retained packages are separate records; pending delivery can make their totals differ.</p>
+    <p>Totals count product versions. Catalog entries and retained packages are separate records; pending delivery can make their totals differ.</p></>}
     {state.loading && <p role="status">Loading products…</p>}
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
     {(ontologyError||ontologyWarning)&&<p role="alert">Schema inventory: {ontologyError||ontologyWarning}</p>}
     <DataWorkspace label={catalog?'Catalog workspace':'Product workspace'} active={workspace} onChange={setWorkspace}
-      tabs={catalog?[{id:'sources',label:'Ingested sources'},{id:'analytics',label:'Available analytics'},{id:'library',label:'Published products'},{id:'create',label:'Product opportunities'},{id:'governance',label:'Governance'}]:[{id:'analytics',label:'Available analytics'},{id:'library',label:'Product portfolio'},{id:'create',label:'Create & review'},{id:'governance',label:'Governance'}]}>
-      {{analytics:workspace==='analytics'?<AvailableAnalytics drafts={drafts} onPrepare={id=>{if(catalog){window.location.hash=`/data-products?view=pipeline&ontology_id=${encodeURIComponent(id)}`;}else{setSelectedDraft(id);revealEvidence('pipeline');}}}/>:null,sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
+      tabs={catalog?[{id:'sources',label:'Ingested sources'},{id:'analytics',label:'Available analytics'},{id:'library',label:'Published products'},{id:'create',label:'Product opportunities'},{id:'governance',label:'Governance'}]:[{id:'analytics',label:'Available analytics'},{id:'prepare',label:'Prepare data'},{id:'library',label:'Product portfolio'},{id:'create',label:'Create & review'},{id:'governance',label:'Governance'}]}>
+      {{prepare:workspace==='prepare'?<section aria-label="Prepare business data"><h3>{draft?`Prepare ${draft.label||draft.name}`:'Prepare data for reporting'}</h3><p>Add the business records that belong to your chosen source. We will check them before they become available for reporting.</p>{!draft&&<label>Choose a data source<select value={selectedDraft} onChange={event=>setSelectedDraft(event.target.value)}><option value="">Select a source</option>{drafts.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label>}{draft&&<XmlAnalyticsLoader expanded sources={drafts} selectedSchemaId={selectedDraft}/>}</section>:null,analytics:workspace==='analytics'?<AvailableAnalytics drafts={drafts} onPrepare={id=>{if(catalog){window.location.hash=`/data-products?view=pipeline&ontology_id=${encodeURIComponent(id)}`;}else{setSelectedDraft(id);setWorkspace('prepare');}}}/>:null,sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
     {!state.loading && <section aria-label="Discover product versions">
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}

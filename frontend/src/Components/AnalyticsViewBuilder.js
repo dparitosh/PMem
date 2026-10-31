@@ -3,8 +3,9 @@ import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 
-export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd, sources = [] }) {
-  const [ontology, setOntology] = useState('');
+export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd, sources = [], ontologyId = '' }) {
+  const [ontology, setOntology] = useState(ontologyId);
+  useEffect(()=>{if(ontologyId)setOntology(ontologyId);},[ontologyId]);
   const [model, setModel] = useState(null);
   const [entityId, setEntityId] = useState('');
   const [kind, setKind] = useState('fact');
@@ -58,16 +59,16 @@ export default function AnalyticsViewBuilder({ disabled, schemaArtifactId, onAdd
     } catch (failure) { setError(failure.message); }
   }
   return <fieldset disabled={disabled || busy}>
-    <legend>Data mart view designer</legend>
-    <p>Select fields from the registered XSD that matches the retained schema artifact. Field identities preserve attributes, elements and namespaces.</p>
-    {sources.length>0?<label>Imported schema<select value={ontology} onChange={event=>setOntology(event.target.value)}><option value="">Select a schema by name</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label>:<label>Registered XSD ontology ID<input value={ontology} onChange={event => { setOntology(event.target.value); setModel(null); setEntityId(''); resetFields(); }} /></label>}
+    <legend>Choose what to report</legend>
+    <p>Choose which records to group and which values to summarise. This step is optional if you only need to browse the original records.</p>
+    {ontologyId?<p>Reporting source: {sources.find(source=>source.ontology_id===ontologyId)?.label||'Selected source'}</p>:sources.length>0?<label>Imported schema<select value={ontology} onChange={event=>setOntology(event.target.value)}><option value="">Select a schema by name</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label>:<label>Registered XSD ontology ID<input value={ontology} onChange={event => { setOntology(event.target.value); setModel(null); setEntityId(''); resetFields(); }} /></label>}
     <button type="button" disabled={disabled || busy || !ontology.trim() || !schemaArtifactId} onClick={load}>Load schema fields</button>
     {model && <>
       {model.ddl_blockers?.length > 0 && <p role="status">Schema review requirements: {model.ddl_blockers.join('; ')}</p>}
       <label>Analytics entity<select value={entityId} onChange={event => { setEntityId(event.target.value); resetFields(); }}>
         <option value="">Select an entity</option>{model.tables.map(table => <option key={table.entity_id} value={table.entity_id}>{table.name || table.entity_id} ({table.entity_id})</option>)}
       </select></label>
-      <label>View kind<select value={kind} onChange={event => { setKind(event.target.value); resetFields(); }}><option value="fact">Aggregate fact</option><option value="dimension">Dimension</option><option value="kpi">KPI (reviewed aggregate measure)</option></select></label>
+      <label>View kind<select value={kind} onChange={event => { setKind(event.target.value); resetFields(); }}><option value="fact">Summary of records</option><option value="dimension">Group records by a business key</option><option value="kpi">Business measure (KPI)</option></select></label>
       <label>View name<input value={name} onChange={event => setName(event.target.value)} /></label>
       {kind==='kpi'&&<><label>Business purpose<input maxLength={500} value={description} onChange={event=>setDescription(event.target.value)}/></label><label>KPI unit<input maxLength={500} value={unit} onChange={event=>setUnit(event.target.value)}/></label><p>Define a measured aggregate. Ratios, targets and cross-entity joins require a separately reviewed model.</p></>}
       {entity && <>

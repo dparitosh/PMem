@@ -7,11 +7,11 @@ import { dataPipelineAPI, apiClient } from '../services/apiClient';
 vi.mock('@siemens/ix-react', () => ({IxButton: ({children, ...props}) => <button {...props}>{children}</button>}));
 vi.mock('../widgets/RegistryWidget', () => ({default: ({title,rows=[],onRowClicked}) => <><h3>{title}</h3>{rows.map(row=><button key={row.product_id+row.version} onClick={()=>onRowClicked?.(row)}>Open row {row.product_id}</button>)}</>}));
 vi.mock('../contexts/OntologyContext', () => ({useOntologies: () => ({ontologies:[],loading:false})}));
-vi.mock('../services/apiClient', () => ({apiClient:{get:vi.fn()},dataPipelineAPI:{getRun:vi.fn()}}));
+vi.mock('../services/apiClient', () => ({apiClient:{get:vi.fn()},dataPipelineAPI:{getRun:vi.fn(),analytics:vi.fn()}}));
 vi.mock('../services/productService', () => ({readProductCollection:vi.fn(),PRODUCT_REFRESH_MS:15000,PRODUCT_CHANGED_EVENT:'depo:products-changed'}));
 vi.mock('../Components/SchemaProductPublisher', () => ({default: ({draft}) => draft ? <div data-testid="retained-draft">{JSON.stringify(draft)}</div> : null}));
 vi.mock('../Components/AgentProposalPanel', () => ({default: ({context}) => <div data-testid="governor-context">{JSON.stringify(context)}</div>}));
-beforeEach(() => { vi.clearAllMocks(); window.location.hash = '#/data-products'; });
+beforeEach(() => { vi.clearAllMocks(); window.location.hash = '#/data-products?view=portfolio'; });
 afterEach(() => cleanup());
 it('hides empty collection and discovery controls until the list finishes loading', async () => {
   let resolve;
@@ -160,4 +160,13 @@ it('the product governor receives the same selected product version as Companion
   expect(changed).toHaveBeenLastCalledWith({page:'data-products',product_id:'chosen',product_version:'1'});
   fireEvent.click(screen.getByRole('tab',{name:'Governance'}));
   expect(await screen.findByTestId('governor-context')).toHaveTextContent('"product_id":"chosen","product_version":"1"');
+});
+
+it('starts with available analytics and a clear business next action',async()=>{
+ window.location.hash='#/data-products';readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ dataPipelineAPI.analytics.mockResolvedValue({data:{datasets:[],total:0,next_offset:null}});
+ render(<DataProductsPage/>);
+ expect(screen.getByRole('tab',{name:'Available analytics'})).toHaveAttribute('aria-selected','true');
+ expect(await screen.findByText('Your reporting data is not ready yet')).toBeVisible();
+ expect(screen.queryByLabelText('Workspace overview')).toBeNull();
 });
