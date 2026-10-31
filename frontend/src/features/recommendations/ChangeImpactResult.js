@@ -1,4 +1,5 @@
 import DependencyPathGraph from './DependencyPathGraph';
+import {businessDisplayName, businessPathNames} from './businessDisplayName';
 import { CARD, TH, TD, TABLE, Badge, ScoreBar, ResultTabBar } from "./RecommendationPrimitives.js";
 import React, { useState } from "react";
 import { Zap } from "lucide-react";
@@ -12,7 +13,7 @@ const ChangeImpactResult = ({ data }) => {
 
   const ce = data.change_entity || {};
   if (data.evidence_status === 'insufficient') {
-    return <section aria-label="Change impact evidence" role="status"><h3>{ce.name}</h3><p>{data.message}</p></section>;
+    return <section aria-label="Change impact evidence" role="status"><h3>{businessDisplayName(ce.name)}</h3><p>{data.message}</p></section>;
   }
   const tabs = [
     { id: 'overview',      label: 'Overview',           color: C.orange  },
@@ -31,7 +32,7 @@ const ChangeImpactResult = ({ data }) => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <Zap size={17} color={C.orange} strokeWidth={2.5} />
-              <span style={{ fontSize: '16px', fontWeight: 700, color: C.textPrimary }}>{ce.name}</span>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: C.textPrimary }}>{businessDisplayName(ce.name)}</span>
             </div>
             <div>
               <Badge color={C.red}>{ce.source_tag}</Badge>
@@ -52,7 +53,7 @@ const ChangeImpactResult = ({ data }) => {
         {data.coverage?.limit_reached && <p role="status">The traversal limit was reached. Narrow the selected scope and assess remaining dependencies before approving the change.</p>}
         <table style={TABLE}><thead><tr><th style={TH}>Business record</th><th style={TH}>Dependency path</th><th style={TH}>Configuration and effectivity</th></tr></thead>
           <tbody>{(data.realization_chain || []).map((item,index)=><tr key={item.node_id || index}>
-            <td style={TD}>{item.name}</td><td style={TD}>{item.path_names?.join(' → ') || item.link_type}
+            <td style={TD}>{businessDisplayName(item.name)}<details><summary>Record identity</summary><code>{item.node_id}</code></details></td><td style={TD}>{businessPathNames(item).join(' → ') || item.link_type}
               <details><summary>Path evidence</summary><ol>{(item.path || []).map(edge=><li key={edge.relationship_id}>{edge.predicate || edge.relationship_type} · reference {edge.relationship_id}</li>)}</ol></details>
             </td><td style={TD}>{item.review_status === 'configuration_conflict' ? 'Conflicting configuration evidence; review required' : 'Effectivity review required'}
               {item.configuration_review?.map(entry=><p key={entry.property}>{entry.property}: {Array.isArray(entry.source) ? entry.source.join('; ') || 'Not recorded' : 'Not recorded'} / {Array.isArray(entry.candidate) ? entry.candidate.join('; ') || 'Not recorded' : 'Not recorded'} — {entry.status}</p>)}
@@ -75,7 +76,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.impacted_parts.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{p.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{businessDisplayName(p.name)}</span></td>
                     <td style={TD}><Badge color={C.primaryHover}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
                     <td style={TD}><span style={{ fontWeight: 600, color: C.orange }}>{p.relation_type || 'Ã¢â‚¬â€'}</span></td>
                     <td style={TD}>{p.class_name || 'Ã¢â‚¬â€'}</td>
@@ -97,7 +98,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.assembly_impact.map((a, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{a.name || a.assembly_name || 'Unnamed assembly'}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{businessDisplayName(a.name || a.assembly_name, 'Assembly name not recorded')}</span></td>
                     <td style={TD}><span style={{ fontWeight: 600, color: C.textSec }}>{a.depth}</span></td>
                     <td style={TD}>{a.from_part || 'Ã¢â‚¬â€'}</td>
                   </tr>
@@ -118,7 +119,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.impacted_requirements.map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.amber }}>{r.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.amber }}>{businessDisplayName(r.name)}</span></td>
                     <td style={TD}><Badge color={C.amber}>{r.catalogue_id || 'Ã¢â‚¬â€'}</Badge></td>
                     <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{r.linked_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
@@ -139,7 +140,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.process_impacts.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.green }}>{p.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.green }}>{businessDisplayName(p.name)}</span></td>
                     <td style={TD}><Badge color={C.green}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
                     <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{p.from_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
@@ -160,7 +161,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.realization_chain.map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{r.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{businessDisplayName(r.name)}</span></td>
                     <td style={TD}><Badge color={C.orange}>{r.link_type || 'Ã¢â‚¬â€'}</Badge></td>
                     <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{r.from_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>

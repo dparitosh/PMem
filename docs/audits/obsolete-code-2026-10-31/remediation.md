@@ -141,3 +141,18 @@ with status ok; this is not acceptance of the new archive or customer deployment
 Full frontend results remain 837 passing tests and a successful production build.
 Provider-dependent, backup/restore and customer-upgrade acceptance are not
 certified by these source checks.
+
+## Post-upgrade recommendation display correction
+
+Live direct Change Impact testing found a recorded technical `name` displayed as
+an encoded resource identity. Recommendation display now prefers usable recorded
+names/labels/titles, then exact vocabulary label literals in bounded RDF metadata.
+Resource URIs, scoped IDs, hashes, UUIDs and serialized markup are not business
+names. Missing names are explicitly shown as "Business name not recorded".
+Change Impact tables and dependency graphs also sanitize older retained path
+labels; record identities remain unchanged and inspectable separately. No graph
+records or ontology annotations are rewritten and no LLM call is added.
+
+Validation: 73 backend recommendation/policy tests and 67 frontend result/recovery
+tests passed, including label fallback, vocabulary literals, malformed metadata,
+preserved part numbers and keyboard-accessible graph inspection.

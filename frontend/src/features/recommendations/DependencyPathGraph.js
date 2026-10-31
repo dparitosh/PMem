@@ -1,5 +1,6 @@
 import React, {useId,useMemo,useState} from 'react';
 import {UI_COLORS as C} from '../../styles/uiTokens';
+import {businessDisplayName, businessPathNames} from './businessDisplayName';
 
 export default function DependencyPathGraph({data}) {
   const [selected,setSelected]=useState(null);
@@ -7,13 +8,13 @@ export default function DependencyPathGraph({data}) {
   const graph=useMemo(()=>{
     const root=data.change_entity;
     if(!root?.node_id)return {nodes:[],edges:[],limited:false,height:100};
-    const nodes=new Map([[root.node_id,{id:root.node_id,name:typeof root.name==='string'&&root.name?root.name:'Selected object',depth:0}]]),edges=new Map();
+    const nodes=new Map([[root.node_id,{id:root.node_id,name:businessDisplayName(root.name,'Selected object'),depth:0}]]),edges=new Map();
     for(const item of data.realization_chain || []){
       let current=root.node_id;
       for(const [index,edge] of (item.path || []).entries()){
         const target=edge.start_id===current?edge.end_id:edge.start_id;
         if(!nodes.has(target)&&nodes.size>=60)break;
-        if(!nodes.has(target))nodes.set(target,{id:target,name:String(item.path_names?.[index+1] || 'Related record'),depth:index+1});
+        if(!nodes.has(target))nodes.set(target,{id:target,name:businessDisplayName(item.path_names?.[index+1],'Business name not recorded'),depth:index+1});
         edges.set(edge.relationship_id,{id:edge.relationship_id,source:current,target});
         current=target;
       }
@@ -40,6 +41,6 @@ export default function DependencyPathGraph({data}) {
         </g>)}
       </svg>
     </div>
-    {record&&<p role="status"><strong>{record.name}</strong>: {record.path_names?.join(' → ')}. {record.review_status==='configuration_conflict'?'Configuration evidence conflicts.':'Effectivity review is required.'}</p>}
+    {record&&<p role="status"><strong>{businessDisplayName(record.name)}</strong>: {businessPathNames(record).join(' → ')}. {record.review_status==='configuration_conflict'?'Configuration evidence conflicts.':'Effectivity review is required.'}</p>}
   </section>;
 }

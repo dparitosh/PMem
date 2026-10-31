@@ -1,6 +1,9 @@
 """Shared bounded recommendation analysis for service and compatibility callers."""
 import time
 import logging
+import json
+import re
+from urllib.parse import unquote
 from fastapi import HTTPException
 from neo4j.exceptions import DriverError, Neo4jError
 from .engineering_comparison import compare, declared_relation, kind, local, name_score, values
@@ -16,9 +19,47 @@ PROCESS = {'manufacturedby', 'processedby', 'produces', 'consumes', 'uses', 'per
 REFERENCE = {'relatedrefs', 'relatedref', 'masterref', 'masterreference', 'partref', 'productref', 'revisionref', 'instancedref'}
 
 
+_TECHNICAL_NAME = re.compile(
+    r'^(?:https?://|urn:|scoped:|_:'
+    r'|[a-f0-9]{64}$|[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$'
+    r'|\d+:[a-f0-9-]{36}:\d+$|[A-Za-z]:[\\/])', re.I)
+
+
+def _business_name(value):
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    decoded = unquote(unquote(value))
+    if not value or len(value) > 2000 or _TECHNICAL_NAME.match(decoded) or decoded.startswith(('{', '[', '<')):
+        return None
+    return value[:250]
+
+
 def display(record):
+    """Use recorded business labels, never promote a resource identity to a name."""
     props = record.get('properties') or {}
-    return str(props.get('name') or props.get('label') or props.get('title') or record.get('name') or 'Unnamed business record')[:250]
+    for source in (props, record):
+        for key in ('name', 'label', 'title', 'display_name'):
+            name = _business_name(source.get(key))
+            if name:
+                return name
+    raw = props.get('rdf_properties', {})
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw) if len(raw) <= 262144 else {}
+        except ValueError:
+            raw = {}
+    if isinstance(raw, dict):
+        for key, candidates in list(raw.items())[:512]:
+            if local(key) not in {'name', 'label', 'title', 'preflabel', 'displayname', 'objectname'}:
+                continue
+            for candidate in (candidates if isinstance(candidates, list) else [candidates])[:8]:
+                if isinstance(candidate, dict):
+                    candidate = candidate.get('value', candidate.get('@value'))
+                name = _business_name(candidate)
+                if name:
+                    return name
+    return 'Business name not recorded'
 
 
 def provenance(record):
