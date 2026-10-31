@@ -340,6 +340,11 @@ def run_configured_job(job_id: str, version: str, payload: JobInputBody, request
         raise HTTPException(status_code=404, detail="Data job definition was not found")
     if definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
         raise HTTPException(status_code=409, detail="Only an approved and enabled data-job definition can run")
+    try:
+        from .semantic_configuration import bind_context
+        payload = bind_context(payload, request.headers.get('configuration-context'), definition['job_type'])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
     correlation_id = getattr(request.state, "request_id", "")
     payload = {**payload, "execution_actor": actor}
     try:

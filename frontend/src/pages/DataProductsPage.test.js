@@ -9,6 +9,7 @@ vi.mock('../widgets/RegistryWidget', () => ({default: ({title,rows=[],onRowClick
 vi.mock('../contexts/OntologyContext', () => ({useOntologies: () => ({ontologies:[],loading:false})}));
 vi.mock('../services/apiClient', () => ({apiClient:{get:vi.fn()},dataPipelineAPI:{getRun:vi.fn(),analytics:vi.fn()}}));
 vi.mock('../services/productService', () => ({readProductCollection:vi.fn(),PRODUCT_REFRESH_MS:15000,PRODUCT_CHANGED_EVENT:'depo:products-changed'}));
+vi.mock('../Components/SemanticDataWorkbench',()=>({default:()=> <p>Catalog-driven analytics</p>}));
 vi.mock('../Components/SchemaProductPublisher', () => ({default: ({draft}) => draft ? <div data-testid="retained-draft">{JSON.stringify(draft)}</div> : null}));
 vi.mock('../Components/AgentProposalPanel', () => ({default: ({context}) => <div data-testid="governor-context">{JSON.stringify(context)}</div>}));
 beforeEach(() => { vi.clearAllMocks(); window.location.hash = '#/data-products?view=portfolio'; });
@@ -167,6 +168,6 @@ it('starts with available analytics and a clear business next action',async()=>{
  dataPipelineAPI.analytics.mockResolvedValue({data:{datasets:[],total:0,next_offset:null}});
  render(<DataProductsPage/>);
  expect(screen.getByRole('tab',{name:'Available analytics'})).toHaveAttribute('aria-selected','true');
- expect(await screen.findByText('Your reporting data is not ready yet')).toBeVisible();
+ expect(await screen.findByText('Catalog-driven analytics')).toBeVisible();
  expect(screen.queryByLabelText('Workspace overview')).toBeNull();
 });

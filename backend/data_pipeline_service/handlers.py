@@ -56,3 +56,11 @@ for name, input_contract, output_contract, method, options in [
     ("rdf-deduplicate-serialize", "rdf-artifact-v1", "canonical-ntriples-v1", "rdf_deduplicate_serialize", {}),
 ]:
     registry.register(name, JobHandler(input_contract, output_contract, _method(method, **options)))
+
+from .semantic_datasets import execute_materialization
+from .semantic_analysis import execute_analysis
+registry.register("rdf-semantic-materialize", JobHandler("registered-rdf-source-v1", "semantic-dataset-v1", execute_materialization))
+registry.register("semantic-dataset-analysis", JobHandler("semantic-analysis-plan-v1", "semantic-analysis-v1", execute_analysis))
+
+from .semantic_configuration import execute_review
+registry.register("semantic-source-review", JobHandler("semantic-dataset-reference-v1", "semantic-refresh-assessment-v1", execute_review))

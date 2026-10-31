@@ -21,6 +21,9 @@ JOB_CONTRACTS = handler_registry.contracts()
 SUPPORTED_JOB_TYPES = set(JOB_CONTRACTS)
 SUPPORTED_QUALITY_PROFILES = {"semantic-core-v1", "unstructured-evidence-v1", "data-quality-core-v1", "schema-analytics-v1"}
 REQUIRED_QUALITY_PROFILES = {
+    "semantic-source-review":"semantic-core-v1",
+    "rdf-semantic-materialize":"semantic-core-v1",
+    "semantic-dataset-analysis":"semantic-core-v1",
     "data-quality-assessment": "data-quality-core-v1",
     "schema-analytics-product": "schema-analytics-v1",
     "xml-analytics-materialize": "schema-analytics-v1",

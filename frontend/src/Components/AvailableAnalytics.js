@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {dataPipelineAPI} from '../services/apiClient';
 import {apiErrorMessage} from '../utils/apiErrorMessage';
 import './AvailableAnalytics.css';
+import SemanticDataWorkbench from './SemanticDataWorkbench';
 
 const EVENTS=['depo:session-replaced','depo:session-expired','depo:credentials-cleared','depo:credentials-changed'];
 export default function AvailableAnalytics({drafts=[], onPrepare}) {
@@ -39,6 +40,8 @@ export default function AvailableAnalytics({drafts=[], onPrepare}) {
   }
   const rows=state.datasets||[];
   return <section className="available-analytics" aria-label="Available analytics">
+    <SemanticDataWorkbench/>
+    <details><summary>Other imports and XML analytics</summary>
     <header><div><h3>Your data, ready for analysis</h3><p>Browse available records, or choose an imported source to prepare data for reporting.</p></div><button type="button" onClick={()=>{request.current?.abort();generation.current++;setDetail(null);setPreview(null);setError('');setBusy(false);setRevision(v=>v+1);}}>Refresh analytics</button></header>
     {state.loading&&<p role="status">Checking available data…</p>}
     {state.error&&<p role="alert">{state.error}</p>}
@@ -54,5 +57,6 @@ export default function AvailableAnalytics({drafts=[], onPrepare}) {
       <div className="analytics-table"><table><thead><tr><th>Records or report</th><th>What it contains</th><th>Available fields</th><th>Action</th></tr></thead><tbody>{detail.relations.map(item=><tr key={item.name}><td>{item.label}</td><td>{{'operational table':'Individual business records','relationship table':'Links between records',dimension:'Groups used to analyse records',kpi:'Defined business measure',fact:'Summary of records',aggregate:'Summary of records'}[item.kind]||item.kind}{item.description&&<p>{item.description}</p>}{item.unit&&<small>Unit: {item.unit}</small>}</td><td>{(item.output_columns||[]).map(c=><div key={c.name}>{c.name} · {c.aggregate||c.role}</div>)}<details><summary>Columns ({item.column_count})</summary><ul>{item.columns.map(c=><li key={c.name}>{c.name} · {c.type}</li>)}</ul></details></td><td>{item.available?<button type="button" disabled={busy} onClick={()=>inspect(detail.run_id,item.name)}>Preview data</button>:<span role="status">Physical relation missing; reconcile before use</span>}</td></tr>)}</tbody></table></div>
     </section>}
     {preview&&<section aria-label="Analytics data preview"><h4>Data preview: {preview.relation}</h4><p>Read-only sample · {preview.rows.length} rows · no guaranteed ordering. Text is limited to {preview.cell_character_limit} characters per cell.{preview.limited?' More data is available.':''}</p><div className="analytics-table"><table><thead><tr>{preview.columns.map(c=><th key={c.name}>{c.name}<small>{c.type}</small></th>)}</tr></thead><tbody>{preview.rows.map((row,i)=><tr key={i}>{row.map((cell,j)=><td key={j}>{cell??'Not recorded'}</td>)}</tr>)}</tbody></table></div>{!preview.rows.length&&<p>No rows in this relation.</p>}</section>}
+    </details>
   </section>;
 }

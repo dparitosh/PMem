@@ -461,6 +461,11 @@ export const qifAPI = {
 // Telemetry describes processing-job execution; it is not application usage
 // telemetry and does not grant graph write authority.
 export const dataPipelineAPI = {
+  semanticChangeAssessment: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/change-assessment`),options),
+  semanticSources: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/sources'),{...options,params:{offset}}),
+  semanticDatasets: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/datasets'),{...options,params:{offset}}),
+  semanticSchema: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}`),options),
+  semanticFields: (id,classIri,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/fields`),{...options,params:{class_iri:classIri}}),
   executionIdentity: (token, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/execution-identity'), {...options, headers:{Authorization:`Bearer ${token}`}}),
   analytics: (params = {}, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/analytics'), {...options, params}),
   analyticsDetail: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}`), options),

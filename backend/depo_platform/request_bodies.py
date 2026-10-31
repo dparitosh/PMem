@@ -476,7 +476,9 @@ class AnalyticsMeasure(RequestBody, total=False):
 class AnalyticsBusinessView(RequestBody, total=False):
     name: Required[Text]
     entity_id: Required[Text]
-    kind: Literal['aggregate', 'fact', 'dimension']
+    kind: Literal['aggregate', 'fact', 'dimension', 'kpi']
+    description: Annotated[str,Field(max_length=500)]
+    unit: Annotated[str,Field(max_length=500)]
     grain: Required[Literal['entity-instance', 'business-key']]
     group_by: list[Text]
     measures: list[AnalyticsMeasure]
@@ -485,7 +487,21 @@ class AnalyticsBusinessView(RequestBody, total=False):
     history_policy: Literal['immutable']
 
 
+class ConfigurationSelection(RequestBody):
+    role: Literal["source","ontology","mappings","kpi","shapes"]
+    source_id: Text
+    artifact_id: Annotated[str,Field(pattern=r"^sha256:[0-9a-f]{64}$")]
+
+
 class JobInputBody(ApprovalBody, total=False):
+    configuration_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
+    configuration_inputs: Annotated[list[ConfigurationSelection],Field(max_length=19)]
+    shape_source_id: str
+    shape_artifact_id: str
+    dataset_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
+    class_iri: Annotated[str,Field(min_length=1,max_length=2000)]
+    property_iris: Annotated[list[Annotated[str,Field(min_length=1,max_length=2000)]],Field(max_length=20)]
+    algorithm: Literal["profile","frequency","numeric-summary","correlation","dimension-preview"]
     idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
     source_id: str
     schema_prefix: str

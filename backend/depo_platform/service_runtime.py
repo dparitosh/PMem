@@ -175,7 +175,7 @@ def create_service_app(
         allow_origins=allowed_origins(),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
+        allow_headers=["Configuration-Context", "Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
         expose_headers=["Content-Disposition", "X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "X-DEPO-Run-Kind", "X-DEPO-Cleanup-ID", "OData-Version"],
     )
 

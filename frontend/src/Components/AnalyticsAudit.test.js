@@ -7,6 +7,7 @@ import {apiClient,dataPipelineAPI} from '../services/apiClient';
 vi.mock('../services/apiClient',()=>({apiClient:{get:vi.fn(),post:vi.fn()},dataPipelineAPI:{analytics:vi.fn(),analyticsDetail:vi.fn(),analyticsData:vi.fn()}}));
 vi.mock('../config',()=>({buildSemanticServiceUrl:(_service,path)=>path}));
 vi.mock('../services/serviceAuth',()=>({getCredentialProfile:()=>''}));
+vi.mock('./SemanticDataWorkbench',()=>({default:()=> <p>Catalog-driven analytics</p>}));
 beforeEach(()=>{vi.resetAllMocks();sessionStorage.clear();});
 // Regression tests for the confirmed audit defects.
 test('AUD-01 source handoff must invalidate an older schema-resolution response',async()=>{
@@ -23,7 +24,7 @@ test('AUD-02 an out-of-range page must not claim that the database is empty',asy
  dataPipelineAPI.analytics.mockResolvedValueOnce({data:{datasets:[{run_id:'r',schema:'s',business_views:[]}],total:21,next_offset:20}})
  .mockResolvedValueOnce({data:{datasets:[],total:1,next_offset:null}})
  .mockResolvedValueOnce({data:{datasets:[{run_id:'remaining',schema:'remaining-dataset',business_views:[]}],total:1,next_offset:null}});
- render(<AvailableAnalytics/>);await screen.findByText('Browse data');
+ render(<AvailableAnalytics/>);fireEvent.click(screen.getByText('Other imports and XML analytics'));await screen.findByText('Browse data');
  fireEvent.click(screen.getByText('Next datasets'));
  await waitFor(()=>expect(dataPipelineAPI.analytics.mock.calls.length).toBeGreaterThanOrEqual(2));
  await screen.findByText('remaining-dataset');

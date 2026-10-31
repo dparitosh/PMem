@@ -54,6 +54,9 @@ def _input_count(payload: dict[str, Any]) -> int:
 @ontology_writer
 def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running", run_id: str | None = None) -> dict[str, Any]:
     run_id = run_id or str(uuid.uuid4())
+    if definition['job_type'] == 'rdf-semantic-materialize':
+        from .semantic_configuration import pin_preparation_input
+        payload = pin_preparation_input(payload)
     checkpoint = payload.get("checkpoint")
     if checkpoint is not None and not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must be an object when supplied")
@@ -105,6 +108,7 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
             "record_count": _input_count(payload),
             "artifact_ids": sorted(set([*supplied_artifact_ids, raw_artifact["artifact_id"]])),
             "raw_payload_artifact_id": raw_artifact["artifact_id"],
+            **({'configuration_id': payload['configuration_id']} if payload.get('configuration_id') else {}),
         },
         "checkpoint": checkpoint,
         "output_manifest": None,
@@ -189,6 +193,17 @@ def replay_payload(record: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Retained run input is unreadable") from exc
     if not isinstance(payload, dict):
         raise ValueError("Retained run input must be an object")
+    if record.get('job_type') == 'rdf-semantic-materialize':
+        identifier = (record.get('input_manifest') or {}).get('configuration_id')
+        identifier = identifier or (record.get('output_manifest') or {}).get('configuration_id')
+        identifier = identifier or ((record.get('output_manifest') or {}).get('semantic_dataset') or {}).get('configuration_id')
+        if payload.get('configuration_id') and identifier and payload['configuration_id'] != identifier:
+            raise ValueError('Retained input and manifest configuration bindings disagree')
+        identifier = payload.get('configuration_id') or identifier
+        if not identifier:
+            raise ValueError('This legacy preparation has no verified baseline binding; submit a new preparation after reviewing its sources')
+        payload = {**payload, 'configuration_id': identifier}
+        payload.pop('configuration_inputs', None)
     return {**payload, "replay_of": record["run_id"]}
 
 
@@ -234,6 +249,9 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         "normalize-unstructured-ceim": "semantic-validation-report-v1",
         "validate-unstructured-evidence": "validated-unstructured-evidence-v1",
         "enrich-document-evidence": "document-graph-proposal-v1",
+        "rdf-semantic-materialize":"semantic-dataset-v1",
+        "semantic-dataset-analysis":"semantic-analysis-v1",
+        "semantic-source-review":"semantic-refresh-assessment-v1",
         "rdf-quality-statistics": "rdf-quality-report-v1",
         "rdf-deduplicate-serialize": "canonical-ntriples-v1",
     }
@@ -246,6 +264,9 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
     }
     if record.get('job_type') == 'xml-analytics-materialize' and result.get('ods_receipt'):
         output.update(ods_receipt=result['ods_receipt'], evidence_status='available', load_status='completed')
+    if isinstance(result.get("semantic_dataset"),dict):output["semantic_dataset"]=result["semantic_dataset"]
+    if result.get("configuration_id"):output["configuration_id"]=result["configuration_id"]
+    if result.get('assessment_status'):output['assessment_status']=result['assessment_status']
     source_standard = result.get("standard") or record.get("source_standard")
     if source_standard:
         output["source_standard"] = str(source_standard)
@@ -259,6 +280,7 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         draft = result["data_product_draft"]
         output["data_product_draft"] = {
             **{key: draft.get(key) for key in ('product_kind', 'analytics_readiness', 'domain')},
+            **{key: draft[key] for key in ('configuration_id', 'configuration_context') if key in draft},
             "contract": draft.get("contract"), "name": draft.get("name"),
             "artifacts": list(draft.get("artifacts") or []),
             "quality_status": draft.get("quality_status"),

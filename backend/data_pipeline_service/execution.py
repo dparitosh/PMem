@@ -24,6 +24,8 @@ def execute_claimed_job(definition: dict[str, Any], payload: dict[str, Any], run
                 datetime.fromisoformat(current['lease']['expires_at']) <= datetime.now(timezone.utc)):
             raise RuntimeError("Worker no longer owns a live execution lease")
     with operation_scope(context), runner.execution_scope(context, lease_lost), guarded_execution(check_lease):
+        if definition['job_type'] == 'rdf-semantic-materialize':
+            payload = {**run_records.replay_payload(run), 'execution_actor': run.get('executed_by')}
         result = handler_registry.get(definition["job_type"]).execute(runner, payload, correlation_id=run.get("correlation_id", ""))
         ensure_execution_allowed()
         persisted = run_records.complete(run, result)
@@ -43,6 +45,8 @@ def execute_immediate_job(definition, payload, run):
     """The synchronous API shares the worker's absolute deadline and Spark cancellation."""
     context = execution_context(run)
     with operation_scope(context), runner.execution_scope(context), guarded_execution(lambda: remaining_seconds(context.deadline_at)):
+        if definition['job_type'] == 'rdf-semantic-materialize':
+            payload = {**run_records.replay_payload(run), 'execution_actor': run.get('executed_by')}
         result = handler_registry.get(definition['job_type']).execute(runner, payload, correlation_id=run.get('correlation_id', ''))
         ensure_execution_allowed()
         persisted = run_records.complete(run, result)

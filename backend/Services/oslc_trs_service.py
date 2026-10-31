@@ -1,4 +1,4 @@
-"""Minimal file-backed OSLC TRS service."""
+"""OSLC TRS with PostgreSQL ordering and an optional single-process file store."""
 
 from __future__ import annotations
 
@@ -415,6 +415,7 @@ class OSLCTRSService:
             'count': len(external_events),
             'next_after': external_events[-1]['order'] if external_events else after,
             'first_retained_order': first_retained_order,
+            'head_order': int(state.get('counter') or 0),
             'rebase_required': rebase_required,
             'base': f'{cls.base_url()}/oslc/trs/base',
         }
