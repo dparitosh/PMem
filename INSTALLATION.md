@@ -421,3 +421,8 @@ the existing pipeline worker. Set `DEPO_REST_ALLOWED_HOSTS` and dedicated
 Registration and run manifests use existing PostgreSQL registry tables; no new
 schema migration is required. For exact setup, key-header examples, user steps
 and current limits, see [REST source setup](docs/REST-SOURCES.md).
+
+
+### Analytics discovery after an upgrade
+
+The standard `update-depo.ps1` applies migration `014_analytics_discovery.sql`. Open **Data Products → Available analytics** to inspect existing completed XML analytics loads and their operational tables, dimensions and aggregate KPI views. Imported schema designs and published packages have separate counts. No reload or database reset is required for existing receipt-backed datasets. See [Analytics products and consumption](docs/ANALYTICS-PRODUCTS.md) for the supported end-user sequence and limitations.

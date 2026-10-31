@@ -31,7 +31,10 @@ def build_analytics_evidence(payload, receipt):
         'data_product_draft': {'contract': 'postgres-xml-analytics-product-v1', 'product_kind': 'pipeline-evidence',
             'name': receipt['schema'] + ' XML analytics', 'domain': 'data-processing',
             'quality_status': 'schema-instance-validated', 'analytics_readiness': receipt['analytics_readiness'],
-            'sources': [{'schema': receipt['schema'], 'schema_digest': receipt['schema_digest'], 'xml_digest': receipt['xml_digest']}],
+            'sources': [{'artifact_id': artifact['artifact_id'], 'schema': receipt['schema'],
+                'schema_digest': receipt['schema_digest'], 'xml_digest': receipt['xml_digest'],
+                'consumption': {'storage_layer': 'operational-data-store', 'schema': receipt['schema'],
+                    'business_views': receipt.get('business_views', []), 'analytics_readiness': receipt['analytics_readiness']}}],
             'artifacts': [
                 {'artifact_id': payload['schema_artifact_id'], 'kind': 'schema'},
                 {'artifact_id': payload['xml_artifact_id'], 'kind': 'instance'},

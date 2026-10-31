@@ -461,6 +461,9 @@ export const qifAPI = {
 // Telemetry describes processing-job execution; it is not application usage
 // telemetry and does not grant graph write authority.
 export const dataPipelineAPI = {
+  analytics: (params = {}, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/analytics'), {...options, params}),
+  analyticsDetail: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}`), options),
+  analyticsData: (runId, relation, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}/data`), {...options, params:{relation, limit:25}}),
   restSources: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources'), options),
   restSubmission: (submissionId, token) => apiClient.get(buildUrl(`/api/v1/pipeline/rest-sources/submissions/${encodeURIComponent(submissionId)}`), { headers: { Authorization: `Bearer ${token}` } }),
   registerRestSource: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/rest-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),

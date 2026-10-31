@@ -61,3 +61,15 @@ test('schema report must match the immutable selected artifact', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('not bound to the selected retained XSD artifact');
   expect(screen.queryByLabelText('Analytics entity')).toBeNull();
 });
+
+
+test('KPI cannot be added without a business purpose and unit',async()=>{
+ const onAdd=await load();
+ fireEvent.change(screen.getByLabelText('View kind'),{target:{value:'kpi'}});
+ fireEvent.click(screen.getByText('Add reviewed view definition'));
+ expect(screen.getByRole('alert')).toHaveTextContent('business purpose and unit');expect(onAdd).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByLabelText('Business purpose'),{target:{value:'Number of validated part instances'}});
+ fireEvent.change(screen.getByLabelText('KPI unit'),{target:{value:'parts'}});
+ fireEvent.click(screen.getByText('Add reviewed view definition'));
+ expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({kind:'kpi',unit:'parts',description:'Number of validated part instances'}),'sha256:xsd');
+});

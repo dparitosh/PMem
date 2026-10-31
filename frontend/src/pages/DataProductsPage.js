@@ -10,6 +10,7 @@ import { readProductCollection, PRODUCT_REFRESH_MS, PRODUCT_CHANGED_EVENT } from
 import { productDraftFromRun, productDraftFromOntology } from '../services/analyticsProductDraft';
 import SchemaProductPublisher from '../Components/SchemaProductPublisher';
 import FirstProductGuide from '../Components/FirstProductGuide';
+import AvailableAnalytics from '../Components/AvailableAnalytics';
 import XmlAnalyticsLoader from '../Components/XmlAnalyticsLoader';
 import IngestedDataInventory from '../Components/IngestedDataInventory';
 import AnalyticsSchemaReview from '../Components/AnalyticsSchemaReview';
@@ -33,7 +34,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const title = catalog ? 'Data Catalog' : 'Data Products';
   const { ontologies, error: ontologyError, warning: ontologyWarning, loading: ontologyLoading } = useOntologies();
   const drafts = (ontologies || []).filter(ontology => ontology.data_product_draft?.contract);
-  const [selectedDraft, setSelectedDraft] = useState('');
+  const [selectedDraft, setSelectedDraft] = useState(()=>new URLSearchParams(window.location.hash.split('?')[1]||'').get('ontology_id')||'');
   const draft = drafts.find(ontology => ontology.ontology_id === selectedDraft);
   const selectedProductDraft = useMemo(() => productDraftFromOntology(draft), [draft]);
   const [state, setState] = useState({ loading: true, rows: [], error: '', warning: '' });
@@ -65,6 +66,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
 
   useEffect(()=>{
     const query=new URLSearchParams(window.location.hash.split('?')[1]||'');
+    if(query.get('ontology_id'))setSelectedDraft(query.get('ontology_id'));
     setWorkspace(catalog?'sources':query.has('view')||query.has('run_id')?'create':'library');
     if(catalog)return;
     const reveal=()=>{const view=new URLSearchParams(window.location.hash.split('?')[1]||'').get('view');if(['structural','pipeline'].includes(view))revealEvidence(view);};
@@ -200,8 +202,8 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
     {(ontologyError||ontologyWarning)&&<p role="alert">Schema inventory: {ontologyError||ontologyWarning}</p>}
     <DataWorkspace label={catalog?'Catalog workspace':'Product workspace'} active={workspace} onChange={setWorkspace}
-      tabs={catalog?[{id:'sources',label:'Ingested sources'},{id:'library',label:'Published products'},{id:'create',label:'Product opportunities'},{id:'governance',label:'Governance'}]:[{id:'library',label:'Product portfolio'},{id:'create',label:'Create & review'},{id:'governance',label:'Governance'}]}>
-      {{sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
+      tabs={catalog?[{id:'sources',label:'Ingested sources'},{id:'analytics',label:'Available analytics'},{id:'library',label:'Published products'},{id:'create',label:'Product opportunities'},{id:'governance',label:'Governance'}]:[{id:'analytics',label:'Available analytics'},{id:'library',label:'Product portfolio'},{id:'create',label:'Create & review'},{id:'governance',label:'Governance'}]}>
+      {{analytics:workspace==='analytics'?<AvailableAnalytics drafts={drafts} onPrepare={id=>{if(catalog){window.location.hash=`/data-products?view=pipeline&ontology_id=${encodeURIComponent(id)}`;}else{setSelectedDraft(id);revealEvidence('pipeline');}}}/>:null,sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
     {!state.loading && <section aria-label="Discover product versions">
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}
@@ -230,8 +232,8 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
           <dt>Loaded records</dt><dd>{analyticsProjection.counts?.entities ?? 'Not recorded'}</dd>
           <dt>Business views</dt><dd>{analyticsProjection.business_views?.length ?? 0}</dd></dl>
         <p>Review this retained result before creating another load. Product approval and publication are available below.</p>
-        <details><summary>Prepare a separate analytics load</summary><XmlAnalyticsLoader runEvidence={runInputs} /></details>
-      </section> : <XmlAnalyticsLoader runEvidence={runInputs} />}
+        <details><summary>Prepare a separate analytics load</summary><XmlAnalyticsLoader selectedSchemaId={selectedDraft} sources={drafts} runEvidence={runInputs} /></details>
+      </section> : <XmlAnalyticsLoader selectedSchemaId={selectedDraft} sources={drafts} runEvidence={runInputs} />}
       <h3>Data Flow evidence</h3><p>Select a completed run in <a href="#/data-flow">Data Flow</a> to create a draft from its retained artifacts. Graph publication and product packaging are separate approved operations.</p>
       {runDraftError && <p role="alert">{runDraftError}</p>}
       {runDraft && <SchemaProductPublisher draft={runDraft} />}

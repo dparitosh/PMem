@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import XmlAnalyticsLoader from './XmlAnalyticsLoader';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
-vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn() }, dataPipelineAPI: { definitions: vi.fn(), runDefinition: vi.fn(), getRun: vi.fn(), reconcileAnalytics: vi.fn() } }));
+vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn(), get: vi.fn() }, dataPipelineAPI: { definitions: vi.fn(), runDefinition: vi.fn(), getRun: vi.fn(), reconcileAnalytics: vi.fn() } }));
 vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'test-token' }));
 vi.mock('../config', () => ({ buildSemanticServiceUrl: (_service, path) => path }));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
@@ -135,4 +135,15 @@ test('an unknown submission can be released only after checking history', async 
   fireEvent.click(screen.getByText('Prepare another analytics task'));
   expect(screen.getByText('Validate and load XML')).not.toBeDisabled();
   expect(dataPipelineAPI.runDefinition).toHaveBeenCalledTimes(1);
+});
+
+
+test('named schema selection resolves retained reference without copying an artifact ID',async()=>{
+ apiClient.get.mockResolvedValue({data:{schema_artifact_id:'sha256:resolved'}});
+ render(<XmlAnalyticsLoader sources={[{ontology_id:'parts-v1',label:'Parts schema'}]}/>);
+ fireEvent.change(screen.getByLabelText('Source schema'),{target:{value:'parts-v1'}});
+ fireEvent.click(screen.getByText('Use selected schema'));
+ await waitFor(()=>expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('sha256:resolved'));
+ expect(apiClient.get).toHaveBeenCalledWith('/api/v1/reports/xsd-relational',expect.objectContaining({params:{ontology_id:'parts-v1'}}));
+ expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
 });

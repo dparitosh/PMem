@@ -157,8 +157,10 @@ def business_view_plan(model, schema, definitions):
                 'validation_sql': f'SELECT EXISTS (SELECT 1 FROM {source} WHERE {missing}) OR {conflicts} AS invalid',
                 'sql': f'CREATE VIEW "{schema}"."{view}" AS SELECT DISTINCT ' + ','.join(f'"{name}"' for name in fields) + f' FROM {source}'})
             continue
-        if definition.get('kind', 'aggregate') not in {'aggregate', 'fact'} or definition.get('grain') != 'entity-instance':
+        if definition.get('kind', 'aggregate') not in {'aggregate', 'fact', 'kpi'} or definition.get('grain') != 'entity-instance':
             raise ValueError('Aggregate facts require grain entity-instance')
+        if definition.get('kind') == 'kpi' and any(not isinstance(definition.get(key), str) or not definition[key].strip() or len(definition[key]) > 500 for key in ('description', 'unit')):
+            raise ValueError('KPIs require an explicit business description and unit (at most 500 characters each)')
         groups, measures = definition.get('group_by', []), definition.get('measures', [])
         if not isinstance(groups, list) or len(groups) > 50:
             raise ValueError('group_by must contain at most 50 known properties')
@@ -188,6 +190,7 @@ def business_view_plan(model, schema, definitions):
         group_clause = ' GROUP BY ' + ','.join(f'"{column["sql_name"]}"' for column in group_columns) if groups else ''
         statements.append({'name': definition['name'], 'view': view, 'kind': definition.get('kind', 'aggregate'),
             'entity_id': entity['entity_id'], 'grain': 'entity-instance',
+            **({key: definition[key].strip() for key in ('description', 'unit')} if definition.get('kind') == 'kpi' else {}),
             'group_by': [column['sql_name'] for column in group_columns], 'output_columns': output_columns,
             'sql': f'CREATE VIEW "{schema}"."{view}" AS SELECT ' + ','.join(expressions) + f' FROM {source}' + group_clause})
     return statements

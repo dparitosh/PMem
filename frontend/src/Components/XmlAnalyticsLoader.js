@@ -1,4 +1,5 @@
 import { confirmedSubmissionRejection } from '../services/workflowSubmission';
+import './XmlAnalyticsLoader.css';
 import AnalyticsViewBuilder from './AnalyticsViewBuilder';
 import React, { useEffect, useRef, useState } from 'react';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
@@ -15,7 +16,9 @@ function retainedSubmission() {
   } catch { /* Browser storage may be unavailable. */ }
   return null;
 }
-export default function XmlAnalyticsLoader({ runEvidence = null }) {
+export default function XmlAnalyticsLoader({ runEvidence = null, sources = [], selectedSchemaId = '' }) {
+  const [sourceId,setSourceId]=useState(selectedSchemaId);
+
   const [jobs, setJobs] = useState([]);
   const [job, setJob] = useState('');
   const [fields, setFields] = useState({ schema_artifact_id: '', xml_artifact_id: '', schema_prefix: 'depo_analytics', approved_by: '' });
@@ -33,7 +36,12 @@ export default function XmlAnalyticsLoader({ runEvidence = null }) {
   const mounted = useRef(true);
   const locked = useRef(false);
   const generation = useRef(0);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const sourceRequest=useRef(null);
+  useEffect(()=>{
+    generation.current++;sourceRequest.current?.abort();setSourceId(selectedSchemaId);
+    if(!recovery){setFields(previous=>({...previous,schema_artifact_id:''}));setDependencies('{}');setBusiness('[]');setBusinessBinding('');}
+  },[selectedSchemaId]);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; sourceRequest.current?.abort(); }; }, []);
   useEffect(() => {
     const invalidate = () => {
       generation.current += 1;
@@ -66,7 +74,14 @@ export default function XmlAnalyticsLoader({ runEvidence = null }) {
     const current = () => mounted.current && startedGeneration === generation.current;
     let submitted = false;
     try {
-      if (submit === 'refresh') {
+      if (submit === 'schema') {
+        const controller=new AbortController();sourceRequest.current=controller;
+        const source=sources.find(value=>value.ontology_id===sourceId);
+        if(!source)throw new Error('Select an imported schema.');
+        const response=await apiClient.get(buildSemanticServiceUrl('ingestion','/api/v1/reports/xsd-relational'),{params:{ontology_id:sourceId},timeout:30000,signal:controller.signal});
+        if(!response.data?.schema_artifact_id)throw new Error('The selected schema has no retained XSD source. Reimport its complete schema set.');
+        if(current()){setFields(previous=>({...previous,schema_artifact_id:response.data.schema_artifact_id}));setBusiness('[]');setBusinessBinding('');setDependencies(JSON.stringify(Object.fromEntries((source.data_product_draft?.artifacts||[]).filter(value=>value.kind==='schema-dependency'&&value.relative_path&&value.artifact_id).map(value=>[value.relative_path,value.artifact_id]))));}
+      } else if (submit === 'refresh') {
         const id = recovery?.run_id || manualRun.trim();
         if (!id) throw new Error('Enter the retained run ID from Data Flow history.');
         const response = await dataPipelineAPI.getRun(id);
@@ -133,8 +148,8 @@ export default function XmlAnalyticsLoader({ runEvidence = null }) {
   const runId = recovery?.run_id || receipt?.run_manifest?.run_id || receipt?.run?.run_id;
   const currentRun = receipt?.run_manifest || receipt?.run;
   const evidenceStatus = currentRun?.output_manifest?.evidence_status || receipt?.evidence_status;
-  return <details className="depo-panel" aria-label="Validated XML analytics loading">
-    <summary>Load validated XML into PostgreSQL analytics</summary>
+  return <details className="xml-analytics-loader" aria-label="Validated XML analytics loading">
+    <summary>Prepare and load analytics data</summary>
     <p>Use a completed Data Flow run whenever possible. Its retained schema and XML artifacts are filled in automatically; manual artifact IDs are only needed for older runs or external evidence.</p>
     <button type="button" disabled={busy} onClick={() => perform(false)}>Load approved XML jobs</button>
     <label>XML instance file<input type="file" accept=".xml" disabled={busy} onChange={event => setXmlFile(event.target.files[0] || null)} /></label>
@@ -143,11 +158,14 @@ export default function XmlAnalyticsLoader({ runEvidence = null }) {
       <option value="">Select a job</option>{jobs.map(value => <option key={`${value.job_id}:${value.version}`} value={`${value.job_id}:${value.version}`}>{value.name} ({value.version})</option>)}
     </select></label>
     {!jobs.length && <p>Create and approve an xml-analytics-materialize job with quality profile schema-analytics-v1 through Data Flow job definitions.</p>}
+    {sources.length>0&&<div><label>Source schema<select value={sourceId} disabled={busy||!!recovery} onChange={event=>{generation.current++;sourceRequest.current?.abort();setSourceId(event.target.value);setDependencies('{}');setFields(previous=>({...previous,schema_artifact_id:''}));setBusiness('[]');setBusinessBinding('');}}><option value="">Choose an imported schema</option>{sources.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label><button type="button" disabled={busy||!!recovery||!sourceId} onClick={()=>perform('schema')}>Use selected schema</button><p>{fields.schema_artifact_id?'Retained schema source resolved. Choose or retain the XML data, then define the required business views.':'Select a schema by name; the application resolves its retained source reference.'}</p></div>}
+    <details><summary>Advanced source references and load settings</summary>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
       {Object.entries({ schema_artifact_id: 'Retained XSD artifact ID', xml_artifact_id: 'Retained XML artifact ID', schema_prefix: 'Analytics schema prefix', approved_by: 'Execution identity' }).map(([key, label]) => <label key={key}>{label}<input value={fields[key]} disabled={busy} onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); if (!recovery) setReceipt(null); }} /></label>)}
     </div>
     <label>Schema dependencies (relative path → artifact ID, JSON)<textarea value={dependencies} disabled={busy} onChange={event => { setDependencies(event.target.value); if (!recovery) setReceipt(null); }} /></label>
-    <AnalyticsViewBuilder disabled={busy} schemaArtifactId={fields.schema_artifact_id.trim()} onAdd={(definition, artifactId) => {
+    </details>
+    <AnalyticsViewBuilder sources={sources} disabled={busy} schemaArtifactId={fields.schema_artifact_id.trim()} onAdd={(definition, artifactId) => {
       const definitions = JSON.parse(business);
       if (!Array.isArray(definitions) || definitions.length >= 20) throw new Error('Business definitions must be an array with fewer than 20 views.');
       if (definitions.length && businessBinding && businessBinding !== artifactId) throw new Error('Clear definitions from the previous schema before adding fields.');
@@ -156,7 +174,8 @@ export default function XmlAnalyticsLoader({ runEvidence = null }) {
     }} />
     <label><input type="checkbox" checked={constraintPolicy === 'validated-source'} disabled={busy} onChange={event => { setConstraintPolicy(event.target.checked ? 'validated-source' : 'strict'); if (!recovery) setReceipt(null); }} />Validate XSD facets and fixed values against source XML during loading</label>
     <p>This option preserves source validation; it does not generate equivalent PostgreSQL facet constraints. Unsupported choices, groups, temporal policies and source-key mapping remain blocked.</p>
-    <label>Explicit business views (JSON, optional)<textarea value={business} disabled={busy} onChange={event => { setBusiness(event.target.value); setBusinessBinding(fields.schema_artifact_id.trim()); if (!recovery) setReceipt(null); }} /></label>
+    <details><summary>Review or edit business definitions</summary><label>Explicit business views (JSON, optional)<textarea value={business} disabled={busy} onChange={event => { setBusiness(event.target.value); setBusinessBinding(fields.schema_artifact_id.trim()); if (!recovery) setReceipt(null); }} /></label>
+    </details>
     <p>Without explicit business views, readiness is structural data loaded. Cross-entity joins, units and history policies require a separate reviewed model.</p>
     <details><summary>Business view example</summary><pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify([{ name: 'Entity count', entity_id: '{your-namespace}YourEntity', grain: 'entity-instance', group_by: [], measures: [{ name: 'count', aggregate: 'count' }] }], null, 2)}</pre><p>Use entity IDs from the retained structural model. Supported aggregates: count, sum, avg, min, max. A new business definition requires a different schema prefix.</p></details>
     <button type="button" disabled={busy || !job || !!recovery} onClick={() => perform(true)}>Validate and load XML</button>
@@ -175,6 +194,6 @@ export default function XmlAnalyticsLoader({ runEvidence = null }) {
     {evidenceStatus === 'pending' && <section aria-label="Analytics evidence recovery"><p>ODS data is committed. Evidence is pending; product publication remains blocked.</p><button type="button" disabled={busy || !runId} onClick={() => perform('reconcile')}>Rebuild analytics evidence</button></section>}
     {busy && <p role="status">Processing XML analytics request…</p>}
     {error && <p role="alert">{error}</p>}
-    {receipt && <><p role="status">Job response: {receipt.status || 'received'}</p>{runId && <a href={pipelineRunLink(runId)}>View load run and evidence</a>}<pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 250, overflow: 'auto' }}>{JSON.stringify(receipt, null, 2)}</pre></>}
+    {receipt && <><p role="status">Job response: {receipt.status || 'received'}</p>{runId && <a href={pipelineRunLink(runId)}>View load run and evidence</a>}<details><summary>Technical load receipt</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 250, overflow: 'auto' }}>{JSON.stringify(receipt, null, 2)}</pre></details></>}
   </details>;
 }
