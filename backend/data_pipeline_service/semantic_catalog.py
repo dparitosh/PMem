@@ -103,3 +103,27 @@ def change_assessment(dataset_id: str):
                           'publication_changed': False}
     except (DatabaseError, RuntimeError, OSError):
         raise HTTPException(503, 'Retained change assessment is unavailable') from None
+
+
+@router.get('/runs/{run_id}/result')
+def analysis_result(run_id: str):
+    from . import run_records
+    from backend.artifact_store import ArtifactStore
+    import json
+    try:
+        record=run_records.get(run_id)
+        if not record:raise HTTPException(404,'Analysis run not found')
+        if record.get('status')!='completed' or record.get('job_type')!='semantic-dataset-analysis':
+            raise HTTPException(409,'A completed semantic analysis result is required')
+        output=record.get('output_manifest') or {}
+        metadata,path=ArtifactStore().resolve(output.get('result_artifact_id',''))
+        if metadata.get('kind')!='data-job-output' or (metadata.get('provenance') or {}).get('run_id')!=run_id:
+            raise ValueError('Result ownership could not be verified')
+        if path.stat().st_size>8*1024*1024:raise ValueError('Result exceeds the display limit')
+        result=json.loads(path.read_text(encoding='utf-8'))
+        if result.get('configuration_id')!=output.get('configuration_id'):
+            raise ValueError('Analysis configuration differs from its retained run')
+        allowed=('algorithm','dataset_id','configuration_id','configuration_context','population_entities','rows','dimensions','classifications','links','hierarchy','limited','warnings','scope','unit_policy','classification','business_model')
+        return {'run_id':run_id,**{key:result[key] for key in allowed if key in result}}
+    except (ValueError,KeyError,TypeError):raise HTTPException(409,'Retained analysis evidence is missing or invalid; restore it before retrying') from None
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Retained analysis evidence is unavailable') from None

@@ -9,6 +9,9 @@ ALGORITHMS = {'profile','frequency','numeric-summary','correlation','dimension-p
 
 
 def analyse(payload, *, preview=False):
+    if payload.get('algorithm')=='business-overview':
+        from .business_analytics import analyse_business
+        return analyse_business(payload)
     dataset=payload.get('dataset_id','')
     if not isinstance(dataset,str) or not re.fullmatch('[0-9a-f]{64}',dataset):raise ValueError('Select a retained semantic dataset')
     class_iri=payload.get('class_iri','')

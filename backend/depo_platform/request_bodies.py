@@ -493,7 +493,19 @@ class ConfigurationSelection(RequestBody):
     artifact_id: Annotated[str,Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 
+class BusinessAnalyticsModel(RequestBody, total=False):
+    product_class: Required[Annotated[str,Field(min_length=1,max_length=800)]]
+    part_class: Required[Annotated[str,Field(min_length=1,max_length=800)]]
+    requirement_class: Annotated[str,Field(max_length=800)]
+    process_class: Annotated[str,Field(max_length=800)]
+    product_part_property: Annotated[str,Field(max_length=800)]
+    classification_properties: Annotated[list[Annotated[str,Field(min_length=1,max_length=800)]],Field(max_length=6)]
+    requirement_property: Annotated[str,Field(max_length=800)]
+    bom_property: Annotated[str,Field(max_length=800)]
+    process_property: Annotated[str,Field(max_length=800)]
+
 class JobInputBody(ApprovalBody, total=False):
+    business_model: BusinessAnalyticsModel
     configuration_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
     configuration_inputs: Annotated[list[ConfigurationSelection],Field(max_length=19)]
     shape_source_id: str
@@ -501,7 +513,7 @@ class JobInputBody(ApprovalBody, total=False):
     dataset_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
     class_iri: Annotated[str,Field(min_length=1,max_length=2000)]
     property_iris: Annotated[list[Annotated[str,Field(min_length=1,max_length=2000)]],Field(max_length=20)]
-    algorithm: Literal["profile","frequency","numeric-summary","correlation","dimension-preview"]
+    algorithm: Literal["profile","frequency","numeric-summary","correlation","dimension-preview","business-overview"]
     idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
     source_id: str
     schema_prefix: str

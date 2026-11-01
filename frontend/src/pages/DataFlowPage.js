@@ -1,3 +1,4 @@
+import SemanticAnalysisResult from '../Components/SemanticAnalysisResult';
 import SemanticSupport from "../Components/SemanticSupport";
 import { getCredentialProfile, publicationRecoveryScope } from '../services/serviceAuth';
 import { createSubmissionId } from '../utils/submissionId';
@@ -415,6 +416,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         <aside className="data-flow-card data-flow-card--evidence" aria-live="polite">
           <h2>Run evidence</h2>
           {selectedRun ? <>
+            <SemanticAnalysisResult run={selectedRun}/>
             <dl className="data-flow-evidence">
               <dt>Run ID</dt><dd>{selectedRun.run_id}</dd>{selectedRun.replay_of && <><dt>Replay of</dt><dd>{selectedRun.replay_of}</dd></>}
               <dt>Source standard</dt><dd>{sourceStandard(selectedRun)}</dd>

@@ -4,6 +4,8 @@ import {getCredentialProfile} from '../services/serviceAuth';
 import {apiErrorMessage} from '../utils/apiErrorMessage';
 import {confirmedSubmissionRejection} from '../services/workflowSubmission';
 import './XmlAnalyticsLoader.css';
+import RdfSourceUpload from './RdfSourceUpload';
+import BusinessAnalyticsModel from './BusinessAnalyticsModel';
 
 const KEY='depo-semantic-data-task';
 const events=['depo:session-replaced','depo:session-expired','depo:credentials-cleared','depo:credentials-changed'];
@@ -15,6 +17,7 @@ export default function SemanticDataWorkbench(){
   const [sourceOffset,setSourceOffset]=useState(0),[sourceNext,setSourceNext]=useState(null),[datasetOffset,setDatasetOffset]=useState(0),[datasetNext,setDatasetNext]=useState(null);
   const [source,setSource]=useState(''),[dataset,setDataset]=useState(''),[model,setModel]=useState(null);
   const [assessment,setAssessment]=useState(null);
+  const [businessModel,setBusinessModel]=useState({});
   const [classId,setClassId]=useState(''),[prefix,setPrefix]=useState(''),[fields,setFields]=useState([]),[properties,setProperties]=useState([]);
   const [algorithm,setAlgorithm]=useState('profile'),[actor,setActor]=useState(''),[jobChoice,setJobChoice]=useState('');
   const [revision,setRevision]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadErrors,setLoadErrors]=useState({});
@@ -24,7 +27,7 @@ export default function SemanticDataWorkbench(){
   function retain(value){if(mounted.current)setPending(value);try{if(value)sessionStorage.setItem(KEY,JSON.stringify(value));else sessionStorage.removeItem(KEY);}catch{/* The in-memory guard remains active. */}}
   useEffect(()=>{
     mounted.current=true;
-    const reset=()=>{generation.current++;selection.current++;details.current?.abort();setAssessment(null);setModel(null);setFields([]);setProperties([]);setSource('');setDataset('');setClassId('');setActor('');setJobs([]);setRevision(value=>value+1);};
+    const reset=()=>{generation.current++;selection.current++;details.current?.abort();setAssessment(null);setBusinessModel({});setModel(null);setFields([]);setProperties([]);setSource('');setDataset('');setClassId('');setActor('');setJobs([]);setRevision(value=>value+1);};
     events.forEach(event=>window.addEventListener(event,reset));
     return()=>{mounted.current=false;events.forEach(event=>window.removeEventListener(event,reset));generation.current++;selection.current++;details.current?.abort();};
   },[]);
@@ -43,7 +46,7 @@ export default function SemanticDataWorkbench(){
   },[revision,sourceOffset,datasetOffset]);
   async function chooseDataset(id){
     details.current?.abort();const controller=new AbortController();details.current=controller;const current=++selection.current;
-    setDataset(id);setAssessment(null);setModel(null);setClassId('');setFields([]);setProperties([]);setError('');setPrefix('');
+    setDataset(id);setBusinessModel({});setAssessment(null);setModel(null);setClassId('');setFields([]);setProperties([]);setError('');setPrefix('');
     if(!id)return;
     try{const response=await api.semanticSchema(id,{signal:controller.signal,timeout:15000});if(!controller.signal.aborted&&current===selection.current){if(response.data?.dataset?.dataset_id!==id)throw new Error('Dataset identity mismatch');setModel(response.data);}
       const assessed=await api.semanticChangeAssessment(id,{signal:controller.signal,timeout:15000});if(!controller.signal.aborted&&current===selection.current)setAssessment(assessed.data);}
@@ -76,9 +79,10 @@ export default function SemanticDataWorkbench(){
     setError('');const token=getCredentialProfile('DATA_JOB_EXECUTION_TOKEN');
     if(!actor||!token||!selectedJob){setError('Connect execution access and select an approved processing workflow.');return;}
     if(!dataset&&!selectedSource){setError('Choose a catalog or registry source.');return;}
-    if(dataset&&algorithm!=='source-review'&&!classId){setError('Choose business records to analyse.');return;}
+    if(dataset&&!['source-review','business-overview'].includes(algorithm)&&!classId){setError('Choose business records to analyse.');return;}
     if(dataset&&((['frequency','numeric-summary'].includes(algorithm)&&properties.length!==1)||(algorithm==='correlation'&&properties.length!==2)||(algorithm==='dimension-preview'&&!properties.length))){setError('Select one property for grouping or numeric measures, two for comparison, or at least one dimension attribute.');return;}
-    const payload=dataset?{...(algorithm==='source-review'?{dataset_id:dataset}:{dataset_id:dataset,class_iri:classId,property_iris:properties,algorithm}),...(model?.dataset?.configuration_id?{configuration_id:model.dataset.configuration_id}:{})}:{source_id:selectedSource.source_id,artifact_id:selectedSource.artifact_id};
+    if(dataset&&algorithm==='business-overview'&&(!businessModel.product_class||!businessModel.part_class)){setError('Select portfolio product and part record types for this model.');return;}
+    const payload=dataset?{...(algorithm==='source-review'?{dataset_id:dataset}:{dataset_id:dataset,...(algorithm==='business-overview'?{business_model:businessModel}:{class_iri:classId,property_iris:properties}),algorithm}),...(model?.dataset?.configuration_id?{configuration_id:model.dataset.configuration_id}:{})}:{source_id:selectedSource.source_id,artifact_id:selectedSource.artifact_id};
     const current=generation.current;
     locked.current=true;setBusy(true);retain({unknown:true,job:selectedJob.name});
     try{
@@ -93,6 +97,7 @@ export default function SemanticDataWorkbench(){
   const classes=(model?.classes||[]).filter(item=>!prefix||item.iri.startsWith(prefix));
   return <section className="xml-analytics-loader" aria-label="Catalog driven analytics">
     <header><h3>Build reports from registered business data</h3><p>Choose data from the Data Catalog or Metadata Registry. Reuse its vocabulary, records and source version; XSD is not required.</p><button disabled={busy} onClick={()=>{generation.current++;selection.current++;details.current?.abort();setModel(null);setDataset('');setClassId('');setFields([]);setProperties([]);setRevision(value=>value+1);}}>Refresh registered data</button></header>
+    <RdfSourceUpload onRegistered={()=>{setSourceOffset(0);setRevision(value=>value+1);}}/>
     {Object.entries(loadErrors).map(([key,message])=><p role="alert" key={key}>{message}</p>)}
     <div className="analytics-form-row"><label>Registered source<select value={source} disabled={busy||!!pending} onChange={event=>{setSource(event.target.value);setJobChoice('');chooseDataset('');}}><option value="">Choose from Catalog or Registry</option>{(sources||[]).map(item=><option key={`${item.source_id}|${item.artifact_id}`} value={`${item.source_id}|${item.artifact_id}`}>{item.name} · {item.version||item.status} · {item.filename||item.origin}</option>)}</select></label><span>Sources keep their owner, version and lineage.</span></div>
     {sources?.length===0&&<p>No retained RDF references are registered on this page. <a href="#/catalog">Browse Data Catalog</a> or <a href="#/registry">register an RDF source</a>. Live graph data needs a registered snapshot before reproducible analysis.</p>}
@@ -103,8 +108,9 @@ export default function SemanticDataWorkbench(){
     {(datasetNext!=null||datasetOffset>0)&&<p><button disabled={!datasetOffset} onClick={()=>setDatasetOffset(Math.max(0,datasetOffset-50))}>Previous datasets</button><button disabled={datasetNext==null} onClick={()=>setDatasetOffset(datasetNext)}>More datasets</button></p>}
     {model&&<>{model.dataset.configuration_id&&<p>Input baseline retained. New source versions do not replace this snapshot automatically.</p>}<p role="status">Source change assessment: {String(assessment?.status||'not_assessed').replaceAll('_',' ')}{assessment?.assessed_at?` · ${assessment.assessed_at}`:''}. Published results are retained.</p><label>Vocabulary / namespace<select value={prefix} onChange={event=>{selection.current++;details.current?.abort();setPrefix(event.target.value);setClassId('');setProperties([]);setFields([]);}}><option value="">All vocabularies</option>{namespaces.map(item=><option key={`${item.namespace_uri}|${item.prefix}`} value={item.namespace_uri}>{item.prefix||'Unprefixed'} · {item.namespace_uri}</option>)}</select></label><label>Business records<select value={classId} onChange={event=>chooseClass(event.target.value)}><option value="">Choose an entity type</option>{classes.map(item=><option key={item.iri} value={item.iri}>{item.name} · {item.entities} records</option>)}</select></label>
       {!model.classes.length&&<p>This snapshot contains vocabulary but no explicitly typed business instances. Definitions alone cannot establish a business KPI.</p>}
-      <label>Analysis<select value={algorithm} onChange={event=>{setAlgorithm(event.target.value);setProperties([]);}}><option value="source-review">Check source changes and refresh needs</option><option value="profile">Data completeness and numeric coverage</option><option value="frequency">Group records by a property</option><option value="numeric-summary">Numeric measures: average, range and variation</option><option value="correlation">Compare two numeric properties</option><option value="dimension-preview">Preview dimension attributes</option></select></label>
-      {!['profile','source-review'].includes(algorithm)&&<fieldset><legend>Select properties</legend>{fields.map(field=><label key={field.property_iri}><input type="checkbox" checked={properties.includes(field.property_iri)} onChange={()=>setProperties(old=>old.includes(field.property_iri)?old.filter(value=>value!==field.property_iri):[...old,field.property_iri])}/>{field.label||short(field.property_iri)} · {field.entities_with_value} records with a value{field.numeric_values?' · numeric values available':''}</label>)}</fieldset>}
+      <label>Analysis<select value={algorithm} onChange={event=>{setAlgorithm(event.target.value);setProperties([]);}}><option value="business-overview">Product portfolio, classification, traceability and manufacturing</option><option value="source-review">Check source changes and refresh needs</option><option value="profile">Data completeness and numeric coverage</option><option value="frequency">Group records by a property</option><option value="numeric-summary">Numeric measures: average, range and variation</option><option value="correlation">Compare two numeric properties</option><option value="dimension-preview">Preview dimension attributes</option></select></label>
+      {!['profile','source-review','business-overview'].includes(algorithm)&&<fieldset><legend>Select properties</legend>{fields.map(field=><label key={field.property_iri}><input type="checkbox" checked={properties.includes(field.property_iri)} onChange={()=>setProperties(old=>old.includes(field.property_iri)?old.filter(value=>value!==field.property_iri):[...old,field.property_iri])}/>{field.label||short(field.property_iri)} · {field.entities_with_value} records with a value{field.numeric_values?' · numeric values available':''}</label>)}</fieldset>}
+      {algorithm==='business-overview'&&<BusinessAnalyticsModel datasetId={dataset} classes={model.classes} value={businessModel} onChange={setBusinessModel}/>}
       <p>No unit conversion or identity merging is assumed. Repeated/non-numeric values require review before numeric analysis. Dimension output is a bounded preview.</p></>}
     <div className="analytics-form-row"><label>Approved processing workflow<select value={selectedJob?`${selectedJob.job_id}:${selectedJob.version}`:jobChoice} disabled={busy||!!pending} onChange={event=>setJobChoice(event.target.value)}><option value="">Choose an approved workflow</option>{processes.map(job=><option key={`${job.job_id}:${job.version}`} value={`${job.job_id}:${job.version}`}>{job.name} · {job.version}</option>)}</select></label><span>{actor?`Connected requester: ${actor}`:'Connect execution access in Admin.'}</span></div>
     {!processes.length&&<p>A steward must configure and approve a <strong>{dataset?(algorithm==='source-review'?'Semantic source change assessment':'Semantic dataset analysis'):'RDF semantic preparation'}</strong> workflow. <a href="#/data-flow">Review processing workflows</a>. This screen never grants its own approval. {!jobs.some(job=>job.job_type===type)&&<button disabled={busy} onClick={createDraft}>Prepare workflow draft for review</button>}</p>}

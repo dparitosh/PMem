@@ -465,6 +465,7 @@ export const dataPipelineAPI = {
   semanticSources: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/sources'),{...options,params:{offset}}),
   semanticDatasets: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/datasets'),{...options,params:{offset}}),
   semanticSchema: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}`),options),
+  semanticResult: (id,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/runs/${encodeURIComponent(id)}/result`),options),
   semanticFields: (id,classIri,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/fields`),{...options,params:{class_iri:classIri}}),
   executionIdentity: (token, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/execution-identity'), {...options, headers:{Authorization:`Bearer ${token}`}}),
   analytics: (params = {}, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/analytics'), {...options, params}),
@@ -652,6 +653,7 @@ export const adminAPI = {
 };
 
 export const metadataRegistryAPI = {
+  registerRdfSource: (file, name, token) => { const data=new FormData();data.append('file',file);data.append('name',name);return apiClient.post(buildUrl('/api/v1/metadata-registry/rdf-sources'),data,{timeout:90000,headers:{Authorization:`Bearer ${token}`}}); },
   list: (params = {}, options = {}) => apiClient.get(buildUrl(API.metadataRegistry.assets), { ...options, params }),
   get: (assetId) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId }))),
   create: (payload, options = {}) => apiClient.post(buildUrl(API.metadataRegistry.assets), payload, options),

@@ -68,3 +68,23 @@ Legacy completed runs may recover their baseline binding from a retained output 
 A successful source review has execution status `completed` and a separate `assessment_status` such as `refresh_required` or `review_required`. Draft manifests retain configuration ID/context, and analysis source lineage carries them into packaging inputs. UI callbacks from an older session cannot overwrite current error feedback; late server-issued run receipts remain recoverable after reconnect or navigation.
 
 New baselines capture the TRS head **before** resolving selected sources. The first review starts at that position, so older graph-reset events do not invalidate a newly prepared snapshot. Events occurring during or after preparation remain eligible for assessment. Older baselines without a captured position remain explicitly uncertain; existing refresh findings are not silently cleared.
+
+## Register a source without technical identifiers
+
+In Data Products → Available analytics, expand **Add a data source from an RDF file**. Enter its business name, choose a `.ttl`, `.nt`, `.rdf`, `.owl` or inline-context `.jsonld` file, then select **Register source draft**. Metadata-authoring access is required. The server validates bounded RDF syntax, retains an immutable artifact and records its reference in the existing Metadata Registry storage mode. It does not approve or publish the source. Refresh registered data and select the named source to prepare it with an approved workflow. Existing Catalog and Metadata references remain selectable.
+
+Registration accepts at most 25 MiB and 250,000 triples, rejects unsafe remote contexts/XML entities and reuses a registration for the same authenticated author, source name and content. Unknown-response retries therefore do not create duplicate registrations. A live graph must still provide a bounded RDF snapshot; this flow does not claim automatic live-graph export.
+
+## Top-down business evidence
+
+Choose **Product portfolio, classification, traceability and manufacturing** on a prepared dataset. Select the product, part/revision, requirement and process types from its declared business records. Select outgoing predicates for product→part, part→requirement, parent-part→child-part and part→process. Choose up to six part classification properties. Inputs are retained with the approved analysis workflow; the selected meanings are a draft model, not an automatic semantic approval.
+
+The worker returns four identity-preserving dimension slices and classification groups, counts distinct source IRIs and reports these formulas:
+
+- Recorded requirement-link rate = 100 × distinct selected requirements targeted by selected parts / all selected requirements in the snapshot.
+- Recorded process-assignment rate = 100 × selected parts with a typed process target / all selected parts.
+- BOM link count = distinct typed parent/child pairs. **BOM completeness is not assessed** without expected assembly scope, revisions and effectivity. Leaf parts are not missing BOMs.
+
+Missing mappings produce unassessed measures. Dangling, literal or differently typed targets are excluded and reported. Multi-valued classification groups overlap and must not be summed as disjoint populations. These are snapshot evidence measures, not proof of satisfaction/manufacturability. No mass, cost or quantity summation or unit conversion is performed. Cross-source identity equivalence and physical star-schema marts remain reviewed extensions.
+
+Data Flow displays retained metrics, classifications and dimension records as tables. It reads only a completed analysis run's verified result artifact; pending, foreign or corrupted evidence is not rendered as success.
