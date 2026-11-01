@@ -92,6 +92,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
   const [runs, setRuns] = useState([]);
   const [definitions, setDefinitions] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
+  const [runPage,setRunPage] = useState(0);
   useEffect(() => {
     onCompanionRecordChange?.({ page: 'data-flow', run_id: selectedRun?.run_id || '' });
     return () => onCompanionRecordChange?.(null);
@@ -220,10 +221,17 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       load({initial:true});
     };
     window.addEventListener('depo:access-verified',verified);
+    const routeChanged=()=>{
+      if(!window.location.hash.startsWith('#/data-flow'))return;
+      preferredRunId.current='';loadSequence.current+=1;loadInFlight.current=false;
+      load({initial:true});
+    };
+    window.addEventListener('hashchange',routeChanged);
     return () => {
       window.clearInterval(interval);
       events.forEach(event=>window.removeEventListener(event,credentialsChanged));
       window.removeEventListener('depo:access-verified',verified);
+      window.removeEventListener('hashchange',routeChanged);
       sessionGeneration.current += 1; releaseSequence.current += 1;
       loadSequence.current += 1;
       loadInFlight.current = false;
@@ -237,6 +245,9 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     return matchingStatus.filter((run) => [run.run_id, run.job_id, run.job_type, run.status, run.correlation_id, sourceStandard(run)]
       .some((value) => String(value || '').toLowerCase().includes(term)));
   }, [filter, runs, runStatus]);
+  useEffect(()=>setRunPage(0),[filter,runStatus]);
+  const currentRunPage=Math.min(runPage,Math.max(0,Math.ceil(visibleRuns.length/25)-1));
+  const pageRuns=visibleRuns.slice(currentRunPage*25,(currentRunPage+1)*25);
 
   const totals = telemetry?.durable_job_telemetry || telemetry?.totals || {};
   const durableTotals = useMemo(() => ({
@@ -398,17 +409,18 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
               <table className="data-flow-table">
                 <thead><tr><th>Job</th><th>Source</th><th>Started</th><th>Quality</th><th>Status</th><th aria-label="Actions" /></tr></thead>
                 <tbody>
-                  {visibleRuns.map((run) => <tr key={run.run_id} className={selectedRun?.run_id === run.run_id ? 'is-selected' : ''}>
+                  {pageRuns.map((run) => <tr key={run.run_id} className={selectedRun?.run_id === run.run_id ? 'is-selected' : ''}>
                     <td><button className="data-flow-link" type="button" onClick={() => { preferredRunId.current = run.run_id; setSelectedRun(run); }}>{run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
                     <td><span className="data-flow-source">{sourceStandard(run)}</span></td>
                     <td>{displayTime(run.started_at)}</td>
-                    <td>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</td>
+                    <td>{['rest-source-ingest','registered-source-ingest'].includes(run.job_type)?`${run.output_manifest?.counts?.records??'—'} acquired · validation not assessed`:<>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</>}</td>
                     <td><Status value={qualityStatus(run)} />{run.output_manifest?.publication?.status==='published' && <span className="data-flow-status">Published · receipt retained</span>}</td>
                     <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
                   {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{error?'Run history could not be verified. Restore service access and refresh; retained runs may still exist.':runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
                 </tbody>
               </table>
+              <nav aria-label="Processing run pages"><button disabled={!currentRunPage} onClick={()=>setRunPage(currentRunPage-1)}>Previous runs</button><span> {visibleRuns.length?currentRunPage*25+1:0}–{Math.min((currentRunPage+1)*25,visibleRuns.length)} of {visibleRuns.length} loaded runs </span><button disabled={(currentRunPage+1)*25>=visibleRuns.length} onClick={()=>setRunPage(currentRunPage+1)}>Next runs</button></nav>
             </div>
           )}
         </article>
@@ -441,7 +453,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
               </>}
             </dl>
             <SemanticSupport report={selectedRun.semantic_support}/>
-            <p className="data-flow-help">Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.</p>
+            <p className="data-flow-help">{['rest-source-ingest','registered-source-ingest'].includes(selectedRun.job_type)?'Replay reacquires the current configured source. Earlier retained artifacts stay unchanged; source data may have changed.':'Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.'}</p>
             {(() => { try { productDraftFromRun(selectedRun); return <a href={`#/data-products?run_id=${encodeURIComponent(selectedRun.run_id)}`}>Create product from retained run evidence</a>; } catch { return <p>A completed run with retained output artifacts is required to create a product draft.</p>; } })()}
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}
         </aside>

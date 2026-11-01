@@ -69,3 +69,16 @@ The compatibility entrypoint `backend/depo_platform/semantica_ingestors.py` now 
 Task history stops periodic requests after 401/403 and resumes after verified access or manual refresh. Transient failures back off instead of polling at a fixed rate. Selected-task read failures retry safely without replaying controls. Hidden workspaces stop their polling and immediately refresh on return, while rejected access remains stopped. Agent proposal controls initialize only when their section opens; the retained goal panel is lazy-loaded only for a selected goal. Admin runtime details distinguish the API package environment from the acquisition runtime, avoiding a false missing-package impression in isolated deployments.
 
 Follow-up validation: 34 focused frontend tests passed, including hidden-tab return, transient status-read recovery, authorization rejection, deferred controls and malformed inventory protection. The backend connector/runtime/dependency group passed 49 tests, including a fresh-process Email import through the compatibility loader. These tests do not exercise email servers or provision any of the 13 unintegrated source adapters.
+
+
+## Implemented follow-up: registered adapters and deferred workspaces
+
+The earlier 13 unintegrated-adapter gap is superseded by the registered connector workflow documented in [CONNECTOR-SOURCES.md](../CONNECTOR-SOURCES.md). All 17 kinds have an application path: three existing native import paths, REST acquisition and 13 profile-bound worker adapters. This is implementation coverage, not customer connection acceptance. No cloud/mail/warehouse credentials were configured.
+
+Confirmed fixes: Data Flow query-string run links now select the requested historical run; run lists paginate at 25 rows; workspace panels initialize on their first visit and retain state afterward; heavy Data Products subpanels load lazily; Catalog presence no longer appears as a blank delivery cell. The alternate Siemens manual-chunk experiment increased runtime size and was discarded.
+
+Final focused checks: 49 frontend tests across six files and 35 backend connector/catalog/submission tests passed. Backend tests include real Parquet/Arrow/SQLite reads, a real child acquisition process and separate connector receipt recovery. React test deprecation warnings remain. These totals are targeted groups, not a whole-repository test claim.
+
+The baseline source was committed and deployed locally as 76c4dbb with environment hashes preserved. The adapter/performance follow-up is a separate release. Customer deployment acceptance remains excluded at the user's request. External drivers require reviewed optional SDK locks; acquisition is not semantic validation or governed publication.
+
+Production bundle analysis: the Data Products route chunk fell from 103,796 to 23,284 bytes (about 78%); its immediate imports no longer include the data-grid vendor chunk. The extracted panels still exist and download when visited. This is a route-loading improvement, not a 78% reduction in total application size. The existing large shared runtime warning remains.

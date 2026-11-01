@@ -1,4 +1,4 @@
-import React, {useId,useRef} from 'react';
+import React, {Suspense,useEffect,useId,useRef,useState} from 'react';
 import './DataWorkspace.css';
 
 export function DataJourney({current}) {
@@ -8,6 +8,8 @@ export function DataJourney({current}) {
 
 export default function DataWorkspace({label,tabs,active,onChange,children}) {
  const id=useId(),refs=useRef([]);
+ const [visited,setVisited]=useState(()=>new Set([active]));
+ useEffect(()=>setVisited(prior=>prior.has(active)?prior:new Set([...prior,active])),[active]);
  const navigate=(event,index)=>{
   const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:null;
   if(next===null)return;
@@ -15,6 +17,6 @@ export default function DataWorkspace({label,tabs,active,onChange,children}) {
  };
  return <div className="data-workspace">
   <div className="data-workspace__tabs" role="tablist" aria-label={label}>{tabs.map((tab,index)=><button key={tab.id} type="button" role="tab" id={`${id}-tab-${tab.id}`} aria-controls={`${id}-panel-${tab.id}`} aria-selected={active===tab.id} tabIndex={active===tab.id?0:-1} ref={node=>{refs.current[index]=node;}} onClick={()=>onChange(tab.id)} onKeyDown={event=>navigate(event,index)}>{tab.label}</button>)}</div>
-  {tabs.map(tab=><section key={tab.id} className="data-workspace__panel" role="tabpanel" id={`${id}-panel-${tab.id}`} aria-labelledby={`${id}-tab-${tab.id}`} hidden={active!==tab.id} tabIndex={0}>{children[tab.id]}</section>)}
+  {tabs.map(tab=><section key={tab.id} className="data-workspace__panel" role="tabpanel" id={`${id}-panel-${tab.id}`} aria-labelledby={`${id}-tab-${tab.id}`} hidden={active!==tab.id} tabIndex={0}>{(active===tab.id||visited.has(tab.id))&&<Suspense fallback={<p role="status">Loading workspace panel…</p>}>{children[tab.id]}</Suspense>}</section>)}
  </div>;
 }

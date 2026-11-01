@@ -28,6 +28,12 @@ class RestSourceBody(ApprovalBody, total=False):
     records_path: Annotated[str, Field(max_length=500)]
     target_model: Annotated[str, Field(max_length=500)]
 
+class ConnectorSourceBody(ApprovalBody, total=False):
+    source_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+    name: Required[Annotated[str, Field(min_length=1, max_length=200)]]
+    profile_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+    resource: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+
 class OntologyReleaseBody(ApprovalBody, total=False):
     family_id: Required[Text]
     version: Required[Text]

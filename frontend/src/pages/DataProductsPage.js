@@ -1,23 +1,24 @@
 import SemanticSupport from '../Components/SemanticSupport';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, lazy } from 'react';
 import { IxButton } from '@siemens/ix-react';
-import RegistryWidget from '../widgets/RegistryWidget';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { useOntologies } from '../contexts/OntologyContext';
 import { readProductCollection, PRODUCT_REFRESH_MS, PRODUCT_CHANGED_EVENT } from '../services/productService';
 import { productDraftFromRun, productDraftFromOntology } from '../services/analyticsProductDraft';
-import SchemaProductPublisher from '../Components/SchemaProductPublisher';
-import FirstProductGuide from '../Components/FirstProductGuide';
-import AvailableAnalytics from '../Components/AvailableAnalytics';
-import XmlAnalyticsLoader from '../Components/XmlAnalyticsLoader';
-import IngestedDataInventory from '../Components/IngestedDataInventory';
-import AnalyticsSchemaReview from '../Components/AnalyticsSchemaReview';
 import ProductEvidenceDetails from '../Components/ProductEvidenceDetails';
 import EvidenceProductOptions from '../Components/EvidenceProductOptions';
 import './DataProductsPage.css';
 import DataWorkspace, {DataJourney} from '../Components/DataWorkspace';
+
+const RegistryWidget = lazy(() => import('../widgets/RegistryWidget'));
+const SchemaProductPublisher = lazy(() => import('../Components/SchemaProductPublisher'));
+const FirstProductGuide = lazy(() => import('../Components/FirstProductGuide'));
+const AvailableAnalytics = lazy(() => import('../Components/AvailableAnalytics'));
+const XmlAnalyticsLoader = lazy(() => import('../Components/XmlAnalyticsLoader'));
+const IngestedDataInventory = lazy(() => import('../Components/IngestedDataInventory'));
+const AnalyticsSchemaReview = lazy(() => import('../Components/AnalyticsSchemaReview'));
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -30,6 +31,7 @@ const columns = [
 
 export default function DataProductsPage({ mode = 'products', onCompanionRecordChange }) {
   const catalog = mode === 'catalog';
+  const productColumns=useMemo(()=>columns.map(column=>column.field==='status'?{...column,headerName:catalog?'Catalog presence':'Delivery status',valueFormatter:({value})=>value||(catalog?'Registered':'Not recorded')}:column),[catalog]);
   const [workspace,setWorkspace]=useState(()=>{const query=new URLSearchParams(window.location.hash.split('?')[1]||'');return mode==='catalog'?'sources':query.get('view')==='portfolio'?'library':query.has('view')||query.has('run_id')?'create':'analytics';});
   const title = catalog ? 'Data Catalog' : 'Data Products';
   const { ontologies, error: ontologyError, warning: ontologyWarning, loading: ontologyLoading } = useOntologies();
@@ -55,11 +57,12 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const listRequest = useRef(null);
   const detailRequest = useRef(null);
   const selectedRef = useRef('');
-  const structuralRef=useRef(null),pipelineRef=useRef(null);
+  const structuralRef=useRef(null),pipelineRef=useRef(null),pendingEvidence=useRef(null);
+  const bindEvidence=kind=>node=>{const ref=kind==='structural'?structuralRef:pipelineRef;ref.current=node;if(node&&pendingEvidence.current===kind){node.open=true;node.scrollIntoView?.({behavior:'smooth',block:'start'});pendingEvidence.current=null;}};
   const revealEvidence=kind=>{
     const target=kind==='structural'?structuralRef.current:pipelineRef.current;
-    setWorkspace('create');
-    if(target){target.open=true;}
+    pendingEvidence.current=kind;setWorkspace('create');
+    if(target){target.open=true;target.scrollIntoView?.({behavior:'smooth',block:'start'});pendingEvidence.current=null;}
   };
   const service = catalog ? 'catalog' : 'dataProducts';
   const path = catalog ? '/api/v1/catalog/products' : '/api/v1/data-products';
@@ -208,7 +211,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}
       <p>Select a row to inspect ownership, readiness, source evidence and delivery.</p>
-      {!state.error && <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={columns} height={320} showFilter={false} onRowClicked={row=>{if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />}
+      {!state.error && <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={productColumns} height={320} showFilter={false} onRowClicked={row=>{if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />}
       <label htmlFor="product-detail">Product details and versions</label>
       <select style={{padding:8,margin:8}} id="product-detail" value={selected} onChange={event=>showDetail(event.target.value)}>
         <option value="">Select a product</option>{keys.map(key=><option key={key} value={key}>{key}</option>)}
@@ -217,14 +220,14 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       {detailError&&<div role="alert">{detailError}</div>}
       {detail&&<><SemanticSupport report={detail.semantic_support}/><ProductEvidenceDetails detail={detail}/></>}
     </section>}
-      {!state.loading&&!state.error&&!state.rows.length&&!catalog&&<div className="data-cockpit__empty" aria-label="First governed product workflow"><h3>Start with retained evidence</h3><p>No retained packages or published products are available yet. Complete these governed steps in order:</p><ol><li><a href="#/admin">Connect publication access</a> with ingestion and data-product approval scopes. Admin maintenance access is separate.</li><li><button type="button" className="product-overview__link" onClick={()=>{setWorkspace('create'); window.setTimeout(()=>structuralRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),0);}}>Inspect and validate the schema drafts</button> or <a href="#/data-flow">review a completed Data Flow run</a>.</li><li><a href="#/ontology">Obtain an approved semantic release</a>, then return here to publish.</li></ol><button type="button" className="depo-button" onClick={()=>setWorkspace('create')}>Open Create &amp; review</button></div>}
+      {!state.loading&&!state.error&&!state.rows.length&&!catalog&&<div className="data-cockpit__empty" aria-label="First governed product workflow"><h3>Start with retained evidence</h3><p>No retained packages or published products are available yet. Complete these governed steps in order:</p><ol><li><a href="#/admin">Connect publication access</a> with ingestion and data-product approval scopes. Admin maintenance access is separate.</li><li><button type="button" className="product-overview__link" onClick={()=>{revealEvidence('structural');}}>Inspect and validate the schema drafts</button> or <a href="#/data-flow">review a completed Data Flow run</a>.</li><li><a href="#/ontology">Obtain an approved semantic release</a>, then return here to publish.</li></ol><button type="button" className="depo-button" onClick={()=>setWorkspace('create')}>Open Create &amp; review</button></div>}
       {!state.loading&&!state.error&&!state.rows.length&&catalog&&<div className="data-cockpit__empty"><h3>No published products yet</h3><p>Ingested sources remain discoverable in the Ingested sources tab. Published products appear here after approval and catalog delivery.</p><button type="button" className="depo-button" onClick={()=>setWorkspace('sources')}>Browse ingested sources</button></div>}
       </>,create:<>
       <div className="data-cockpit__guidance"><div><strong>Build from evidence, then review and publish</strong><p>Select structural analytics or pipeline evidence, inspect the retained source, then validate the publication contract.</p></div><a href="#/data-flow">Review Data Flow runs</a></div>
     <EvidenceProductOptions catalog={catalog} rows={state.rows} loading={state.loading} error={state.error}
       draftCount={ontologyLoading||ontologyError||ontologyWarning?null:drafts.length}
       onStructural={()=>revealEvidence('structural')} onPipeline={()=>revealEvidence('pipeline')}/>
-    {!catalog && <details ref={pipelineRef} className="product-workspace-details" open={Boolean(runDraft || analyticsProjection || runDraftError)}><summary>Pipeline evidence: create a product from Data Flow</summary><section aria-label="Pipeline product evidence">
+    {!catalog && <details ref={bindEvidence('pipeline')} className="product-workspace-details" open={Boolean(runDraft || analyticsProjection || runDraftError)}><summary>Pipeline evidence: create a product from Data Flow</summary><section aria-label="Pipeline product evidence">
       {analyticsProjection ? <section aria-label="Existing analytics projection">
         <h3>Analytics data is already loaded</h3>
         <dl><dt>Analytics schema</dt><dd>{analyticsProjection.schema}</dd>
@@ -238,7 +241,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       {runDraftError && <p role="alert">{runDraftError}</p>}
       {runDraft && <SchemaProductPublisher draft={runDraft} />}
     </section></details>}
-    {!catalog && <details ref={structuralRef} className="product-workspace-details"><summary>Structural analytics: schema, dimensions and KPIs</summary><section aria-label="Schema design drafts">
+    {!catalog && <details ref={bindEvidence('structural')} className="product-workspace-details"><summary>Structural analytics: schema, dimensions and KPIs</summary><section aria-label="Schema design drafts">
       <h3>Schema design drafts ({drafts.length})</h3>
       {ontologyLoading && <p role="status">Loading ontology draft metadata…</p>}
       <p>Retained conversion evidence is a draft, not a published warehouse. Publication requires an approved semantic release and data-product steward approval.</p>

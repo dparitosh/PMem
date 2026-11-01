@@ -476,3 +476,8 @@ server environment references. This change does not require a schema migration
 or modify existing source records, credentials, graph publications or products.
 See [workflow responsibilities](docs/WORKFLOW-ENGINE.md) and the
 [ingestor audit](docs/audits/workflow-ingestors-2026-11-01.md).
+
+
+## Optional registered source connectors
+
+See [Registered source acquisition](docs/CONNECTOR-SOURCES.md) for the 17-ingestor inventory, Admin selection workflow, PostgreSQL receipt storage and optional SDK setup. Use `infra/windows/install-depo-connectors.ps1` with a reviewed hash-pinned lock after stopping services; `-CheckOnly` validates the lock without changing the runtime. Existing deployments receive the application code through the normal repository-root `update-depo.ps1 -EnvFile .env.local`. Connector secrets remain server configuration; upgrading does not create source accounts, approve jobs, acquire data or publish products.

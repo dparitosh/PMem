@@ -14,6 +14,7 @@ import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
 import WorkspaceTabs from '../Components/WorkspaceTabs';
 import RestSourcesPanel from '../Components/RestSourcesPanel';
 import IngestorCapabilities from '../Components/IngestorCapabilities';
+import ConnectorSourcesPanel from '../Components/ConnectorSourcesPanel';
 
 const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
 
@@ -278,7 +279,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       )}
 
       <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
-      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div></>}
+      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /></>}
       <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip

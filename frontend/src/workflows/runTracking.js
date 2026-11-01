@@ -5,8 +5,9 @@ export function requireRunManifest(value) {
 }
 export function pipelineRunLink(runId) { return `#/data-flow/${encodeURIComponent(runId)}`; }
 export function readRequestedRunId(hash = '') {
-  const segment = String(hash).split('?')[0].split('/')[2];
-  try { return segment ? decodeURIComponent(segment) : ''; } catch { return ''; }
+  const [path,query=''] = String(hash).split('?');
+  const segment = path.split('/')[2];
+  try { return segment ? decodeURIComponent(segment) : new URLSearchParams(query).get('run_id') || ''; } catch { return ''; }
 }
 export function governedRunStatus(run) {
   const status=String(run.status || 'unknown');

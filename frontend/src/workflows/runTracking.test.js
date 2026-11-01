@@ -14,3 +14,9 @@ test('queued jobs do not invent zero counts before validation evidence exists',(
  expect(governedRunStatus({run_id:'r',status:'queued'}).stats).toEqual({});
  expect(governedRunStatus({run_id:'r',status:'completed',output_manifest:{counts:{normalized_entities:0,normalized_relationships:0}}}).stats).toEqual({entities_found:0,relationships_found:0});
 });
+
+test('query and path deep links select the same retained run identity',async()=>{
+ const {readRequestedRunId}=await import('./runTracking');
+ expect(readRequestedRunId('#/data-flow?run_id=retained-run')).toBe('retained-run');
+ expect(readRequestedRunId('#/data-flow/retained-run')).toBe('retained-run');
+});

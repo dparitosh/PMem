@@ -351,6 +351,11 @@ def run_configured_job(job_id: str, version: str, payload: JobInputBody, request
         if definition['job_type'] == 'rest-source-ingest':
             from .rest_submissions import submit
             return submit(definition, payload, actor, correlation_id)
+        if definition['job_type'] == 'registered-source-ingest':
+            from .rest_submissions import submit
+            from . import connector_sources
+            return submit(definition,payload,actor,correlation_id,source_store=connector_sources.store,
+                          receipt_store=connector_sources.submissions,kind='connector')
         if _worker_execution_enabled():
             queued = run_records.enqueue(definition, payload, correlation_id=correlation_id)
             return {"status": "queued", "run": queued, "run_manifest": queued}

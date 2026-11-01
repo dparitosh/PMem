@@ -21,3 +21,12 @@ test('journey is navigation and does not claim completed lifecycle steps',()=>{
  expect(screen.getByRole('link',{name:/Process & validate/})).toHaveAttribute('href','#/data-flow');
  expect(screen.queryByText(/completed/i)).toBeNull();
 });
+
+test('unvisited panels do not initialize work, and visited settings remain mounted',()=>{
+ const mounted=vi.fn();
+ function Expensive(){React.useEffect(()=>{mounted();},[]);return <p>Analytics connection initialized</p>;}
+ function Deferred(){const [active,setActive]=useState('runs');return <DataWorkspace label="Deferred" active={active} onChange={setActive} tabs={[{id:'runs',label:'Runs'},{id:'analytics',label:'Analytics'}]}>{{runs:<p>Run overview</p>,analytics:<Expensive/>}}</DataWorkspace>;}
+ render(<Deferred/>);expect(mounted).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('tab',{name:'Analytics'}));expect(mounted).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('tab',{name:'Runs'}));fireEvent.click(screen.getByRole('tab',{name:'Analytics'}));expect(mounted).toHaveBeenCalledTimes(1);
+});

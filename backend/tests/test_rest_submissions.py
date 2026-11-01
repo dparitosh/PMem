@@ -79,3 +79,17 @@ def test_retained_status_is_readable_without_new_enqueue(setup):
     assert queue.call_count==1
     with pytest.raises(HTTPException) as failure: submissions.retained('one','different-user')
     assert failure.value.status_code==409
+
+
+def test_connector_submission_uses_separate_registry_and_recovers_same_run(setup):
+ definition,runs,queue=setup
+ sources=InMemoryRegistry();receipts=InMemoryRegistry()
+ sources.create('parts',{'source_id':'parts'})
+ payload={'source_id':'parts','idempotency_key':'connector-one'}
+ first=submissions.submit(definition,payload,'tester','audit',source_store=sources,receipt_store=receipts,kind='connector')
+ again=submissions.submit(definition,payload,'tester','audit',source_store=sources,receipt_store=receipts,kind='connector')
+ assert first['run']['run_id']==again['run']['run_id']
+ assert submissions.retained('connector-one','tester',receipt_store=receipts)['run_manifest']['run_id']==first['run']['run_id']
+ assert queue.call_count==1
+ with pytest.raises(HTTPException) as failure:submissions.retained('connector-one','another',receipt_store=receipts)
+ assert failure.value.status_code==409

@@ -52,8 +52,10 @@ test('sends explicit in-memory approval data for a direct replay', async () => {
   render(<DataFlowPage />);
   await screen.findByText('configured');
 
+  fireEvent.click(screen.getByRole('tab',{name:'Approval & publication'}));
   fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
   setCredentialProfile('DATA_JOB_EXECUTION_TOKEN', 'direct-token');
+  fireEvent.click(screen.getByRole('tab',{name:'Run monitor'}));
   fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
 
   await waitFor(() => expect(dataPipelineAPI.replay).toHaveBeenCalledWith('one', {
@@ -72,7 +74,9 @@ test('approves a registered data-job definition through the pipeline service', a
     lifecycle_state: 'draft', enabled: true, input_contract: 'records-v1', output_contract: 'quality-v1',
   }] } });
   render(<DataFlowPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
   await screen.findByText('QIF quality');
+  fireEvent.click(screen.getByRole('tab',{name:'Approval & publication'}));
   fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
   setCredentialProfile('DATA_JOB_APPROVAL_TOKEN', 'direct-token');
   fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
@@ -154,4 +158,19 @@ test('disabled Spark is separate from the responding pipeline API',async()=>{
  await screen.findByText('responding');
  expect(screen.getByText('Pipeline API').parentElement).toHaveTextContent('responding');
  expect(screen.getByText('Spark engine').parentElement).toHaveTextContent('disabled');
+});
+
+test('query-style run links select the requested run instead of the latest record',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');window.history.replaceState(null,'','#/data-flow?run_id=requested-query');
+ render(<DataFlowPage/>);expect(await screen.findByText('requested-query')).toBeVisible();
+ expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('requested-query');window.history.replaceState(null,'','#/');
+});
+
+test('renders only 25 loaded run rows per page while retaining all loaded evidence',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:Array.from({length:100},(_,i)=>({run_id:`run-${i}`,job_id:`job-${i}`,status:'completed'}))}});
+ render(<DataFlowPage/>);await screen.findByRole('button',{name:'job-0',exact:true});
+ expect(screen.queryByRole('button',{name:'job-25',exact:true})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Next runs'}));expect(screen.getByRole('button',{name:'job-25',exact:true})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'job-0',exact:true})).not.toBeInTheDocument();
 });

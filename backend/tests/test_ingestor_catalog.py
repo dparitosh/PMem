@@ -10,9 +10,11 @@ def test_all_requested_types_are_visible_without_claiming_unimplemented_connecto
     assert len(body['ingestors']) == 17
     assert len({r['name'] for r in body['ingestors']}) == 17
     wired = [r for r in body['ingestors'] if r['configurable']]
-    assert [r['name'] for r in wired] == ['RESTIngestor']
-    assert wired[0]['postgres_namespace'] == 'rest_sources'
-    assert wired[0]['job_type'] == 'rest-source-ingest'
+    assert len(wired)==14
+    assert {r['job_type'] for r in wired}=={'rest-source-ingest','registered-source-ingest'}
+    rest=next(r for r in wired if r['name']=='RESTIngestor')
+    assert rest['postgres_namespace'] == 'rest_sources'
+    assert rest['job_type'] == 'rest-source-ingest'
     assert all(r['postgres_namespace'] is None for r in body['ingestors'] if not r['configurable'])
     assert body['runtime_probe'] == 'not_run'
 

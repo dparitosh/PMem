@@ -22,16 +22,16 @@ def capabilities():
         installed = None
     rows = []
     for name in NAMES:
-        wired = name == 'REST'
+        wired = name not in NATIVE
         native = NATIVE.get(name)
         rows.append({
             'id': name.lower(), 'name': name + 'Ingestor',
             'integration': 'configured-adapter' if wired else 'native-workflow' if native else 'not-integrated',
             'configurable': wired,
             'workspace': '#/admin' if wired else native[0] if native else None,
-            'description': 'Bounded HTTP(S) GET acquisition with server-referenced credentials' if wired else native[1] if native else 'No PMem adapter, source registration or execution job is implemented',
-            'job_type': 'rest-source-ingest' if wired else None,
-            'postgres_namespace': 'rest_sources' if wired else None,
+            'description': ('Bounded HTTP(S) GET acquisition with server-referenced credentials' if name=='REST' else 'Worker acquisition from operator-configured profiles and resource aliases; requires the matching SDK and source access') if wired else native[1],
+            'job_type': ('rest-source-ingest' if name=='REST' else 'registered-source-ingest') if wired else None,
+            'postgres_namespace': ('rest_sources' if name=='REST' else 'connector_sources') if wired else None,
             'storage': 'depo_registry(namespace, key, value)' if wired else None,
             'runtime_profile': 'ontology (isolated) or shared' if wired else None,
             'installation': 'semantica==0.6.7 in shared/ontology locks; bounded child uses the semantic runtime' if wired else 'Optional adapter and dependency review required; library presence alone does not enable acquisition',
