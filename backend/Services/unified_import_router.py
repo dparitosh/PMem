@@ -266,7 +266,7 @@ async def upload_ontology_file(
         500: {"description": "Server error while retrieving ontologies"}
     }
 )
-def list_registered_ontologies():
+async def list_registered_ontologies():
     """List all registered ontologies with metadata.
     Merges file-based upload registry with ontologies discovered directly in Neo4j
     (e.g. loaded via scripts rather than the upload pipeline).
@@ -280,7 +280,7 @@ def list_registered_ontologies():
         logger.warning(f"[registered] Neo4j unavailable for count enrichment: {e}")
         _g = None
 
-    return OntologyUploadManager.list_ontologies_with_neo4j_counts(_g)
+    return await run_in_threadpool(OntologyUploadManager.list_ontologies_with_neo4j_counts, _g)
 
 
 @ontology_router.get(
