@@ -266,7 +266,7 @@ async def upload_ontology_file(
         500: {"description": "Server error while retrieving ontologies"}
     }
 )
-async def list_registered_ontologies():
+def list_registered_ontologies():
     """List all registered ontologies with metadata.
     Merges file-based upload registry with ontologies discovered directly in Neo4j
     (e.g. loaded via scripts rather than the upload pipeline).

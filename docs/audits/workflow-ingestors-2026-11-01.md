@@ -82,3 +82,6 @@ Final focused checks: 49 frontend tests across six files and 35 backend connecto
 The baseline source was committed and deployed locally as 76c4dbb with environment hashes preserved. The adapter/performance follow-up is a separate release. Customer deployment acceptance remains excluded at the user's request. External drivers require reviewed optional SDK locks; acquisition is not semantic validation or governed publication.
 
 Production bundle analysis: the Data Products route chunk fell from 103,796 to 23,284 bytes (about 78%); its immediate imports no longer include the data-grid vendor chunk. The extracted panels still exist and download when visited. This is a route-loading improvement, not a 78% reduction in total application size. The existing large shared runtime warning remains.
+
+
+Local upgrade acceptance exposed a read-access timeout while the ingestion registry was processing a synchronous graph query in an async route. The registry route now runs in FastAPI's thread pool. A concurrent-request regression holds the graph read and verifies an unrelated async probe remains responsive. Startup now distinguishes HTTP 0/404/5xx verification failures from actual 401/403 authentication rejection; transient failures do not recommend credential rotation. This finding was discovered by deployment, beyond the earlier mocked test groups.

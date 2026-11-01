@@ -103,3 +103,21 @@ def test_real_acquisition_child_preserves_only_bounded_records(profile,tmp_path,
  result=sources.acquire(record)
  assert result['records']==[{'part':'LOCAL-A'},{'part':'LOCAL-B'}]
  assert result['semantic_validation']=='not_assessed'
+
+
+def test_http_registration_requires_approval_and_never_returns_connection_settings(profile,monkeypatch):
+ from fastapi import FastAPI
+ from fastapi.testclient import TestClient
+ from backend.data_pipeline_service.connector_router import router
+ monkeypatch.setenv('AUTH_MODE','token');monkeypatch.setenv('DEPO_CREDENTIAL_STORE','environment')
+ monkeypatch.setenv('GRAPH_READ_TOKEN','read-fixture');monkeypatch.setenv('DATA_JOB_APPROVAL_TOKEN','approve-fixture')
+ app=FastAPI();app.include_router(router)
+ with TestClient(app) as client:
+  assert client.get('/pipeline/connector-sources/profiles').status_code==403
+  response=client.get('/pipeline/connector-sources/profiles',headers={'Authorization':'Bearer read-fixture'})
+  assert response.status_code==200 and 'connection_ref' not in response.text
+  payload={'source_id':'http-parts','name':'Parts','profile_id':'parts-profile','resource':'parts'}
+  assert client.post('/pipeline/connector-sources',json=payload).status_code==403
+  response=client.post('/pipeline/connector-sources',json=payload,headers={'Authorization':'Bearer approve-fixture'})
+  assert response.status_code==201 and response.json()['kind']=='Parquet'
+  assert client.post('/pipeline/connector-sources',json={**payload,'resource':42},headers={'Authorization':'Bearer approve-fixture'}).status_code==422

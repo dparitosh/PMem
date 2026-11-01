@@ -286,6 +286,9 @@ foreach ($service in $services | Where-Object { $_.Port }) {
         default { 'Inspect the service log and endpoint response; this failure is not proven to be a key mismatch.' }
       }
       Write-Warning "Read-access probe for '$($service.Name)' failed (HTTP $probeStatus; 0 means no HTTP status). $probeAction Log: $stateDir\$($service.Name).err.log"
+      if ($probeStatus -notin @(401,403)) {
+        throw "Service '$($service.Name)' read-access verification did not complete (HTTP $probeStatus). $probeAction This is not a confirmed credential rejection. Keep existing credentials; inspect service responsiveness, listener and dependency logs before retrying startup."
+      }
       if ($env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
         throw "Service '$($service.Name)' rejected the root environment GRAPH_READ_TOKEN or its credential check failed. PostgreSQL stores the authoritative key; restart and schema migration preserve existing profiles. Check expiry/revocation and the selected file. If that file contains the intended replacement keys, deliberately run infra/windows/apply-depo-service-credentials.ps1 -EnvFile '$EnvFile' -ReplaceExisting, then retry startup. That command rotates all key profiles supplied in the file. Otherwise restore the current central read key in the file. Check service logs for database errors; ensure /auth/access exists in the deployed backend."
       }
