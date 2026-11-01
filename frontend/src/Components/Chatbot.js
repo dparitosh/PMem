@@ -42,12 +42,14 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     const scopeNodeId = nodeId || graphData?.root_node_id || graphData?.view?.root_node_id || '';
     const recordScope = JSON.stringify([runId, productId, productVersion,reconciliationId]);
     const scopeRef = useRef({ id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope });
-    const resetConversation = useCallback(() => {
+    const resetConversation = useCallback((preserveSession = false) => {
         abortRef.current?.abort();
         abortRef.current = null;
         requestActiveRef.current = false;
-        clearClientSessionId();
-        sessionIdRef.current = null;
+        if (preserveSession !== true) {
+            clearClientSessionId();
+            sessionIdRef.current = null;
+        }
         setChatMessages([]);
         setChatResults?.([]);
         setRequestActive(false);
@@ -61,7 +63,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     useEffect(() => {
         if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix && scopeRef.current.page === pageId && scopeRef.current.node === scopeNodeId && scopeRef.current.record === recordScope) return;
         scopeRef.current = { id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope };
-        resetConversation();
+        resetConversation(true);
     }, [scopeId, scopePrefix, pageId, scopeNodeId, recordScope, resetConversation]);
 
     useEffect(() => {

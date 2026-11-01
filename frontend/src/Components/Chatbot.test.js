@@ -191,7 +191,7 @@ test('scope changes abort old evidence and clear the previous server session', a
   rerender(<Chatbot setChatResults={results} ontologyId="second" graphData={graphData} />);
   await waitFor(() => expect(request.signal.aborted).toBe(true));
   expect(screen.queryByText('Old scope answer')).not.toBeInTheDocument();
-  expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBeNull();
+  expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBe('old-session');
   expect(screen.getByLabelText('Chat question')).not.toBeDisabled();
   expect(results).toHaveBeenLastCalledWith([]);
 });
@@ -403,4 +403,19 @@ test('selected event review travels in conversation scope and cancels on selecti
  fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain these semantic checks'}});fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
  await waitFor(()=>expect(sent.graph_context.reconciliation_id).toBe('review-one'));
  view.rerender(<Chatbot pageId="data-flow" reconciliationId="review-two"/>);await waitFor(()=>expect(signal.aborted).toBe(true));
+});
+
+
+test('navigation restores only the selected page history without losing the conversation id',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','fixture-navigation');setClientSessionId('retained-navigation');
+ const fetcher=vi.fn(async url=>({ok:true,status:200,json:async()=>({turns:String(url).includes('page=home')?[{job_id:'turn-home',user_request:'Motor question',response:'Retained motor evidence'}]:[]})}));
+ vi.stubGlobal('fetch',fetcher);
+ const {rerender}=render(<Chatbot pageId="home"/>);
+ expect(await screen.findByText('Retained motor evidence')).toBeVisible();
+ rerender(<Chatbot pageId="graph"/>);
+ await waitFor(()=>expect(screen.queryByText('Retained motor evidence')).toBeNull());
+ expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBe('retained-navigation');
+ rerender(<Chatbot pageId="home"/>);
+ expect(await screen.findByText('Retained motor evidence')).toBeVisible();
+ expect(fetcher.mock.calls.some(([url])=>String(url).includes('page=graph'))).toBe(true);
 });

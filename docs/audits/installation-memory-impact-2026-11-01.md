@@ -47,3 +47,10 @@ Release assessment: the identified installer/documentation regressions are corre
 Data Flow now resolves the execution identity from the existing authenticated endpoint before POST replay (including Run now). It no longer depends on an empty manually entered reviewer to construct replay authorization. A per-connection rejection latch blocks repeated rejected writes; existing generation and idempotency guards remain. Ontology health/list use the read credential across incomplete OpenAPI metadata and anonymous requests are rejected in the client. Real invalid credentials remain rejected by the server.
 
 The local deployment returned 200 for both read-only credential checks. Frontend regression cohort: 54 passed. Backend replay/authorization/service-contract/data-pipeline cohort passed; see workspace replay-auth-backend.log for exact count. No customer job was replayed by credential diagnostics.
+
+
+### Session-scope and return-navigation root causes
+
+The browser-session verifier previously used the credential-change error for an absent delegated execution scope. The frontend interpreted it as session invalidation, clearing otherwise valid ontology read access. Missing permission now has a distinct 403; administrator rotation, expiry and actual digest mismatch still invalidate access. Backend regression confirms the write rejection and continuing read authorization; frontend regression confirms that read credentials survive the missing-scope response.
+
+The Companion scope-change handler cleared its conversation ID along with visible messages. It now preserves the conversation ID for page/record scope changes while clearing visible content and reloading owner- and scope-filtered history. Logout, explicit Clear conversation and identity changes retain their existing reset behavior. The navigation regression restores Home history after Graph context without displaying Home history in Graph context. Frontend cohort: 76 passed. Browser-session/auth/replay cohort: 23 passed plus seven subtests.
