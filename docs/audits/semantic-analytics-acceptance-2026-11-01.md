@@ -22,3 +22,11 @@
 - Namespace selector includes unused RDFLib aliases; execution-engine wording can confuse disabled Spark with a healthy native worker.
 - Full data marts, domain KPI formulas, cross-entity joins and unit normalization require reviewed business models. Current dimension output is a bounded preview.
 - Customer environment acceptance and external LLM testing were not performed.
+
+## Follow-up closure
+
+- Live native-worker synthetic record acceptance completed. Preparation `856b6e49-95a4-4e06-8f2d-936be41dcc7d` extracted three explicitly typed records. Numeric run `30bff7a8-fec8-48c1-9be7-3e00fead50ed` returned three observations and average 4 for values 2,4,6. Dimension run `c918a7f2-c98a-4ae8-9dfd-1f3b2aef91c9` returned three rows without truncation. This verifies execution, not an industrial KPI model.
+- A labelled local test semantic source was reviewed/approved and a test evidence package retained. Repeated publication returned the same digest. Live catalog delivery exposed a producer/consumer mismatch: absent optional ontology references were serialized as null, rejected by the catalog list contract. The producer now omits absent optional fields; a shared-schema regression checks the actual payload.
+- Namespace choices now show entity-type namespaces only, one choice per namespace; stored aliases remain retained. Data Flow explicitly labels Pipeline API and Spark engine separately and clears stale health after failed reads.
+- Focused checks: 21 frontend tests and 16 publication/package/contract tests pass. Production build passed before deployment.
+- Test artifacts/products are explicitly labelled LOCAL TEST ONLY and retained for audit. They do not certify customer data, full data marts or domain KPI formulas.

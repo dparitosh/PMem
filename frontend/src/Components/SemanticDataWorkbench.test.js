@@ -96,3 +96,19 @@ test('late success after navigation retains a recoverable run receipt without up
  expect(await screen.findByRole('option',{name:/Parts · source 1.0.0 · snapshot aaaaaaaa/})).toBeInTheDocument();
  expect(screen.getByRole('option',{name:/Parts · source 1.0.1 · snapshot bbbbbbbb/})).toBeInTheDocument();
  });
+
+test('namespace choices exclude unused defaults and duplicate aliases',async()=>{
+ const id='c'.repeat(64);
+ api.semanticDatasets.mockResolvedValue({data:{datasets:[{dataset_id:id,name:'Parts',counts:{entities:1}}]}});
+ api.semanticSchema.mockResolvedValue({data:{dataset:{dataset_id:id},classes:[{iri:'urn:parts:Part',name:'Part',entities:1}],namespaces:[
+ {namespace_uri:'urn:parts:',prefix:'parts'},{namespace_uri:'urn:parts:',prefix:'p'},
+ {namespace_uri:'http://unused.example/',prefix:'unused'},{namespace_uri:'',prefix:''}]}});
+ api.semanticChangeAssessment.mockResolvedValue({data:{status:'not_assessed'}});
+ render(<SemanticDataWorkbench/>);
+ await screen.findByText('Connected requester: connected-user');
+ fireEvent.change(screen.getByLabelText('Prepared semantic dataset'),{target:{value:id}});
+ const select=await screen.findByLabelText('Vocabulary / namespace');
+ await waitFor(()=>expect(select.options.length).toBe(2));
+ expect(select.options[1].value).toBe('urn:parts:');
+ expect(select).not.toHaveTextContent('unused');
+});

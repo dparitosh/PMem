@@ -157,6 +157,9 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         if (kind === 'telemetry') setTelemetry(payload);
         if (kind === 'runs') { runsFulfilled = true; nextRuns = asArray(payload?.runs); setRuns(nextRuns); }
         if (kind === 'definitions') setDefinitions(asArray(payload?.definitions));
+      }).catch(failure => {
+        if (sequence === loadSequence.current && kind === 'health') setHealth(null);
+        throw failure;
       });
       const requests = [
         read('health', dataPipelineAPI.health()),
@@ -358,7 +361,8 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
           <p>Monitor processing, manage pipeline jobs and turn validated outputs into reusable evidence. Refreshes every 15 seconds.</p>
         </div>
         <div className="data-flow-page__actions">
-          <span>Execution engine <Status value={health?.status || health?.spark?.status || 'checking'} /></span>
+          <span>Pipeline API <Status value={health ? 'responding' : 'checking'} /></span>
+          <span>Spark engine <Status value={health?.spark?.status || health?.status || 'checking'} /></span>
           <button className="data-flow-button" type="button" onClick={() => load()} disabled={refreshing}>
             <ix-icon name="refresh" aria-hidden="true" /> {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>

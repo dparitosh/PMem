@@ -146,3 +146,12 @@ test('run-id search retains published receipt and removes repeat publication act
  expect(screen.getByText('Published · receipt retained')).toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'Publish',exact:true})).toBeNull();
 });
+
+test('disabled Spark is separate from the responding pipeline API',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.health.mockResolvedValueOnce({data:{status:'disabled',worker_count:1}});
+ render(<DataFlowPage/>);
+ await screen.findByText('responding');
+ expect(screen.getByText('Pipeline API').parentElement).toHaveTextContent('responding');
+ expect(screen.getByText('Spark engine').parentElement).toHaveTextContent('disabled');
+});

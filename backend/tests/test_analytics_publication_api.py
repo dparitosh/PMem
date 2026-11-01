@@ -77,3 +77,16 @@ def test_catalog_pagination_filters_and_authorizes(monkeypatch):
     assert response.json()['total'] == 5
     assert response.json()['next_offset'] == 4
     assert len(response.json()['products']) == 2
+
+def test_product_delivery_payload_accepts_absent_optional_ontology_list(monkeypatch):
+    from backend.depo_platform.request_bodies import ProductMetadataBody
+    from pydantic import TypeAdapter
+    record={'product_id':'evidence','version':'1.0.0','name':'Evidence','domain':'engineering',
+            'owner':'steward','steward':'steward','classification':'internal','lifecycle_state':'published',
+            'artifacts':[], 'semantic_releases':[], 'ontologies':None, 'sources':[]}
+    payload=products._catalog_payload(record)
+    assert 'ontologies' not in payload
+    validated=TypeAdapter(ProductMetadataBody).validate_python(payload)
+    assert validated['name']=='Evidence'
+    record['ontologies']=[{'ontology_id':'retained-ontology'}]
+    assert TypeAdapter(ProductMetadataBody).validate_python(products._catalog_payload(record))['ontologies']==record['ontologies']
