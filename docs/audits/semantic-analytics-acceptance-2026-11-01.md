@@ -49,3 +49,12 @@ Remaining work is explicit: retained-RDF upload/reference selection and live gra
 - Data Flow now reads verified completed analysis artifacts and displays business metrics, classifications, dimension members and source/target names in tables. Foreign or pending result evidence is rejected.
 
 These close the implementation paths for local source registration, controlled recovery and top-down snapshot analytics. Customer-specific expected BOM scope, approved units/quantities and physical warehouse/slowly-changing-dimension models remain explicit extension criteria; these cannot be inferred from mere link counts.
+
+## Final local end-to-end acceptance
+
+- Browser source upload, preparation and business analysis completed through the real native worker. Preparation `61654890-7fac-4f9a-a76f-f9249edac3f6` retained 17 triples / 7 typed records. Analysis `24209743-55e6-44d3-9fb0-32bfafe3ab7d` displayed four dimensions, classification A=2/B=1, requirement-link rate 50%, process-link rate 66.67% and one BOM pair. BOM completeness remains not assessed. Full-width report screenshot: local `outputs/portfolio-business-report-10ae371.png`.
+- Two browser tabs concurrently uploaded the same 20,000-triple fixture. During pending writes, one tab navigated and the other revalidated access. Exactly one draft source remained, with no implicit approval/publication. This exercised real service delay, not simulated browser packet throttling.
+- A temporary loopback proxy withheld a successful response beyond a real one-second socket read timeout. The server had committed; retry resolved the same identity and exactly one registered record. The proxy was removed. Evidence: local `outputs/network-response-loss-acceptance-20261101.json`.
+- Live cold-start review found pipeline source discovery initialized a duplicate graph runtime. Source discovery and resolution now call the owning Metadata Registry service with a bounded, authenticated read; malformed, unavailable or foreign responses remain explicit failures. Regression covers timeout, identity mismatch, paging and missing source.
+
+Earlier open-item lists above are chronological findings, superseded by these local results where explicitly closed. Customer environment, external LLM, automatic live graph snapshot export, physical dimensional warehouses, expected BOM completeness and unit-normalized quantity KPIs remain outside this acceptance result.

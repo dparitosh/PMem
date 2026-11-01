@@ -9,14 +9,9 @@ router=APIRouter(prefix='/pipeline/semantic',tags=['Semantic datasets'],dependen
 
 def source_page(offset=0):
     total,products=PostgresRegistry('catalog_products').page(limit=50,offset=offset,exclude_latest=True)
-    from backend.depo_platform import metadata_service
-    if metadata_service.enabled():
-        page=metadata_service.repository().page(limit=50,offset=offset)
-        assets=page['assets'];more=page['has_more']
-    else:
-        from backend.core.graph import graph
-        records=graph.query('MATCH (a:MetadataAsset) RETURN properties(a) AS asset ORDER BY a.asset_id SKIP $offset LIMIT 51',params={'offset':offset})
-        assets=[row['asset'] for row in records[:50]];more=len(records)>50
+    from .metadata_sources import read_metadata
+    page=read_metadata(offset=offset)
+    assets=page['assets'];more=page.get('has_more',False)
     sources=[]
     for origin,record in [('catalog',record) for record in products]+[('metadata',record) for record in assets]:
         if record.get('lifecycle_status',record.get('lifecycle_state')) in {'retired','deprecated'}:continue

@@ -40,13 +40,8 @@ def resolve_source(source_id, artifact_id):
         allowed = [item.get('artifact_id') if isinstance(item,dict) else item for item in (record or {}).get('artifacts',[])]
     elif source_id.startswith('metadata:'):
         identity = source_id[len('metadata:'):]
-        from backend.depo_platform import metadata_service
-        if metadata_service.enabled():
-            record = metadata_service.repository().get(identity)
-        else:
-            from backend.core.graph import graph
-            rows = graph.query('MATCH (a:MetadataAsset {asset_id:$id}) RETURN properties(a) AS asset LIMIT 1',params={'id':identity})
-            record = rows[0]['asset'] if rows else None
+        from .metadata_sources import read_metadata
+        record = read_metadata(identity)
         allowed = [(record or {}).get('implementation_ref')]
     else:
         raise ValueError('Choose a versioned catalog source or registered metadata asset')
