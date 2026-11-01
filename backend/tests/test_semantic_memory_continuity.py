@@ -46,3 +46,14 @@ def test_companion_wires_scope_to_optional_memory_and_retains_resolved_query():
         isinstance(arg, ast.Attribute) and arg.attr == 'record_chat_turn' for arg in n.args))
     assert any(k.arg == 'graph_context' and isinstance(k.value, ast.Name) and k.value.id == 'selected_context' for k in call.keywords)
     assert any(isinstance(n, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == 'resolved_query' for k in n.keys) for n in ast.walk(owner))
+
+
+def test_event_review_context_passes_actual_chat_request_validation():
+    import pytest
+    from pydantic import ValidationError
+    from backend.agentic_service.chat_request import ChatRequest
+    body=ChatRequest(message='Explain this review',graph_context={'page':'data-flow','reconciliation_id':'review-one'})
+    assert body.model_dump()['graph_context']['reconciliation_id']=='review-one'
+    for other in ('run_id','product_id'):
+        with pytest.raises(ValidationError):
+            ChatRequest(message='Explain',graph_context={'reconciliation_id':'review-one',other:'other'})

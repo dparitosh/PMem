@@ -54,3 +54,12 @@ The local deployment returned 200 for both read-only credential checks. Frontend
 The browser-session verifier previously used the credential-change error for an absent delegated execution scope. The frontend interpreted it as session invalidation, clearing otherwise valid ontology read access. Missing permission now has a distinct 403; administrator rotation, expiry and actual digest mismatch still invalidate access. Backend regression confirms the write rejection and continuing read authorization; frontend regression confirms that read credentials survive the missing-scope response.
 
 The Companion scope-change handler cleared its conversation ID along with visible messages. It now preserves the conversation ID for page/record scope changes while clearing visible content and reloading owner- and scope-filtered history. Logout, explicit Clear conversation and identity changes retain their existing reset behavior. The navigation regression restores Home history after Graph context without displaying Home history in Graph context. Frontend cohort: 76 passed. Browser-session/auth/replay cohort: 23 passed plus seven subtests.
+
+
+### Local deployment verification and event-context schema correction
+
+Managed local upgrades to 4d06355 and 4b15977 completed successfully with changed-file backups and unchanged environment hashes. The standard browser-session diagnostic passed across ten services and ontology health/list. Six selected deployed runtime files matched their committed source hashes. The rebuilt UI displayed verified access and the Event reviews tab. No customer replay/publication or live model call was triggered.
+
+Live Home → Graph → Home verification eventually restored the original motor requirement answer, labelled historical. Graph context did not display the Home turn. Initial restore took longer than the UI wait window; this validates eventual context recovery, not a bounded latency SLO. The optional graph-memory/approved-lesson demo remains separately unqualified.
+
+The event review Companion wiring exposed one further contract mismatch: ChatContext omitted reconciliation_id while frontend/router supported it. The model now accepts its bounded identifier and rejects simultaneous run/product/event selections. A regression exercises the actual Pydantic request schema rather than only mocked UI calls.
