@@ -5322,3 +5322,6 @@ If execution access is absent, use Admin API access to connect the existing data
 The frontend retains GRAPH_READ_TOKEN for ontology health/list requests even when imported OpenAPI profile metadata is incomplete, and prevents anonymous protected reads. Deploy the complete matching backend/frontend release with the normal root updater, rebuild the UI and refresh the browser. No credential rotation, auth bypass or new schema migration is required specifically for these authorization fixes; migration 017 is still required by the accompanying event changes.
 
 Local read-only verification on 1 November 2026 returned HTTP 200 for ontology health and execution identity using existing deployment configuration. This verifies local credentials, not customer credentials. No replay was submitted by that check.
+
+
+A missing delegated execution scope now produces a distinct forbidden response (`Browser session lacks required scope: DATA_JOB_EXECUTION_TOKEN`) rather than the credential-rotation message. It does not expire the session's valid read permission. Expired sessions, administrator rotation and actual credential mismatch remain rejected. Reconnect with an explicitly authorized execution scope to run jobs; this change never expands a read-only session automatically.

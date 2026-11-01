@@ -133,3 +133,12 @@ test('gateway key survives same-tab session restoration and clears on logout', a
   expect(sessionStorage.getItem('depo.browserSession.v1')).toBeNull();
   expect(restored.getGatewaySubscriptionKey()).toBe('');
 });
+
+
+test('missing delegated execution scope preserves the valid read session',()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','depo_session_read_only');
+ setBrowserSessionExpiry('depo_session_read_only',new Date(Date.now()+600000).toISOString());
+ handleSessionRejection(403,'Bearer depo_session_read_only','Browser session lacks required scope: DATA_JOB_EXECUTION_TOKEN. Reconnect in Admin with the required access.');
+ expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_read_only');
+ expect(getCredentialProfile('DATA_JOB_EXECUTION_TOKEN')).toBe('');
+});
