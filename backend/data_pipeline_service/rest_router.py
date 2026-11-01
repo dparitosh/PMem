@@ -6,6 +6,12 @@ from . import rest_sources
 router = APIRouter(prefix='/pipeline/rest-sources', tags=['REST sources'])
 
 
+@router.get('/capabilities', dependencies=[Depends(graph_read_identity)])
+def ingestor_capabilities():
+    from .ingestor_catalog import capabilities
+    return capabilities()
+
+
 @router.get('/submissions/{submission_id}')
 def submission_status(submission_id: str, request: Request):
     actor = service_write_identity(request, token_env='DATA_JOB_EXECUTION_TOKEN', default_actor='source-reader')

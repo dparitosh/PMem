@@ -7,6 +7,10 @@ from .rest_sources import _fetch_in_process, FETCH_TIMEOUT_SECONDS
 
 
 def main():
+    if sys.argv[1:] == ['--check']:
+        from .ingestor_catalog import check_required_adapter
+        print('DEPO_RESULT:' + json.dumps(check_required_adapter()))
+        return 0
     # If the owning worker crashes, the acquisition child must not outlive its
     # own budget while blocked in DNS or a slow socket read.
     watchdog = threading.Timer(FETCH_TIMEOUT_SECONDS, lambda: os._exit(124))

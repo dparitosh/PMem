@@ -448,3 +448,31 @@ This release adds `infra/postgres/migrations/016_business_marts.sql`. Run the ex
 After upgrade, review the separate native **Governed business reporting tables** (`semantic-business-mart`) and **Published graph snapshot** (`graph-source-snapshot`) definitions in Data Flow before approving them. An approved read-only analysis definition does not authorize these writes. End users create named analytics model drafts in Data Products; model approval requires `DATA_JOB_APPROVAL_TOKEN`, model authoring uses `ONTOLOGY_APPROVAL_TOKEN`, and job execution uses `DATA_JOB_EXECUTION_TOKEN`. The worker calls the configured Graph and Metadata Registry services using registered server credentials. Never put keys into model definitions.
 
 See `docs/SEMANTIC_ANALYTICS.md` for the end-user sequence, supported KPI formulas, unit rules, expected BOM scope, physical table consumption and bounded graph-snapshot partitioning. Vanilla reset includes the new reporting records in dependency order and still preserves credentials/foundation. Normal updates never reset them.
+
+### Ingestion connector inventory and runtime checks
+
+Open **Admin → Data sources → Data source capabilities**. The inventory lists
+all 17 requested Semantica ingestor types and distinguishes a configurable PMem
+connector, an existing native workflow, and a library capability not connected
+to PMem. Only REST is currently a configurable Semantica acquisition adapter.
+File, XML and ontology processing remain in their existing Import and Ontology
+Junction workflows; they are not advertised as generic Semantica connectors.
+
+The read-authorized endpoint is
+`GET /api/v1/pipeline/rest-sources/capabilities`. Listing does not initialize
+optional SDKs or make outbound requests. It is not a connection test.
+
+In shared mode, the existing shared lock includes Semantica. In isolated mode,
+REST acquisition uses the installed ontology Python runtime through a bounded
+child process, preserving the lean pipeline API/worker dependency profiles.
+Install the ontology runtime before installing/checking only the pipeline
+runtime. The normal all-service installer already follows that order. Both
+shared and isolated installation smoke checks now exercise the REST lazy import,
+not just the service OpenAPI document. No optional ingestor SDKs are added.
+
+REST registrations use PostgreSQL `depo_registry`, namespace `rest_sources`,
+with `namespace`, `key`, `value` and `updated_at` columns. Credentials remain
+server environment references. This change does not require a schema migration
+or modify existing source records, credentials, graph publications or products.
+See [workflow responsibilities](docs/WORKFLOW-ENGINE.md) and the
+[ingestor audit](docs/audits/workflow-ingestors-2026-11-01.md).

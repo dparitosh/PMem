@@ -65,7 +65,19 @@ def fetch(source, *, preview=False):
 
 
 def _worker_command():
-    return [sys.executable, '-m', 'backend.data_pipeline_service.rest_fetch_worker']
+    mode = os.getenv('DEPO_SERVICE_RUNTIME_MODE', 'shared').strip().lower() or 'shared'
+    if mode not in {'shared', 'isolated'}:
+        raise ValueError('DEPO_SERVICE_RUNTIME_MODE must be shared or isolated')
+    executable = sys.executable
+    if mode == 'isolated':
+        # Reuse the already installed semantic dependency runtime. The pipeline
+        # API/worker stays lean; only this bounded, non-persisting child uses it.
+        runtime = Path(__file__).resolve().parents[1] / '.dt_venv-ontology'
+        candidate = runtime / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+        if not candidate.is_file():
+            raise ValueError('REST acquisition requires the installed ontology service runtime; run the standard installer')
+        executable = str(candidate)
+    return [executable, '-m', 'backend.data_pipeline_service.rest_fetch_worker']
 
 
 def _isolated_fetch(source, *, preview=False):
@@ -96,7 +108,8 @@ def _isolated_fetch(source, *, preview=False):
 
 
 def _fetch_in_process(source, *, preview=False):
-    from semantica.ingest import RESTIngestor
+    from backend.depo_platform.semantica_ingestors import load_ingestor
+    RESTIngestor = load_ingestor('REST')
     endpoint = endpoint_url(source['endpoint'])  # recheck operator policy on every run
     host = urlsplit(endpoint).hostname
     addresses = socket.getaddrinfo(host, 443 if urlsplit(endpoint).scheme == 'https' else 80, type=socket.SOCK_STREAM)

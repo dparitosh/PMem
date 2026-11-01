@@ -111,6 +111,9 @@ for item in manifest["services"]:
 for item in manifest.get("workers", []):
     importlib.import_module(item["module"])
     print(f"PASS: {item['id']} worker import")
+from backend.data_pipeline_service.ingestor_catalog import check_acquisition_runtime
+check_acquisition_runtime()
+print("PASS: configured Semantica REST acquisition adapter")
 '@ | Invoke-DepoNativeCommand -Executable $venvPython -NativeArguments @('-')
   if ($LASTEXITCODE -ne 0) { throw 'Service installation import/OpenAPI smoke check failed.' }
 } finally { Pop-Location }

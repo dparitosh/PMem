@@ -13,6 +13,9 @@ def check(service_id):
         raise ValueError('Unknown deployment service')
     module, separator, attribute = item['module'].partition(':')
     imported = importlib.import_module(module)
+    if service_id in {'data-pipeline', 'data-pipeline-worker'}:
+        from backend.data_pipeline_service.ingestor_catalog import check_acquisition_runtime
+        check_acquisition_runtime()
     if separator:
         contract = getattr(imported, attribute).openapi()
         if not contract.get('paths'):

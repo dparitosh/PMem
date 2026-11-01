@@ -479,6 +479,7 @@ export const dataPipelineAPI = {
   analyticsDetail: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}`), options),
   analyticsData: (runId, relation, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}/data`), {...options, params:{relation, limit:25}}),
   restSources: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources'), options),
+  ingestorCapabilities: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources/capabilities'), options),
   restSubmission: (submissionId, token) => apiClient.get(buildUrl(`/api/v1/pipeline/rest-sources/submissions/${encodeURIComponent(submissionId)}`), { headers: { Authorization: `Bearer ${token}` } }),
   registerRestSource: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/rest-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),
   previewRestSource: (sourceId, token) => apiClient.post(buildUrl(`/api/v1/pipeline/rest-sources/${encodeURIComponent(sourceId)}/preview`), {}, { headers: { Authorization: `Bearer ${token}` } }),
