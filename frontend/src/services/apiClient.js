@@ -490,7 +490,7 @@ export const dataPipelineAPI = {
   registerRestSource: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/rest-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),
   previewRestSource: (sourceId, token) => apiClient.post(buildUrl(`/api/v1/pipeline/rest-sources/${encodeURIComponent(sourceId)}/preview`), {}, { headers: { Authorization: `Bearer ${token}` } }),
   createDefinition: (definition, token) => apiClient.post(buildUrl('/api/v1/pipeline/jobs/definitions'), definition, { headers: { Authorization: `Bearer ${token}` } }),
-  health: () => apiClient.get(buildUrl('/api/v1/pipeline/health')),
+  health: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/health'), options),
   telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
   definitions: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions'), options),
   runs: (limit = 100, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { ...options, params: { ...options.params, limit } }),

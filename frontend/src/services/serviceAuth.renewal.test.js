@@ -171,3 +171,28 @@ test('a delayed rejection from an old delegation cannot reject newly connected a
   expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_new');
  }finally{window.removeEventListener('depo:access-rejected',rejected);}
 });
+
+
+test('cross-tab logout clears access without copying credential material', () => {
+  connect();clearServiceAuthToken();
+  const signal=localStorage.getItem('depo.sessionSignal.v1');
+  expect(signal).not.toContain('depo_session_');
+  connect();
+  const currentSignal=JSON.stringify({...JSON.parse(signal),sentAt:Date.now()});
+  window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:currentSignal}));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('');
+});
+
+test('a different deployment logout signal cannot clear the current session', () => {
+  connect();
+  window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:JSON.stringify({action:'logout',scope:'other-deployment'})}));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_test');
+});
+
+test('a delayed logout cannot clear a freshly reconnected session', () => {
+  connect();clearServiceAuthToken();
+  const message=JSON.parse(localStorage.getItem('depo.sessionSignal.v1'));
+  connect();message.sentAt=Date.now()-1000;
+  window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:JSON.stringify(message)}));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_test');
+});

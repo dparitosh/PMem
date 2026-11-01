@@ -3,8 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import DataFlowPage from './DataFlowPage';
 
+beforeEach(()=>{window.history.replaceState(null,'','#/data-flow');});
+
 vi.mock('../services/apiClient', () => ({
   dataPipelineAPI: {
+    speedReviews: vi.fn().mockResolvedValue({data:{reconciliations:[],next_offset:null}}),
     health: vi.fn().mockResolvedValue({ data: { status: 'configured' } }),
     telemetry: vi.fn().mockResolvedValue({ data: {
       durable_job_telemetry: { runs: 100, records_accepted: 0, records_rejected: 0, limit: 100 },
@@ -65,6 +68,7 @@ test('sends explicit in-memory approval data for a direct replay', async () => {
     idempotency_key: expect.any(String),
   }));
   await screen.findByText('replayed');
+  expect(screen.getByText(/Replay accepted\. Run replayed is queued/)).toBeInTheDocument();
   expect(screen.queryByLabelText('Replay execution API key')).toBeNull();
 });
 
@@ -93,7 +97,7 @@ test('fetches a requested historical run absent from the recent list', async () 
   window.location.hash = '#/data-flow/historical';
   render(<DataFlowPage />);
   await screen.findByText('historical');
-  expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('historical');
+  expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('historical',expect.objectContaining({signal:expect.any(AbortSignal)}));
   window.location.hash = '';
 });
 test('does not select another run when a requested run is missing', async () => {
@@ -164,7 +168,7 @@ test('disabled Spark is separate from the responding pipeline API',async()=>{
 test('query-style run links select the requested run instead of the latest record',async()=>{
  const {dataPipelineAPI}=await import('../services/apiClient');window.history.replaceState(null,'','#/data-flow?run_id=requested-query');
  render(<DataFlowPage/>);expect(await screen.findByText('requested-query')).toBeVisible();
- expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('requested-query');window.history.replaceState(null,'','#/');
+ expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('requested-query',expect.objectContaining({signal:expect.any(AbortSignal)}));window.history.replaceState(null,'','#/');
 });
 
 test('renders only 25 loaded run rows per page while retaining all loaded evidence',async()=>{
@@ -219,4 +223,41 @@ test('invalid execution identity fails before the write request',async()=>{
  dataPipelineAPI.executionIdentity.mockResolvedValueOnce({data:{}});
  render(<DataFlowPage/>);await screen.findByText('configured');fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
  await screen.findByText(/Execution identity could not be verified/);expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+
+test('queued and running runs cannot submit another replay', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.replay.mockClear();
+  dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[
+    {run_id:'queued-input',job_id:'queued-job',status:'queued'},
+    {run_id:'running-input',job_id:'running-job',status:'running'}]}});
+  render(<DataFlowPage />);
+  await screen.findByText('queued-job');
+  for(const button of screen.getAllByRole('button',{name:'Replay',exact:true})) {
+    expect(button).toBeDisabled(); fireEvent.click(button);
+  }
+  expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+
+test('workspace is deep linked and follows browser history without replaying', async () => {
+  window.history.replaceState(null,'','#/data-flow?view=quality&run_id=historical');
+  render(<DataFlowPage />);
+  expect(screen.getByRole('tab',{name:'Quality & evidence'})).toHaveAttribute('aria-selected','true');
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+  expect(window.location.hash).toContain('view=pipelines');
+  expect(window.location.hash).toContain('run_id=historical');
+  window.history.replaceState(null,'','#/data-flow?view=events');
+  fireEvent(window,new PopStateEvent('popstate'));
+  expect(screen.getByRole('tab',{name:'Event reviews'})).toHaveAttribute('aria-selected','true');
+});
+
+test('leaving Data Flow aborts all owned read requests', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.health.mockImplementationOnce(()=>new Promise(()=>{}));
+  const {unmount}=render(<DataFlowPage />);
+  const options=dataPipelineAPI.health.mock.calls.at(-1)[0];
+  expect(options.signal.aborted).toBe(false);
+  unmount();expect(options.signal.aborted).toBe(true);
 });

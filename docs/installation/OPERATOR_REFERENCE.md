@@ -5325,3 +5325,20 @@ Local read-only verification on 1 November 2026 returned HTTP 200 for ontology h
 
 
 A missing delegated execution scope now produces a distinct forbidden response (`Browser session lacks required scope: DATA_JOB_EXECUTION_TOKEN`) rather than the credential-rotation message. It does not expire the session's valid read permission. Expired sessions, administrator rotation and actual credential mismatch remain rejected. Reconnect with an explicitly authorized execution scope to run jobs; this change never expands a read-only session automatically.
+
+
+## Correlating Replay and service failures
+
+1. Copy the failed response's `X-Request-ID` from browser Network details. Do not copy authorization headers.
+2. Search the relevant `logs/windows-services/<service>.err.log` for that ID. `http_request_outcome` records contain status, method, route template and `response_headers_ms`. This measures time to headers, not background-job duration. QoS rejections additionally record `request_admission_failure` with a bounded static reason.
+3. For an accepted pipeline run, use its run ID and the original request's `correlation_id` in `data-pipeline-worker.err.log`. Events identify claim, completion or failure, worker and attempt. Inspect retained Run evidence for failure details and outputs; HTTP acceptance alone does not prove worker success.
+4. After a relaunch, earlier nonempty redirected logs are preserved under `logs/windows-services/archive/<timestamp-and-id>/`. Search these for older failures. Application stdout/stderr now rotate at 10 MiB with five backups per stream. Separate `.bootstrap.out.log`/`.bootstrap.err.log` capture failures before runtime logging initializes. The launcher does not purge archived launches; configure archive retention separately.
+
+Routine successful reads are DEBUG to limit polling noise. Writes, failures and slow responses are retained at INFO/WARNING/ERROR through the Windows launcher. Structured outcome records do not include request bodies, query values or credential headers. This does not replace review of third-party exception output for sensitive data.
+
+
+### Frontend/session refactor upgrade
+
+Deploy the complete matching release and run the normal repository-root `update-depo.ps1` with the existing environment file. Keep the frontend build enabled: this release adds the shared URL-view hook, session signals and route chunks. Backend preflight requires `backend/depo_platform/service_log_stream.py`; package preflight also requires `frontend/src/app/useRouteView.js`. Do not copy only windows_runtime.py or only a built JavaScript entry file.
+
+The Windows launcher now gives the runtime exclusive ownership of application `.out.log`/`.err.log` files so rotation works. Check `.bootstrap.err.log` if initialization fails before those files receive output. No new environment setting, package, database migration or credential rotation is required. Existing workflow receipts remain authoritative after reconnect; switching pages or browser history never approves work.

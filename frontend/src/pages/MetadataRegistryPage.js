@@ -1,3 +1,4 @@
+import useRouteView from '../app/useRouteView';
 import { dictionaryPayload } from '../services/ontologyPayload';
 import './MetadataRegistryPage.css';
 import WorkspaceTabs from '../Components/WorkspaceTabs';
@@ -10,6 +11,7 @@ import RegistrySummaryCards from '../Components/registry/RegistrySummaryCards';
 import RegistryAssetsSection from '../Components/registry/RegistryAssetsSection';
 import { metadataAssetsPayload, dictionaryAssetDraft } from '../services/metadataRegistryPayload';
 
+const REGISTRY_VIEWS=['assets','dictionary'];
 const STATUS_LABELS = {
   draft: 'Draft',
   in_review: 'In review',
@@ -68,7 +70,7 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
 export default function MetadataRegistryPage() {
   const { ontologies, loading, error, lastUpdated, fetchOntologies } = useOntologies();
   const [query, setQuery] = useState('');
-  const [section, setSection] = useState('assets');
+  const [section, setSection] = useRouteView(REGISTRY_VIEWS,'assets',undefined,'#/registry');
   const [selectedOntology, setSelectedOntology] = useState('');
   const [dictionary, setDictionary] = useState([]);
   const [dictionaryLoading, setDictionaryLoading] = useState(false);

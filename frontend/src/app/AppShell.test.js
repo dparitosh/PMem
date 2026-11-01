@@ -165,3 +165,11 @@ test('expands the Companion table workspace without remounting its input', () =>
   expect(screen.getByRole('textbox',{name:'Question fixture'})).toBe(input);
   expect(input).toHaveValue('Part PMI');
 });
+
+
+test('route navigation moves keyboard focus to the main landmark', () => {
+ const props={onPageChange:vi.fn(),onHome:vi.fn(),onToggleChat:vi.fn()};
+ const {rerender}=render(<AppShell {...props} activePage="catalog">Catalog</AppShell>);
+ rerender(<AppShell {...props} activePage="data-flow">Data flow</AppShell>);
+ expect(screen.getByRole('main')).toHaveFocus();
+});

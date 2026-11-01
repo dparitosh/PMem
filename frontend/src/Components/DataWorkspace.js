@@ -10,6 +10,11 @@ export default function DataWorkspace({label,tabs,active,onChange,children}) {
  const id=useId(),refs=useRef([]);
  const [visited,setVisited]=useState(()=>new Set([active]));
  useEffect(()=>setVisited(prior=>prior.has(active)?prior:new Set([...prior,active])),[active]);
+ useEffect(()=>{
+  if(refs.current.some(node=>node===document.activeElement)){
+   refs.current[tabs.findIndex(tab=>tab.id===active)]?.focus();
+  }
+ },[active]);
  const navigate=(event,index)=>{
   const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:event.key==='ArrowRight'?(index+1)%tabs.length:event.key==='ArrowLeft'?(index+tabs.length-1)%tabs.length:null;
   if(next===null)return;

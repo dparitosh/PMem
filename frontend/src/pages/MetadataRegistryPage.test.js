@@ -39,6 +39,7 @@ vi.mock('../services/apiClient', () => ({
 }));
 
 beforeEach(() => {
+  window.history.replaceState(null,'','#/registry');
   jest.clearAllMocks();
 });
 
@@ -225,4 +226,14 @@ test('credential changes abort the old registry request and reload without stale
   expect(oldSignal.aborted).toBe(true);
   finishOld({ data: { assets: [{ asset_id: 'old', name: 'Previous session asset' }] } });
   await waitFor(() => expect(screen.queryByText('Previous session asset')).toBeNull());
+});
+
+test('dictionary view follows the URL and back/forward events',async()=>{
+ API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[],has_more:false}});
+ window.history.replaceState(null,'','#/registry?view=dictionary');
+ render(<MetadataRegistryPage/>);
+ expect(screen.getByRole('tab',{name:'Data Dictionary'})).toHaveAttribute('aria-selected','true');
+ window.history.replaceState(null,'','#/registry?view=assets');
+ fireEvent(window,new PopStateEvent('popstate'));
+ expect(screen.getByRole('tab',{name:'Registry assets'})).toHaveAttribute('aria-selected','true');
 });

@@ -166,3 +166,20 @@ def test_npm_build_stderr_is_not_a_powershell_failure(tmp_path, exit_code):
     result = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script)], capture_output=True, text=True)
     assert (result.returncode == 0) == (exit_code == 0), result.stdout + result.stderr
     assert 'build-fixture' in result.stdout
+
+
+def test_service_relaunch_preserves_prior_redirected_logs(tmp_path):
+    shell=shutil.which('powershell.exe')
+    if not shell: pytest.skip('Windows PowerShell required')
+    source=(ROOT/'infra/windows/start-depo-services.ps1').read_text(encoding='utf-8')
+    begin=source.index('  $priorLogs =')
+    end=source.index('  $process = Start-Process',begin)
+    out=tmp_path/'pipeline.out.log';err=tmp_path/'pipeline.err.log'
+    out.write_text('prior run receipt');err.write_text('prior request-id error')
+    script=tmp_path/'archive.ps1'
+    script.write_text("$ErrorActionPreference='Stop'\n$stateDir='"+str(tmp_path)+"'\n$stdout='"+str(out)+"'\n$stderr='"+str(err)+"'\n"+source[begin:end],encoding='utf-8')
+    result=subprocess.run([shell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(script)],capture_output=True,text=True)
+    assert result.returncode==0,result.stdout+result.stderr
+    assert next((tmp_path/'archive').glob('*/pipeline.err.log')).read_text()=='prior request-id error'
+    assert next((tmp_path/'archive').glob('*/pipeline.out.log')).read_text()=='prior run receipt'
+    assert err.read_text()=='prior request-id error'

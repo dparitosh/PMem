@@ -118,6 +118,7 @@ it('catalog deep links open structural analytics directly on Products',async()=>
 });
 
 it('catalog starts with ingested sources and keeps product creation behind its workspace',async()=>{
+ window.history.replaceState(null,'','#/catalog');
  readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
  render(<DataProductsPage mode="catalog"/>);
  expect(screen.getByRole('tab',{name:'Ingested sources'})).toHaveAttribute('aria-selected','true');
@@ -170,4 +171,26 @@ it('starts with available analytics and a clear business next action',async()=>{
  expect(screen.getByRole('tab',{name:'Available analytics'})).toHaveAttribute('aria-selected','true');
  expect(await screen.findByText('Catalog-driven analytics')).toBeVisible();
  expect(screen.queryByLabelText('Workspace overview')).toBeNull();
+});
+
+it('product views follow deep links and browser history',async()=>{
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ window.history.replaceState(null,'','#/data-products?view=governance');
+ render(<DataProductsPage/>);
+ expect(screen.getByRole('tab',{name:'Governance'})).toHaveAttribute('aria-selected','true');
+ window.history.replaceState(null,'','#/data-products?view=library');
+ fireEvent(window,new PopStateEvent('popstate'));
+ expect(screen.getByRole('tab',{name:'Product portfolio'})).toHaveAttribute('aria-selected','true');
+});
+
+it('switching product views preserves the same retained run read',async()=>{
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ dataPipelineAPI.getRun.mockResolvedValue({data:{run_id:'view-run',status:'completed',output_manifest:{partition_artifacts:{accepted:'artifact'}}}});
+ window.history.replaceState(null,'','#/data-products?view=pipeline&run_id=view-run');
+ render(<DataProductsPage/>);
+ await waitFor(()=>expect(dataPipelineAPI.getRun).toHaveBeenCalledTimes(1));
+ fireEvent.click(screen.getByRole('tab',{name:'Product portfolio'}));
+ fireEvent.click(screen.getByRole('tab',{name:'Create & review'}));
+ expect(dataPipelineAPI.getRun).toHaveBeenCalledTimes(1);
+ expect(window.location.hash).toContain('run_id=view-run');
 });

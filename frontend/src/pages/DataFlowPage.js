@@ -1,3 +1,4 @@
+import useRouteView from '../app/useRouteView';
 import EventReviewPanel from '../Components/EventReviewPanel';
 import SemanticAnalysisResult from '../Components/SemanticAnalysisResult';
 import SemanticSupport from "../Components/SemanticSupport";
@@ -13,6 +14,7 @@ import { productDraftFromRun } from '../services/analyticsProductDraft';
 import AgentProposalPanel from '../Components/AgentProposalPanel';
 
 const REFRESH_INTERVAL_MS = 15000;
+const WORKSPACE_VIEWS = ['runs','pipelines','quality','settings','events','agent'];
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -80,14 +82,14 @@ function QualityOverview({ runs, accepted, rejected, unavailable }) {
   const acceptedWidth = Math.round((accepted / total) * 100);
   return <article className="data-flow-card data-flow-quality" aria-label="Data quality overview">
     <div className="data-flow-card__heading"><div><h2>Live quality and workflow status</h2><p>{unavailable ? 'Evidence is unavailable or stale; displaying the last retained snapshot.' : !runs.length?'No retained runs yet. Quality has not been evaluated.':'Derived from the latest retained pipeline snapshot.'}</p></div><Status value={unavailable || !runs.length ? 'unknown' : failed ? 'warning' : 'ok'} /></div>
-    <div className="data-flow-quality__bar" role="img" aria-label={`${accepted} accepted and ${rejected} rejected records`}><span style={{ width: `${acceptedWidth}%` }} /></div>
+    <div className="data-flow-quality__bar" role="img" aria-label={`${accepted} accepted and ${rejected} rejected records`}><span style={{ transform: `scaleX(${acceptedWidth/100})` }} /></div>
     <div className="data-flow-quality__legend"><span><i className="data-flow-quality__swatch data-flow-quality__swatch--accepted" />Accepted <strong>{accepted}</strong></span><span><i className="data-flow-quality__swatch data-flow-quality__swatch--rejected" />Rejected <strong>{rejected}</strong></span></div>
     <div className="data-flow-quality__states"><span>Completed <strong>{completed}</strong></span><span>Queued <strong>{queued}</strong></span><span>Running <strong>{running}</strong></span><span>Failed <strong>{failed}</strong></span></div>
   </article>;
 }
 
 export default function DataFlowPage({ onCompanionRecordChange }) {
-  const [workspace,setWorkspace]=useState('runs');
+  const [workspace,setWorkspace]=useRouteView(WORKSPACE_VIEWS,'runs');
   const [health, setHealth] = useState(null);
   const [telemetry, setTelemetry] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -105,6 +107,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [replayError, setReplayError] = useState('');
+  const [replayReceipt, setReplayReceipt] = useState(null);
   const [replayAccessRejected,setReplayAccessRejected]=useState(false);
   const replayRejected=useRef(false);
   const [replayingId, setReplayingId] = useState('');
@@ -141,11 +144,15 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
   const preferredRunId = useRef('');
   const loadSequence = useRef(0);
   const loadInFlight = useRef(false);
+  const loadController = useRef(null);
+  const routeRunId = useRef(requestedRunId());
 
   const load = useCallback(async ({ initial = false } = {}) => {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
     const sequence = ++loadSequence.current;
+    const controller = new AbortController();
+    loadController.current = controller;
     if (initial) setLoading(true);
     else setRefreshing(true);
     setError('');
@@ -168,10 +175,10 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         throw failure;
       });
       const requests = [
-        read('health', dataPipelineAPI.health()),
-        read('telemetry', dataPipelineAPI.telemetry()),
-        read('runs', dataPipelineAPI.runs(100)),
-        read('definitions', dataPipelineAPI.definitions()),
+        read('health', dataPipelineAPI.health({signal:controller.signal})),
+        read('telemetry', dataPipelineAPI.telemetry({signal:controller.signal})),
+        read('runs', dataPipelineAPI.runs(100,{signal:controller.signal})),
+        read('definitions', dataPipelineAPI.definitions({signal:controller.signal})),
       ];
       const results = await Promise.allSettled(requests);
       if (sequence !== loadSequence.current) return;
@@ -181,7 +188,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         let requested = nextRuns.find(run => run.run_id === requestedId);
         if (!requested) {
           try {
-            requested = responsePayload(await dataPipelineAPI.getRun(requestedId));
+            requested = responsePayload(await dataPipelineAPI.getRun(requestedId,{signal:controller.signal}));
             if (requested?.run_id !== requestedId) throw new Error('Requested run identity mismatch');
           } catch (failure) {
             if (sequence !== loadSequence.current) return;
@@ -199,6 +206,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       setError(apiErrorMessage(loadError, 'Unable to load data-job telemetry.'));
     } finally {
       if (sequence === loadSequence.current) {
+        if(loadController.current===controller)loadController.current=null;
         loadInFlight.current = false;
         setLoading(false);
         setRefreshing(false);
@@ -210,10 +218,11 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     load({ initial: true });
     const interval = window.setInterval(() => { if (!document.hidden) load(); }, REFRESH_INTERVAL_MS);
     const credentialsChanged = () => {
+      loadController.current?.abort();
       sessionGeneration.current += 1; releaseSequence.current += 1;
       loadSequence.current += 1; loadInFlight.current = false;
       setHealth(null); setTelemetry(null); setRuns([]); setDefinitions([]); setSelectedRun(null);
-      setSemanticReleases([]); setReleaseIndex(''); setReplayError('');
+      setSemanticReleases([]); setReleaseIndex(''); setReplayError(''); setReplayReceipt(null);
       replayRejected.current=false;setReplayAccessRejected(false);
       setReplayApprover(''); setPublicationSource(''); preferredRunId.current='';
       load({ initial: true });
@@ -223,22 +232,29 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     const verified=()=>{
       replayRejected.current=false;setReplayAccessRejected(false);
       // A successful reconnect supersedes reads started before verification.
+      loadController.current?.abort();
       loadSequence.current+=1; loadInFlight.current=false;
       load({initial:true});
     };
     window.addEventListener('depo:access-verified',verified);
     const routeChanged=()=>{
       if(!window.location.hash.startsWith('#/data-flow'))return;
+      const nextId=requestedRunId();
+      if(routeRunId.current===nextId)return;
+      routeRunId.current=nextId;loadController.current?.abort();
       preferredRunId.current='';loadSequence.current+=1;loadInFlight.current=false;
       setSelectedRun(null);setReplayError('');
       load({initial:true});
     };
     window.addEventListener('hashchange',routeChanged);
+    window.addEventListener('popstate',routeChanged);
     return () => {
       window.clearInterval(interval);
       events.forEach(event=>window.removeEventListener(event,credentialsChanged));
       window.removeEventListener('depo:access-verified',verified);
       window.removeEventListener('hashchange',routeChanged);
+      window.removeEventListener('popstate',routeChanged);
+      loadController.current?.abort();
       sessionGeneration.current += 1; releaseSequence.current += 1;
       loadSequence.current += 1;
       loadInFlight.current = false;
@@ -267,6 +283,14 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     [definitions],
   );
 
+  const selectRun = run => {
+    preferredRunId.current=run.run_id;routeRunId.current=run.run_id;setSelectedRun(run);
+    const [path, search='']=window.location.hash.split('?');
+    const params=new URLSearchParams(search);params.set('run_id',run.run_id);
+    const hash=`${path||'#/data-flow'}?${params}`;
+    if(window.location.hash!==hash){window.history.pushState(null,'',hash);window.dispatchEvent(new HashChangeEvent('hashchange'));}
+  };
+
   const executionAuthorization = async (generation) => {
     if(replayRejected.current)throw new Error('Replay access was rejected. Reconnect execution access in Admin and revalidate before retrying.');
     const token=getCredentialProfile('DATA_JOB_EXECUTION_TOKEN').trim();
@@ -285,11 +309,11 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
   };
 
   const replay = async (run) => {
-    if(operationLock.current||replayRejected.current)return;
+    if(operationLock.current||replayRejected.current||['queued','running'].includes(run.status))return;
     operationLock.current=true;
     const generation=sessionGeneration.current;
     setReplayingId(run.run_id);
-    setReplayError('');
+    setReplayError(''); setReplayReceipt(null);
     try {
       const authorization=await executionAuthorization(generation);
       const intent=replayIntent(run.run_id);
@@ -298,7 +322,9 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       pendingReplays.current.delete(intent.key);
       try { sessionStorage.removeItem(intent.key); } catch { /* Optional storage. */ }
       if(generation!==sessionGeneration.current)return;
-      preferredRunId.current = replayed.run_id;
+      selectRun(replayed);
+      setReplayReceipt(replayed);
+      setRunStatus('all'); setFilter(''); setRunPage(0);
       setSelectedRun(replayed);
 
       setWorkspace('runs');
@@ -346,8 +372,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         try { sessionStorage.removeItem(intent.key); } catch { /* Optional storage. */ }
         if(generation!==sessionGeneration.current)return;
         const run = confirmedRun;
-        preferredRunId.current = run.run_id;
-        setSelectedRun(run);
+        selectRun(run);
       }
 
 
@@ -406,6 +431,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
 
       {error && <div className="data-flow-notice" role="status">{error}</div>}
       {replayError && <div className="data-flow-notice data-flow-notice--error" role="alert">{replayError}</div>}
+      {replayReceipt && <div className="data-flow-notice" role="status">Replay accepted. Run {replayReceipt.run_id} is {selectedRun?.run_id===replayReceipt.run_id ? selectedRun.status : replayReceipt.status}. Follow its progress in Run evidence below. This does not publish data.</div>}
 
       <div className="data-flow-kpis" aria-label="Data-job telemetry summary">
         <article><span>Configured jobs</span><strong>{loading||error?'—':definitions.length}</strong></article>
@@ -432,12 +458,12 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
                 <thead><tr><th>Job</th><th>Source</th><th>Started</th><th>Quality</th><th>Status</th><th aria-label="Actions" /></tr></thead>
                 <tbody>
                   {pageRuns.map((run) => <tr key={run.run_id} className={selectedRun?.run_id === run.run_id ? 'is-selected' : ''}>
-                    <td><button className="data-flow-link" type="button" onClick={() => { preferredRunId.current = run.run_id; setSelectedRun(run); }}>{run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
+                    <td><button className="data-flow-link" type="button" onClick={() => selectRun(run)}>{run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
                     <td><span className="data-flow-source">{sourceStandard(run)}</span></td>
                     <td>{displayTime(run.started_at)}</td>
                     <td>{['rest-source-ingest','registered-source-ingest'].includes(run.job_type)?`${run.output_manifest?.counts?.records??'—'} acquired · validation not assessed`:<>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</>}</td>
                     <td><Status value={qualityStatus(run)} />{run.output_manifest?.publication?.status==='published' && <span className="data-flow-status">Published · receipt retained</span>}</td>
-                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={!!replayingId || !!definitionActionId || !!publishingId || replayAccessRejected || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
+                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={!!replayingId || !!definitionActionId || !!publishingId || replayAccessRejected || ['queued','running'].includes(run.status)}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
                   {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{error?'Run history could not be verified. Restore service access and refresh; retained runs may still exist.':runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
                 </tbody>

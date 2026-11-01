@@ -20,7 +20,7 @@
 .data-flow-card { min-width: 0; padding: 1rem; }
 .data-flow-quality { margin-bottom: 1rem; }
 .data-flow-quality__bar { height: .8rem; overflow: hidden; border-radius: 999px; background: #f2c7ca; }
-.data-flow-quality__bar span { display: block; height: 100%; background: var(--ui-success); transition: width .3s ease; }
+.data-flow-quality__bar span { display: block; height: 100%; background: var(--ui-success); transform-origin: left; transition: transform .3s ease; }
 .data-flow-quality__legend, .data-flow-quality__states { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: .7rem; color: var(--ui-muted); font-size: .85rem; }
 .data-flow-quality__legend span, .data-flow-quality__states span { display: inline-flex; align-items: center; gap: .35rem; }
 .data-flow-quality__swatch { width: .7rem; height: .7rem; border-radius: 50%; }
@@ -67,3 +67,9 @@
 .semantic-analysis-results th, .semantic-analysis-results td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; }
 .semantic-analysis-results th { background: var(--ui-surface); color: var(--ui-text); }
 .semantic-analysis-results details { margin: .75rem 0; }
+
+/* Native reporting sections can defer off-screen paint. Do not apply size
+   containment to D3 canvases or virtualized grids that measure their parents. */
+@supports (content-visibility: auto) {
+  .semantic-analysis-results > section { content-visibility: auto; contain-intrinsic-size: auto 28rem; }
+}

@@ -214,7 +214,17 @@ foreach ($service in $services) {
   $arguments = if ($service.Port) { "-m backend.depo_platform.windows_runtime uvicorn $($service.Module) --host $BindHost --port $($service.Port) --no-proxy-headers" } else { "-m backend.depo_platform.windows_runtime $($service.Module)" }
   $stdout = Join-Path $stateDir "$($service.Name).out.log"
   $stderr = Join-Path $stateDir "$($service.Name).err.log"
-  $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+  $bootstrapStdout = Join-Path $stateDir "$($service.Name).bootstrap.out.log"
+  $bootstrapStderr = Join-Path $stateDir "$($service.Name).bootstrap.err.log"
+  # Start-Process truncates redirected files. Preserve the previous launch's
+  # diagnostics before opening them again, including failed startup evidence.
+  $priorLogs = @($stdout, $stderr, $bootstrapStdout, $bootstrapStderr) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) -and (Get-Item -LiteralPath $_).Length -gt 0 }
+  if ($priorLogs.Count -gt 0) {
+    $archiveDir = Join-Path $stateDir ('archive/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
+    foreach ($priorLog in $priorLogs) { Copy-Item -LiteralPath $priorLog -Destination (Join-Path $archiveDir (Split-Path $priorLog -Leaf)) }
+  }
+  $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $bootstrapStdout -RedirectStandardError $bootstrapStderr -PassThru
   Write-Host "Launched '$($service.Name)' (PID $($process.Id)); readiness validation follows."
   # Roll back only processes launched by this invocation. Existing healthy
   # services are intentionally not part of a failed start attempt.
@@ -236,7 +246,7 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     $servicePidPath = Join-Path $stateDir "$($service.Name).pid"
     $servicePid = [int](Get-Content -LiteralPath $servicePidPath)
     if (-not (Get-Process -Id $servicePid -ErrorAction SilentlyContinue)) {
-      throw "DEPO service '$($service.Name)' exited before readiness (PID $servicePid). Inspect $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log for the startup exception. Increasing the startup timeout will not repair an exited process."
+      throw "DEPO service '$($service.Name)' exited before readiness (PID $servicePid). Inspect $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log and $stateDir\$($service.Name).bootstrap.err.log for the startup exception. Increasing the startup timeout will not repair an exited process."
     }
     try {
       # Liveness means a Python process exists; readiness also verifies every

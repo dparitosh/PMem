@@ -1,3 +1,5 @@
+import useRouteView from '../../app/useRouteView';
+const ONTOLOGY_VIEWS=['taxonomy','vocabulary','alignment','inference'];
 import SemanticSupport from "../../Components/SemanticSupport";
 import useOntologyImportTasks from "./hooks/useOntologyImportTasks";
 import { buildFallbackDictionaryFromTaxonomy, BRIDGE_SOURCE_KINDS, BRIDGE_TARGET_KINDS, inferBridgeSourceKind, collectBridgeSourceOptions, collectBridgeTargetOptions, normalizeBridgeMappingRow } from "./services/ontologyBridgePresentation.js";
@@ -89,7 +91,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
   const [bridgeMode, setBridgeMode] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('mode') === 'merge' ? 'merge' : 'instance');
-  const [activeView, setActiveView] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('view') === 'alignment' ? 'alignment' : 'taxonomy');
+  const [activeView, setActiveView] = useRouteView(ONTOLOGY_VIEWS,'taxonomy',undefined,'#/ontology');
   const [filter, setFilter] = useState('');
   const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsError, setMappingOptionsError] = useState(null);

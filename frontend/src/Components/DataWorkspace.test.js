@@ -30,3 +30,12 @@ test('unvisited panels do not initialize work, and visited settings remain mount
  fireEvent.click(screen.getByRole('tab',{name:'Analytics'}));expect(mounted).toHaveBeenCalledTimes(1);
  fireEvent.click(screen.getByRole('tab',{name:'Runs'}));fireEvent.click(screen.getByRole('tab',{name:'Analytics'}));expect(mounted).toHaveBeenCalledTimes(1);
 });
+
+test('history-driven tab changes move existing tab focus to the selected tab',()=>{
+ const tabs=[{id:'a',label:'First'},{id:'b',label:'Second'}];
+ const props={label:'Workspace',tabs,onChange:()=>{},children:{a:<p>A</p>,b:<p>B</p>}};
+ const {rerender}=render(<DataWorkspace {...props} active="a"/>);
+ screen.getByRole('tab',{name:'First'}).focus();
+ rerender(<DataWorkspace {...props} active="b"/>);
+ expect(screen.getByRole('tab',{name:'Second'})).toHaveFocus();
+});

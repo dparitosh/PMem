@@ -63,3 +63,15 @@ Managed local upgrades to 4d06355 and 4b15977 completed successfully with change
 Live Home → Graph → Home verification eventually restored the original motor requirement answer, labelled historical. Graph context did not display the Home turn. Initial restore took longer than the UI wait window; this validates eventual context recovery, not a bounded latency SLO. The optional graph-memory/approved-lesson demo remains separately unqualified.
 
 The event review Companion wiring exposed one further contract mismatch: ChatContext omitted reconciliation_id while frontend/router supported it. The model now accepts its bounded identifier and rejects simultaneous run/product/event selections. A regression exercises the actual Pydantic request schema rather than only mocked UI calls.
+
+## Final local acceptance update (supersedes deployment/navigation items above)
+
+Release `8a85fb7` is deployed locally through the normal updater with backups and unchanged environment hashes. The earlier undeployed-source and unexplained-navigation observations are historical: the scope-reset cause was corrected and eventual browser history restoration was observed. Restore latency remains unqualified.
+
+A temporary read-only browser session was denied execution identity and replay (HTTP 403), then read ontology health successfully (HTTP 200) without reconnecting. Replay targeted a nonexistent acceptance identifier and was rejected before enqueueing; the temporary session was disconnected. Evidence: workspace `outputs/live-readonly-replay-acceptance.json`.
+
+The isolated PostgreSQL transaction, semantic worker recovery and replay cohort completed: **7 passed in 38.17s**. Evidence: workspace `outputs/acceptance-replay-memory-final.log`. Test schemas were isolated from application records.
+
+Remaining acceptance boundaries: optional graph memory is disabled; no approved lesson exists in the selected AP242 scope; no live LLM or customer-environment acceptance was performed. Network/load latency, fresh-install and restore qualification are not established by these checks.
+
+Follow-up memory boundary verification: 23 governed-learning/continuity tests and 53 adapter/maintenance/limits/context tests passed. No runtime configuration or publication was changed. The demo runbook now documents the existing revision-scoped lesson flow and optional memory configuration prerequisites.

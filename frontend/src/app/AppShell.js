@@ -10,6 +10,7 @@ import {
   IxMenu,
   IxMenuItem,
 } from '@siemens/ix-react';
+import { prefetchPage } from './pageRegistry';
 import { navigationItems, pageLabel } from './navigation';
 import { getServiceAuthToken, wasBrowserSessionExpired } from '../services/serviceAuth';
 import RunRecoveryNotice from './RunRecoveryNotice';
@@ -48,6 +49,15 @@ export default function AppShell({
   const [accessRevision, setAccessRevision] = useState(0);
   const [accessMessage, setAccessMessage] = useState(() => wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : '');
   const accessRequest = useRef(null);
+  const previousPage = useRef(activePage);
+  useEffect(()=>{
+    if(previousPage.current===activePage)return;
+    previousPage.current=activePage;
+    const main=document.getElementById('main-content');
+    main?.focus?.({preventScroll:true});
+    const body=main?.querySelector('.depo-ix-page__body');
+    if(body)body.scrollTop=0;
+  },[activePage]);
   useEffect(() => () => { accessRequest.current?.abort(); accessRequest.current = null; }, []);
   const openAccess = () => {
     try { sessionStorage.setItem('depo:admin-tab', 'access'); } catch {}
@@ -185,6 +195,8 @@ export default function AppShell({
               key={item.id}
               icon={item.icon}
               active={item.id === activePage}
+              onPointerEnter={()=>prefetchPage(item.id)}
+              onFocus={()=>prefetchPage(item.id)}
               onClick={(event) => {
                 event.preventDefault();
                 if (item.id === 'home') onHome();
@@ -199,7 +211,7 @@ export default function AppShell({
         <IxContent id="main-content" tabIndex={-1} className="depo-ix-content">
 
           <div className="depo-ix-page">
-            {accessMessage && <div aria-live="polite" className="depo-alert">{accessMessage}</div>}
+            <div aria-live="polite" className="depo-alert depo-access-status">{accessMessage || 'Application access status'}</div>
             <IxContentHeader
               headerTitle={pageLabel(activePage)}
               headerSubtitle={activePage === 'home' ? 'Digital thread workspace' : undefined}

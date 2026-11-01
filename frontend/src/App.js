@@ -65,15 +65,7 @@ function persistActivePage(value) {
 
 function PageFallback() {
   return (
-    <div style={{
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: '#52606d',
-      fontSize: 13,
-      fontWeight: 600,
-    }}>
+    <div className="depo-page-loading" role="status" aria-busy="true">
       Loading page...
     </div>
   );

@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
+  'backend/depo_platform/service_log_stream.py', 'frontend/src/app/useRouteView.js',
   'infra/postgres/migrations/017_speed_event_pagination.sql', 'backend/data_pipeline_service/connector_semantics.py', 'frontend/src/Components/EventReviewPanel.js',
   'Setup-DEPO.cmd', 'infra/windows/setup-depo.ps1', 'infra/windows/install-checkpoints.ps1',
   'docs/installation/OPERATOR_REFERENCE.md',

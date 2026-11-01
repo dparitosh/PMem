@@ -1,10 +1,12 @@
 // Regression probes converted from the confirmed workflow audit defects.
 import React from 'react';
 import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {vi,test,expect} from 'vitest';
+import {vi,test,expect,beforeEach} from 'vitest';
+beforeEach(()=>window.history.replaceState(null,'','#/data-flow'));
 import DataFlowPage from './DataFlowPage';
 import {dataPipelineAPI,metadataRegistryAPI} from '../services/apiClient';
 vi.mock('../services/apiClient',()=>({metadataRegistryAPI:{list:vi.fn()},dataPipelineAPI:{
+ executionIdentity:vi.fn().mockResolvedValue({data:{actor:'audit-executor'}}),
  health:vi.fn().mockResolvedValue({data:{status:'configured'}}),
  telemetry:vi.fn().mockResolvedValue({data:{durable_job_telemetry:{runs:1}}}),
  runs:vi.fn().mockResolvedValue({data:{runs:[{run_id:'audit-run',job_id:'audit-job',status:'completed'}]}}),
@@ -21,10 +23,10 @@ test('Data Flow refreshes immediately after session replacement',async()=>{
 
 test('rapid replay submission creates only one request',async()=>{
  render(<DataFlowPage/>);await screen.findByText('configured');
- const button=screen.getByRole('button',{name:'Replay',exact:true});
+ const button=await screen.findByRole('button',{name:'Replay',exact:true});
  const before=dataPipelineAPI.replay.mock.calls.length;
  act(()=>{fireEvent.click(button);fireEvent.click(button);});
- expect(dataPipelineAPI.replay.mock.calls.length-before).toBe(1);
+ await waitFor(()=>expect(dataPipelineAPI.replay.mock.calls.length-before).toBe(1));
 });
 
 test('a late approved-release response cannot restore old session choices',async()=>{
@@ -40,10 +42,12 @@ test('a late approved-release response cannot restore old session choices',async
 test('an ambiguous replay retry reuses its submission identity',async()=>{
  dataPipelineAPI.replay.mockRejectedValueOnce(new Error('response lost'));
  render(<DataFlowPage/>);await screen.findByText('configured');
- fireEvent.click(screen.getByRole('button',{name:'Replay',exact:true}));
+ fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
  await screen.findByText(/response lost/);
  const first=dataPipelineAPI.replay.mock.calls.at(-1)[1].idempotency_key;
- fireEvent.click(screen.getByRole('button',{name:'Replay',exact:true}));
+ const before=dataPipelineAPI.replay.mock.calls.length;
+ fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
+ await waitFor(()=>expect(dataPipelineAPI.replay.mock.calls.length).toBe(before+1));
  expect(dataPipelineAPI.replay.mock.calls.at(-1)[1].idempotency_key).toBe(first);
 });
 

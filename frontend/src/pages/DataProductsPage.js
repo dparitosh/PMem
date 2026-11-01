@@ -1,3 +1,4 @@
+import useRouteView from '../app/useRouteView';
 import SemanticSupport from '../Components/SemanticSupport';
 import React, { useCallback, useEffect, useMemo, useRef, useState, lazy } from 'react';
 import { IxButton } from '@siemens/ix-react';
@@ -29,10 +30,15 @@ const columns = [
   { field: 'status', headerName: 'Delivery status', flex: 1.2 },
 ];
 
+const PRODUCT_VIEWS=['analytics','prepare','library','create','governance'];
+const CATALOG_VIEWS=['sources','analytics','library','create','governance'];
+const LEGACY_VIEWS={portfolio:'library',structural:'create',pipeline:'create'};
+
 export default function DataProductsPage({ mode = 'products', onCompanionRecordChange }) {
   const catalog = mode === 'catalog';
   const productColumns=useMemo(()=>columns.map(column=>column.field==='status'?{...column,headerName:catalog?'Catalog presence':'Delivery status',valueFormatter:({value})=>value||(catalog?'Registered':'Not recorded')}:column),[catalog]);
-  const [workspace,setWorkspace]=useState(()=>{const query=new URLSearchParams(window.location.hash.split('?')[1]||'');return mode==='catalog'?'sources':query.get('view')==='portfolio'?'library':query.has('view')||query.has('run_id')?'create':'analytics';});
+  const defaultWorkspace=useCallback(()=>catalog?'sources':new URLSearchParams(window.location.hash.split('?')[1]||'').has('run_id')?'create':'analytics',[catalog]);
+  const [workspace,setWorkspace,setLocalWorkspace]=useRouteView(catalog?CATALOG_VIEWS:PRODUCT_VIEWS,defaultWorkspace,LEGACY_VIEWS,catalog?'#/catalog':'#/data-products');
   const title = catalog ? 'Data Catalog' : 'Data Products';
   const { ontologies, error: ontologyError, warning: ontologyWarning, loading: ontologyLoading } = useOntologies();
   const drafts = (ontologies || []).filter(ontology => ontology.data_product_draft?.contract);
@@ -61,7 +67,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const bindEvidence=kind=>node=>{const ref=kind==='structural'?structuralRef:pipelineRef;ref.current=node;if(node&&pendingEvidence.current===kind){node.open=true;node.scrollIntoView?.({behavior:'smooth',block:'start'});pendingEvidence.current=null;}};
   const revealEvidence=kind=>{
     const target=kind==='structural'?structuralRef.current:pipelineRef.current;
-    pendingEvidence.current=kind;setWorkspace('create');
+    pendingEvidence.current=kind;setLocalWorkspace('create');
     if(target){target.open=true;target.scrollIntoView?.({behavior:'smooth',block:'start'});pendingEvidence.current=null;}
   };
   const service = catalog ? 'catalog' : 'dataProducts';
@@ -70,11 +76,10 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   useEffect(()=>{
     const query=new URLSearchParams(window.location.hash.split('?')[1]||'');
     if(query.get('ontology_id'))setSelectedDraft(query.get('ontology_id'));
-    setWorkspace(catalog?'sources':query.get('view')==='portfolio'?'library':query.has('view')||query.has('run_id')?'create':'analytics');
     if(catalog)return;
     const reveal=()=>{const view=new URLSearchParams(window.location.hash.split('?')[1]||'').get('view');if(['structural','pipeline'].includes(view))revealEvidence(view);};
-    reveal();window.addEventListener('hashchange',reveal);
-    return()=>window.removeEventListener('hashchange',reveal);
+    reveal();window.addEventListener('hashchange',reveal);window.addEventListener('popstate',reveal);
+    return()=>{window.removeEventListener('hashchange',reveal);window.removeEventListener('popstate',reveal);};
   },[catalog]);
 
   const load = useCallback(async (background = false) => {
@@ -132,12 +137,15 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     let active = true;
     let sequence = 0;
     let request = null;
-    const loadRunDraft = async () => {
+    let requestedRun;
+    const loadRunDraft = async (force = false) => {
+      const runId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('run_id');
+      if(!force && requestedRun===runId)return;
+      requestedRun=runId;
       const current = ++sequence;
       request?.abort();
       const controller = new AbortController(); request = controller;
       setRunDraft(null); setRunInputs(null); setAnalyticsProjection(null); setRunDraftError('');
-      const runId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('run_id');
       if (catalog || !runId) return;
       try {
         const response = await dataPipelineAPI.getRun(runId, { signal: controller.signal, timeout: 15000 });
@@ -159,12 +167,14 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
         }
       } catch (error) { if (active && current === sequence) setRunDraftError(apiErrorMessage(error, 'Retained run evidence is unavailable.')); }
     };
-    const refresh = () => { loadRunDraft(); };
+    const refresh = () => { loadRunDraft(true); };
+    const routeChanged = () => { loadRunDraft(); };
     loadRunDraft();
-    window.addEventListener('hashchange', refresh);
+    window.addEventListener('hashchange', routeChanged);
+    window.addEventListener('popstate', routeChanged);
     const sessionEvents = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
     sessionEvents.forEach(event => window.addEventListener(event, refresh));
-    return () => { active = false; sequence += 1; request?.abort(); window.removeEventListener('hashchange', refresh); sessionEvents.forEach(event => window.removeEventListener(event, refresh)); };
+    return () => { active = false; sequence += 1; request?.abort(); window.removeEventListener('hashchange', routeChanged);window.removeEventListener('popstate', routeChanged); sessionEvents.forEach(event => window.removeEventListener(event, refresh)); };
   }, [catalog]);
 
   async function showDetail(key, background = false) {

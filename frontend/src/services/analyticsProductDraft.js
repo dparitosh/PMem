@@ -33,7 +33,7 @@ export function productDraftFromRun(run) {
   if (['schema-design-evidence', 'pipeline-evidence'].includes(existing?.product_kind) && existing.artifacts?.length) return {
     ...existing,
     sources: [{run_id: run.run_id, job_id: run.job_id, job_type: run.job_type},
-      ...(existing.sources || []).filter(source => (source?.artifact_id || source?.ontology_id || source?.run_id) && source.run_id !== run.run_id)],
+      ...(existing.sources || []).filter(source => (source?.artifact_id || source?.ontology_id || source?.run_id || (typeof source?.schema==='string' && source.schema.trim())) && source.run_id !== run.run_id)],
   };
   const ids = Object.values(output.partition_artifacts || {}).filter(value => typeof value === 'string' && value.trim());
   if (!ids.length) throw new Error('The run has no retained output artifacts available for packaging.');

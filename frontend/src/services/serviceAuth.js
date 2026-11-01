@@ -1,15 +1,17 @@
 // Raw API keys are memory-only. Only bounded, revocable delegated sessions
 // survive same-tab refresh; no credentials come from Vite build variables.
+import { createSubmissionId } from '../utils/submissionId';
 import { config, buildSemanticServiceUrl } from '../config';
 import { operationForUrl } from './serviceContractRegistry';
 const profileTokens = new Map();
 let browserAccessExpired = false;
+let connectionStartedAt = Date.now();
 export function wasBrowserSessionExpired() { return browserAccessExpired; }
 export function setCredentialProfile(profile, value) {
   if (!/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile)) throw new Error('Invalid credential profile');
   const token = String(value || '').trim();
   const previous = profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || '');
-  if (previous !== token) clearPendingPublications();
+  if (previous !== token) { connectionStartedAt=Date.now(); clearPendingPublications(); }
   if (profile === 'GRAPH_READ_TOKEN') {
     if (browserSession && token !== browserSession.token) expireBrowserSession(browserSession.token);
     serviceToken = token; if (token) browserAccessExpired = false; persistBrowserSession(); return;
@@ -47,6 +49,23 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', activity);
   document.addEventListener('visibilitychange', activity);
 }
+const SESSION_SYNC_KEY = 'depo.sessionSignal.v1';
+function publishSessionSignal(action, sessionId = '') {
+  try {
+    window.localStorage.setItem(SESSION_SYNC_KEY, JSON.stringify({action, sessionId,
+      scope:connectionScope(), sentAt:Date.now(), nonce:createSubmissionId()}));
+  } catch { /* Restricted storage keeps per-tab expiry/revocation enforcement. */ }
+}
+if(typeof window!=='undefined')window.addEventListener('storage', event => {
+  if(event.key!==SESSION_SYNC_KEY || !event.newValue || event.newValue.length>8192)return;
+  try {
+    const message=JSON.parse(event.newValue);
+    if(message.scope!==connectionScope() || !Number.isFinite(message.sentAt) || message.sentAt<connectionStartedAt)return;
+    if(message.action==='logout')clearServiceAuthToken(false);
+    else if(message.action==='expired' && browserSession?.syncId===message.sessionId)
+      expireBrowserSession(browserSession.token,false);
+  } catch { /* Ignore malformed signals; never accept credentials from another tab. */ }
+});
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
 const BROWSER_ACCESS_PREFERENCES_KEY = 'depo.browserAccessPreferences.v1';
 function connectionScope() {
@@ -99,6 +118,7 @@ function restoreBrowserSession() {
         !Number.isFinite(saved.deadline) || saved.deadline <= Date.now() || saved.deadline > Date.now() + 15 * 60 * 1000 || !Array.isArray(saved.profiles) || saved.profiles.length > 32 ||
         !saved.profiles.includes('GRAPH_READ_TOKEN') || saved.profiles.some(profile => typeof profile !== 'string' || !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid stored session');
     setBrowserSessionExpiry(saved.token, new Date(saved.deadline).toISOString(), saved.absoluteDeadline ? new Date(saved.absoluteDeadline).toISOString() : null);
+    if(typeof saved.syncId==='string' && /^[A-Za-z0-9._:-]{1,128}$/.test(saved.syncId))browserSession.syncId=saved.syncId;
     gatewaySubscriptionKey = typeof saved.subscription === 'string' && saved.subscription.length <= 4096 ? saved.subscription : '';
     serviceToken = saved.token;
     saved.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, saved.token));
@@ -123,8 +143,9 @@ function checkBrowserSessionExpiry() {
   if (browserSession && Date.now() >= browserSession.deadline) expireBrowserSession(browserSession.token);
 }
 
-export function expireBrowserSession(token) {
+export function expireBrowserSession(token, propagate = true) {
   if (!browserSession || browserSession.token !== token) return;
+  if(propagate)publishSessionSignal('expired',browserSession.syncId);
   browserAccessExpired = true;
   clearPendingPublications();
   if (serviceToken === token) serviceToken = '';
@@ -152,6 +173,7 @@ export function installBrowserSession(body, subscription = '') {
   if (!Array.isArray(body.profiles) || body.profiles.length > 32 || !body.profiles.includes('GRAPH_READ_TOKEN') ||
       body.profiles.some(profile => !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid delegated scopes');
   setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
+  connectionStartedAt=Date.now();
   serviceToken = body.token;
   profileTokens.clear();
   body.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, body.token));
@@ -167,7 +189,8 @@ export function installBrowserSession(body, subscription = '') {
 export function setBrowserSessionExpiry(token, expiresAt, absoluteExpiresAt = null) {
   const { deadline, absoluteDeadline } = validateSessionExpiry(token, expiresAt, absoluteExpiresAt);
   clearTimeout(expiryTimer);
-  browserSession = { token, deadline, absoluteDeadline };
+  const syncId=browserSession?.token===token?browserSession.syncId:createSubmissionId();
+  browserSession = { token, deadline, absoluteDeadline, syncId };
   expiryTimer = setTimeout(() => expireBrowserSession(token), Math.min(deadline - Date.now(), 2147483647));
   clearTimeout(renewalTimer);
   if (absoluteDeadline && absoluteDeadline > deadline) {
@@ -230,7 +253,8 @@ export function setServiceAuthToken(value) {
   setCredentialProfile('GRAPH_READ_TOKEN', value);
 }
 
-export function clearServiceAuthToken() {
+export function clearServiceAuthToken(propagate = true) {
+  if(propagate)publishSessionSignal('logout');
   browserAccessExpired = false;
   clearPendingPublications();
   clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;

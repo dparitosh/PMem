@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 REQUIRED_MODULES = (
+    'backend/depo_platform/service_log_stream.py',
     'backend/data_pipeline_service/connector_semantics.py',
     'backend/data_pipeline_service/speed_path.py', 'backend/data_pipeline_service/speed_router.py',
     'backend/agentic_service/companion_memory.py',

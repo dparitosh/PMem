@@ -11,6 +11,8 @@ import os
 import uuid
 import re
 import logging
+import json
+import time
 from contextlib import asynccontextmanager
 from collections.abc import Collection
 from typing import AsyncIterator, Callable
@@ -28,6 +30,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         supplied_id = request.headers.get("X-Request-ID", "")
         request_id = supplied_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", supplied_id) else str(uuid.uuid4())
         request.state.request_id = request_id
+        started = time.monotonic()
         try:
             response = await call_next(request)
         except Exception:
@@ -37,6 +40,17 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 'request_id': request_id,
             })
         response.headers["X-Request-ID"] = request_id
+        elapsed_ms = round((time.monotonic() - started) * 1000, 2)
+        # Use the route template, never raw URLs, query strings, bodies or headers.
+        # Failures and writes are operational evidence; routine reads stay DEBUG.
+        route = getattr(request.scope.get('route'), 'path', '<unmatched>')
+        record = {'event': 'http_request_outcome', 'request_id': request_id,
+                  'method': request.method, 'route': route,
+                  'status': response.status_code, 'response_headers_ms': elapsed_ms}
+        level = (logging.ERROR if response.status_code >= 500 else logging.WARNING
+                 if response.status_code >= 400 else logging.INFO
+                 if request.method not in {'GET', 'HEAD', 'OPTIONS'} or elapsed_ms >= 5000 else logging.DEBUG)
+        logging.getLogger(__name__).log(level, json.dumps(record, ensure_ascii=True))
         return response
 
 
