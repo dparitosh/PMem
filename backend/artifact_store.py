@@ -180,4 +180,22 @@ class ArtifactStore:
             return {"artifact_id": artifact_id, "bytes_deleted": int(metadata.get("size") or 0)}
 
 
+    def resolve_usage(self, artifact_id, usage_id):
+        """Verify a run-specific usage receipt without rewriting deduplicated metadata."""
+        import re
+        if not isinstance(usage_id,str) or not re.fullmatch('artifact-usage:[0-9a-f]{64}',usage_id):
+            raise ValueError('Invalid artifact usage identity')
+        metadata,content=self.resolve(artifact_id)
+        path=content.parent / ('usage-'+usage_id.split(':',1)[1]+'.json')
+        if path.is_symlink() or not path.is_file() or path.stat().st_size>65536:
+            raise ValueError('Artifact usage evidence is unavailable')
+        value=json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(value,dict) or value.get('usage_id')!=usage_id or value.get('artifact_id')!=artifact_id:
+            raise ValueError('Artifact usage ownership differs')
+        unsigned={key:item for key,item in value.items() if key!='usage_id'}
+        digest=hashlib.sha256(json.dumps(unsigned,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
+        if usage_id!='artifact-usage:'+digest:raise ValueError('Artifact usage integrity failed')
+        return value,content
+
+
 artifact_store = ArtifactStore()

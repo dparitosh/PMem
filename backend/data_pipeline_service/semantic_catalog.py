@@ -111,7 +111,19 @@ def analysis_result(run_id: str):
         if record.get('status')!='completed' or record.get('job_type') not in {'semantic-dataset-analysis','semantic-business-mart','graph-source-snapshot'}:
             raise HTTPException(409,'A completed semantic analysis result is required')
         output=record.get('output_manifest') or {}
-        metadata,path=ArtifactStore().resolve(output.get('result_artifact_id',''))
+        store=ArtifactStore()
+        identifier=output.get('result_artifact_id','')
+        metadata,path=store.resolve(identifier)
+        usage_id=output.get('result_artifact_usage_id')
+        if not usage_id and (metadata.get('kind')!='data-job-output' or (metadata.get('provenance') or {}).get('run_id')!=run_id):
+            # Older manifests predate usage references; derive the exact server-owned
+            # receipt identity. Never scan usages or accept another run's receipt.
+            import hashlib
+            usage={'artifact_id':identifier,'filename':f"{record['job_id']}-{record['job_version']}-{run_id}-result.json",
+                   'kind':'data-job-output','media_type':'application/json',
+                   'provenance':{'run_id':run_id,'job_id':record['job_id'],'job_version':record['job_version'],'correlation_id':record.get('correlation_id')}}
+            usage_id='artifact-usage:'+hashlib.sha256(json.dumps(usage,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
+        if usage_id:metadata,path=store.resolve_usage(identifier,usage_id)
         if metadata.get('kind')!='data-job-output' or (metadata.get('provenance') or {}).get('run_id')!=run_id:
             raise ValueError('Result ownership could not be verified')
         if path.stat().st_size>8*1024*1024:raise ValueError('Result exceeds the display limit')

@@ -261,6 +261,7 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         "contract": contracts.get(record["job_type"], "quality-summary-v1"),
         "result_digest": _digest(result),
         "result_artifact_id": result_artifact["artifact_id"],
+        "result_artifact_usage_id": result_artifact.get("usage_id"),
         "counts": dict(result.get("counts") or result.get("quality") or {}),
         "partition_artifacts": dict(result.get("partition_artifacts") or {}),
     }
