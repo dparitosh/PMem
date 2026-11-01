@@ -61,3 +61,9 @@
 .data-flow-kpis article { display: flex; flex-direction: column; min-width: 0; }
 .data-flow-kpis article > span:first-child { min-height: 2.8em; }
 .data-flow-kpis article > strong { line-height: 1.4; margin-top: .25rem; }
+
+.semantic-analysis-results { margin-top: 1.25rem; padding: 1rem 0; border-top: 1px solid var(--ui-border); min-width: 0; }
+.semantic-analysis-results table { width: 100%; border-collapse: collapse; margin: .75rem 0; table-layout: fixed; }
+.semantic-analysis-results th, .semantic-analysis-results td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; }
+.semantic-analysis-results th { background: var(--ui-surface); color: var(--ui-text); }
+.semantic-analysis-results details { margin: .75rem 0; }

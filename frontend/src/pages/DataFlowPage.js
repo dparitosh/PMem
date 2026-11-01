@@ -416,7 +416,6 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         <aside className="data-flow-card data-flow-card--evidence" aria-live="polite">
           <h2>Run evidence</h2>
           {selectedRun ? <>
-            <SemanticAnalysisResult run={selectedRun}/>
             <dl className="data-flow-evidence">
               <dt>Run ID</dt><dd>{selectedRun.run_id}</dd>{selectedRun.replay_of && <><dt>Replay of</dt><dd>{selectedRun.replay_of}</dd></>}
               <dt>Source standard</dt><dd>{sourceStandard(selectedRun)}</dd>
@@ -447,6 +446,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}
         </aside>
       </div>
+      <SemanticAnalysisResult run={selectedRun}/>
         </>,pipelines:<><div className="data-cockpit__guidance"><div><strong>Manage versioned pipeline jobs</strong><p>Approve a definition, run it with retained inputs, then schedule recurring processing. Import source inputs before the first execution.</p></div><a href="#/import">Import source data</a></div>
       <article className="data-flow-card data-flow-card--definitions">
         <div className="data-flow-card__heading">
