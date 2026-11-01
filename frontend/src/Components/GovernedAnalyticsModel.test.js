@@ -19,7 +19,7 @@ test('snapshot submission pins publication and rapid clicks submit once',async()
  api.definitions.mockResolvedValue({data:{jobs:[{job_id:'review',version:'1.0.0',name:'Approved native analysis',job_type:'graph-source-snapshot',lifecycle_state:'approved',enabled:true}]}});
  let complete;api.runDefinition.mockImplementation(()=>new Promise(resolve=>{complete=resolve;}));
  render(<GraphSnapshotSource/>);fireEvent.click(screen.getByText('Use a published graph as reporting data'));
- await screen.findByRole('option',{name:'Business graph'});fireEvent.change(screen.getByLabelText('Published graph'),{target:{value:'source'}});
+ await screen.findByRole('option',{name:'Business graph · source'});fireEvent.change(screen.getByLabelText('Published graph'),{target:{value:'source'}});
  const button=screen.getByRole('button',{name:'Create registered snapshot with worker'});fireEvent.click(button);fireEvent.click(button);
  expect(api.runDefinition).toHaveBeenCalledTimes(1);expect(api.runDefinition.mock.calls[0][2]).toMatchObject({ontology_id:'source',graph_publication_id:'published-7',algorithm:'graph-snapshot'});
  await act(async()=>complete({data:{run_manifest:{run_id:'retained'}}}));expect(screen.getByRole('link',{name:'Inspect snapshot run'})).toHaveAttribute('href','#/data-flow?run_id=retained');

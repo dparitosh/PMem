@@ -32,3 +32,30 @@ def test_read_only_analysis_cannot_execute_new_write_operations():
     from backend.data_pipeline_service.semantic_analysis import analyse
     for operation in ('business-mart','graph-snapshot'):
         with pytest.raises(ValueError):analyse({'algorithm':operation,'dataset_id':'a'*64,'class_iri':'urn:Part'})
+
+def test_export_uses_transaction_strings_and_preserves_literal_datatypes():
+    from contextlib import nullcontext
+    from backend.graph_service import analytics_snapshot as export
+    from rdflib import Graph,URIRef,Literal
+    class Rows:
+        def __init__(self,rows):self.rows=rows
+        def data(self):return self.rows
+    class Tx:
+        def run(self,query,**kwargs):
+            assert isinstance(query,str),'Explicit transaction.run requires a query string'
+            if 'OntologyPublication' in query:return Rows([{'publication_id':'published','artifact_sha256':None}])
+            if 'n.rdf_types' in query:return Rows([{'iri':'urn:part','kind':'individual','types':['urn:Part'],'properties':'{"urn:mass":[{"value":"1.50","datatype":"http://www.w3.org/2001/XMLSchema#decimal","language":null}]}'}])
+            return Rows([])
+        def commit(self):pass
+        def rollback(self):pass
+    class Session:
+        def __enter__(self):return self
+        def __exit__(self,*args):pass
+        def begin_transaction(self,**kwargs):assert kwargs['timeout']==25;return Tx()
+    class Driver(Session):
+        def session(self,**kwargs):return Session()
+    with patch.object(export,'projection_access',return_value=nullcontext()),patch.object(export.publisher,'_driver',return_value=Driver()):
+        result=export.projection_snapshot('source')
+        graph=Graph().parse(data=result['content'],format='nt')
+        assert len(graph)==2
+        assert (URIRef('urn:part'),URIRef('urn:mass'),Literal('1.50',datatype=URIRef('http://www.w3.org/2001/XMLSchema#decimal'))) in graph
