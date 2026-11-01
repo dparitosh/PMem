@@ -86,3 +86,13 @@ test('late success after navigation retains a recoverable run receipt without up
  await act(async()=>{finishSubmission({data:{run_manifest:{run_id:'recover-after-navigation'}}});});
  expect(JSON.parse(sessionStorage.getItem('depo-semantic-data-task'))).toEqual(expect.objectContaining({run_id:'recover-after-navigation',previousConnection:true}));
 });
+
+ test('prepared snapshots show source versions and separate snapshot identities',async()=>{
+ api.semanticDatasets.mockResolvedValue({data:{datasets:[
+ {dataset_id:'a'.repeat(64),name:'Parts',source_version:{version:'1.0.0'},counts:{entities:2}},
+ {dataset_id:'b'.repeat(64),name:'Parts',source_version:{version:'1.0.1'},counts:{entities:2}}
+ ]}});
+ render(<SemanticDataWorkbench/>);
+ expect(await screen.findByRole('option',{name:/Parts · source 1.0.0 · snapshot aaaaaaaa/})).toBeInTheDocument();
+ expect(screen.getByRole('option',{name:/Parts · source 1.0.1 · snapshot bbbbbbbb/})).toBeInTheDocument();
+ });
