@@ -30,3 +30,13 @@
 - Namespace choices now show entity-type namespaces only, one choice per namespace; stored aliases remain retained. Data Flow explicitly labels Pipeline API and Spark engine separately and clears stale health after failed reads.
 - Focused checks: 21 frontend tests and 16 publication/package/contract tests pass. Production build passed before deployment.
 - Test artifacts/products are explicitly labelled LOCAL TEST ONLY and retained for audit. They do not certify customer data, full data marts or domain KPI formulas.
+
+## Deployment and live catalog closure
+
+Release `e68e13d` was deployed through the standard updater with backups at `outputs/PMem-backup-e68e13d-20261101-070414`. All ten service endpoints and central browser-session checks passed. The environment-file hash remained unchanged. Migration 015 and indexes were verified; database servers and prior publications were preserved.
+
+Retried the existing package through its authorized retry-catalog endpoint after the fix. Product `local-acceptance-numeric-evidence-20261101:1.0.0` is now published and listed as latest 1.0.0 in the live catalog, with a readable manifest. Browser Product portfolio visibly shows one retained package and zero pending deliveries. Its name explicitly says LOCAL TEST ONLY. This closes the live deterministic fixture-to-package/catalog acceptance path, not customer business validation.
+
+Two simultaneous authorized replay requests were serialized: an overlapping call returned 409, and retry with the same idempotency key returned the completed run `e0b073c0-0676-56ed-87cf-cd05e867d9fe`. Recovery/replay/publication-response-loss suites passed 55 tests. This is not a claim of killing a live worker mid-transaction.
+
+Remaining work is explicit: retained-RDF upload/reference selection and live graph snapshot registration UX; live forced-worker interruption and slow-network write acceptance; customer-specific KPI models, warehouse joins/unit policies and customer-environment/LLM acceptance. No full dimensional mart was created by the bounded dimension preview.
