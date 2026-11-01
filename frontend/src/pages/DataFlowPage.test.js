@@ -174,3 +174,15 @@ test('renders only 25 loaded run rows per page while retaining all loaded eviden
  fireEvent.click(screen.getByRole('button',{name:'Next runs'}));expect(screen.getByRole('button',{name:'job-25',exact:true})).toBeVisible();
  expect(screen.queryByRole('button',{name:'job-0',exact:true})).not.toBeInTheDocument();
 });
+
+
+test('changing a run deep link clears old evidence while the new response is pending',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ window.location.hash='#/data-flow';render(<DataFlowPage/>);
+ await screen.findByText('Run ID');
+ let resolve;dataPipelineAPI.runs.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+ window.location.hash='#/data-flow?run_id=another';fireEvent(window,new Event('hashchange'));
+ await waitFor(()=>expect(screen.queryByText('Run ID')).not.toBeInTheDocument());
+ resolve({data:{runs:[{run_id:'another',status:'completed'}]}});
+ await screen.findByText('another');window.location.hash='';
+});

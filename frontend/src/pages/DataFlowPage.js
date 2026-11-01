@@ -224,6 +224,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     const routeChanged=()=>{
       if(!window.location.hash.startsWith('#/data-flow'))return;
       preferredRunId.current='';loadSequence.current+=1;loadInFlight.current=false;
+      setSelectedRun(null);setReplayError('');
       load({initial:true});
     };
     window.addEventListener('hashchange',routeChanged);
