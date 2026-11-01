@@ -64,3 +64,7 @@ registry.register("semantic-dataset-analysis", JobHandler("semantic-analysis-pla
 
 from .semantic_configuration import execute_review
 registry.register("semantic-source-review", JobHandler("semantic-dataset-reference-v1", "semantic-refresh-assessment-v1", execute_review))
+
+from .semantic_analysis import execute_business_mart,execute_graph_snapshot
+registry.register('semantic-business-mart',JobHandler('approved-business-model-v1','semantic-analysis-v1',execute_business_mart))
+registry.register('graph-source-snapshot',JobHandler('published-graph-selection-v1','semantic-analysis-v1',execute_graph_snapshot))

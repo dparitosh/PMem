@@ -462,6 +462,13 @@ export const qifAPI = {
 // telemetry and does not grant graph write authority.
 export const dataPipelineAPI = {
   semanticChangeAssessment: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/change-assessment`),options),
+  graphSnapshotSources: (options={}) => apiClient.get(buildUrl('/api/v1/graph/analytics/sources'),options),
+  analyticsModels: (dataset_id,options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/models'),{...options,params:{dataset_id}}),
+  saveAnalyticsModel: (payload,approval) => apiClient.post(buildUrl('/api/v1/pipeline/semantic/models'),{...payload,...approval}),
+  approveAnalyticsModel: (id,approval) => apiClient.post(buildUrl(`/api/v1/pipeline/semantic/models/${encodeURIComponent(id)}/approve`),approval),
+  analyticsMembers: (id,class_iri,search='',options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/members`),{...options,params:{class_iri,search}}),
+  analyticsValues: (id,class_iri,property_iri,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/values`),{...options,params:{class_iri,property_iri}}),
+  martRows: (id,table,offset=0,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/marts/${encodeURIComponent(id)}/rows`),{...options,params:{table,offset}}),
   semanticSources: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/sources'),{...options,params:{offset}}),
   semanticDatasets: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/datasets'),{...options,params:{offset}}),
   semanticSchema: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}`),options),

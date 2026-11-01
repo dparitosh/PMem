@@ -182,3 +182,21 @@ def ontology_neighborhood(ontology_id: str, iri: str, max_hops: int = 3, limit: 
     except Exception as exc:
         logger.exception("Graph neighborhood failed")
         raise HTTPException(status_code=503, detail="Graph neighborhood failed; check service logs using X-Request-ID") from exc
+
+@router.get('/analytics/sources',dependencies=[Depends(graph_read_identity)])
+def analytics_snapshot_sources():
+    from .analytics_snapshot import snapshot_scopes
+    try:
+        rows=snapshot_scopes();return {'sources':rows[:200],'limited':len(rows)>200}
+    except Exception as exc:
+        logger.exception('Published graph discovery failed')
+        raise HTTPException(503,'Published graph sources are unavailable') from exc
+
+@router.get('/analytics/snapshot/{ontology_id}',dependencies=[Depends(graph_read_identity)])
+def analytics_snapshot(ontology_id: str,namespace: str=Query('',max_length=800)):
+    from .analytics_snapshot import projection_snapshot
+    try:return projection_snapshot(ontology_id,namespace)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from None
+    except Exception as exc:
+        logger.exception('Published graph snapshot failed')
+        raise HTTPException(503,'Snapshot unavailable; graph publication or service recovery may be active') from exc

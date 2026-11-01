@@ -89,9 +89,24 @@ def analyse(payload, *, preview=False):
 
 
 def execute_analysis(runner,payload,*,correlation_id):
-    result=analyse(payload)
+    return retain_result(analyse(payload),payload,correlation_id,'semantic-dataset-analysis')
+
+
+def execute_business_mart(runner,payload,*,correlation_id):
+    from .business_mart import materialize_mart
+    if payload.get('algorithm')!='business-mart':raise ValueError('Choose the approved business-mart operation')
+    return retain_result(materialize_mart(payload),payload,correlation_id,'semantic-business-mart')
+
+
+def execute_graph_snapshot(runner,payload,*,correlation_id):
+    from .graph_snapshot import register_graph_snapshot
+    if payload.get('algorithm')!='graph-snapshot':raise ValueError('Choose the approved graph-snapshot operation')
+    return retain_result(register_graph_snapshot(payload,correlation_id),payload,correlation_id,'graph-source-snapshot')
+
+
+def retain_result(result,payload,correlation_id,job_type):
     artifact=ArtifactStore().ingest_bytes(json.dumps(result,default=str,sort_keys=True).encode(),filename='semantic-analysis.json',kind='semantic-analysis',media_type='application/json',provenance={'dataset_id':result['dataset_id'],'correlation_id':correlation_id})
-    return {**result,'status':'completed','job_type':'semantic-dataset-analysis','counts':{'entities':result['population_entities'],'result_rows':len(result['rows'])},
+    output = {**result,'status':'completed','job_type':job_type,'counts':{'entities':result['population_entities'],'result_rows':len(result['rows'])},
             'partition_artifacts':{'accepted':artifact['artifact_id']},
             'data_product_draft':{'contract':'semantic-analysis-product-v1','name':payload.get('name') or result['algorithm'],
               'configuration_id':result.get('configuration_id'),'configuration_context':result.get('configuration_context'),
@@ -101,3 +116,12 @@ def execute_analysis(runner,payload,*,correlation_id):
                           'configuration_id':result.get('configuration_id'),'configuration_context':result.get('configuration_context')}],
               'artifacts':[{'artifact_id':artifact['artifact_id'],'kind':'analysis'},{'artifact_id':result['source']['artifact_id'],'kind':'rdf-source'}],
               'publication_requirements':['Approved semantic release','Data-product steward approval']}}
+
+    if result.get('mart'):
+        output['data_product_draft']['analytics_readiness']='materialized-business-mart'
+        output['data_product_draft']['sources'][0]['consumption']={
+            'storage_layer':'postgresql-business-mart','mart_id':result['mart']['mart_id'],
+            'model_id':result['mart']['model_id'],'model_version':result['mart']['model_version'],
+            'tables':result['mart']['tables'],'endpoint':'/api/v1/pipeline/semantic/marts/'+result['mart']['mart_id'],
+            'scope':result['mart']['scope']}
+    return output

@@ -29,6 +29,16 @@ EXPECTED_COLUMNS = {
     },
 }
 
+EXPECTED_COLUMNS.update({
+ 'depo_analytics_models': {**dict.fromkeys(('model_id','dataset_id','name','version','status','created_by','approved_by'),'text'),'definition':'jsonb','created_at':'timestamp with time zone','approved_at':'timestamp with time zone'},
+ 'depo_analytics_marts': {**dict.fromkeys(('mart_id','model_id','dataset_id'),'text'),'receipt':'jsonb','created_at':'timestamp with time zone'},
+ 'depo_analytics_dim_entity': dict.fromkeys(('mart_id','role','entity_iri','name','description','namespace_uri'),'text'),
+ 'depo_analytics_ods_value': {**dict.fromkeys(('mart_id','fact_id','entity_iri','property_iri','value_kind','value','datatype','language'),'text'),'numeric_value':'numeric'},
+ 'depo_analytics_fact_link': dict.fromkeys(('mart_id','source_role','source_iri','relation','target_role','target_iri'),'text'),
+ 'depo_analytics_fact_measure': {**dict.fromkeys(('mart_id','role','entity_iri','measure','unit'),'text'),'value':'numeric'},
+ 'depo_analytics_fact_kpi': {**dict.fromkeys(('mart_id','measure','unit','formula','status'),'text'),'value':'numeric','population':'bigint'},
+})
+
 EXPECTED_CONSTRAINTS = {
     'depo_api_credentials_pkey', 'depo_api_credential_events_pkey',
     'depo_schema_migrations_pkey', 'depo_registry_pkey', 'depo_runtime_state_pkey',
@@ -47,6 +57,8 @@ EXPECTED_INDEXES = {
     'idx_depo_ontology_catalog_created',
     'idx_depo_product_published', 'idx_depo_job_started', 'idx_depo_catalog_updated',
 }
+EXPECTED_CONSTRAINTS.update(table+'_pkey' for table in EXPECTED_COLUMNS if table.startswith('depo_analytics_'))
+EXPECTED_INDEXES.update({'idx_analytics_models_dataset','idx_analytics_ods_entity','idx_analytics_links_target'})
 EXPECTED_CONSTRAINTS.update({'depo_api_credentials_actor_nonempty', 'depo_api_credentials_digest_lengths', 'depo_api_credential_events_action_valid'})
 
 

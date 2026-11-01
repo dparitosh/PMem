@@ -504,7 +504,17 @@ class BusinessAnalyticsModel(RequestBody, total=False):
     bom_property: Annotated[str,Field(max_length=800)]
     process_property: Annotated[str,Field(max_length=800)]
 
+class AnalyticsModelBody(ApprovalBody, total=False):
+    dataset_id: Required[Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]]
+    name: Required[Annotated[str,Field(min_length=1,max_length=200)]]
+    version: Required[Annotated[str,Field(pattern=r"^\d+\.\d+\.\d+$")]]
+    definition: Required[dict[str,Any]]
+
 class JobInputBody(ApprovalBody, total=False):
+    ontology_id: Annotated[str,Field(min_length=1,max_length=256)]
+    namespace: Annotated[str,Field(max_length=800)]
+    graph_publication_id: Annotated[str,Field(min_length=1,max_length=256)]
+    analytics_model_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
     business_model: BusinessAnalyticsModel
     configuration_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
     configuration_inputs: Annotated[list[ConfigurationSelection],Field(max_length=19)]
@@ -513,7 +523,7 @@ class JobInputBody(ApprovalBody, total=False):
     dataset_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
     class_iri: Annotated[str,Field(min_length=1,max_length=2000)]
     property_iris: Annotated[list[Annotated[str,Field(min_length=1,max_length=2000)]],Field(max_length=20)]
-    algorithm: Literal["profile","frequency","numeric-summary","correlation","dimension-preview","business-overview"]
+    algorithm: Literal["profile","frequency","numeric-summary","correlation","dimension-preview","business-overview","business-mart","graph-snapshot"]
     idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
     source_id: str
     schema_prefix: str

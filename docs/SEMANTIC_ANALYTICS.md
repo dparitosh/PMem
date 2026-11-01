@@ -88,3 +88,27 @@ The worker returns four identity-preserving dimension slices and classification 
 Missing mappings produce unassessed measures. Dangling, literal or differently typed targets are excluded and reported. Multi-valued classification groups overlap and must not be summed as disjoint populations. These are snapshot evidence measures, not proof of satisfaction/manufacturability. No mass, cost or quantity summation or unit conversion is performed. Cross-source identity equivalence and physical star-schema marts remain reviewed extensions.
 
 Data Flow displays retained metrics, classifications and dimension records as tables. It reads only a completed analysis run's verified result artifact; pending, foreign or corrupted evidence is not rendered as success.
+
+## Governed business reporting models and physical marts
+
+In **Data Products → Available analytics**, select a prepared business dataset and choose **Create governed reporting tables and KPIs**.
+
+1. Select product, part/revision, requirement and manufacturing process record types and their outgoing relationships using the source vocabulary.
+2. Expand **Create a new reporting model version**. Enter a business name, semantic version and the product/revision/effectivity scope. The scope describes the pinned snapshot; it does not filter or infer effective records. Prepare the correct source partition first.
+3. Optionally add up to twelve numeric KPIs. Select a numeric property, its per-record unit property, a reporting unit and explicit reviewed scale/offset conversions. Supported formulas are sum, average, minimum and maximum. Missing/repeated values, absent units and unrecognized units stop the transaction; no silent record omission or implicit dimensionless assumption is made.
+4. Optionally select reviewed expected parent/child pairs. BOM completeness is matched expected pairs / expected pairs. Without an expected BOM, completeness remains not assessed. Requirement coverage measures recorded traceability, not satisfaction; process links do not certify manufacturability.
+5. Save a model draft. Review the saved formulas and expectations, then approve that exact version using data-job approval access. Versions are immutable and tied to one dataset; changes require a new version. Model approval is separate from approval of a processing workflow and product publication.
+6. Review and approve the **Governed business reporting tables** native processing definition in Data Flow. Run the worker. A read-only analysis workflow cannot create a mart.
+7. Open the retained result. **Reporting tables ready** lists actual PostgreSQL tables and row counts and offers a paginated row browser. The existing product packaging/publication path retains the mart identity, model version, scope and consumption endpoint.
+
+Migration `infra/postgres/migrations/016_business_marts.sql` creates model/mart metadata, physical entity dimensions, an operational property-value store, relationship facts, normalized measure facts and KPI facts. Product, part, requirement and process dimension views expose stable role filters. All tables retain source entity IRIs and are scoped by immutable `mart_id`. SQL consumers must filter by that identity. This is a snapshot mart, not an SCD warehouse or a merged cross-source master; classification attributes remain in the ODS property table and report grouping. No arbitrary SQL or model-generated code is executed.
+
+The worker uses an advisory transaction lock, set-based inserts and COPY, a 30-second statement budget and lease checks before commit. Retry returns the same mart receipt. Invalid conversions and lost leases roll back all new mart rows. Existing marts and source snapshots are preserved.
+
+## Register a published graph snapshot
+
+Expand **Use a published graph as reporting data**. Choose an active published graph; optionally provide a namespace partition. Review and approve the separate **Published graph snapshot** workflow in Data Flow, then create the snapshot with the worker. Inspect its retained run, refresh registered sources and select the newly named Registry source to prepare records.
+
+The exporter reads active published RDF resources, literals and predicate relationships under the publication barrier; it excludes staging nodes and retains the selected publication identity. A changed publication is rejected rather than silently substituted. Content is deterministically retained and registered as a draft. Graph data and approvals are unchanged. Limits are 10,000 projected resources, 100,000 relationships, 250,000 triples and 25 MiB: oversized sources must be partitioned; they are not silently truncated. Only projections with current publication receipts are offered; ungoverned legacy nodes require a proper publication first.
+
+Local regression coverage is in `backend/tests/test_business_mart_postgres.py`, `backend/tests/test_graph_analytics_snapshot.py` and `frontend/src/Components/GovernedAnalyticsModel.test.js`. The PostgreSQL test only creates/drops a disposable schema in `depo_acceptance_test`.

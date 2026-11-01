@@ -108,7 +108,7 @@ def analysis_result(run_id: str):
     try:
         record=run_records.get(run_id)
         if not record:raise HTTPException(404,'Analysis run not found')
-        if record.get('status')!='completed' or record.get('job_type')!='semantic-dataset-analysis':
+        if record.get('status')!='completed' or record.get('job_type') not in {'semantic-dataset-analysis','semantic-business-mart','graph-source-snapshot'}:
             raise HTTPException(409,'A completed semantic analysis result is required')
         output=record.get('output_manifest') or {}
         metadata,path=ArtifactStore().resolve(output.get('result_artifact_id',''))
@@ -118,7 +118,80 @@ def analysis_result(run_id: str):
         result=json.loads(path.read_text(encoding='utf-8'))
         if result.get('configuration_id')!=output.get('configuration_id'):
             raise ValueError('Analysis configuration differs from its retained run')
-        allowed=('algorithm','dataset_id','configuration_id','configuration_context','population_entities','rows','dimensions','classifications','links','hierarchy','limited','warnings','scope','unit_policy','classification','business_model')
+        allowed=('algorithm','dataset_id','configuration_id','configuration_context','population_entities','rows','dimensions','classifications','links','hierarchy','limited','warnings','scope','unit_policy','classification','business_model','mart')
         return {'run_id':run_id,**{key:result[key] for key in allowed if key in result}}
     except (ValueError,KeyError,TypeError):raise HTTPException(409,'Retained analysis evidence is missing or invalid; restore it before retrying') from None
     except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Retained analysis evidence is unavailable') from None
+
+
+from fastapi import Request
+from backend.depo_platform.request_bodies import AnalyticsModelBody, ApprovalBody
+from backend.depo_platform.authorization import approval_identity
+
+@router.get('/models')
+def analytics_models(dataset_id: str=Query(pattern='^[0-9a-f]{64}$')):
+    from .analytics_models import model_rows
+    try:return model_rows(dataset_id)
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Analytics models are unavailable; verify migrations and service health') from None
+
+@router.post('/models',status_code=201)
+def save_analytics_model(payload: AnalyticsModelBody, request: Request):
+    from .analytics_models import create_model
+    actor=approval_identity(request,payload,token_env='ONTOLOGY_APPROVAL_TOKEN')
+    try:return {'model_id':create_model(payload['dataset_id'],payload['name'],payload['version'],payload['definition'],actor),'status':'draft'}
+    except ValueError as exc:raise HTTPException(422,str(exc)) from None
+    except DatabaseError as exc:
+        if getattr(exc,'sqlstate',None)=='23505':raise HTTPException(409,'This model name/version already has different content; create a new version') from None
+        raise HTTPException(503,'Model could not be retained; verify status before retrying') from None
+
+@router.post('/models/{model_id}/approve')
+def approve_analytics_model(model_id: str,payload: ApprovalBody,request: Request):
+    from .analytics_models import approve_model
+    actor=approval_identity(request,payload,token_env='DATA_JOB_APPROVAL_TOKEN')
+    try:approve_model(model_id,actor);return {'model_id':model_id,'status':'approved','approved_by':actor}
+    except ValueError as exc:raise HTTPException(404,str(exc)) from None
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Model approval outcome is unconfirmed; refresh before retrying') from None
+
+@router.get('/marts/{mart_id}')
+def analytics_mart(mart_id: str):
+    import re
+    if not re.fullmatch('[0-9a-f]{64}',mart_id):raise HTTPException(422,'Invalid mart identity')
+    try:
+        with PostgresRegistry('analytics_marts')._connect() as db,db.transaction(),db.cursor() as c:
+            c.execute('SET TRANSACTION READ ONLY');c.execute("SET LOCAL statement_timeout='5s'")
+            c.execute('SELECT receipt FROM depo_analytics_marts WHERE mart_id=%s',(mart_id,));row=c.fetchone()
+        if not row:raise HTTPException(404,'Analytics mart not found')
+        return row[0]
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Analytics mart is unavailable') from None
+
+@router.get('/marts/{mart_id}/rows')
+def analytics_mart_rows(mart_id: str,table: str,offset: int=Query(0,ge=0)):
+    import re
+    from .business_mart import TABLES
+    if not re.fullmatch('[0-9a-f]{64}',mart_id) or table not in TABLES:raise HTTPException(422,'Choose a retained analytics table')
+    try:
+        with PostgresRegistry('analytics_marts')._connect() as db,db.transaction(),db.cursor() as c:
+            c.execute('SET TRANSACTION READ ONLY');c.execute("SET LOCAL statement_timeout='5s'")
+            order={'depo_analytics_dim_entity':'role,entity_iri','depo_analytics_ods_value':'fact_id','depo_analytics_fact_link':'source_role,source_iri,relation,target_role,target_iri','depo_analytics_fact_measure':'role,entity_iri,measure','depo_analytics_fact_kpi':'measure'}[table]
+            c.execute('SELECT * FROM '+table+' WHERE mart_id=%s ORDER BY '+order+' LIMIT 51 OFFSET %s',(mart_id,offset))
+            columns=[d.name for d in c.description];rows=c.fetchall()
+        return {'mart_id':mart_id,'table':table,'columns':columns,'rows':[dict(zip(columns,row)) for row in rows[:50]],'next_offset':offset+50 if len(rows)>50 else None}
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Analytics table is unavailable') from None
+
+@router.get('/datasets/{dataset_id}/members')
+def analytics_members(dataset_id: str,class_iri: str,search: str=Query('',max_length=200),offset: int=Query(0,ge=0)):
+    import re
+    if not re.fullmatch('[0-9a-f]{64}',dataset_id) or not class_iri or len(class_iri)>2000:raise HTTPException(422,'Choose a dataset and record type')
+    try:
+        with PostgresRegistry('analytics_members')._connect() as db,db.transaction(),db.cursor() as c:
+            c.execute('SET TRANSACTION READ ONLY');c.execute("SET LOCAL statement_timeout='5s'")
+            c.execute("SELECT iri,label FROM depo_semantic_terms WHERE dataset_id=%s AND term_kind='individual' AND types @> ARRAY[%s]::text[] AND strpos(lower(label),lower(%s))>0 ORDER BY iri LIMIT 101 OFFSET %s",(dataset_id,class_iri,search,offset));rows=c.fetchall()
+        return {'dataset_id':dataset_id,'members':[{'iri':iri,'name':name} for iri,name in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Business records are unavailable') from None
+
+@router.get('/datasets/{dataset_id}/values')
+def analytics_values(dataset_id: str,class_iri: str,property_iri: str):
+    from .semantic_analysis import analyse
+    try:return analyse({'dataset_id':dataset_id,'class_iri':class_iri,'property_iris':[property_iri],'algorithm':'frequency'})
+    except ValueError as exc:raise HTTPException(422,str(exc)) from None
+    except (DatabaseError,RuntimeError,OSError):raise HTTPException(503,'Business values are unavailable') from None

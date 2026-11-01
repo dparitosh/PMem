@@ -57,9 +57,9 @@ def verify_structure(cursor, schema, columns):
         if table == 'depo_ontology_analytics': continue
         for column in names:
             nullable, default = attributes.get((table,column), (None,None))
-            if (table, column) == ('depo_api_credentials', 'expires_at'):
+            if (table,column) in {('depo_api_credentials','expires_at'),('depo_analytics_models','approved_by'),('depo_analytics_models','approved_at'),('depo_analytics_ods_value','numeric_value'),('depo_analytics_fact_kpi','value')}:
                 if nullable != 'YES':
-                    raise RuntimeError('Credential expiry must allow keys without expiration')
+                    raise RuntimeError(f'Optional column must permit NULL: {table}.{column}')
                 continue
             if column != 'checksum' and nullable != 'NO':
                 raise RuntimeError(f'Required column must be NOT NULL: {table}.{column}')

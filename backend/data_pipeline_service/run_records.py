@@ -251,6 +251,8 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         "enrich-document-evidence": "document-graph-proposal-v1",
         "rdf-semantic-materialize":"semantic-dataset-v1",
         "semantic-dataset-analysis":"semantic-analysis-v1",
+        "semantic-business-mart":"semantic-analysis-v1",
+        "graph-source-snapshot":"semantic-analysis-v1",
         "semantic-source-review":"semantic-refresh-assessment-v1",
         "rdf-quality-statistics": "rdf-quality-report-v1",
         "rdf-deduplicate-serialize": "canonical-ntriples-v1",
