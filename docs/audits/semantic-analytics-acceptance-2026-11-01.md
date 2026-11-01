@@ -58,3 +58,7 @@ These close the implementation paths for local source registration, controlled r
 - Live cold-start review found pipeline source discovery initialized a duplicate graph runtime. Source discovery and resolution now call the owning Metadata Registry service with a bounded, authenticated read; malformed, unavailable or foreign responses remain explicit failures. Regression covers timeout, identity mismatch, paging and missing source.
 
 Earlier open-item lists above are chronological findings, superseded by these local results where explicitly closed. Customer environment, external LLM, automatic live graph snapshot export, physical dimensional warehouses, expected BOM completeness and unit-normalized quantity KPIs remain outside this acceptance result.
+
+## Final deployed verification
+
+`ce5aed7` deployed successfully through `update-depo.ps1` on 1 November. Backup: `outputs/PMem-backup-ce5aed7-20261101-120837`; update audit: `logs/installation/runs/update-20261101-121041-cdb966f1.log`. All ten service endpoints and browser-session scopes passed, PostgreSQL schema/constraints/indexes passed, and the deployment environment hash was unchanged. Existing publications were retained. First source-list request after backend startup returned HTTP 200 in 2.579 seconds; the retained business analysis result returned HTTP 200. Final focused backend regressions: 24 passed and two subtests passed. A sandbox temporary-directory permission issue was resolved by using an explicit writable pytest base directory; it was not an application failure.
