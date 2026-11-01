@@ -7,7 +7,7 @@ export function currentTaskPage() {
 export function pageTaskContext(context = {}) {
   const page = context.page ? normalizePage(context.page) : currentTaskPage();
   const value = { page };
-  for (const key of ['ontology_id','ontology_prefix','import_task_id','product_id','run_id','node_id']) {
+  for (const key of ['ontology_id','ontology_prefix','import_task_id','product_id','run_id','node_id','reconciliation_id']) {
     if (typeof context[key] === 'string' && context[key].length <= 256) value[key] = context[key];
   }
   return value;

@@ -17,6 +17,7 @@ ROLE_TOOLS = {
 }
 
 TOOLS = [
+    ("pipeline.reconciliation.evidence","data_pipeline","GET","/pipeline/speed/reconciliations/{reconciliation_id}"),
     ("learning.lessons", "agentic", "GET", "/learning/lessons"),
     ("pipeline.definitions", "data_pipeline", "GET", "/pipeline/jobs/definitions"),
     ("pipeline.runs", "data_pipeline", "GET", "/pipeline/jobs/runs"),
@@ -31,6 +32,13 @@ def extend_catalog(source):
     for agent in catalog['agents']:
         if agent['id'] in {'ontology-governor','ontology-steward'} and 'learning.lessons' not in agent['tools']:
             agent['tools'].append('learning.lessons')
+    for agent in catalog['agents']:
+        if agent['id'] in {'graph-analyst','ontology-steward'}:
+            if 'pipeline.reconciliation.evidence' not in agent['tools']:agent['tools'].append('pipeline.reconciliation.evidence')
+            if agent['id']=='graph-analyst' and 'pipeline.run.evidence' not in agent['tools']:agent['tools'].append('pipeline.run.evidence')
+            if 'pipeline.reconciliation.evidence' not in agent['system_prompt']:agent['system_prompt'] += ' For a selected reconciliation_id, inspect pipeline.reconciliation.evidence. Explain its retained semantic checks and recovery state; do not equate reconciliation with business correctness or publication approval. Memory is advisory; current owning-service evidence wins.'
+            if agent['id']=='graph-analyst' and 'For a selected run_id inspect pipeline.run.evidence' not in agent['system_prompt']:
+                agent['system_prompt']+=' For a selected run_id inspect pipeline.run.evidence before explaining ingestion or mapping readiness. Do not invent source columns or semantic mappings from run metadata.'
     existing = {tool["id"] for tool in catalog["tools"]}
     for identifier, service, method, path in TOOLS:
         if identifier not in existing:

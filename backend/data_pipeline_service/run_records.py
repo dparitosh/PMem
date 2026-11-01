@@ -242,6 +242,7 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
     contracts = {
         "rest-source-ingest": "rest-source-records-v1",
         "registered-source-ingest": "connector-records-v1",
+        "connector-ceim-normalize": "semantic-validation-report-v1",
         "normalize-ceim": "normalized-ceim-batch-v1",
         "data-quality-assessment": "data-quality-report-v1",
         "schema-analytics-product": "schema-analytics-data-product-draft-v1",

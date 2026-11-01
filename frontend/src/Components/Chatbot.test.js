@@ -394,3 +394,13 @@ test('Companion sends a page hint and clears evidence when changing pages',async
  view.rerender(<Chatbot pageId="data-flow"/>);
  await waitFor(()=>expect(screen.queryByText('Catalog context')).not.toBeInTheDocument());
 });
+
+
+test('selected event review travels in conversation scope and cancels on selection change',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','fixture-review');let sent,signal;
+ global.fetch=vi.fn((_url,options={})=>{if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});sent=JSON.parse(options.body);signal=options.signal;return new Promise(()=>{});});
+ const view=render(<Chatbot pageId="data-flow" reconciliationId="review-one"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain these semantic checks'}});fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sent.graph_context.reconciliation_id).toBe('review-one'));
+ view.rerender(<Chatbot pageId="data-flow" reconciliationId="review-two"/>);await waitFor(()=>expect(signal.aborted).toBe(true));
+});

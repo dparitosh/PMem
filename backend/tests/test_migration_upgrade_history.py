@@ -32,12 +32,14 @@ class UpgradeHistoryTests(unittest.TestCase):
         history = [(v, n, migrations.migration_checksum(s)) for v, n, s in migrations.MIGRATIONS if v <= 11]
         cursor = self.run_upgrade(history)
         pending = [(v, n, s) for v, n, s in migrations.MIGRATIONS if v > 11]
-        self.assertEqual([(v, n) for v, n, _ in pending], [(12, 'ontology_catalog_pagination'), (13, 'registry_workflow_lookup'), (14, 'analytics_discovery'), (15, 'semantic_datasets')])
+        self.assertEqual([(v, n) for v, n, _ in pending], [(12, 'ontology_catalog_pagination'), (13, 'registry_workflow_lookup'), (14, 'analytics_discovery'), (15, 'semantic_datasets'), (16, 'business_marts'), (17, 'speed_event_pagination')])
         sql = pending[0][2][0]
         self.assertIn('CREATE INDEX idx_depo_ontology_catalog_created', sql)
         self.assertIn(sql, [call.args[0] for call in cursor.execute.call_args_list])
-        for destructive in ('DROP TABLE', 'DELETE FROM', 'TRUNCATE', 'ALTER TABLE'):
-            self.assertNotIn(destructive, sql.upper())
+        for _,_,statements in pending:
+            for statement in statements:
+                for destructive in ('DROP TABLE','DELETE FROM','TRUNCATE','ALTER TABLE'):
+                    self.assertNotIn(destructive,statement.upper())
 
     def test_every_previous_release_prefix_applies_only_pending_migrations(self):
         for count in range(len(migrations.MIGRATIONS) + 1):

@@ -245,6 +245,7 @@ function App() {
                       key={`chat-${serviceAuthRevision}`}
                     graphData={page !== 'home' && ['graph','whereused'].includes(activePage) ? data : undefined}
                     pageId={page === 'home' ? 'home' : activePage}
+                    reconciliationId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.reconciliation_id || '' : ''}
                     runId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.run_id || '' : ''}
                     productId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_id || '' : ''}
                     productVersion={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_version || '' : ''}

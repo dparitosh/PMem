@@ -269,7 +269,7 @@ function isServiceRead(endpoint, method) {
       if (target.origin !== root.origin || target.username || target.password) return false;
       const path = target.pathname.slice(root.pathname.replace(/\/$/, '').length);
       if (!target.pathname.startsWith(`${root.pathname.replace(/\/$/, '')}/`)) return false;
-      return ({ graph: /^\/api\/v1\/graph\/metrics\/?$/, agentic: /^\/api\/v1\/observability\/summary\/?$/, catalog: /^\/api\/v1\/catalog\/products\/?$/, dataProducts: /^\/api\/v1\/data-products\/?$/ })[service]?.test(path) || false;
+      return ({ ontology: /^\/api\/v1\/ontologies(?:\/health)?\/?$/, graph: /^\/api\/v1\/graph\/metrics\/?$/, agentic: /^\/api\/v1\/observability\/summary\/?$/, catalog: /^\/api\/v1\/catalog\/products\/?$/, dataProducts: /^\/api\/v1\/data-products\/?$/ })[service]?.test(path) || false;
     });
   } catch { return false; }
 }

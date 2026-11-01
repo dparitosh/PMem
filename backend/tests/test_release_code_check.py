@@ -66,3 +66,14 @@ def test_missing_context_module_is_rejected_before_service_launch(tmp_path):
     (root/'backend/agentic_service/context_envelope.py').unlink()
     import pytest
     with pytest.raises(ValueError,match='context_envelope.py'):check(root)
+
+
+def test_partial_semantic_worker_release_is_rejected(tmp_path):
+    import pytest
+    for relative in ('backend/data_pipeline_service/connector_semantics.py',
+                     'backend/data_pipeline_service/speed_path.py',
+                     'backend/agentic_service/companion_memory.py'):
+        root=ReleaseCheckTests().fixture(tmp_path / Path(relative).stem)
+        (root/relative).unlink()
+        with pytest.raises(ValueError, match=Path(relative).name):
+            check(root)

@@ -1,3 +1,4 @@
+import EventReviewPanel from '../Components/EventReviewPanel';
 import SemanticAnalysisResult from '../Components/SemanticAnalysisResult';
 import SemanticSupport from "../Components/SemanticSupport";
 import { getCredentialProfile, publicationRecoveryScope } from '../services/serviceAuth';
@@ -60,7 +61,7 @@ function sourceStandard(run) {
 
 function isPublishableRun(run) {
   return run?.status === 'completed'
-    && ['normalize-ceim', 'validate-semantic-batch', 'normalize-unstructured-ceim'].includes(run?.job_type)
+    && ['normalize-ceim', 'validate-semantic-batch', 'normalize-unstructured-ceim','connector-ceim-normalize'].includes(run?.job_type)
     && run?.output_manifest?.checkpoint_state !== 'advanced'
     && run?.output_manifest?.publication?.status !== 'published';
 }
@@ -92,17 +93,20 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
   const [runs, setRuns] = useState([]);
   const [definitions, setDefinitions] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
+  const [eventSelection,setEventSelection]=useState(null);
   const [runPage,setRunPage] = useState(0);
   useEffect(() => {
-    onCompanionRecordChange?.({ page: 'data-flow', run_id: selectedRun?.run_id || '' });
+    onCompanionRecordChange?.(workspace==='events'?{page:'data-flow',reconciliation_id:eventSelection||''}:{ page: 'data-flow', run_id: selectedRun?.run_id || '' });
     return () => onCompanionRecordChange?.(null);
-  }, [onCompanionRecordChange, selectedRun?.run_id]);
+  }, [onCompanionRecordChange, selectedRun?.run_id,workspace,eventSelection]);
   const [runStatus,setRunStatus]=useState('all');
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [replayError, setReplayError] = useState('');
+  const [replayAccessRejected,setReplayAccessRejected]=useState(false);
+  const replayRejected=useRef(false);
   const [replayingId, setReplayingId] = useState('');
   const [definitionActionId, setDefinitionActionId] = useState('');
   const definitionLock = useRef(false);
@@ -210,12 +214,14 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       loadSequence.current += 1; loadInFlight.current = false;
       setHealth(null); setTelemetry(null); setRuns([]); setDefinitions([]); setSelectedRun(null);
       setSemanticReleases([]); setReleaseIndex(''); setReplayError('');
+      replayRejected.current=false;setReplayAccessRejected(false);
       setReplayApprover(''); setPublicationSource(''); preferredRunId.current='';
       load({ initial: true });
     };
     const events=['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
     events.forEach(event=>window.addEventListener(event,credentialsChanged));
     const verified=()=>{
+      replayRejected.current=false;setReplayAccessRejected(false);
       // A successful reconnect supersedes reads started before verification.
       loadSequence.current+=1; loadInFlight.current=false;
       load({initial:true});
@@ -261,19 +267,33 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
     [definitions],
   );
 
+  const executionAuthorization = async (generation) => {
+    if(replayRejected.current)throw new Error('Replay access was rejected. Reconnect execution access in Admin and revalidate before retrying.');
+    const token=getCredentialProfile('DATA_JOB_EXECUTION_TOKEN').trim();
+    const response=await dataPipelineAPI.executionIdentity(token);
+    if(generation!==sessionGeneration.current)throw new Error('Connection changed before replay. No replay was submitted.');
+    const actor=responsePayload(response)?.actor;
+    if(typeof actor!=='string'||!actor.trim()||actor.length>256)throw new Error('Execution identity could not be verified. No replay was submitted.');
+    return {approved_by:actor,...(token?{approval_token:token}:{})};
+  };
+  const replayFailureMessage = failure => {
+    if([401,403].includes(failure?.response?.status)){
+      replayRejected.current=true;setReplayAccessRejected(true);
+      return 'Replay access was rejected. Reconnect data-job execution access in Admin, then revalidate access. Read access alone cannot execute jobs. No automatic retry was made. '+apiErrorMessage(failure,'');
+    }
+    return apiErrorMessage(failure,'Replay was not confirmed. Retry uses the same submission reference; check retained status before starting other work.');
+  };
+
   const replay = async (run) => {
-    if(operationLock.current)return;
+    if(operationLock.current||replayRejected.current)return;
     operationLock.current=true;
     const generation=sessionGeneration.current;
     setReplayingId(run.run_id);
     setReplayError('');
     try {
-      const approvalToken = getCredentialProfile('DATA_JOB_EXECUTION_TOKEN').trim();
+      const authorization=await executionAuthorization(generation);
       const intent=replayIntent(run.run_id);
-      const response = await dataPipelineAPI.replay(run.run_id, {idempotency_key:intent.id,...(approvalToken ? {
-        approved_by: replayApprover.trim(),
-        approval_token: approvalToken,
-      } : {})});
+      const response = await dataPipelineAPI.replay(run.run_id, {idempotency_key:intent.id,...authorization});
       const replayed = requireRunManifest(responsePayload(response));
       pendingReplays.current.delete(intent.key);
       try { sessionStorage.removeItem(intent.key); } catch { /* Optional storage. */ }
@@ -284,7 +304,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       setWorkspace('runs');
       await load();
     } catch (replayFailure) {
-      if(generation===sessionGeneration.current)setReplayError(apiErrorMessage(replayFailure, 'Replay was not confirmed. Retry uses the same submission reference; check retained status before starting other work.'));
+      if(generation===sessionGeneration.current)setReplayError(replayFailureMessage(replayFailure));
     } finally {
       operationLock.current=false; setReplayingId('');
     }
@@ -296,7 +316,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
   };
 
   const manageDefinition = async (definition, action) => {
-    if (definitionLock.current||operationLock.current) return;
+    if (definitionLock.current||operationLock.current||(action==='run'&&replayRejected.current)) return;
     definitionLock.current = true;
     operationLock.current=true;
     const generation=sessionGeneration.current;
@@ -318,8 +338,9 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       if (action === 'run') {
         const priorRun = runs.find(run => run.job_id === definition.job_id && run.job_version === definition.version);
         if (!priorRun) throw new Error('Supply job inputs through the matching import or analytics page first. After that, this action replays retained inputs.');
+        const authorization=await executionAuthorization(generation);
         const intent=replayIntent(priorRun.run_id);
-        const result = await dataPipelineAPI.replay(priorRun.run_id, {...approval(),idempotency_key:intent.id});
+        const result = await dataPipelineAPI.replay(priorRun.run_id, {...authorization,idempotency_key:intent.id});
         const confirmedRun=requireRunManifest(responsePayload(result));
         pendingReplays.current.delete(intent.key);
         try { sessionStorage.removeItem(intent.key); } catch { /* Optional storage. */ }
@@ -332,7 +353,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
 
       if(generation===sessionGeneration.current)await load();
     } catch (actionFailure) {
-      if(generation===sessionGeneration.current)setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
+      if(generation===sessionGeneration.current)setReplayError(action==='run'?replayFailureMessage(actionFailure):apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
     } finally {
       definitionLock.current = false;
       operationLock.current=false;
@@ -397,7 +418,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       </div>
 
       <p>Run and record totals cover the latest {totals.limit ?? 100} runs, not lifetime history.</p>
-      <DataWorkspace label="Data Flow workspace" active={workspace} onChange={setWorkspace} tabs={[{id:'runs',label:'Run monitor'},{id:'pipelines',label:'Pipeline jobs'},{id:'quality',label:'Quality & evidence'},{id:'settings',label:'Approval & publication'},{id:'agent',label:'Agent assistance'}]}>
+      <DataWorkspace label="Data Flow workspace" active={workspace} onChange={setWorkspace} tabs={[{id:'runs',label:'Run monitor'},{id:'pipelines',label:'Pipeline jobs'},{id:'quality',label:'Quality & evidence'},{id:'settings',label:'Approval & publication'},{id:'events',label:'Event reviews'},{id:'agent',label:'Agent assistance'}]}>
         {{runs:<><div className="data-cockpit__guidance"><div><strong>Inspect a run, resolve issues, then reuse its evidence</strong><p>Select a job to inspect quality, lineage and retained outputs. Configure approval and semantic release settings before replaying or publishing.</p></div><button type="button" className="data-flow-button" onClick={()=>setWorkspace('settings')}>Review approval settings</button></div>
       <div className="data-flow-grid">
         <article className="data-flow-card data-flow-card--runs">
@@ -416,7 +437,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
                     <td>{displayTime(run.started_at)}</td>
                     <td>{['rest-source-ingest','registered-source-ingest'].includes(run.job_type)?`${run.output_manifest?.counts?.records??'—'} acquired · validation not assessed`:<>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</>}</td>
                     <td><Status value={qualityStatus(run)} />{run.output_manifest?.publication?.status==='published' && <span className="data-flow-status">Published · receipt retained</span>}</td>
-                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
+                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={!!replayingId || !!definitionActionId || !!publishingId || replayAccessRejected || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
                   {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">{error?'Run history could not be verified. Restore service access and refresh; retained runs may still exist.':runs.length?'No durable job runs match the current filter.':'No runs yet. Import source inputs, then run an approved pipeline job.'}</td></tr>}
                 </tbody>
@@ -479,7 +500,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
               <td>{definition.schedule ? `Every ${definition.schedule.interval_seconds}s` : 'Not scheduled'}</td>
               <td className="data-flow-definition-actions">
                 {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
-                {isApproved && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput} onClick={() => manageDefinition(definition, 'run')}>Run now</button>}
+                {isApproved && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput||replayAccessRejected} onClick={() => manageDefinition(definition, 'run')}>Run now</button>}
                 {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'disable')}>Disable</button>}
                 {isApproved && !definition.schedule && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput} onClick={() => manageDefinition(definition, 'schedule')}>Schedule</button>}
                 {isApproved && definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'unschedule')}>Stop schedule</button>}
@@ -492,10 +513,10 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
         </>,quality:<>
       <QualityOverview runs={runs} accepted={totals.records_accepted ?? durableTotals.accepted} rejected={totals.records_rejected ?? durableTotals.rejected} unavailable={!!error || !telemetry} />
         <div className="data-cockpit__guidance"><div><strong>Turn completed evidence into a reusable product</strong><p>Review accepted and rejected records in the run monitor. Completed runs with retained artifacts can supply a product draft.</p></div><a href="#/data-products?view=pipeline">Review pipeline evidence</a></div>
-        </>,settings:<><h2>Approval & publication</h2><p>Set the reviewer identity and approved semantic release used by explicit lifecycle actions. Changing these settings does not execute a job.</p>
+        </>,events:<EventReviewPanel onSelect={setEventSelection}/>,settings:<><h2>Approval & publication</h2><p>Set the reviewer identity and approved semantic release used by explicit lifecycle actions. Changing these settings does not execute a job.</p>
       <details className="data-flow-notice" style={{ marginBottom: 12 }}>
         <summary>Reviewer identity for direct service actions</summary>
-        <p>The reviewer identity is held in memory. Application credentials come from the configured connection.</p>
+        <p>Replay uses the execution identity verified from your configured connection. The reviewer below is used for approval and publication actions; credentials remain in the configured connection.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
       </details>
       <section className="data-flow-notice" aria-label="Semantic publication settings">
@@ -508,7 +529,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       </section>
 
         </>,agent:<><div className="data-cockpit__guidance"><div><strong>Ask an agent to investigate the selected run</strong><p>Use the quality monitor, parser or mapper to propose a next step. Review the proposed tool and evidence before execution.</p></div><button type="button" className="data-flow-button" onClick={()=>setWorkspace('runs')}>Select a run</button></div>
-      <AgentProposalPanel title="Data job recommendations" agentIds={['data-quality-monitor', 'engineering-parser', 'ceim-mapper']} context={selectedRun ? { run_id: selectedRun.run_id, job_id: selectedRun.job_id, version: selectedRun.job_version || selectedRun.version, job_type: selectedRun.job_type } : { page: 'data-flow' }} />        </>}}
+      <AgentProposalPanel title="Data job recommendations" agentIds={['graph-analyst','data-quality-monitor', 'engineering-parser', 'ceim-mapper']} context={selectedRun ? { run_id: selectedRun.run_id, job_id: selectedRun.job_id, version: selectedRun.job_version || selectedRun.version, job_type: selectedRun.job_type } : { page: 'data-flow' }} />        </>}}
       </DataWorkspace>
     </section>
   );

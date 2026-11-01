@@ -7,9 +7,16 @@ from .companion_context import _read_json
 
 async def read(scope, headers):
     run_id, product_id, version = (scope.get(key, '') for key in ('run_id', 'product_id', 'product_version'))
-    if run_id and product_id:
+    reconciliation_id=scope.get('reconciliation_id','')
+    if sum(bool(value) for value in (run_id,product_id,reconciliation_id))>1:
         raise ValueError('Select one operational record at a time')
-    if run_id:
+    if reconciliation_id:
+        body,endpoint=await _read_json('DATA_PIPELINE_SERVICE_URL','http://127.0.0.1:8019',
+            '/pipeline/speed/reconciliations/'+quote(reconciliation_id,safe=''),{},headers)
+        if body.get('reconciliation_id')!=reconciliation_id or body.get('advisory_only') is not True:
+            raise ValueError('Reconciliation evidence changed its selected identity or authority')
+        kind,identifier='semantic_reconciliation',reconciliation_id
+    elif run_id:
         body, endpoint = await _read_json('DATA_PIPELINE_SERVICE_URL', 'http://127.0.0.1:8019',
             '/pipeline/jobs/runs/' + quote(run_id, safe=''), {}, headers)
         if body.get('run_id') != run_id:
@@ -44,13 +51,18 @@ async def answer(scope, headers):
     body, receipt, endpoint = result
     from .business_answers import cell
     fields = ('name', 'description', 'status', 'lifecycle_state', 'version', 'job_id', 'job_version',
-              'job_type', 'domain', 'source_system', 'source_standard', 'publication_status', 'owner')
+              'job_type', 'domain', 'source_system', 'source_standard', 'publication_status', 'owner',
+              'standard','ceim_version','semantic_conforms','publication_verified')
     rows = [(key.replace('_', ' ').capitalize(), value) for key in fields
             if isinstance((value := body.get(key)), (str, int, float, bool))]
-    text = f"Selected {'pipeline run' if scope.get('run_id') else 'data product'}: **{cell(body.get('name') or receipt['resource_id'])}**.\n\n| Detail | Recorded value |\n|---|---|"
+    kind='event reconciliation' if scope.get('reconciliation_id') else 'pipeline run' if scope.get('run_id') else 'data product'
+    text = f"Selected {kind}: **{cell(body.get('name') or receipt['resource_id'])}**.\n\n| Detail | Recorded value |\n|---|---|"
     for key, value in rows:
+        if scope.get('reconciliation_id') and isinstance(value,str):value=value.replace('_',' ')
         text += f'\n| {cell(key)} | {cell(str(value))} |'
     text += '\n\nThis describes the selected retained record. Unrecorded engineering associations and approvals have not been inferred.'
+    if scope.get('reconciliation_id'):
+        text+='\n\nSemantic checks cover the retained event partition. They do not establish engineering correctness or approval. Publication requires its separate authorized workflow.'
     resource_id = receipt['resource_kind'] + ':' + receipt['resource_id']
     return {'status': 'grounded', 'answerable': True, 'response': text + f'\n\n[evidence:{resource_id}]',
         'evidence': [{'resource_id': resource_id, 'label': body.get('name') or receipt['resource_id'],

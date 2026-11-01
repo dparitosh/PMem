@@ -8,6 +8,9 @@ from pathlib import Path
 
 
 REQUIRED_MODULES = (
+    'backend/data_pipeline_service/connector_semantics.py',
+    'backend/data_pipeline_service/speed_path.py', 'backend/data_pipeline_service/speed_router.py',
+    'backend/agentic_service/companion_memory.py',
     'backend/oslc_service/change_control.py',
     'backend/ontology_service/domain/taxonomy_cache.py',
     'backend/depo_platform/product_lineage.py', 'backend/depo_platform/artifact_references.py',

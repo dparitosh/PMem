@@ -145,7 +145,7 @@ async def _reconcile_graph_publication(
 def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], correlation_id: str, *, run_id: str | None = None) -> dict[str, Any]:
     """Shared bounded dispatcher for OpenAPI requests and scheduled retries."""
     run = run_records.start(definition, payload, correlation_id=correlation_id, **({'run_id':run_id} if run_id else {}))
-    if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
+    if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim", "connector-ceim-normalize"}:
         standard = str(payload.get("standard") or "").strip().lower()
         if standard not in definition.get("allowed_standards", []):
             run_records.failed(run, "The request standard is not allowed by this data-job definition")
@@ -421,7 +421,7 @@ async def publish_job_run(run_id: str, payload: JobPublicationBody, request: Req
             if not record:
                 raise LookupError("Data job run was not found")
             output = dict(record.get("output_manifest") or {})
-            if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
+            if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim", "connector-ceim-normalize"}:
                 raise ValueError("Only a completed semantic batch can be published")
             artifact_id = str((output.get("partition_artifacts") or {}).get("accepted") or "")
             metadata, path = ArtifactStore().resolve(artifact_id)

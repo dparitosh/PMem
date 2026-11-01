@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 import subprocess
+import re
 
 import pytest
 
@@ -18,7 +19,7 @@ def test_offline_lifecycle_fixture_matches_current_prerequisites():
     assert 'PASS: lifecycle automatic sequence' in result.stdout
 
 
-@pytest.mark.parametrize('missing', ['Setup-DEPO.cmd', 'infra/windows/setup-depo.ps1', 'infra/windows/install-checkpoints.ps1', 'backend/depo_platform/import_cleanup.py'])
+@pytest.mark.parametrize('missing', ['Setup-DEPO.cmd', 'infra/windows/setup-depo.ps1', 'infra/windows/install-checkpoints.ps1', 'backend/depo_platform/import_cleanup.py', 'backend/data_pipeline_service/connector_semantics.py', 'infra/postgres/migrations/017_speed_event_pagination.sql'])
 def test_release_gate_rejects_missing_guided_entrypoint(tmp_path, missing):
     shell = shutil.which('powershell.exe')
     if not shell:
@@ -26,7 +27,8 @@ def test_release_gate_rejects_missing_guided_entrypoint(tmp_path, missing):
     validator = tmp_path / 'infra/deployment/test-installation-package.ps1'
     validator.parent.mkdir(parents=True)
     shutil.copyfile(ROOT / 'infra/deployment/test-installation-package.ps1', validator)
-    for relative in ('Setup-DEPO.cmd', 'infra/windows/setup-depo.ps1', 'infra/windows/install-checkpoints.ps1', 'docs/installation/OPERATOR_REFERENCE.md'):
+    required_block = validator.read_text(encoding='utf-8').split('$requiredFiles = @(',1)[1].split(')\n',1)[0]
+    for relative in re.findall(r"'([^']+)'", required_block):
         if relative != missing:
             target = tmp_path / relative
             target.parent.mkdir(parents=True, exist_ok=True)

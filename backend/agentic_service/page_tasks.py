@@ -20,7 +20,7 @@ def page_binding(owner, context):
     page=ALIASES.get(raw,raw)
     if not isinstance(page,str) or page not in PAGES: raise HTTPException(422,'Unknown task page')
     selected={}
-    for key in ('ontology_id','ontology_prefix','import_task_id','product_id','run_id','node_id'):
+    for key in ('ontology_id','ontology_prefix','import_task_id','product_id','run_id','node_id','reconciliation_id'):
         value=context.get(key)
         if value is not None:
             if not isinstance(value,str) or len(value)>256: raise HTTPException(422,'Invalid task selection')

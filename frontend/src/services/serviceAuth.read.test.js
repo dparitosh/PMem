@@ -3,9 +3,11 @@ import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setB
 import { registerServiceContract, clearServiceContracts } from './serviceContractRegistry';
 
 vi.mock('../config', () => ({ config: { semanticServiceUrls: {
-  graph: 'http://vm:8013', agentic: 'http://vm:8012', catalog: 'http://vm:8016', dataProducts: 'http://vm:8017',
+  ontology:'http://vm:8011', graph: 'http://vm:8013', agentic: 'http://vm:8012', catalog: 'http://vm:8016', dataProducts: 'http://vm:8017',
 } } }));
 const reads = [
+  ['ontology','http://vm:8011','/api/v1/ontologies/health'],
+  ['ontology','http://vm:8011','/api/v1/ontologies'],
   ['graph', 'http://vm:8013', '/api/v1/graph/metrics'],
   ['agentic', 'http://vm:8012', '/api/v1/observability/summary'],
   ['catalog', 'http://vm:8016', '/api/v1/catalog/products'],

@@ -9,9 +9,11 @@ def retrieval_query(message, turns, scope):
     if len(message.split())>8 or not re.search(r'\b(it|its|they|them|their|those|these|that|same|above|more)\b',message,re.I):
         return message
     for turn in turns:
+        if turn.get('answerable') is False or turn.get('status') in {'failed', 'interrupted', 'timed_out'}:
+            continue
         previous=turn.get('graph_context') or {}
         if not same_companion_scope(previous, scope):continue
-        text=turn.get('user_request')
+        text=turn.get('resolved_query') or turn.get('user_request')
         if isinstance(text,str) and text.strip():
             from backend.depo_platform.plm_questions import requirement_subject
             subject = requirement_subject(text)

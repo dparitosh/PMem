@@ -668,7 +668,8 @@ def test_worker_claim_heartbeat_and_retry_are_durable(monkeypatch):
     assert retried["last_error"] == "temporary failure"
 
 
-def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch):
+@pytest.mark.parametrize("semantic_job_type",["validate-semantic-batch","connector-ceim-normalize"])
+def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch,semantic_job_type):
     import json
     import httpx
     from backend.artifact_store import ArtifactStore
@@ -684,7 +685,7 @@ def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch)
         filename="accepted.json", kind="accepted-semantic-partition", media_type="application/json",
     )
     registry.put("publish-run", {
-        "run_id": "publish-run", "job_type": "validate-semantic-batch", "status": "completed",
+        "run_id": "publish-run", "job_type": semantic_job_type, "status": "completed",
         "checkpoint": {"offset": 1},
         "output_manifest": {
             "partition_artifacts": {"accepted": artifact["artifact_id"]},

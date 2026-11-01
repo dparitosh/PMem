@@ -43,6 +43,8 @@ registry = HandlerRegistry()
 from .rest_sources import execute as acquire_rest_records
 registry.register('rest-source-ingest', JobHandler('registered-rest-source-v1', 'rest-source-records-v1', acquire_rest_records))
 from .connector_sources import execute as acquire_connector_records
+from .connector_semantics import execute as normalize_connector_records
+registry.register('connector-ceim-normalize', JobHandler('connector-field-mapping-v1','semantic-validation-report-v1',normalize_connector_records))
 registry.register('registered-source-ingest', JobHandler('registered-connector-source-v1', 'connector-records-v1', acquire_connector_records))
 for name, input_contract, output_contract, method, options in [
     ("interactive-quality-summary", "quality-records-v1", "quality-summary-v1", "transform_quality_summary", {}),

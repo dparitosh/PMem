@@ -7,8 +7,8 @@ import os
 from backend.depo_platform.service_urls import service_url
 from typing import Any
 import httpx
-from fastapi import APIRouter, HTTPException, Request
-from backend.depo_platform.authorization import approval_identity
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers
 from backend.artifact_store import ArtifactStore
 from . import speed_path
@@ -16,7 +16,7 @@ from backend.depo_platform.peer_http import async_peer_response
 
 router = APIRouter(prefix="/pipeline/speed", tags=["speed-path"])
 
-@router.get("/sources")
+@router.get("/sources", dependencies=[Depends(graph_read_identity)])
 def list_sources() -> dict[str, Any]: return {"sources": speed_path.list_sources()}
 
 @router.post("/sources", status_code=201)
@@ -24,6 +24,7 @@ def create_source(payload: SpeedSourceBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="SPEED_PATH_APPROVAL_TOKEN")
     try: return speed_path.register_source(payload, actor)
     except FileExistsError as exc: raise HTTPException(409, str(exc)) from exc
+    except speed_path.SpeedConflict as exc: raise HTTPException(409,str(exc)) from exc
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 @router.post("/sources/{source_id}/approve")
@@ -32,13 +33,14 @@ def approve_source(source_id: str, payload: ApprovalBody, request: Request) -> d
     try: return speed_path.approve_source(source_id, actor)
     except LookupError as exc: raise HTTPException(404, str(exc)) from exc
 
-@router.get("/events")
-def list_events(limit: int = 100) -> dict[str, Any]: return {"events": speed_path.list_events(limit)}
+@router.get("/events", dependencies=[Depends(graph_read_identity)])
+def list_events(limit: int = Query(100,ge=1,le=1000), offset: int = Query(0,ge=0)) -> dict[str, Any]: return {"events": speed_path.list_events(limit,offset)}
 
 @router.post("/events", status_code=202)
 def capture_event(payload: SpeedEventBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="SPEED_EVENT_TOKEN")
     try: return speed_path.capture_event(payload, actor)
+    except speed_path.SpeedConflict as exc: raise HTTPException(409,str(exc)) from exc
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 @router.post("/reconciliations", status_code=202)
@@ -46,6 +48,7 @@ def reconcile(payload: SpeedReconciliationBody, request: Request) -> dict[str, A
     actor = approval_identity(request, payload, token_env="SPEED_EVENT_TOKEN")
     try: return speed_path.reconcile(list(payload.get("event_ids") or []), actor)
     except LookupError as exc: raise HTTPException(404, str(exc)) from exc
+    except speed_path.SpeedConflict as exc: raise HTTPException(409,str(exc)) from exc
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 @router.post("/reconciliations/{reconciliation_id}/publish")
@@ -82,3 +85,16 @@ async def publish(reconciliation_id: str, payload: JobPublicationBody, request: 
         return speed_path.reconciliations.put(reconciliation_id, published)
     except (ValueError, json.JSONDecodeError) as exc: raise HTTPException(422, str(exc)) from exc
     except (RuntimeError, httpx.HTTPError, TimeoutError) as exc: raise HTTPException(503, "Canonical publication unavailable; reconciliation is retained. Verify its receipt before retrying.") from exc
+
+
+@router.get('/reconciliations/{reconciliation_id}', dependencies=[Depends(graph_read_identity)])
+def reconciliation_evidence(reconciliation_id: str):
+    try:return speed_path.review_context(reconciliation_id)
+    except LookupError as exc:raise HTTPException(404,str(exc)) from exc
+
+
+@router.get('/reconciliations', dependencies=[Depends(graph_read_identity)])
+def reconciliation_list(limit:int=Query(25,ge=1,le=100),offset:int=Query(0,ge=0)):
+    total,rows=speed_path.reconciliations.page(limit=limit,offset=offset,order_field='created_at',
+        projection={key:[key] for key in ('reconciliation_id','status','standard','created_at','counts')})
+    return {'reconciliations':rows,'total':total,'next_offset':offset+limit if offset+limit<total else None}

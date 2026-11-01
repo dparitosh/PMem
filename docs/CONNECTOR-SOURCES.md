@@ -50,3 +50,8 @@ A submission reference survives reconnects in browser storage without credential
 ## Verification boundary
 
 Local tests execute actual Parquet, Arrow and disposable SQLite reads, including a real acquisition child. All 13 adapters have dispatch/limit contract coverage. Vendor/cloud/mail/MCP/Kafka accounts have not been configured or accepted in the customer deployment. A class being present, or a profile having settings, is not proof of source connectivity. Test each intended customer connection before release.
+
+
+## Semantic successor
+
+Retained connector records can enter the approved `connector-ceim-normalize` job using an explicit source-field mapping and the existing CEIM pack. The source artifact must belong to the selected completed acquisition. Semantic validation produces a proposal, not approval. See [Semantic source preparation and event review](SEMANTIC-EVENT-WORKFLOW.md).

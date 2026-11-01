@@ -338,6 +338,7 @@ class TaskPageContext(TypedDict, total=False):
     ontology_prefix: Annotated[str, Field(max_length=256)]
     import_task_id: Annotated[str, Field(max_length=256)]
     product_id: Annotated[str, Field(max_length=256)]
+    reconciliation_id: Annotated[str, Field(max_length=256)]
     run_id: Annotated[str, Field(max_length=256)]
     node_id: Annotated[str, Field(max_length=256)]
 

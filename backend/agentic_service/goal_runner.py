@@ -17,7 +17,7 @@ from .recovery import execution_payload, fingerprint
 
 SCOPE_KEYS = {'ontology_id', 'ontology_prefix', 'source_ontology_id', 'target_ontology_id',
               'node_id', 'import_task_id', 'source_ontology_ids', 'ontology_path', 'qif_ontology_id', 'ap242_ontology_id',
-              'run_id', 'product_id', 'product_version', 'artifact_id'}
+              'run_id', 'product_id', 'product_version', 'artifact_id','reconciliation_id'}
 PLAN = {'id': 'goal.plan', 'description': 'Decompose or revise the goal into evidence-gathering subtasks.',
         'input_schema': {'type': 'object', 'additionalProperties': False, 'required': ['subtasks'], 'properties': {
             'subtasks': {'type': 'array', 'minItems': 1, 'maxItems': 8, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 400}}}}}
@@ -54,7 +54,7 @@ def selected_scope(context):
 
 def verify_read_identity(tool_id, inputs, result, scope=None):
     """Reject a successful HTTP read that returned a different selected record."""
-    field = {'pipeline.run.evidence': 'run_id', 'data.catalog.product': 'product_id', 'learning.lessons':'ontology_id'}.get(tool_id)
+    field = {'pipeline.reconciliation.evidence':'reconciliation_id', 'pipeline.run.evidence': 'run_id', 'data.catalog.product': 'product_id', 'learning.lessons':'ontology_id'}.get(tool_id)
     if field and (not isinstance(result, dict) or result.get(field) != inputs.get(field)):
         raise ValueError('Owning-service response changed selected record identity')
     if tool_id == 'learning.lessons' and (result.get('import_task_id') != inputs.get('import_task_id') or result.get('advisory_only') is not True):

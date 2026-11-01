@@ -16,6 +16,7 @@ vi.mock('../services/apiClient', () => ({
     disableDefinition: vi.fn().mockResolvedValue({ data: { lifecycle_state: 'disabled' } }),
     scheduleDefinition: vi.fn().mockResolvedValue({ data: { schedule: { interval_seconds: 300 } } }),
     disableSchedule: vi.fn().mockResolvedValue({ data: {} }),
+    executionIdentity: vi.fn().mockResolvedValue({data:{actor:'pipeline-steward'}}),
     replay: vi.fn().mockResolvedValue({ data: { status: 'queued', run_manifest: { run_id: 'replayed', status: 'queued', replay_of: 'one' } } }),
     getRun: vi.fn().mockImplementation(id => Promise.resolve({ data: { run_id: id, status: 'queued', replay_of: 'one' } })),
   },
@@ -185,4 +186,37 @@ test('changing a run deep link clears old evidence while the new response is pen
  await waitFor(()=>expect(screen.queryByText('Run ID')).not.toBeInTheDocument());
  resolve({data:{runs:[{run_id:'another',status:'completed'}]}});
  await screen.findByText('another');window.location.hash='';
+});
+
+
+test('rejects execution preflight once and blocks repeated replay until revalidation',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.replay.mockClear();dataPipelineAPI.executionIdentity.mockClear();
+ dataPipelineAPI.executionIdentity.mockRejectedValueOnce({response:{status:403,data:{detail:'Browser session scope is unavailable or credentials changed'}}});
+ render(<DataFlowPage/>);await screen.findByText('configured');
+ const replay=await screen.findByRole('button',{name:'Replay',exact:true});fireEvent.click(replay);
+ await screen.findByText(/Replay access was rejected/);
+ expect(replay).toBeDisabled();fireEvent.click(replay);
+ expect(dataPipelineAPI.executionIdentity).toHaveBeenCalledTimes(1);
+ expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+ fireEvent(window,new Event('depo:access-verified'));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Replay',exact:true})).toBeEnabled());
+});
+
+test('connection change during execution preflight never submits replay',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');dataPipelineAPI.replay.mockClear();let finish;
+ dataPipelineAPI.executionIdentity.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<DataFlowPage/>);await screen.findByText('configured');
+ fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
+ await waitFor(()=>expect(finish).toBeTypeOf('function'));
+ fireEvent(window,new Event('depo:session-replaced'));finish({data:{actor:'old-connection'}});
+ await waitFor(()=>expect(screen.queryByText('Replaying…')).toBeNull());
+ expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+test('invalid execution identity fails before the write request',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');dataPipelineAPI.replay.mockClear();
+ dataPipelineAPI.executionIdentity.mockResolvedValueOnce({data:{}});
+ render(<DataFlowPage/>);await screen.findByText('configured');fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
+ await screen.findByText(/Execution identity could not be verified/);expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
 });

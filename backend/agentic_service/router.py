@@ -330,13 +330,13 @@ def _session_turns(session, limit=20):
 
 
 @router.get('/chat/sessions/{session_id}/history', dependencies=[Depends(graph_read_identity)])
-async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = Query(default='', max_length=256), run_id: str = Query(default='', max_length=256), product_id: str = Query(default='', max_length=256), product_version: str = Query(default='', max_length=256)):
+async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = Query(default='', max_length=256), run_id: str = Query(default='', max_length=256), product_id: str = Query(default='', max_length=256), product_version: str = Query(default='', max_length=256), reconciliation_id: str = Query(default='',max_length=256)):
     actor = graph_read_identity(request)
     session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
     turns = await run_in_threadpool(_session_turns, session)
     from .context_scope import same_companion_scope
     selected = {'ontology': ontology_id, 'ontology_prefix': ontology_prefix, 'page': page, 'node_id': node_id,
-                'run_id': run_id, 'product_id': product_id, 'product_version': product_version}
+                'run_id': run_id, 'product_id': product_id, 'product_version': product_version,'reconciliation_id':reconciliation_id}
     turns = [turn for turn in turns if same_companion_scope(turn.get('graph_context'), selected)]
     return {'session_id': session_id, 'turns': [
         {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'answerable', 'retrieval', 'graph_context', 'finished_at')}
@@ -377,7 +377,7 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
                 kwargs['page']=payload['graph_context']['page']
             if (payload.get('graph_context') or {}).get('node_id'):
                 kwargs['node_id']=payload['graph_context']['node_id']
-            for key in ('run_id', 'product_id', 'product_version'):
+            for key in ('run_id', 'product_id', 'product_version','reconciliation_id'):
                 if (payload.get('graph_context') or {}).get(key):
                     kwargs[key] = payload['graph_context'][key]
             # Do not emit answer text before its required evidence record has
@@ -395,13 +395,13 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
             context={'ontology_id': selected_context.get('ontology', ''),
                      'ontology_prefix': selected_context.get('ontology_prefix', ''),
                      'node_id': selected_context.get('node_id', ''),
-                     **{key: selected_context.get(key, '') for key in ('run_id', 'product_id', 'product_version')}},
+                     **{key: selected_context.get(key, '') for key in ('run_id', 'product_id', 'product_version','reconciliation_id')}},
             deadline_at=session['expires_at'])
         await _agent_io(companion_job_store.put, retained_id, {
             'job_id': retained_id, 'status': 'completed', 'session_id': session['session_id'],
             'owner': sessions.owner(request, graph_read_identity(request)),
             'context_envelope': envelope,
-            'user_request': message, 'response': result['response'], 'generation': result.get('generation'),
+            'user_request': message, 'resolved_query': query, 'response': result['response'], 'generation': result.get('generation'),
             'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'retrieval': result.get('retrieval'), 'graph_context': payload.get('graph_context') or {}, 'finished_at': _now()})
         # PostgreSQL evidence is mandatory. Optional graph enrichment must never
         # prevent retention or turn a completed answer into a failed execution.
@@ -409,7 +409,8 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
         try:
             if AgentMemoryService.enabled():
                 written = await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
-                    user_message=message, assistant_response=result['response'], generation=result.get('generation'))
+                    user_message=message, assistant_response=result['response'],
+                    graph_context=selected_context, generation=result.get('generation'))
                 memory_status = 'available' if written else 'unavailable'
         except Exception:
             memory_status = 'unavailable'

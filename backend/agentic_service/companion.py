@@ -42,7 +42,7 @@ class KnowledgeCompanion:
         configured = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         return configured if configured.endswith("/api/v1") else f"{configured}/api/v1"
 
-    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = '', run_id: str = '', product_id: str = '', product_version: str = '', on_token=None) -> dict[str, Any]:
+    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = '', run_id: str = '', product_id: str = '', product_version: str = '', reconciliation_id: str = '', on_token=None) -> dict[str, Any]:
         import hashlib
         from datetime import datetime, timezone
         query = " ".join(str(message or "").split())
@@ -50,10 +50,10 @@ class KnowledgeCompanion:
             raise ValueError("message is required")
         if headers is None:
             headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
-        if run_id or product_id:
+        if run_id or product_id or reconciliation_id:
             from .selected_record import answer
             try:
-                selected = await answer({'run_id': run_id, 'product_id': product_id, 'product_version': product_version}, headers)
+                selected = await answer({'run_id': run_id, 'product_id': product_id, 'product_version': product_version,'reconciliation_id':reconciliation_id}, headers)
             except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
                 selected = {'status': 'unavailable', 'answerable': False,
                     'response': 'The selected record could not be verified. Refresh its owning service and access before retrying; no other record was substituted.',

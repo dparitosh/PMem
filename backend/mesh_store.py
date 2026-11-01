@@ -132,6 +132,24 @@ class PostgresRegistry:
             cursor.execute('SELECT '+selection+' FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*selection_args,*args,*order_args,limit,offset])
             return total, [row[0] for row in cursor.fetchall()]
 
+    def transition_bundle(self, key, value, *, related_store, expected_rows, updated_rows, expected_value):
+        """CAS related registry rows and a receipt in one PostgreSQL transaction."""
+        ensure_execution_allowed()
+        if set(expected_rows)!=set(updated_rows) or not 1<=len(expected_rows)<=500:
+            raise ValueError('Invalid related transition set')
+        with self._connect() as db, db.transaction(), db.cursor() as cursor:
+            cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND key=%s FOR UPDATE',(self.namespace,key))
+            current=cursor.fetchone()
+            if not current or current[0]!=expected_value:return False
+            cursor.execute('SELECT key,value FROM depo_registry WHERE namespace=%s AND key=ANY(%s) ORDER BY key FOR UPDATE',
+                           (related_store.namespace,sorted(expected_rows)))
+            if dict(cursor.fetchall())!=expected_rows:return False
+            cursor.executemany('UPDATE depo_registry SET value=%s::jsonb,updated_at=now() WHERE namespace=%s AND key=%s',
+                [(json.dumps(updated_rows[row]),related_store.namespace,row) for row in sorted(updated_rows)])
+            cursor.execute('INSERT INTO depo_registry(namespace,key,value) VALUES(%s,%s,%s::jsonb) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value,updated_at=now()',
+                           (self.namespace,key,json.dumps(value)))
+        return True
+
     def put_with_related(self, key, value, *, related_namespace, related_key, related_value):
         """Commit a product and its approval evidence as one database unit."""
         ensure_execution_allowed()
@@ -353,6 +371,11 @@ class InMemoryRegistry:
     def due_pending(self, limit=100):
         current = datetime.now(timezone.utc)
         return [(k,v) for k,v in self.values.items() if v.get('status') == 'pending_catalog_registration' and (not v.get('next_catalog_attempt_at') or datetime.fromisoformat(v['next_catalog_attempt_at']) <= current)][:max(1,min(int(limit),1000))]
+    def transition_bundle(self, key, value, *, related_store, expected_rows, updated_rows, expected_value):
+        if self.get(key)!=expected_value or {row:related_store.get(row) for row in expected_rows}!=expected_rows:return False
+        related_store.values.update(updated_rows)
+        self.values[key]=value
+        return True
     def compare_and_put(self, key, expected, value):
         if self.values.get(key) != expected: return False
         self.values[key] = value

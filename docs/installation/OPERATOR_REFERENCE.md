@@ -5106,3 +5106,219 @@ XSD_REMOTE_SCHEMA_HOSTS=www.w3.org,standards.iso.org
 ```
 
 The enable flag defaults to `true`; the host list is optional and, when provided, applies to every redirect and dependency. Set the flag to `false` for offline installations and supply companions. Requests use public addresses on ports 80/443, with no PMem keys or browser credentials. Private/loopback addresses, unsafe XML/DTD declarations, namespace mismatches and ambiguous mirrors are rejected. Limits are 64 files including the root, 25 MiB combined (or the smaller configured upload limit), 5 MiB per downloaded file, three redirects and a 60-second resolution budget with bounded socket waits. Customer DNS resolution remains subject to the operating system resolver. Unreachable or invalid schemas require a local companion; PMem must not silently publish an incomplete ontology.
+
+
+## Release-specific upgrade and verification notes
+
+## Advanced operations and customer release
+
+The [operator reference](../installation/OPERATOR_REFERENCE.md) covers manual/gateway setup, schema maintenance, service isolation, Linux, optional Spark/OCR and detailed verification. Operator entry points are root `configure-depo.ps1`, `install-depo.ps1`, `update-depo.ps1`, `manage-depo.ps1`, `diagnose-depo.ps1` and `certify-depo-release.ps1`. Scripts under `infra` implement supported stages and optional features.
+
+Build releases from the reviewed commit and validate the actual artifact. Before customer rollout, test a clean Windows machine, paths with spaces, execution policy, first install, unchanged rerun, interrupted installation/resume, rejected upgrade without shutdown, credential retention, backup/restore, restart and import-to-publication. Record separate database, browser and LLM acceptance evidence. Local regression tests alone do not certify a customer release.
+
+## Feature-specific verification
+
+The [governed mapping feedback workflow](../GOVERNED_LEARNING.md) uses the existing agentic service and PostgreSQL registry. No new migration, credential, broker or LLM provider is needed. Deploy `backend/agentic_service/learning_review.py` and `learning_router.py` together with their service/catalog/frontend changes; release preflight requires both modules. In Semantic Bridge, expand **Learning from reviewed mappings** after publication. Verify feedback → pending hint → authorized approval → revision-scoped reuse → revocation. An amended assessment must preserve the original audit record and invalidate hints based on that older assessment. Do not label review counts as model accuracy or enable model training to test this flow.
+
+For the L0–L4 semantic/context fixes, deploy the complete release using the existing repository-root `update-depo.ps1`; no PostgreSQL schema reset or credential rotation is required. Release preflight now also requires `backend/depo_platform/semantic_support.py`, `backend/ontology_service/semantic_merge.py` and `backend/agentic_service/selected_record.py`. Keep the bundled `backend/ontology_service/resources/reasoner/depo-owl-dl.jar` and its `manifest.json` from the same release.
+
+After restart, verify Data Flow run selection and Data Products version selection before opening the Companion. Switching the selected record must reset its conversation; a failed selected-record read must not display an unrelated record. A semantic hold surviving reconnect/restart is intentional: resolve the class/model conflict and create a new reviewed proposal. For an incomplete unsatisfiable-class list, run the ontology consistency operation with the exact `target_iri`; an absent class remains unknown. If publication reports a graph/artifact revision mismatch, review and republish the retained ontology rather than clearing credentials or deleting data. See [L0–L4 remediation and storage ownership](../audits/l0-l4-remediation-2026-10-28.md).
+
+If the frontend is ready but **Existing ontology upgrade review** reports `WinError 10061`, the ontology inventory connection was refused. Frontend readiness does not establish ontology service availability. Verify that `ONTOLOGY_SERVICE_URL` in the selected `.env.local` points to the running service listener. For a backend bound specifically to `10.0.2.16`, the direct peer URL is `http://10.0.2.16:8011/api/v1`; use that example only when it matches the actual backend binding. Keep the configured gateway URL when routing through a gateway. Inspect `logs/windows-services/ontology.err.log` and `ontology.out.log`, restore the service or correct the peer URL, then rerun the same repository-root updater. Existing publications and the previous review plan are retained. The updated reviewer logs its chosen endpoint and retries transient inventory reads within a bounded budget; registration writes are not automatically retried.
+
+For engineering similarity, change-dependency paths and decision-policy examples, follow the [engineering recommendation review](../recommendation-engineering-review.md). The complete release must include `backend/graph_service/recommendation_engine.py`, `backend/graph_service/engineering_comparison.py` and `backend/Services/recommendation_compat.py`; the normal updater verifies them and rebuilds the customer UI. Domain policies are reviewed configuration and are not installed automatically. Direct graph analysis can run while the configured language model is unavailable; agent investigation requires the model.
+
+The [Recommendations customer audit](../recommendations-customer-audit.md) records input, browser, session, agent, evidence, process-scope and decision-policy checks plus the remaining customer acceptance procedure. Deploy the matching frontend and backend together; Process Context now applies scope before limiting neighbors and reports bounded coverage. A passed local suite does not establish customer API authorization or model availability.
+
+After installation, use the [operator reference](../installation/OPERATOR_REFERENCE.md) for ontology governance, microservice checks, credentials, browser access, XMI import and PLM Companion acceptance. The [PLM response contract](../PLM_COMPANION_RESPONSE_CONTRACT.md) contains the implemented system instructions and evidence rules. For the optional separate AOI provider, follow [AOI adapter configuration from PMem](../installation/AOI_GATEWAY.md).
+
+## Taxonomy browser performance update (29 October 2026)
+
+Deploy the complete release through the repository-root `update-depo.ps1` with the existing customer environment file. Include `backend/ontology_service/domain/taxonomy.py`, `backend/ontology_service/domain/taxonomy_cache.py`, `backend/ingestion_service/api/ontology_browser.py`, `backend/depo_platform/release_code_check.py` and the rebuilt frontend together. Do not copy only the frontend bundle; the new browser uses taxonomy limit/offset/query parameters. Startup rejects a release missing the cache module.
+
+Ontology Junction requests 500 terms per slice. Use Previous/Next terms or the taxonomy search field to access additional retained terms. Relationships and hierarchy describe the displayed slice, not a complete logical closure. Export remains available for the retained artifact.
+
+The first browse builds a disposable gzip cache beside the retained ontology artifact (`.<artifact-name>.taxonomy-v1.json.gz`). Subsequent process starts validate source content digests, ontology metadata, implementation and RDFLib version before reusing it. Corrupt or mismatched caches rebuild automatically; unavailable cache writes do not prevent browsing. This cache is not a publication receipt, approval record or OWL-DL consistency result. Existing credentials, schema and graph data are preserved; no migration or new dependency is required for this change.
+
+### Change Control visibility
+
+The workflow follow-up patch also updates `backend/data_pipeline_service/router.py` and `frontend/src/pages/DataFlowPage.js`: access revalidation supersedes pending page reads, and retrying a retained replay reference can recover its existing status even if the original input has expired. Current authorization and actor/source/run identity checks still apply; fresh execution still requires approved job definitions and retained inputs.
+
+Workflow reconnect/replay fixes must be deployed as a matching frontend and backend release using repository-root `update-depo.ps1`, then restart application services. This includes `backend/data_pipeline_service/router.py`, `run_records.py`, `backend/depo_platform/request_bodies.py`, and the rebuilt Import/Data Flow frontend. No schema drop, credential rotation, new dependency or migration is required. Replay requests may include `idempotency_key`; retries with the same actor, source run and key return the retained run. Clients that omit the key retain the existing new-run-per-request behavior. The UI retains an unconfirmed replay reference in same-tab session storage; after clearing browser storage or using another tab, inspect retained runs before resubmitting. Cancelling a browser request does not cancel or roll back server execution.
+
+The OSLC service supplies the central Change Control page. Deploy `backend/oslc_service/change_control.py` with the matching OSLC app and rebuilt frontend through the normal repository-root `update-depo.ps1` process. Release preflight rejects a package missing this module. No new dependency, credential or PostgreSQL schema migration is required; existing retained records are read from their owned namespaces. The page does not grant approvals, publish data, delete history or automatically convert historical records into change orders. See `docs/architecture/OSLC_LIFECYCLE_RELEASE.md` for API scope and the remaining central CR/CO enforcement phase.
+# Existing deployments: optional XML analytics permissions
+
+The control-plane role created by `infra/postgres/create-depo-database.sql`
+owns its application schema but cannot create additional analytics schemas.
+Installing updated code does not change that privilege automatically.
+
+Before enabling versioned XML analytics, have the database owner review and run:
+
+```powershell
+psql -U postgres -d depo -v depo_role=depo_app -f infra/postgres/enable-depo-analytics.sql
+```
+
+Replace `depo` and `depo_app` with the existing database and runtime role.
+This grants CREATE in that database; it does not grant superuser or CREATEDB.
+Customers who cannot grant database CREATE should leave materialization disabled
+until a separately reviewed pre-provisioned-schema implementation is available.
+Existing workflows, credentials and records must be preserved during upgrade.
+
+For isolated acceptance testing, an administrator can run
+`infra/postgres/create-depo-test-database.sql` with `-v depo_role=depo_app`.
+Set `DEPO_TEST_DATABASE_URL` privately to `depo_acceptance_test`, then run
+`python -m pytest backend/tests/test_xml_analytics_postgres.py -q`.
+The test creates uniquely named schemas and rolls back its test objects.
+Do not put the connection string or password in logs, Git, or screenshots.
+
+### Dependency size and safe cache maintenance
+
+The default Windows runtime uses `backend/requirements-lock.txt`. Its 190 pinned
+packages exclude nine OCR-only dependencies. `-EnableOcr` adds the complete
+`backend/requirements-ocr-lock.txt` overlay. All existing versions and hashes are
+preserved. Do not install the development profile on a customer runtime.
+
+`DEPO_SERVICE_RUNTIME_MODE=shared` reuses `backend/.dt_venv` across service
+processes. `isolated` keeps independent per-service environments and their
+reviewed locks in `backend/dependency-profiles/`. Isolation can increase total
+disk usage because several services need the same semantic dependencies. Do not
+use `--system-site-packages` or link writable package directories between them.
+
+From the repository root, inspect the selected environment without changing it:
+
+```powershell
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\runtime-footprint.py --output logs\installation\runtime-footprint.json
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\build-service-locks.py --check
+```
+
+The footprint report separates runtime, optional OCR and outside-lock packages.
+Its RECORD sizes can double-count shared files and do not establish uninstall
+safety. Torch, spaCy and Transformers remain dependencies of pinned Semantica.
+Pytest and pytest-asyncio are for acceptance/development, not the standard lock.
+Pip remains necessary for managed installation and updates.
+
+An upgrade installs the new dependency closure but does **not** uninstall old
+packages from a reused environment. Obtain the smaller footprint with a fresh,
+locked environment during a planned service stop and run the normal installer
+and readiness checks before resuming. Preserve the previous environment for
+rollback. Do not uninstall either OpenCV distribution from an active shared
+environment: optional EasyOCR and Semantica can own overlapping `cv2` files.
+
+Preview reproducible checkout caches, then remove them after tests/builds finish:
+
+```powershell
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\clean-build-caches.py
+.\backend\.dt_venv\Scripts\python.exe infra\deployment\clean-build-caches.py --apply
+```
+
+This command preserves dependency environments, `node_modules`, built `dist`,
+uploads, data, logs and deliverables. It skips symlinks/junctions and refuses
+caches containing them. It never clears workflow history or retained artifacts.
+Use the authorized Admin retention workflows for business-data cleanup.
+
+The release packager excludes build caches and generated JSON/XML/image/HTML
+captures under `docs/audits/`, while preserving authored Markdown audits,
+foundation resources and mapping configuration. Keep old served frontend assets
+until existing browser sessions have finished using them.
+
+`infra/windows/build-depo-frontend.ps1` builds in a temporary staging directory,
+copies new assets into `frontend/dist`, and replaces `index.html` last. A failed
+compilation leaves the served release intact. It retains old hashed assets for
+already-open tabs; do not manually purge `dist/assets` while users are active.
+
+# REST source configuration
+
+Customer source releases must be built with
+`python infra/deployment/build-release-package.py --output <new-zip-path>`
+from a clean, committed, reviewed checkout. The older
+`tools/build_customer_release.py` command delegates to the same policy.
+Without `--output`, the command only checks file selection; this is not release
+certification. Commit the complete reviewed change set, including new required
+modules, before building a ZIP. Generated Maven `target` outputs, legacy
+`tools/import` helpers and direct graph loader scripts are development-only and
+are excluded from customer releases. Use the supported Import and Data Flow
+workflows for customer data loading and publication.
+
+Admin → Data sources can register HTTP(S) sources and submit acquisition through
+the existing pipeline worker. Set `DEPO_REST_ALLOWED_HOSTS` and dedicated
+`DEPO_REST_SECRET_*` references in the selected server environment, then restart.
+Registration and run manifests use existing PostgreSQL registry tables; no new
+schema migration is required. For exact setup, key-header examples, user steps
+and current limits, see [REST source setup](../REST-SOURCES.md).
+
+
+### Analytics discovery after an upgrade
+
+The standard `update-depo.ps1` applies migration `014_analytics_discovery.sql`. Open **Data Products → Available analytics** to inspect existing completed XML analytics loads and their operational tables, dimensions and aggregate KPI views. Imported schema designs and published packages have separate counts. No reload or database reset is required for existing receipt-backed datasets. See [Analytics products and consumption](../ANALYTICS-PRODUCTS.md) for the supported end-user sequence and limitations.
+
+### Registered RDF analytics upgrade
+
+The standard repository-root `update-depo.ps1` applies `infra/postgres/migrations/015_semantic_datasets.sql` without recreating the application database. It adds versioned entity, namespace and typed property-value tables. In **Data Products → Available analytics**, select a registered Catalog/Metadata RDF source. If needed choose **Prepare workflow draft for review**, then approve that definition in Data Flow before execution. Preparation and analysis run in the existing data-pipeline worker. No credentials or approvals are created automatically. Existing XML analytics remain under **Other imports and XML analytics**. See [Semantic analytics](../SEMANTIC_ANALYTICS.md) for supported analyses, limits and validation scope.
+
+### Analytics configurations and source-change assessment
+
+New semantic preparations retain immutable input selections in the existing PostgreSQL registry; no additional database server or broker is required. Source-change checks use an approved `semantic-source-review` definition with `semantic-core-v1`. In Data Products select a prepared dataset, choose **Check source changes and refresh needs**, then run the approved worker. A retained review run may be scheduled using the existing Data Flow schedule controls. Scheduling is not enabled automatically. Keep `OSLC_TRS_STORE=postgres` for multi-process deployment; review reports disabled/unavailable feeds and retention gaps explicitly. For external OSLC readers configure the existing lifecycle read grants for `analytics-baselines` resources. See [Semantic analytics: configuration baselines and tracked changes](../SEMANTIC_ANALYTICS.md#configuration-baselines-and-tracked-changes) for coverage and remaining OSLC Config limitations.
+
+The configuration/TRS audit correction separates review outcomes from workflow completion and pins preparation baselines in retained queue inputs. Rebuild/restart both the data-pipeline service and worker through the standard updater. Legacy preparations without a verified baseline binding require a newly reviewed submission; completed runs with a retained binding can recover it. This update does not replay jobs or change published products automatically.
+
+### RDF analytics source registration and business evidence
+
+After updating an existing installation, open Data Products → Available analytics → Add a data source from an RDF file. Connect metadata-authoring access, enter a source name and choose a supported RDF file (maximum 25 MiB). Registration retains a draft in the configured Metadata Registry; it does not approve a semantic release or publish data. Select the registered source and the approved preparation workflow, then select its prepared dataset. The product-to-manufacturing analysis uses explicit record-type/relationship selections and runs in the existing native pipeline worker. Data Flow shows retained results as business tables. Migration 015 remains the required semantic projection schema; no new runtime DDL or database reset is needed for these UI/report additions. See `docs/SEMANTIC_ANALYTICS.md` for calculation scopes and limits.
+
+### Reporting models and graph snapshot upgrade
+
+This release adds `infra/postgres/migrations/016_business_marts.sql`. Run the existing repository-root `update-depo.ps1` with the deployment's existing `-EnvFile`; it applies the migration and verifies reporting-table columns, keys and indexes before restarting services. Do not drop PostgreSQL schemas or delete retained inputs. Existing environment credentials and graph publications are preserved.
+
+After upgrade, review the separate native **Governed business reporting tables** (`semantic-business-mart`) and **Published graph snapshot** (`graph-source-snapshot`) definitions in Data Flow before approving them. An approved read-only analysis definition does not authorize these writes. End users create named analytics model drafts in Data Products; model approval requires `DATA_JOB_APPROVAL_TOKEN`, model authoring uses `ONTOLOGY_APPROVAL_TOKEN`, and job execution uses `DATA_JOB_EXECUTION_TOKEN`. The worker calls the configured Graph and Metadata Registry services using registered server credentials. Never put keys into model definitions.
+
+See `docs/SEMANTIC_ANALYTICS.md` for the end-user sequence, supported KPI formulas, unit rules, expected BOM scope, physical table consumption and bounded graph-snapshot partitioning. Vanilla reset includes the new reporting records in dependency order and still preserves credentials/foundation. Normal updates never reset them.
+
+### Ingestion connector inventory and runtime checks
+
+Open **Admin → Data sources → Data source capabilities**. The inventory lists
+all 17 requested Semantica ingestor types and distinguishes a configurable PMem
+connector, an existing native workflow, and a library capability not connected
+to PMem. Only REST is currently a configurable Semantica acquisition adapter.
+File, XML and ontology processing remain in their existing Import and Ontology
+Junction workflows; they are not advertised as generic Semantica connectors.
+
+The read-authorized endpoint is
+`GET /api/v1/pipeline/rest-sources/capabilities`. Listing does not initialize
+optional SDKs or make outbound requests. It is not a connection test.
+
+In shared mode, the existing shared lock includes Semantica. In isolated mode,
+REST acquisition uses the installed ontology Python runtime through a bounded
+child process, preserving the lean pipeline API/worker dependency profiles.
+Install the ontology runtime before installing/checking only the pipeline
+runtime. The normal all-service installer already follows that order. Both
+shared and isolated installation smoke checks now exercise the REST lazy import,
+not just the service OpenAPI document. No optional ingestor SDKs are added.
+
+REST registrations use PostgreSQL `depo_registry`, namespace `rest_sources`,
+with `namespace`, `key`, `value` and `updated_at` columns. Credentials remain
+server environment references. This change does not require a schema migration
+or modify existing source records, credentials, graph publications or products.
+See [workflow responsibilities](../WORKFLOW-ENGINE.md) and the
+[ingestor audit](../audits/workflow-ingestors-2026-11-01.md).
+
+
+## Optional registered source connectors
+
+See [Registered source acquisition](../CONNECTOR-SOURCES.md) for the 17-ingestor inventory, Admin selection workflow, PostgreSQL receipt storage and optional SDK setup. Use `infra/windows/install-depo-connectors.ps1` with a reviewed hash-pinned lock after stopping services; `-CheckOnly` validates the lock without changing the runtime. Existing deployments receive the application code through the normal repository-root `update-depo.ps1 -EnvFile .env.local`. Connector secrets remain server configuration; upgrading does not create source accounts, approve jobs, acquire data or publish products.
+
+
+## Semantic event recovery upgrade
+
+The normal `update-depo.ps1 -EnvFile .env.local` flow applies migration `017_speed_event_pagination.sql` and the matching worker/API/frontend files. Do not drop the PostgreSQL schema or clear retained event artifacts. Equal capture retries reconcile to existing evidence; conflicting captures are held. Existing partial event reviews require their original retained event selection and reviewer for recovery. [Semantic event workflow](../SEMANTIC-EVENT-WORKFLOW.md) documents the new Data Flow Event reviews tab and connector normalization job. Agent access remains separately configured; no LLM is required for event processing or selected-record Companion answers.
+
+
+### Replay execution access and ontology read checks
+
+A healthy read connection is not permission to replay a job. The Data Flow replay action first calls the read-only `/api/v1/pipeline/jobs/execution-identity` endpoint with DATA_JOB_EXECUTION_TOKEN and uses the returned server actor. Users do not need to invent an execution principal. Approval/publication reviewer controls remain separate. A 401/403 blocks further replay attempts until credentials change or access is revalidated; no rejected write is automatically replayed. The immutable submission reference remains available for receipt recovery.
+
+If execution access is absent, use Admin API access to connect the existing data-job execution scope. Do not grant maintenance or publish permissions merely to execute an already approved definition. A still-rejected credential must be diagnosed in the affected deployment; reconnecting read-only scopes cannot supply a missing write permission.
+
+The frontend retains GRAPH_READ_TOKEN for ontology health/list requests even when imported OpenAPI profile metadata is incomplete, and prevents anonymous protected reads. Deploy the complete matching backend/frontend release with the normal root updater, rebuild the UI and refresh the browser. No credential rotation, auth bypass or new schema migration is required specifically for these authorization fixes; migration 017 is still required by the accompanying event changes.
+
+Local read-only verification on 1 November 2026 returned HTTP 200 for ontology health and execution identity using existing deployment configuration. This verifies local credentials, not customer credentials. No replay was submitted by that check.

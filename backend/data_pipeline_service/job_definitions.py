@@ -21,6 +21,7 @@ JOB_CONTRACTS = handler_registry.contracts()
 SUPPORTED_JOB_TYPES = set(JOB_CONTRACTS)
 SUPPORTED_QUALITY_PROFILES = {"semantic-core-v1", "unstructured-evidence-v1", "data-quality-core-v1", "schema-analytics-v1"}
 REQUIRED_QUALITY_PROFILES = {
+    "connector-ceim-normalize":"semantic-core-v1",
     "semantic-business-mart":"semantic-core-v1",
     "graph-source-snapshot":"semantic-core-v1",
     "semantic-source-review":"semantic-core-v1",
@@ -91,7 +92,7 @@ def validate_definition(payload: dict[str, Any]) -> list[str]:
         errors.append("schedule is configured after the first retained run through the schedule endpoint")
     errors.extend(_retry_errors(payload.get("retry_policy")))
     standards = payload.get("allowed_standards", [])
-    if payload.get("job_type") in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
+    if payload.get("job_type") in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim", "connector-ceim-normalize"}:
         if not isinstance(standards, list) or not standards or any(not isinstance(item, str) or not item.strip() for item in standards):
             errors.append("allowed_standards must be a non-empty list for CEIM jobs")
     return errors

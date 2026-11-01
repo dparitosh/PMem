@@ -216,6 +216,9 @@ class AgentMemoryService:
         turn_id = _stable_id(cls.scope(), session_id, user_message, assistant_response, _now_iso())
         user_id = f"{turn_id}:user"
         assistant_id = f"{turn_id}:assistant"
+        from backend.agentic_service.context_scope import companion_scope
+        selected_scope = {key: value for key, value in companion_scope(graph_context).items()
+                          if isinstance(value, str) and 0 < len(value) <= 2000}
         touched_nodes = cls._extract_touched_nodes(graph_context)
         result = cls._query(
             """
@@ -237,6 +240,7 @@ class AgentMemoryService:
             SET a.role = 'assistant',
                 a.text = $assistant_response,
                 a.generation_json = $generation_json,
+                a.context_json = $context_json,
                 a.created_at = $now,
                 a.status = $status
             MERGE (s)-[:HAS_MESSAGE]->(u)
@@ -260,6 +264,7 @@ class AgentMemoryService:
                 "user_message": str(user_message or "")[:4000],
                 "assistant_response": str(assistant_response or "")[:12000],
                 "generation_json": json.dumps(generation or {}),
+                "context_json": json.dumps(selected_scope, sort_keys=True),
                 "status": status,
                 "scope": cls.scope(),
                 "touched_nodes": touched_nodes[:100],
