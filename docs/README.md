@@ -1,5 +1,7 @@
 # Documentation map
 
+- [Current demo user guide](DEMO-USER-GUIDE.md) — examples, page sequence, approval, TRS, configuration baselines and customer upgrade steps.
+
 - [Ingestion and data-product lifecycle](DATA_PRODUCT_INGESTION.md) — current format coverage, storage responsibilities, product publication and remaining integration work.
 
 - [Complete document index](DOCUMENT_INDEX.md) — purpose and ownership of repository Markdown files.

@@ -1,5 +1,16 @@
 # Deliverables
 
+For a current workflow demonstration, use [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx)
+and its [demo user guide](../docs/DEMO-USER-GUIDE.md), updated 2 November 2026.
+The 20-slide deck contains editable arrow/elbow diagrams for ingestion, ontology,
+Governor/Steward review, Change Control, approval, OSLC TRS, configuration baselines,
+analytics, products and customer upgrades. Its speaker notes identify code sources.
+Builder: `scripts/presentations/build_workflow_audited.mjs`; use the same bundled
+runtime variables documented below. Render/validation output stays uncommitted.
+
+The architecture decks below are background material; use the workflow deck
+and current guide for demo instructions and known limitations.
+
 The primary business presentation is
 [DEPO Functional Architecture and Deployment](DEPO_Functional_Architecture_and_Deployment.pptx)
 (18 slides, updated 21 October 2026). It covers engineering domains, the end-user

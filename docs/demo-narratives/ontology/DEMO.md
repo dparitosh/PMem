@@ -1,25 +1,5 @@
-# Ontology Junction — semantic bridge automation
+# Ontology Junction demo
 
-**Outcome:** Link two ontologies through governed taxonomy, vocabulary,
-alignment, inference, and merge-preview workflows.
+Follow [Register and publish meaning](../../DEMO-USER-GUIDE.md#2-register-and-publish-meaning) and [Link instances and review two-ontology merge](../../DEMO-USER-GUIDE.md#3-link-instances-and-review-two-ontology-merge) in the current guide.
 
-**Readiness:** At least two ontologies are registered; ontology, graph, and
-agentic services are ready; publication credentials are available for the
-approval step.
-
-## Talk track and clicks
-
-1. Open **Ontology Junction** and select source and target ontologies.
-2. Review taxonomy and vocabulary differences before requesting alignment.
-3. Run Semantic Bridge discovery and inspect entity candidates with confidence,
-   evidence, and conflict explanations.
-4. Review inference results and reject unsupported suggestions.
-5. Open merge preview to show additions, replacements, conflicts, and impact.
-6. Approve and publish only the reviewed mapping; show the resulting bridge job
-   and graph evidence.
-
-**Evidence to call out:** ontology versions, candidate scores, supporting terms,
-conflicts, reviewer identity, bridge job state, and publication result.
-
-**Key message:** Agents propose and explain; a governed approval controls graph
-publication.
+Select the exact active ontology/version. Inspect one class view at a time and term detail above it. In Semantic Bridge, select an imported task and target; the Governor proposes, the Steward assesses, and the authorized workflow publishes. Review held candidates and receipt evidence. For two ontologies, save/review the merge plan and resume it after refresh before repeating a write. Unresolved external imports remain unknown OWL-DL evidence.

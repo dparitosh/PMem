@@ -299,4 +299,29 @@ After updating the frontend, reload the browser. Home distinguishes registered o
 
 Merge validation fixes also require the matching backend release and a managed restart. Regenerate or resume and revalidate an old merge plan after upgrading: old validation evidence must not be reused across changed validator/policy fingerprints. Typed literals retain their RDF identity. Under `ONTOLOGY_GOVERNANCE_PROFILE=imported_standard`, warnings from the generated editorial metadata shapes remain visible advice; `enterprise_curated` and authored/custom semantic shapes remain strict. Approval/publication still use their existing authorized workflows. Successful requests slower than five seconds now emit a sanitized WARNING with request ID and route template for investigation. These changes require no credential rotation or schema drop.
 
+### Demo and upgrade verification — 2 November 2026
+
+Use [the current demo user guide](docs/DEMO-USER-GUIDE.md) and
+`deliverables/DEPO-Workflow-Audited.pptx` for examples, Change Control, approval,
+TRS, configuration baselines and the customer upgrade command sequence.
+`update-depo.ps1` upgrades a complete release already placed in the install root;
+it does not fetch repository changes. The root installer applies pending migrations
+including semantic datasets (015), business marts (016) and event pagination (017),
+verifies the schema/indexes, rebuilds the frontend and restarts matching APIs/workers.
+Preparing/populating analytics and publishing products are separate authorized jobs.
+
+The run-history read-budget correction requires the updated pipeline service and
+a managed restart. Lock/query cancellation returns a bounded retryable 503;
+retry the read, not an unverified replay. No new migration or package is required.
+External offline OWL imports remain a separate unresolved reasoning prerequisite.
+
+Upgrade regression entry point: `infra/windows/test-depo-update.ps1`. The obsolete
+duplicate `test-upgrade-flow.ps1` fixture has been removed; nonzero installer exits
+are covered by the maintained test. Real upgrade coverage is
+`backend/tests/test_customer_upgrade_postgres.py`: it only accepts
+`depo_acceptance_test`, creates a disposable schema, upgrades v11 through the
+current migrations, verifies retained records/credentials and idempotency, and
+checks rollback of a deliberately failing future migration. Never point this test
+at customer application databases.
+
 After reload, use **Resume saved plan** for a completed merge. It verifies the current publication receipt through read-only requests and does not repeat the write. An incomplete optional OWL-DL check is now identified separately: unresolved referenced imports require an approved local import bundle for a full check; structural review does not prove OWL-DL consistency.

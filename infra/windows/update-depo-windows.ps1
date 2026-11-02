@@ -3,6 +3,9 @@
 .DESCRIPTION Applies pending PostgreSQL migrations, provisions Neo4j schema,
 builds the frontend and restarts services using the existing environment file.
 API keys are validated and preserved; rotation remains a separate explicit action.
+The root installer discovers pending versioned migrations, including semantic
+datasets and business marts. This script upgrades an already placed complete
+release; it does not download Git changes or publish retained drafts.
 #>
 [CmdletBinding()]
 param(
@@ -100,3 +103,4 @@ Invoke-DepoUpgradeStep 'Migration, installation and service verification' {
 Write-Host 'Review logs/installation/ceim-upgrade-review/plan.json. New PMI rules require source regeneration and governed publication; existing graph publications were not replaced.'
 Write-Host 'DEPO redeployment completed: database schema/indexes verified and services restarted. Existing credentials and configuration were preserved except explicitly requested timeout updates.' -ForegroundColor Green
 Write-Host 'Refresh the browser and revalidate access. Review retained workflow status before retrying imports or publication; this update does not replay or approve pending operations.'
+Write-Host 'Demo walkthrough: docs/DEMO-USER-GUIDE.md. Migrations create/verify analytics structures; preparing data and publishing products remain explicit worker workflows.'

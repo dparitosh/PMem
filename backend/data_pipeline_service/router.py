@@ -374,15 +374,29 @@ def run_configured_job(job_id: str, version: str, payload: JobInputBody, request
 
 @router.get("/jobs/runs", dependencies=[Depends(graph_read_identity)], summary="List durable data-job run manifests")
 def list_job_runs(limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    from datetime import datetime, timedelta, timezone
+    from psycopg.errors import LockNotAvailable, QueryCanceled
+    from backend.depo_platform.operations import OperationContext, current_operation, operation_scope
+    parent = current_operation()
+    deadline = (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat()
+    if parent and datetime.fromisoformat(parent.deadline_at) < datetime.fromisoformat(deadline):
+        deadline = parent.deadline_at
     try:
-        if offset < 0:
-            raise HTTPException(422, 'offset must be nonnegative')
-        if hasattr(run_records.store, 'page'):
-            bounded = max(1, min(limit, 1000))
-            total, runs = run_records.store.page(limit=bounded, offset=offset, order_field='started_at')
-            return {'runs': runs, 'total': total, 'limit': bounded, 'offset': offset,
-                    'next_offset': offset + bounded if offset + bounded < total else None}
-        return {"runs": run_records.list_runs(limit=limit)}
+        # A status read must not inherit the long execution/replay budget for
+        # /runs routes. Bound pool wait, lock wait and SQL by one short deadline.
+        with operation_scope(OperationContext(parent.operation_id if parent else 'pipeline-run-list',
+                                              deadline, parent.on_progress if parent else None)):
+            if offset < 0:
+                raise HTTPException(422, 'offset must be nonnegative')
+            if hasattr(run_records.store, 'page'):
+                bounded = max(1, min(limit, 1000))
+                total, runs = run_records.store.page(limit=bounded, offset=offset, order_field='started_at')
+                return {'runs': runs, 'total': total, 'limit': bounded, 'offset': offset,
+                        'next_offset': offset + bounded if offset + bounded < total else None}
+            return {"runs": run_records.list_runs(limit=limit)}
+    except (LockNotAvailable, QueryCanceled) as exc:
+        raise HTTPException(503, 'Run history is temporarily busy. Retry this read; no job was replayed.',
+                            headers={'Retry-After':'2'}) from exc
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
 

@@ -11,6 +11,12 @@ try {
   foreach ($name in @('update-depo-windows.ps1','update-depo-runtime-timeouts.ps1','runtime-config.ps1','service-runtimes.ps1','process-control.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $scripts $name)
   }
+  # Compatibility inspection is a child boundary too: this offline sequencing
+  # test must not require a real Node installation or frontend dependency tree.
+  Add-Content -LiteralPath (Join-Path $scripts 'runtime-config.ps1') -Value @'
+function Get-DepoNodeRuntime { @{ Node = 'Invoke-TestFrontendCompatibility' } }
+function Invoke-TestFrontendCompatibility { '{"current":true}'; $global:LASTEXITCODE = 0 }
+'@
   Set-Content -LiteralPath (Join-Path $workspace 'infra/deployment/services.json') -Value '{"services":[{"id":"ontology"}],"workers":[]}'
   Set-Content -LiteralPath (Join-Path $workspace 'backend/.dt_venv/Scripts/python.exe') -Value 'stub runtime: never executed'
   $pythonStubPath = Join-Path $workspace 'backend/.dt_venv/Scripts/python.exe'
@@ -26,6 +32,7 @@ param([string]$EnvFile, [string]$RootEnvFile, [string]$Profile, [int]$ServiceSta
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Add-Content -LiteralPath (Join-Path $root 'order.txt') -Value ([IO.Path]::GetFileNameWithoutExtension($PSCommandPath))
 if ($PSScriptRoot -eq $env:DEPO_UPDATE_TEST_ROOT -and $PSCommandPath -like '*install-depo.ps1' -and (Test-Path -LiteralPath (Join-Path $root 'fail-install'))) { throw 'simulated migration failure' }
+if ($PSScriptRoot -eq $env:DEPO_UPDATE_TEST_ROOT -and (Test-Path -LiteralPath (Join-Path $root 'fail-install-exit'))) { $global:LASTEXITCODE = 17; return }
 if ($PSCommandPath -like '*test-depo-*' -and (Test-Path -LiteralPath (Join-Path $root 'fail-preflight'))) { throw 'simulated preflight failure' }
 if ([IO.Path]::GetFileName($PSCommandPath) -eq 'install-depo.ps1' -and $PSScriptRoot -ne $env:DEPO_UPDATE_TEST_ROOT) {
   if (-not $CheckPrerequisites) { throw 'Prerequisite stage attempted installation.' }
@@ -97,7 +104,12 @@ if ([IO.Path]::GetFileName($PSCommandPath) -eq 'install-depo.ps1' -and $PSScript
   try { & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile } catch { $failed = $true }
   if (-not $failed -or (Get-Content -LiteralPath (Join-Path $workspace 'order.txt')) -contains 'start-depo-frontend') { throw 'Failed migration must prevent frontend restart.' }
   if (-not ((Get-Content -LiteralPath (Join-Path $workspace 'order.txt')) -contains 'stop-depo-services')) { throw 'Migration failure test did not reach the migration stage.' }
-  Write-Host 'PASS: update sequence, timeout synchronization, idempotence, preserved settings, and failed-stage stop.'
+  Remove-Item -LiteralPath (Join-Path $workspace 'fail-install')
+  Set-Content -LiteralPath (Join-Path $workspace 'fail-install-exit') -Value 'fail'
+  $failed = $false
+  try { & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile } catch { $failed = $_.Exception.Message -like '*17*' }
+  if (-not $failed) { throw 'Nonzero installer exit was accepted as a successful upgrade.' }
+  Write-Host 'PASS: update sequence, timeout synchronization, idempotence, preserved settings, failed-stage stop and nonzero installer exit.'
 } finally {
   if ($pythonStubPath) { Remove-Item -LiteralPath "Alias:$pythonStubPath" -ErrorAction SilentlyContinue }
   Get-ChildItem Env: | Where-Object { -not $originalEnvironment.ContainsKey($_.Name) } | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $null, 'Process') }
