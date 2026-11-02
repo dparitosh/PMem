@@ -62,6 +62,19 @@ Invoke-DepoUpgradeStep 'Agentic configuration before shutdown' {
     if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Correct the listed settings. Services were not stopped.' }
   } finally { Pop-Location }
 }
+# Detect changed locked frontend dependencies before stopping a working release.
+if (-not $SkipFrontend -and -not $InstallDependencies) {
+  Invoke-DepoUpgradeStep 'Frontend dependency compatibility' {
+    $nodeRuntime = Get-DepoNodeRuntime -Root $root -NodeJsDir $settings.DEPO_NODEJS_DIR
+    $report = & $nodeRuntime.Node (Join-Path $root 'frontend/checkDependencies.mjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency inspection failed. Services were not stopped.' }
+    $compatibility = ($report -join "`n") | ConvertFrom-Json
+    if ($compatibility.current -ne $true) {
+      Write-Host 'Frontend locked dependencies changed. Enabling checkpointed dependency installation for this upgrade.'
+      $script:InstallDependencies = $true
+    }
+  }
+}
 if ($EnableOcr -and -not $InstallDependencies) { throw '-EnableOcr requires -InstallDependencies during upgrade.' }
 if (-not $InstallDependencies) {
   $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
