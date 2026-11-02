@@ -30,7 +30,7 @@ export default function MergeStewardReview({ reviewKey, previewId, enabled, revi
   return <section className="merge-workflow" aria-label="Ontology Steward assessment">
     <h4>Ontology Steward assessment</h4>
     <p>The Governor prepares and publishes the saved plan. The existing Steward checks its governance evidence before publication. Model explanations cannot override these checks.</p>
-    {!enabled && <p>Generate and validate the current mapping plan to start the Steward assessment.</p>}
+    {!enabled && <p>{previewId ? 'A saved plan exists, but validation has not cleared it. Inspect the validation status and conflicts below; wait for pending checks or resolve reported issues before Steward assessment.' : 'Generate and validate the current mapping plan to start the Steward assessment.'}</p>}
     {enabled && <button type="button" disabled={busy || !previewId || !reviewer.trim()} onClick={assess}>{busy ? 'Steward assessment in progress' : 'Run Steward assessment'}</button>}
     {state?.status === 'running' && <p role="status">Steward is evaluating the retained plan; no graph changes are being made.</p>}
     {state?.status === 'failed' && <div role="alert"><p>{state.error}</p></div>}

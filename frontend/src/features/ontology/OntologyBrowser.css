@@ -25,3 +25,8 @@
 .ontology-browser-table-tabs { border: 0; padding: 0; display: flex; justify-content: flex-end; }
 .ontology-browser .ag-paging-panel { min-height: 76px; height: 76px; }
 @media (max-width: 1000px) { .ontology-browser-pane { grid-row: auto; grid-template-rows: auto auto; } .ontology-browser-table-tabs { justify-content: flex-start; } }
+
+.ontology-browser [aria-label="Class display"] { gap: 6px; padding: 8px 0; }
+.ontology-browser [aria-label="Class display"] button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--ui-border, #d9e2ec); border-radius: 4px; color: var(--ui-primary-text, #005f87); background: var(--ui-surface, #fff); cursor: pointer; }
+.ontology-browser [aria-label="Class display"] button[aria-pressed="true"] { background: var(--ui-primary, #005f87); color: #fff; }
+.ontology-browser [aria-label="Class display"] button:focus-visible { outline: 2px solid var(--ui-primary, #005f87); outline-offset: 2px; }

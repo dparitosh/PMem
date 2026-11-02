@@ -28,3 +28,9 @@ test('a late assessment cannot attach to a different selected plan',async()=>{
  fireEvent.click(screen.getByRole('button',{name:'Run Steward assessment'}));
  await waitFor(()=>expect(onReview).toHaveBeenLastCalledWith(expect.objectContaining({key:'new',status:'completed'})));
 });
+
+test('a retained validation hold gives an actionable explanation instead of asking to create the plan again',()=>{
+ render(<MergeStewardReview enabled={false} previewId="held" reviewKey="held" reviewer="reviewer" onReview={vi.fn()}/>);
+ expect(screen.getByText(/A saved plan exists, but validation has not cleared it/)).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Run Steward assessment'})).toBeNull();
+});

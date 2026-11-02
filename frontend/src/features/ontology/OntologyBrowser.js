@@ -9,9 +9,20 @@ import WorkspaceTabs from "../../Components/WorkspaceTabs";
 import { normalizeOntologyBrowserNode, isOntologyClassNode, ontologyDisplayName, ontologyTermId } from "../../utils/ontologyPresentation";
 import { UI_COLORS as C } from "../../styles/uiTokens";
 
+export function summarizeClassParents(parents = []) {
+  const unique = [...new Map(parents.map((parent, index) => [parent.term_id || parent.uri || `${parent.label}:${index}`, parent])).values()];
+  const anonymous = unique.filter(parent => String(parent.term_id || parent.uri || '').startsWith('_:') || /^OWL (restriction|expression)$/.test(parent.label || ''));
+  const named = unique.filter(parent => !anonymous.includes(parent));
+  const counts = new Map();
+  named.forEach(parent => counts.set(parent.label, (counts.get(parent.label) || 0) + 1));
+  return [...named.map(parent => counts.get(parent.label) > 1 ? `${parent.label} (${parent.term_id || parent.uri})` : parent.label),
+    ...(anonymous.length ? [`${anonymous.length} OWL expression${anonymous.length === 1 ? '' : 's'}`] : [])].join(', ');
+}
+
 function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onTableModeChange }) {
   const [selectedTermId, setSelectedTermId] = useState('');
   const [tableMode, setTableMode] = useState('classes');
+  const [classView, setClassView] = useState('list');
   const inspectorRef = useRef(null);
   const tableId = useId();
   useEffect(() => {
@@ -214,7 +225,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
         termId: node.term_id,
         label,
         prefix: node.ontology_prefix || '',
-        parents: (node.browse_declarations?.parents || parents.map(id=>({label:nodeById.get(id)?.label || id}))).map(parent=>parent.label).join(', ') || (node.browse_declarations?.complete ? 'No declared parent' : taxonomy?.page ? 'Outside slice or undeclared' : 'Thing'),
+        parents: summarizeClassParents(node.browse_declarations?.parents || parents.map(id=>({term_id:id,label:nodeById.get(id)?.label || id}))) || (node.browse_declarations?.complete ? 'No declared parent' : taxonomy?.page ? 'Outside slice or undeclared' : 'Thing'),
         children: children.length,
         definition: node.definition || node.comment || '',
         type: 'Class',
@@ -443,43 +454,6 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
       </section>
 
       {taxonomy?.summary?.truncated && <p role="status">Showing {taxonomy.summary.terms} of {taxonomy.summary.total_terms} terms and {taxonomy.summary.taxonomy_links} of {taxonomy.summary.total_taxonomy_links} relationships. Declared classes and properties are prioritized; this is a bounded browser slice. Export the retained ontology for complete content.</p>}
-      <div className="ontology-browser-table-tabs">
-        <WorkspaceTabs idPrefix={tableId} label="Ontology term tables" tabs={[{id:'classes',label:'Classes'},{id:'properties',label:'Properties'},{id:'axioms',label:'Axioms'}]} value={tableMode} onChange={value=>{setTableMode(value);onTableModeChange?.(value);}} />
-      </div>
-      <div className="owl-browser-layout" style={tableMode === 'classes' ? undefined : {gridTemplateColumns:'minmax(0, 1fr)'}}>
-        {tableMode === 'classes' && <section className="ontology-browser-pane">
-          <header className="ontology-browser-pane-heading"><h3>{`Class Hierarchy (${hierarchy.rows.length} of ${classRows.length} loaded classes)`}</h3><p>Browse ontology depth and select a focal term.</p></header>
-          <div className="ontology-browser-pane-grid">
-            <DataGridWidget
-              appearance="embedded"
-              ariaLabel={`Class Hierarchy (${hierarchy.rows.length} of ${classRows.length} loaded classes)`}
-              rows={hierarchy.rows}
-              columns={treeColumns}
-              height={566}
-              minGridHeight={566}
-              paginationPageSize={20}
-              emptyLabel="No class hierarchy available"
-            />
-          </div>
-        </section>}
-
-        <section className="ontology-browser-pane">
-          <header className="ontology-browser-pane-heading"><h3>{activeTitle}</h3><p>{tableMode === 'properties' ? 'Domain, range, and property semantics' : tableMode === 'axioms' ? 'Resolved relationships and OWL expressions' : 'Classes with parent and child coverage'}</p></header>
-          <div className="ontology-browser-pane-grid" role="tabpanel" id={`${tableId}-panel-${tableMode}`} aria-labelledby={`${tableId}-tab-${tableMode}`}>
-            <DataGridWidget
-              appearance="embedded"
-              ariaLabel={activeTitle}
-              rows={activeRows}
-              columns={activeColumns}
-              height={566}
-              minGridHeight={566}
-              paginationPageSize={20}
-              emptyLabel={activeEmptyLabel}
-              onRowClicked={handleOntologyRowSelection}
-            />
-          </div>
-        </section>
-      </div>
       <section ref={inspectorRef} aria-label="Selected term details" hidden={!selectedTerm} style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden', flex: '1 1 auto', minHeight: 0 }}>
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
@@ -500,7 +474,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
               <code style={{ display: 'block', fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
             </section>
             <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Superclass axioms (named parents and restrictions)</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{selectedTerm.browse_declarations?.parents?.length ?? hierarchy.parentByChild.get(selectedTerm.term_id)?.length ?? 0}</div>
             </div>
             <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
@@ -552,6 +526,48 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
           </div>
         )}
       </section>
+      <div className="ontology-browser-table-tabs">
+        <WorkspaceTabs idPrefix={tableId} label="Ontology term tables" tabs={[{id:'classes',label:'Classes'},{id:'properties',label:'Properties'},{id:'axioms',label:'Axioms'}]} value={tableMode} onChange={value=>{setTableMode(value);onTableModeChange?.(value);}} />
+      </div>
+      {tableMode === 'classes' && <div role="group" aria-label="Class display" className="ontology-browser-table-tabs">
+        <button type="button" aria-pressed={classView === 'list'} onClick={()=>setClassView('list')}>Class list</button>
+        <button type="button" aria-pressed={classView === 'hierarchy'} onClick={()=>setClassView('hierarchy')}>Class hierarchy</button>
+      </div>}
+      <div className="owl-browser-layout" style={{gridTemplateColumns:'minmax(0, 1fr)'}}>
+        {tableMode === 'classes' && classView === 'hierarchy' && <section className="ontology-browser-pane" role="tabpanel" id={`${tableId}-panel-classes`} aria-labelledby={`${tableId}-tab-classes`}>
+          <header className="ontology-browser-pane-heading"><h3>{`Class Hierarchy (${hierarchy.rows.length} of ${classRows.length} loaded classes)`}</h3><p>Browse ontology depth and select a focal term.</p></header>
+          <div className="ontology-browser-pane-grid">
+            <DataGridWidget
+              appearance="embedded"
+              ariaLabel={`Class Hierarchy (${hierarchy.rows.length} of ${classRows.length} loaded classes)`}
+              rows={hierarchy.rows}
+              columns={treeColumns}
+              height={566}
+              minGridHeight={566}
+              paginationPageSize={20}
+              emptyLabel="No class hierarchy available"
+            />
+          </div>
+        </section>}
+
+        {(tableMode !== 'classes' || classView === 'list') && <section className="ontology-browser-pane">
+          <header className="ontology-browser-pane-heading"><h3>{activeTitle}</h3><p>{tableMode === 'properties' ? 'Domain, range, and property semantics' : tableMode === 'axioms' ? 'Resolved relationships and OWL expressions' : 'Classes with parent and child coverage'}</p></header>
+          <div className="ontology-browser-pane-grid" role="tabpanel" id={`${tableId}-panel-${tableMode}`} aria-labelledby={`${tableId}-tab-${tableMode}`}>
+            <DataGridWidget
+              appearance="embedded"
+              ariaLabel={activeTitle}
+              rows={activeRows}
+              columns={activeColumns}
+              height={566}
+              minGridHeight={566}
+              paginationPageSize={20}
+              emptyLabel={activeEmptyLabel}
+              onRowClicked={handleOntologyRowSelection}
+            />
+          </div>
+        </section>}
+      </div>
+
 
     </div>
   );

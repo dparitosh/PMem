@@ -343,6 +343,11 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
 
   const manageDefinition = async (definition, action) => {
     if (definitionLock.current||operationLock.current||(action==='run'&&replayRejected.current)) return;
+    if (action !== 'run' && !replayApprover.trim()) {
+      setReplayError('Set a reviewer identity in Approval & publication before changing a job definition.');
+      setWorkspace('settings');
+      return;
+    }
     definitionLock.current = true;
     operationLock.current=true;
     const generation=sessionGeneration.current;
@@ -511,6 +516,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       <article className="data-flow-card data-flow-card--definitions">
         <div className="data-flow-card__heading">
           <div><h2>Data-job definitions</h2><p>Approve, disable, or schedule only versioned jobs with retained inputs.</p></div>
+          {!replayApprover.trim() && <p role="status">A reviewer identity is required for definition changes. <button type="button" className="data-flow-button" onClick={()=>setWorkspace('settings')}>Set reviewer for approvals</button></p>}
           <label className="data-flow-filter">Schedule interval (seconds)<input aria-label="Schedule interval seconds" type="number" min="60" max="86400" value={scheduleInterval} onChange={(event) => setScheduleInterval(event.target.value)} /></label>
         </div>
         <div className="data-flow-table-wrap"><table className="data-flow-table data-flow-definition-table">
@@ -525,7 +531,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
               <td><Status value={definition.lifecycle_state || (definition.enabled ? 'enabled' : 'disabled')} /></td>
               <td>{definition.schedule ? `Every ${definition.schedule.interval_seconds}s` : 'Not scheduled'}</td>
               <td className="data-flow-definition-actions">
-                {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
+                {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy || !replayApprover.trim()} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
                 {isApproved && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput||replayAccessRejected} onClick={() => manageDefinition(definition, 'run')}>Run now</button>}
                 {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'disable')}>Disable</button>}
                 {isApproved && !definition.schedule && <button className="data-flow-replay" type="button" disabled={busy||!hasRetainedInput} onClick={() => manageDefinition(definition, 'schedule')}>Schedule</button>}
@@ -540,7 +546,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
       <QualityOverview runs={runs} accepted={totals.records_accepted ?? durableTotals.accepted} rejected={totals.records_rejected ?? durableTotals.rejected} unavailable={!!error || !telemetry} />
         <div className="data-cockpit__guidance"><div><strong>Turn completed evidence into a reusable product</strong><p>Review accepted and rejected records in the run monitor. Completed runs with retained artifacts can supply a product draft.</p></div><a href="#/data-products?view=pipeline">Review pipeline evidence</a></div>
         </>,events:<EventReviewPanel onSelect={setEventSelection}/>,settings:<><h2>Approval & publication</h2><p>Set the reviewer identity and approved semantic release used by explicit lifecycle actions. Changing these settings does not execute a job.</p>
-      <details className="data-flow-notice" style={{ marginBottom: 12 }}>
+      <details open className="data-flow-notice" style={{ marginBottom: 12 }}>
         <summary>Reviewer identity for direct service actions</summary>
         <p>Replay uses the execution identity verified from your configured connection. The reviewer below is used for approval and publication actions; credentials remain in the configured connection.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}

@@ -314,7 +314,7 @@ function GraphFilters({
         </div>
       )}
 
-      <GraphLegend theme={theme} ontologySliceSummary={ontologySliceSummary} getRelationshipVisual={getRelationshipVisual} />
+      <GraphLegend theme={theme} ontologySliceSummary={ontologySliceSummary} getRelationshipVisual={getRelationshipVisual} reserveSpace={graphViewMode === 'ontology'} />
 
       <button
         type="button"

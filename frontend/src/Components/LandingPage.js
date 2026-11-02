@@ -29,8 +29,8 @@ export function GraphProfileMetrics({ metrics }) {
   if (metrics?.resources === 0) {
     return <>
       {metrics.existing_ontology?.resources > 0 && <ExistingOntologyMetrics metrics={metrics.existing_ontology} />}
-      <p role="status" className="ix-landing-page__projection-note">RDF projection not published for this scope.</p>
-      {!(metrics.existing_ontology?.resources > 0) && <p className="ix-landing-page__projection-note">No ontology graph records are available for this scope.</p>}
+      <p role="status" className="ix-landing-page__projection-note">No published RDF resources were found for this scope.</p>
+      {!(metrics.existing_ontology?.resources > 0) && <p className="ix-landing-page__projection-note">Registry registration and graph publication are separate. Review the publication status in Ontology Junction; if it is published, refresh data and check the selected version.</p>}
     </>;
   }
   return <>
@@ -213,11 +213,13 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);
     window.addEventListener('depo:ontologies-changed', refresh);
+    window.addEventListener('focus', refresh);
     return () => {
       metricsRequest.current?.abort();
       window.removeEventListener('depo:credentials-changed', refresh);
       window.removeEventListener('depo:credentials-cleared', refresh);
       window.removeEventListener('depo:ontologies-changed', refresh);
+      window.removeEventListener('focus', refresh);
     };
   }, [loadMetrics]);
 

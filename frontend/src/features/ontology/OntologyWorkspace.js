@@ -16,6 +16,7 @@ import WorkspaceTabs from "../../Components/WorkspaceTabs";
 import OntologyPublicationPanel from "../../Components/OntologyPublicationPanel";
 import { getCredentialProfile } from "../../services/serviceAuth";
 import { ontologyMergeAgent } from "../../services/ontologyMergeAgent";
+import { recoverMergeResult } from "../../services/mergeRecovery";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, Download } from "lucide-react";
 import { API_METHODS } from "../../services/apiClient";
@@ -717,11 +718,13 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       if (!key) throw new Error('No retained review for these sources and mapping selections. Generate a new preview.');
       const { data } = await API_METHODS.ontology.governedMergeStatus(key);
       if (generation !== mergeGeneration.current) return;
+      const recovered = await recoverMergeResult(data, id => API_METHODS.ontology.registeredPublication(id));
+      if (generation !== mergeGeneration.current) return;
       setMergeSuggestions(data.entity_suggestions || []);
       setMergePollGeneration(current => current + 1);
       setMergeResult({ kind: data.job_status === 'failed' ? 'error' : 'success',
-        text: data.job_error || `Retained merge review: ${data.job_status}. Review mappings and validation before approval.`,
-        governedPreview: data, report: data });
+        text: recovered ? 'Retained merge and current publication verified. No write was replayed.' : data.job_error || `Retained merge review: ${data.job_status}. Review mappings and validation before approval.`,
+        governedPreview: data, report: {...data, ...(recovered ? {governed:recovered} : {})} });
     } catch (error) {
       if (generation === mergeGeneration.current) setMergeResult({kind:'error', text:apiErrorMessage(error)});
     }

@@ -187,6 +187,26 @@ def test_existing_application_worker_blocks_isolated_reset(fixture, monkeypatch)
         resetter.assert_isolated(root)
 
 
+@pytest.mark.parametrize('same_parent,same_command', [(True, True), (True, False), (False, True)])
+def test_windows_maintenance_launcher_identity(fixture, monkeypatch, same_parent, same_command):
+    import psutil
+    from types import SimpleNamespace
+    _, root = fixture
+    monkeypatch.setenv('DEPO_VANILLA_MAINTENANCE', 'true')
+    command = ['python.exe', '-m', 'uvicorn', 'backend.ontology_service.app:app', '--port', '8011']
+    monkeypatch.setattr(resetter.os, 'getppid', lambda: 1234)
+    process = SimpleNamespace(pid=1234 if same_parent else 5678, info={'name': 'python.exe'},
+        exe=lambda: str(root / 'backend/.dt_venv/Scripts/python.exe'),
+        cwd=lambda: str(root), cmdline=lambda: command if same_command else ['python.exe', '-m', 'backend.data_pipeline_service.worker'])
+    monkeypatch.setattr(psutil, 'Process', lambda _: SimpleNamespace(cmdline=lambda: command))
+    monkeypatch.setattr(psutil, 'process_iter', lambda _: [process])
+    if same_parent and same_command:
+        resetter.assert_isolated(root)
+    else:
+        with pytest.raises(ValueError, match='Another application Python process'):
+            resetter.assert_isolated(root)
+
+
 def test_reset_endpoints_require_admin_maintenance_dependency():
     import ast
     from pathlib import Path

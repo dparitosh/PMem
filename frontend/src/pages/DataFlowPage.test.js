@@ -261,3 +261,14 @@ test('leaving Data Flow aborts all owned read requests', async () => {
   expect(options.signal.aborted).toBe(false);
   unmount();expect(options.signal.aborted).toBe(true);
 });
+
+test('definition approval requires a visible reviewer setup before sending a request',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'review-required',version:'1',name:'Review required',lifecycle_state:'draft'}]}});
+ render(<DataFlowPage/>);
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+ expect(await screen.findByRole('button',{name:'Approve',exact:true})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'Set reviewer for approvals'}));
+ expect(screen.getByRole('tab',{name:'Approval & publication'})).toHaveAttribute('aria-selected','true');
+ expect(screen.getByLabelText('Replay approver')).toBeVisible();
+});

@@ -7,6 +7,8 @@ def validation_fingerprint(source_metadata):
     from backend.Services.shacl_service import ShaclValidationService
     from backend.depo_platform.upload_limits import ontology_upload_limit
     digest = hashlib.sha256()
+    from .governance import policy
+    digest.update(policy()["sha256"].encode())
     from .owl_dl import semantic_dependencies
     import json
     digest.update(json.dumps(semantic_dependencies(), sort_keys=True).encode())
@@ -153,7 +155,11 @@ def _validate_merge(graph, source_metadata, entity_mappings=None):
         # checks. This does not alter the proposed graph or custom rule input.
         editorial_graph.add((OWL.Restriction, RDFS.subClassOf, OWL.Class))
         editorial_graph.add((RDFS.Class, RDFS.subClassOf, OWL.Class))
-        conforms, _, report, summary = validate_shacl(editorial_graph, shacl_graph=editorial_shapes)
+        from .governance import policy
+        # Imported standards retain editorial warnings as review advice. Custom
+        # semantic constraints remain strict; curated authoring is strict too.
+        conforms, _, report, summary = validate_shacl(editorial_graph, shacl_graph=editorial_shapes,
+            allow_warnings=policy()['profile'] == 'imported_standard')
         parts.append(('editorial_asserted', conforms, report, summary))
     from .merge_reporting import combine_summaries, REPORT_PROFILE_LABELS
     if not parts or any(type(item[1]) is not bool for item in parts):

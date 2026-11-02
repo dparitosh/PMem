@@ -14,7 +14,9 @@ class MergeEditorialScopeTests(unittest.TestCase):
             <urn:Owner> a owl:Class; rdfs:label "Owner" .
             <urn:custom> a sh:NodeShape; sh:targetNode <urn:Owner>;
                 sh:property [sh:path rdfs:label; sh:minCount 1] .''',format='turtle')
-        result=_validate_merge(graph,[])
+        from unittest.mock import patch
+        with patch.dict('os.environ', {'ONTOLOGY_GOVERNANCE_PROFILE':'enterprise_curated'}):
+            result=_validate_merge(graph,[])
         profiles={item['profile']:item['conforms'] for item in result['report_summary']['profiles']}
         self.assertTrue(profiles['custom_inferred'])
         self.assertFalse(profiles['editorial_asserted'])
@@ -81,3 +83,23 @@ class MergeEditorialScopeTests(unittest.TestCase):
                 <urn:strict> a sh:PropertyShape; sh:targetSubjectsOf owl:disjointWith;
                 sh:path owl:disjointWith; sh:class owl:Class .''',encoding='utf-8')
             self.assertFalse(_validate_merge(graph,[{'shacl_file_path':str(path)}])['shacl_conforms'])
+
+
+class MergeEditorialWarningPolicyTests(unittest.TestCase):
+    def test_imported_standard_warning_is_retained_but_curated_profile_blocks(self):
+        from unittest.mock import patch
+        graph = Graph().parse(data='''@prefix owl:<http://www.w3.org/2002/07/owl#> .
+            @prefix rdfs:<http://www.w3.org/2000/01/rdf-schema#> .
+            <urn:ontology> a owl:Ontology; rdfs:label "Standard"; rdfs:comment "Imported standard" .''',format='turtle')
+        with patch.dict('os.environ', {'ONTOLOGY_GOVERNANCE_PROFILE':'imported_standard'}):
+            result = _validate_merge(graph, [])
+            self.assertTrue(result['shacl_conforms'], result['report'])
+            self.assertGreater(result['report_summary']['by_severity'].get('http://www.w3.org/ns/shacl#Warning',0),0)
+        with patch.dict('os.environ', {'ONTOLOGY_GOVERNANCE_PROFILE':'enterprise_curated'}):
+            self.assertFalse(_validate_merge(graph, [])['shacl_conforms'])
+
+    def test_custom_warning_stays_strict_for_imported_standard(self):
+        graph = Graph().parse(data='''@prefix sh:<http://www.w3.org/ns/shacl#> .
+            <urn:custom> a sh:NodeShape; sh:targetNode <urn:part>;
+                sh:property [sh:path <urn:required>; sh:minCount 1; sh:severity sh:Warning] .''', format='turtle')
+        self.assertFalse(_validate_merge(graph, [])['shacl_conforms'])

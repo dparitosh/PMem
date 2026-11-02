@@ -438,6 +438,18 @@ body.with-fixed-header .depo-shell #cloud-container { padding-top: 8vh; }
 }
 
 /* Final Graph Explorer toolbar contract. */
+.graph-heb-container .graph-toolbar .graph-legend {
+        flex: 1 0 100%;
+        box-sizing: border-box;
+        height: 72px;
+        min-height: 72px;
+        overflow: auto;
+        align-content: flex-start;
+}
+.graph-heb-container .graph-toolbar select[aria-label="Select an ontology"] {
+        width: 320px;
+        max-width: 100%;
+}
 .graph-heb-container .graph-toolbar {
         display: flex !important;
         flex-wrap: wrap !important;

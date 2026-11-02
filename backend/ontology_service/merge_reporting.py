@@ -83,7 +83,7 @@ class MergeReportValidator(Validator):
         return report, ''.join(chunks)
 
 
-def validate_shacl(data_graph, *, shacl_graph):
+def validate_shacl(data_graph, *, shacl_graph, allow_warnings=False):
     from pyshacl.graph_abstraction import DataGraph
     from pyshacl.monkey import apply_patches
     from pyshacl.validator import assign_baked_in
@@ -92,7 +92,7 @@ def validate_shacl(data_graph, *, shacl_graph):
     apply_patches()
     assign_baked_in()
     validator = MergeReportValidator(DataGraph.from_rdflib(data_graph), shacl_graph=shacl_graph,
-        options={'inference': 'none', 'inplace': True, 'allow_infos': False, 'allow_warnings': False,
+        options={'inference': 'none', 'inplace': True, 'allow_infos': False, 'allow_warnings': allow_warnings,
                  'advanced': False, 'abort_on_first': False, 'use_js': False, 'sparql_mode': False})
     try:
         conforms, report, text = validator.run()

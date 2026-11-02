@@ -188,6 +188,7 @@ const buttonStyle = {
 
 const WhereUsedView = ({
     data,
+    remoteSearch = false,
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     // Local hierarchy search results (distinct from global graph searchResults passed via props)
@@ -200,50 +201,17 @@ const WhereUsedView = ({
     const [autoExpanded, setAutoExpanded] = useState(false);
     const [expansionError, setExpansionError] = useState(null);
     const [levels, setLevels] = useState([]); // Array of arrays: ancestors by distance
-    const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
-    const [graphLoading, setGraphLoading] = useState(false);
-    const [graphError, setGraphError] = useState('');
     const [sessionRevision, setSessionRevision] = useState(0);
     const searchAbortRef = useRef(null);
     const expansionAbortRef = useRef(null);
-    const overviewAbortRef = useRef(null);
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
 
-    const effectiveGraphData = useMemo(() => {
-        const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
-        return hasPrimaryGraph && sessionRevision === 0 ? data : fallbackGraphData;
-    }, [data, fallbackGraphData, sessionRevision]);
-
-    useEffect(() => {
-        const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
-        if ((hasPrimaryGraph && sessionRevision === 0) || (fallbackGraphData.nodes || []).length > 0) return undefined;
-
-        let cancelled = false;
-        const controller = new AbortController();
-        overviewAbortRef.current = controller;
-        const loadGraph = async () => {
-            setGraphLoading(true);
-            setGraphError('');
-            try {
-                const response = await graphApi.getOverview(1200, controller.signal);
-                const normalized = normalizeGraphDatasetShared(response.data);
-                if (!cancelled && !controller.signal.aborted) setFallbackGraphData(normalized);
-            } catch (error) {
-                if (controller.signal.aborted) return;
-                if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for Where Used.');
-            } finally {
-                if (!cancelled) setGraphLoading(false);
-            }
-        };
-
-        loadGraph();
-        return () => { cancelled = true; controller.abort(); };
-    }, [data, fallbackGraphData.nodes, sessionRevision]);
+    const suppliedSnapshot = !remoteSearch && sessionRevision === 0 && Boolean(data?.nodes?.length || data?.links?.length);
+    const effectiveGraphData = suppliedSnapshot ? data : {nodes: [], links: []};
 
     useEffect(() => {
         const reset = () => {
-            overviewAbortRef.current?.abort();
             searchAbortRef.current?.abort();
             expansionAbortRef.current?.abort();
             expansionAbortRef.current = null;
@@ -256,20 +224,18 @@ const WhereUsedView = ({
             setIsExpandingUpwards(false);
             setSearchError(null);
             setExpansionError(null);
-            setFallbackGraphData({ nodes: [], links: [] });
             setSessionRevision(value => value + 1);
         };
         const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
         events.forEach(event => window.addEventListener(event, reset));
         return () => {
             events.forEach(event => window.removeEventListener(event, reset));
-            overviewAbortRef.current?.abort();
             searchAbortRef.current?.abort();
             expansionAbortRef.current?.abort();
         };
     }, []);
     
-    // Search the bounded standalone graph projection used by Graph Explorer.
+    // Standalone search resolves business objects independently of the overview cap.
     const handleSearch = async () => {
         expansionAbortRef.current?.abort();
         expansionAbortRef.current = null;
@@ -284,7 +250,13 @@ const WhereUsedView = ({
         setIsSearching(true);
         setSearchError(null);
         try {
-            const nodes = (effectiveGraphData?.nodes || [])
+            let sourceNodes = effectiveGraphData?.nodes || [];
+            if (!suppliedSnapshot) {
+                const response = await graphApi.searchBusiness(term, controller.signal);
+                if (controller.signal.aborted || searchAbortRef.current !== controller) return;
+                sourceNodes = normalizeGraphDatasetShared(response.data).nodes;
+            }
+            const nodes = sourceNodes
                 .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
                 .filter(({ score }) => score > 0)
                 .sort((a, b) => b.score - a.score)
@@ -292,7 +264,7 @@ const WhereUsedView = ({
 
             const finalNodes = nodes;
             if (finalNodes.length === 0) {
-                setSearchError('No matching business objects in the loaded graph snapshot. This does not prove the object is absent from the full graph.');
+                setSearchError(suppliedSnapshot ? 'No matching business objects in the loaded graph snapshot. This does not prove the object is absent from the full graph.' : 'No matching business objects in this bounded graph search. A missing match does not prove that an entity is unused.');
             }
 
             setHierarchySearchResults(finalNodes);
@@ -310,7 +282,7 @@ const WhereUsedView = ({
             setSelectedNode(null);
             setTreeData(null);
             setLevels([]);
-            setSearchError('Unable to search the loaded graph snapshot. Refresh graph context and retry.');
+            setSearchError('Unable to search business objects. Check graph access and retry.');
         } finally {
             if (!controller.signal.aborted) setIsSearching(false);
             if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -627,13 +599,13 @@ const WhereUsedView = ({
 
     return (
         <>
-        <p role="status">Search covers only the loaded graph snapshot (up to 1200 nodes for the overview). A missing match does not prove that an entity is unused.</p>
+        <p role="status">{suppliedSnapshot ? 'Search covers only the supplied graph snapshot. A missing match does not prove that an entity is unused.' : 'Search queries business objects directly, independently of the overview slice. Results are bounded to 80 candidates; upward traversal has separate depth and time limits.'}</p>
         <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>
             <div style={{ ...panelStyle, marginBottom: 12, padding: '10px 12px' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
                 <div style={{ fontSize: 12, color: WU.muted, lineHeight: 1.5 }}>Search for a part, requirement, instance, or named business object. We rank matches, select the best one, then build its upward usage chain from the graph.</div>
-                <div style={{ marginTop: 8, fontSize: 11, color: graphError ? WU.error : WU.subtle, fontWeight: 600 }}>
-                    {graphLoading ? 'Loading graph context...' : graphError ? graphError : `${totalSearchableNodes} business-object candidates are available in the loaded graph snapshot.`}
+                <div style={{ marginTop: 8, fontSize: 11, color: WU.subtle, fontWeight: 600 }}>
+                    {suppliedSnapshot ? `${totalSearchableNodes} business-object candidates are available in the supplied snapshot.` : 'Enter a business object name to find recorded usage.'}
                 </div>
             </div>
             <div style={{ ...panelStyle, marginBottom: 12 }}>
@@ -643,7 +615,14 @@ const WhereUsedView = ({
                         <input
                             type="text"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => {
+                                searchAbortRef.current?.abort();
+                                expansionAbortRef.current?.abort();
+                                setIsSearching(false); setIsExpandingUpwards(false);
+                                setHierarchySearchResults([]); setSelectedNode(null);
+                                setTreeData(null); setLevels([]); setSearchError(null);
+                                setSearchTerm(e.target.value);
+                            }}
                             placeholder="Enter part, class, instance, requirement, or property name"
                             style={inputStyle}
                             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}

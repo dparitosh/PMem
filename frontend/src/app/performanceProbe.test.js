@@ -22,3 +22,17 @@ test('opt-in mode registers once and retains only three bounded numeric metrics'
  expect(probe.metrics.CLS).toEqual({value:.02,rating:'good',unit:'score'});
  expect(text).not.toContain('secret');expect(text.length).toBeLessThan(1000);
 });
+
+test('explicit heap sampling stays bounded and stops on page departure',async()=>{
+ vi.useFakeTimers();
+ Object.defineProperty(performance,'memory',{configurable:true,value:{usedJSHeapSize:100,totalJSHeapSize:200}});
+ try {
+  window.history.replaceState(null,'','/?measure_ui=1&measure_heap=1#/data-flow');
+  const {startPerformanceProbe}=await import('./performanceProbe');await startPerformanceProbe();
+  vi.advanceTimersByTime(15000*50);
+  const probe=JSON.parse(document.getElementById('depo-performance-probe').textContent);
+  expect(probe.heap.supported).toBe(true);expect(probe.heap.samples).toHaveLength(40);
+  expect(probe.heap.samples[0].used).toBe(100);
+  window.dispatchEvent(new Event('pagehide'));expect(vi.getTimerCount()).toBe(0);
+ } finally {delete performance.memory;vi.useRealTimers();}
+});

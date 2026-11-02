@@ -361,6 +361,8 @@ export const ontologyAPI = {
     }),
   governedMergeStatus: (previewId, options = {}) =>
     apiClient.get(buildUrl(`${API.ontology.governedMergePreview.replace(/\/preview$/, '')}/${encodeURIComponent(previewId)}/status`), options),
+  registeredPublication: (ontologyId, options = {}) =>
+    apiClient.get(buildSemanticServiceUrl('ontology', `/api/v1/ontologies/${encodeURIComponent(ontologyId)}/publication`), options),
   governedMergeApply: (previewId, approvedBy, approvalToken = '') =>
     apiClient.post(buildUrl(replaceParams(API.ontology.governedMergeApply, { preview_id: previewId })), {
       approved_by: approvedBy,

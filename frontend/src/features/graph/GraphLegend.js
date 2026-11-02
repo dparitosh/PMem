@@ -1,9 +1,14 @@
 import React from 'react';
 import { getRelationshipDisplayName } from './graphRenderingPolicy';
 
-export default function GraphLegend({ theme, ontologySliceSummary, getRelationshipVisual }) {
+export default function GraphLegend({ theme, ontologySliceSummary, getRelationshipVisual, reserveSpace = true }) {
+  if (!ontologySliceSummary) return reserveSpace ? <div className="graph-legend" role="status">Graph summary will appear here when the slice is ready.</div> : null;
   return (ontologySliceSummary && (
         <div
+          className="graph-legend"
+          role="region"
+          aria-label="Graph summary"
+          tabIndex={0}
           style={{
             display: 'flex',
             flexWrap: 'wrap',

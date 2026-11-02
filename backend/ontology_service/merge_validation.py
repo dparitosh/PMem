@@ -3,10 +3,17 @@ RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
 OWL = 'http://www.w3.org/2002/07/owl#'
 
 
+def _term_identity(term):
+    # OWL-RL may add datatype membership for literal subjects. Lexical text
+    # alone conflates different RDF terms (and loses language/datatype tags).
+    from rdflib import BNode, Literal
+    return term.n3() if isinstance(term, (BNode, Literal)) else str(term)
+
+
 def explicit_conflicts(triples):
     types, disjoint, equal, different = {}, set(), set(), set()
     for subject, predicate, obj in triples:
-        subject, predicate, obj = str(subject), str(predicate), str(obj)
+        subject, predicate, obj = _term_identity(subject), str(predicate), _term_identity(obj)
         if predicate == RDF+'type': types.setdefault(subject, set()).add(obj)
         elif predicate == OWL+'disjointWith': disjoint.add(tuple(sorted((subject, obj))))
         elif predicate == OWL+'sameAs': equal.add(tuple(sorted((subject, obj))))

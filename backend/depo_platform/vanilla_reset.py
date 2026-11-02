@@ -37,6 +37,14 @@ def assert_isolated(root):
             owned = executable.is_relative_to(root) or Path(process.cwd()).resolve() == root
             if not owned:
                 continue
+            # Windows venv python.exe is a launcher parent of the real Python
+            # host. Exempt only that direct parent with the identical isolated
+            # uvicorn command; unrelated/ancestor workers must still block.
+            if process.pid == os.getppid() and executable.is_relative_to(root):
+                current_command = psutil.Process(os.getpid()).cmdline()
+                if (command[1:] == current_command[1:]
+                        and command[1:4] == ['-m', 'uvicorn', 'backend.ontology_service.app:app']):
+                    continue
             # A static frontend can remain available for the maintenance page.
             if 'backend.depo_platform.frontend_server' in command:
                 continue

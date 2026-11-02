@@ -33,7 +33,7 @@ test('unpublished scope leads with populated records and hides empty projection 
   render(<GraphProfileMetrics metrics={{ resources: 0, existing_ontology: { resources: 342, classes: 128, object_properties: 116, data_properties: 98, relationships: 418 } }} />);
   expect(screen.getByText('342')).toBeVisible();
   expect(screen.getByText('128')).toBeVisible();
-  expect(screen.getByRole('status')).toHaveTextContent('RDF projection not published');
+  expect(screen.getByRole('status')).toHaveTextContent('No published RDF resources');
   expect(screen.queryByLabelText('Published ontology metrics')).not.toBeInTheDocument();
   expect(screen.queryByText('Graph resources by ontology')).not.toBeInTheDocument();
 });
@@ -42,7 +42,7 @@ test('published scope retains declared RDF counts', () => {
   render(<GraphProfileMetrics metrics={{ resources: 50, classes: 12, ontology_breakdown: [] }} />);
   expect(screen.getByLabelText('Published ontology metrics')).toBeVisible();
   expect(screen.getByText('12')).toBeVisible();
-  expect(screen.queryByText(/RDF projection not published/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/No published RDF resources/)).not.toBeInTheDocument();
 });
 
 test('annotation declarations and business instance records remain distinct', () => {
@@ -56,6 +56,6 @@ test('annotation declarations and business instance records remain distinct', ()
 
 test('empty scope states missing records without a misleading zero metric grid', () => {
   render(<GraphProfileMetrics metrics={{ resources: 0, existing_ontology: { resources: 0 } }} />);
-  expect(screen.getByText('No ontology graph records are available for this scope.')).toBeVisible();
+  expect(screen.getByText('Registry registration and graph publication are separate. Review the publication status in Ontology Junction; if it is published, refresh data and check the selected version.')).toBeVisible();
   expect(screen.queryByLabelText('Published ontology metrics')).not.toBeInTheDocument();
 });

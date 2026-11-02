@@ -48,8 +48,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                   'method': request.method, 'route': route,
                   'status': response.status_code, 'response_headers_ms': elapsed_ms}
         level = (logging.ERROR if response.status_code >= 500 else logging.WARNING
-                 if response.status_code >= 400 else logging.INFO
-                 if request.method not in {'GET', 'HEAD', 'OPTIONS'} or elapsed_ms >= 5000 else logging.DEBUG)
+                 if response.status_code >= 400 or elapsed_ms >= 5000 else logging.INFO
+                 if request.method not in {'GET', 'HEAD', 'OPTIONS'} else logging.DEBUG)
         logging.getLogger(__name__).log(level, json.dumps(record, ensure_ascii=True))
         return response
 

@@ -8,6 +8,25 @@ class MergeValidationTests(unittest.TestCase):
     def test_disjoint_membership_is_blocked(self):
         triples=[('a',RDF+'type','A'),('a',RDF+'type','B'),('A',OWL+'disjointWith','B')]
         self.assertEqual(explicit_conflicts(triples)[0]['kind'],'explicit_disjoint_membership')
+    def test_typed_literals_with_equal_lexical_text_are_distinct_terms(self):
+        from rdflib import Literal, URIRef
+        from rdflib.namespace import XSD
+        string, decimal = Literal('1', datatype=XSD.string), Literal('1', datatype=XSD.decimal)
+        triples = [(string, URIRef(RDF+'type'), XSD.string),
+                   (decimal, URIRef(RDF+'type'), XSD.decimal),
+                   (XSD.string, URIRef(OWL+'disjointWith'), XSD.decimal)]
+        self.assertEqual(explicit_conflicts(triples), [])
+
+    def test_language_tags_and_blank_node_identity_are_preserved(self):
+        from rdflib import Literal, BNode, URIRef
+        triples = [(Literal('part', lang='en'), RDF+'type', 'A'),
+                   (Literal('part', lang='fr'), RDF+'type', 'B'),
+                   (BNode('entity'), RDF+'type', 'A'),
+                   (URIRef('entity'), RDF+'type', 'B'), ('A', OWL+'disjointWith', 'B')]
+        self.assertEqual(explicit_conflicts(triples), [])
+        triples.append((Literal('part', lang='en'), RDF+'type', 'B'))
+        self.assertEqual(explicit_conflicts(triples)[0]['subject'], '"part"@en')
+
     def test_object_and_data_property_collision_is_blocked(self):
         triples=[('p',RDF+'type',OWL+'ObjectProperty'),('p',RDF+'type',OWL+'DatatypeProperty')]
         self.assertEqual(explicit_conflicts(triples)[0]['kind'],'incompatible_property_kinds')

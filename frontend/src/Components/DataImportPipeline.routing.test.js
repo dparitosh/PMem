@@ -357,7 +357,7 @@ describe('DataImportPipeline workflow routing', () => {
       fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['root'], 'bom.xsd')] } });
       await flushAsyncEffects();
     });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM bundle' } });
+    fireEvent.change(await screen.findByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM bundle' } });
     expect(screen.getByLabelText(/Namespace Prefix/)).not.toBeRequired();
     fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
     fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));

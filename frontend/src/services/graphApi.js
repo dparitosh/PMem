@@ -10,6 +10,12 @@ const readHeaders = () => {
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
 export const graphApi = {
+  searchBusiness(query, signal) {
+    return apiClient.get(graphUrl('/api/v1/graph/search'), {
+      params: {query, limit: 80, business_only: true}, signal,
+      timeout: 30000, headers: readHeaders(),
+    });
+  },
   searchUniversal(query, params = {}, signal) {
     return apiClient.get(graphUrl('/api/v1/graph/explorer-search'), {
       params: { query, ...params }, signal, timeout: 35000, headers: readHeaders(),

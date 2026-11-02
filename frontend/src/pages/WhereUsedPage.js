@@ -6,7 +6,7 @@ export default function WhereUsedPage(props) {
   return (
     <div className="depo-page" style={{ height: '100%' }}>
       <GraphWidget appearance="embedded" title="Where Used Analysis" minHeight={620}>
-        <WhereUsedView {...props} />
+        <WhereUsedView {...props} remoteSearch />
       </GraphWidget>
     </div>
   );

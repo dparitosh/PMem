@@ -108,7 +108,10 @@ test('class inventory is independent of the 800 row hierarchy preview and exclud
  const nodes=Array.from({length:805},(_,i)=>({term_id:'urn:c'+i,label:'Class '+i,kind:'class',source:'rdf-class'}));
  nodes.push({term_id:'urn:expression',label:'Restriction must not count',kind:'restriction',source:'rdf-expression'});
  render(<ProtegeOntologyBrowser nodes={nodes} edges={[]} filter="" taxonomy={{nodes,edges:[]}} reasoning={null}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Class hierarchy',exact:true}));
  expect(screen.getByRole('region',{name:'Class Hierarchy (800 of 805 loaded classes)'})).toHaveAttribute('data-count','800');
+ expect(screen.queryByRole('region',{name:'Classes (805)'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Class list',exact:true}));
  expect(screen.getByRole('region',{name:'Classes (805)'})).toHaveAttribute('data-count','805');
  expect(screen.getByText('805')).toBeInTheDocument();
 });

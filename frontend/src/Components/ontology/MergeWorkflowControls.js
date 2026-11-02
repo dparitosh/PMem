@@ -7,11 +7,12 @@ export default function MergeWorkflowControls({ availableCount = 2, sourceId, ta
   const accessReady = Boolean(reviewer.trim() && connected);
   const publishing = ['queued', 'running', 'published'].includes(publication);
   const pending = !dirty && preview?.background_validation && ['queued', 'preparing', 'validating'].includes(preview.job_status);
+  const logicalCheckIncomplete = !pending && preview?.owl_dl_evidence?.status === 'unknown';
   const status = !sourcesReady ? 'Choose two ontology versions' : publication === 'published' ? 'Published to knowledge graph' : publishing ? 'Publication in progress'
     : busy ? 'Submitting request' : error ? 'Request needs attention' : dirty ? 'Mapping selection changed'
       : preview?.job_status === 'failed' ? 'Validation failed'
         : pending ? preview.job_status === 'validating' ? 'Validating semantic constraints' : 'Preparing mapping candidates'
-          : stewardStatus === 'running' ? 'Ontology Steward is reviewing the plan' : stewardStatus === 'failed' ? 'Steward review needs attention' : ready ? 'Plan ready for your review' : preview ? 'Plan needs attention' : 'Ready to generate a plan';
+          : logicalCheckIncomplete ? 'Logical consistency check incomplete' : stewardStatus === 'running' ? 'Ontology Steward is reviewing the plan' : stewardStatus === 'failed' ? 'Steward review needs attention' : ready ? 'Plan ready for your review' : preview ? 'Plan needs attention' : 'Ready to generate a plan';
   const guidance = availableCount < 2 ? 'Register at least two ontology versions before generating a merge plan.' : !sourcesReady ? 'Choose two different ontology versions above.'
     : !connected ? 'Connect governed agent access in Admin to run the merge tools.'
       : !reviewer.trim() ? 'Enter the reviewing steward so the plan has an accountable identity.'
@@ -23,7 +24,7 @@ export default function MergeWorkflowControls({ availableCount = 2, sourceId, ta
                 : pending ? 'Candidates appear as preparation completes. Validation continues on the server; you can return using Resume saved plan.'
                   : stewardStatus === 'running' ? 'The existing Steward is evaluating the saved Governor plan. Publication remains blocked until its report is available.'
                   : ready ? `Review the proposed changes below. Approval creates and publishes a new ontology with ${selectionCount} identity consolidations.`
-                    : preview ? 'Inspect the validation findings below. Resolve blocking issues before approval.'
+                    : logicalCheckIncomplete ? 'OWL-DL consistency is unknown. Required imported vocabularies are unavailable or the logical check could not finish. Inspect the reasoning evidence; resolve its prerequisites before requesting full logical validation. Structural-only review is a separate choice and does not establish OWL-DL consistency.' : preview ? 'Inspect the validation findings below. Resolve blocking issues before approval.'
                       : 'Generate a plan to see proposed mappings. This first action does not publish to knowledge graph.';
   return <section className="merge-workflow" aria-label="Merge workflow controls">
     <ol className="merge-stages" aria-label="Merge progress">

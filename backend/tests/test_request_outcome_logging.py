@@ -68,3 +68,27 @@ def test_worker_error_logs_identity_without_exception_payload(caplog):
     assert record['run_id']=='run-one' and record['correlation_id']=='request-one'
     assert record['error_type']=='ValueError'
     assert 'private-' not in caplog.records[-1].getMessage()
+
+
+def test_slow_successful_read_is_visible_at_default_warning_level(monkeypatch, caplog):
+    from types import SimpleNamespace
+    from backend.depo_platform import service_runtime
+    clock = iter([100.0, 106.0])
+    monkeypatch.setattr(service_runtime, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    app = FastAPI()
+    app.add_middleware(RequestIdMiddleware)
+    @app.get('/runs/{run_id}')
+    async def read_run(run_id: str):
+        return {'secret': 'private-response'}
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+            response = await client.get('/runs/private-id?key=private-query', headers={'X-Request-ID':'slow-read-1'})
+            assert response.status_code == 200
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(scenario())
+    records = [record for record in caplog.records if record.name == service_runtime.__name__]
+    assert len(records) == 1 and records[0].levelno == logging.WARNING
+    record = json.loads(records[0].getMessage())
+    assert record['request_id'] == 'slow-read-1' and record['response_headers_ms'] == 6000
+    assert record['route'] == '/runs/{run_id}' and record['status'] == 200
+    assert 'private-' not in records[0].getMessage()

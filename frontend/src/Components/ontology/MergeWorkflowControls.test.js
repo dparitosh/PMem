@@ -42,3 +42,10 @@ test('unconnected access and a retained publication each explain why actions are
  expect(screen.getByRole('status')).toHaveTextContent('Publication in progress');
  expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
 });
+
+test('unknown logical validation is explicit and cannot enable publication',()=>{
+ render(<MergeWorkflowControls sourceId="source" targetId="target" reviewer="paritosh" connected preview={{preview_id:'plan',owl_dl_evidence:{status:'unknown',reason:'unresolved_imports'}}} selectionCount={0}/>);
+ expect(screen.getByText('Logical consistency check incomplete')).toBeVisible();
+ expect(screen.getByText(/OWL-DL consistency is unknown/)).toBeVisible();
+ expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
+});
