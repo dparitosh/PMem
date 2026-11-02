@@ -1,6 +1,6 @@
 # Demo content and customer upgrade review — 2 November 2026
 
-## Deliverables
+## Initial demo/operator edition
 
 - Current walkthrough: `docs/DEMO-USER-GUIDE.md` with local sample selections, user actions, expected evidence, Companion/memory examples and recovery.
 - Updated `deliverables/DEPO-Workflow-Audited.pptx`: 20 slides, including dedicated Change Control, approval decision, OSLC TRS and configuration baseline diagrams. Speaker notes link to existing code. Generation source: `scripts/presentations/build_workflow_audited.mjs`.
@@ -41,3 +41,25 @@ The prior run-history deadline/lock-error correction and its regression tests ar
 The real database test accepts only `depo_acceptance_test`. It creates a unique disposable schema at migration v11, inserts a retained registry record and synthetic credential profile, upgrades through v17, verifies retained records/credentials and old migration timestamps, reruns idempotently, then checks rollback of deliberately failing future-migration DDL/history. It removes its schema afterward. Existing semantic dataset, business analytics/mart and XML materialization tests also ran in isolated schemas. No live customer database was modified.
 
 Local logs/previews under ignored output/build directories are excluded from Git. No customer rollout, external LLM invocation or new business approval was performed during this documentation/upgrade review.
+
+## Business/CXO revision later on 2 November
+
+The user identified the older 12-slide deployment copy at
+`D:/GenAI_Projects/Apps/PMem/deliverables/DEPO-Workflow-Audited.pptx` and clarified
+that the audience is business leaders and CXOs. The current 20-slide deck now
+explains business problems, the industrial ontology foundation, the five capability
+flows, L0–L4 responsibilities, workers versus agents/people, Governor/Steward
+interaction, change/approval, TRS, configuration baselines, engineering use cases,
+memory and governed analytics products. Operator commands and test-result details
+remain in the guide and speaker notes. This supersedes the operator-oriented
+slide narrative described above; it does not change the recorded upgrade tests.
+
+Capabilities are traced to existing code in speaker notes. Proposed pilot-value
+measures are labeled as evaluation measures, not measured ROI or shipped dashboards.
+No full OSLC configuration-provider, universal autonomous learning, ISO certification,
+automatic business approval or verified customer PMI/BOM completeness is asserted.
+Editable diagrams were rendered and reviewed; the industry ontology diagram uses
+converging domain inputs rather than implying PLM, MBSE and manufacturing are
+sequential systems. The deployment PPTX is replaced with the validated business
+version after retaining its previous copy outside the release. Application services,
+databases and credentials are unchanged by this presentation update.

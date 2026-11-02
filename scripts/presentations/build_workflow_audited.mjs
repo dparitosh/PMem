@@ -1,4 +1,4 @@
-/** Editable workflow/demo deck. Run from repo root with the bundled Artifact Tool.
+/** Editable business/CXO workflow deck. Run from repo root with the bundled Artifact Tool.
  * Environment: DEPO_ARTIFACT_MODULE, DEPO_PRESENTATION_SKILL_DIR,
  * DEPO_PRESENTATION_PYTHON, RUNTIME_NODE_MODULES; optional DEPO_PRESENTATION_BUILD_ID.
  * Record the presentation edit operation using the skill helper before running.
@@ -30,7 +30,7 @@ function slide(title,sub,sources,comment=''){
  text(s,sub,60,115,1160,66,24,C.muted);
  text(s,'DEPO / Semantic Intelligence',60,681,600,22,15,C.muted);
  text(s,`02 Nov 2026   |   ${p.slides.items.length}`,980,681,240,22,15,C.muted);
- s.speakerNotes.textFrame.setText(`Presenter walkthrough: docs/DEMO-USER-GUIDE.md\n${comment}\nSource code/documentation:\n${sources.map(r=>refs+r).join('\n')}\nLocal examples are not customer acceptance certification.`);
+ s.speakerNotes.textFrame.setText(`Business/CXO narrative; presenter walkthrough: docs/DEMO-USER-GUIDE.md\n${comment}\nSource code/documentation:\n${sources.map(r=>refs+r).join('\n')}\nLocal examples are not customer acceptance certification.`);
  layout.push({number:p.slides.items.length,title,boxes:[]});return s;
 }
 function box(s,t,x,y,w=320,h=110){
@@ -56,120 +56,148 @@ function rows(title,sub,items,sources,comment=''){
  items.forEach(([label,body],i)=>{const y=205+i*101;text(s,label,60,y,300,72,25,C.teal,true);text(s,body,395,y,815,80,24);});return s;
 }
 {
- const s=slide('DEPO workflow and demo guide','Engineering knowledge, connected. Decisions, grounded.',['docs/DEMO-USER-GUIDE.md','docs/WORKFLOW-ENGINE.md']);
- text(s,'Product records → shared meaning → reviewed connections',60,235,1120,115,42,C.ink,true);
- text(s,'PLM • MBSE • manufacturing • quality',60,405,1150,46,28,C.teal,true);
- text(s,'A business walkthrough with sample inputs, evidence and recovery steps',60,478,1150,78,28);
- text(s,'30–40 minute demo • local examples • customer approval remains explicit',60,593,1150,50,23,C.muted);
+ const s=slide('DEPO | Industry knowledge for product decisions','Business and CXO overview',['docs/EMBEDDED_SEMANTIC_FOUNDATION.md','docs/WORKFLOW-ENGINE.md']);
+ text(s,'Connect product information.\nExplain decisions with evidence.',60,235,1150,135,46,C.ink,true);
+ text(s,'Industry ontology • durable workers • governed AI agents',60,425,1150,75,30,C.teal,true);
+ text(s,'Across PLM, MBSE, manufacturing and quality',60,555,1150,60,28);
 }
-flow('L0–L4: the end-to-end workflow','The layer names explain responsibility; they are not executable job IDs.',[
- 'L0 • Select source\nand business question','L1 • Import records\nand ontology definitions','L2 • Validate and\nprepare evidence','L3 • Governor proposes;\nSteward assesses','L3 • Authorize and\nverify publication','L4 • Explore, analyze\nand retain context'],
- 'Feedback returns through reviewed proposals. Memory never grants publication authority.',
- ['docs/WORKFLOW-ENGINE.md','backend/agentic_service/catalog.json','backend/data_pipeline_service/worker.py']);
-rows('Demo readiness','Use a prepared dataset and an intended business question.',[
- ['Source examples','Specification XML, product/assembly XML, AP242 XSD and SugarPlantMBSE XMI in the local SPLM folder.'],
- ['Access and workers','Connect required read, execution and approval scopes. Maintenance is not needed for a normal demo.'],
- ['Model availability','Direct graph/SQL demonstrations work without a model. Live agent planning and generation need a capable provider.'],
- ['Observable outcomes','Prepare retained runs and receipts. Do not describe a conversion, approval and publication as the same state.'],
- ],['docs/DEMO-USER-GUIDE.md','frontend/src/app/pageRegistry.js','backend/agentic_service/configuration.py']);
-flow('Import business records','Example: induction motor specification and product/assembly XML.',[
- 'Choose Import\ninstance graph','Select one intended\nsource revision','Parse and validate\nbusiness records','Review retained\nload result','Verify publication\nwhere it occurred','Explore names, values\nand source references'],
- 'STEP conversion may hand off to Data Flow for a separate graph-publication action.',
- ['backend/Services/unified_data_import.py','backend/ingestion_service/engineering_workflow.py','docs/DEMO-USER-GUIDE.md']);
-flow('Register an ontology and publish its version','Example: AP242 DomainModel.xsd with its referenced companions.',[
- 'Choose Create\nontology','Select root and\ncompanion XSDs together','Review one grouped\nschema-set entry','Inspect validation\nand exact version','Approve and publish\nthrough its workflow','Open Taxonomy / OWL\nand select a term'],
- 'Registry presence is distinct from a published graph projection. Inspect the publication receipt.',
- ['backend/ontology_service/publication_jobs.py','backend/ontology_service/catalog.py','docs/DEMO-USER-GUIDE.md']);
-rows('Taxonomy and reasoning evidence','Choose the question before choosing the view.',[
- ['Class list or hierarchy','One class view at a time. Term detail appears above the classes; distinct IRIs may share a label.'],
- ['Counts and restrictions','Explicit named-individual declarations are not all business records. OWL restrictions are not extra named parents.'],
- ['Semantica / HermiT','Structural validation and OWL-DL evidence are separate. Reasoning is bound to the checked artifact.'],
- ['Offline imports','External OSLC, Dublin Core, SKOS or SHACL imports without a supported local closure remain unknown.'],
- ],['backend/ontology_service/owl_dl.py','backend/ontology_service/semantica_adapter.py','docs/audits/owl-dl-timeout-verification-2026-11-02.md']);
-flow('Semantic Bridge: Governor and Steward','Select the imported task and target ontology version before asking for links.',[
- 'User selects\nsource and target','Governor prepares\nmapping proposals','Steward assesses\nretained candidates','Review decisions\nand held alternatives','Authorized workflow\npublishes accepted links','Verify receipt;\nleave unresolved held'],
- 'Automated mapping can authorize policy-approved publication. A match score is not semantic proof.',
+rows('The business challenge','Product decisions span systems, teams and different meanings.',[
+ ['Fragmented information','Requirements, design revisions, manufacturing records and inspection evidence live in different systems.'],
+ ['Inconsistent terminology','The same business concept has different names; similar names can describe different things.'],
+ ['Unclear change consequences','Teams need recorded dependencies, applicable versions and evidence before deciding what to review.'],
+ ['Knowledge lost between tasks','A useful answer needs product context, its source and a record of what was decided.'],
+ ],['docs/customer_demo_semantic_value.md','docs/DEMO-USER-GUIDE.md']);
+{
+ const s=slide('DEPO connects information to business use','Existing enterprise systems remain the sources of engineering authority.',[
+ 'docs/WORKFLOW-ENGINE.md','docs/SEMANTIC_ANALYTICS.md','backend/agentic_service/companion_memory.py']);
+ const a=box(s,'Enterprise information\nPLM • MBSE • MES • QMS',60,220,490,130);
+ const b=box(s,'DEPO knowledge layer\nMeaning • relationships • evidence',730,220,490,130);
+ const c=box(s,'Business use\nImpact review • reusable data • contextual answers',260,480,760,115);
+ link(s,a,b);link(s,b,c,{from:'bottom',to:'right',kind:'elbow3'});
+ text(s,'Connections depend on supplied data, deployed connectors and reviewed mappings.',60,625,1160,36,23,C.teal,true);
+}
+{
+ const s=slide('Five connected capabilities','Information becomes useful through a visible sequence of work.',[
+ 'docs/WORKFLOW-ENGINE.md','backend/agentic_service/catalog.json','docs/SEMANTIC_ANALYTICS.md']);
+ const lanes=[
+  ['Data ingestion',['Retain sources','Read records','Check quality','Load evidence']],
+  ['Industry ontology',['Load definitions','Build taxonomy','Review meaning','Publish version']],
+  ['Semantic bridge',['Propose links','Steward review','Authorize change','Publish mappings']],
+  ['Governance',['Define ownership','Review evidence','Record approval','Verify outcome']],
+  ['Lifecycle memory',['Retain context','Record decisions','Review lessons','Recall evidence']],
+ ];
+ for(const [i,[name,steps]] of lanes.entries()){
+  const y=190+i*87;
+  text(s,name,60,y+16,210,58,24,C.teal,true);
+  const shapes=steps.map((t,j)=>box(s,t,290+j*235,y,190,72));
+  for(let j=0;j<3;j++)link(s,shapes[j],shapes[j+1]);
+ }
+ s.speakerNotes.textFrame.setText('These are capability sequences, not executable pipeline identifiers or a claim that every source invokes an agent. The application uses separate durable import, pipeline, ontology and agent runtimes.\n'+['docs/WORKFLOW-ENGINE.md','backend/agentic_service/catalog.json'].map(r=>refs+r).join('\n'));
+}
+{
+ const s=slide('Industry ontology: shared meaning across domains','Source concepts connect through reviewed mappings to a common reference.',[
+ 'docs/EMBEDDED_SEMANTIC_FOUNDATION.md','backend/ontology_service/foundation.py','backend/ontology_service/governance.py'],
+ 'DEPO embeds the public PCA IDO core 4.2 FDIS-proposal snapshot with attribution, not ISO certification. DEPO business core defines physical parts, part designs, engineering documents, requirement specifications and manufacturing activities as separate IDO subclasses. Source terms are not automatically equivalent. Quality concepts depend on imported domain vocabulary and explicit mappings.');
+ const a=box(s,'PLM\nProducts and part designs',60,220);
+ const b=box(s,'MBSE\nRequirements and structure',480,220);
+ const c=box(s,'Manufacturing / quality\nActivities and evidence',860,220);
+ const d=box(s,'Reviewed source alignment\nEmbedded industry ontology',380,420,520,100);
+ const e=box(s,'Connected product evidence',380,565,520,70);
+ link(s,a,d,{from:'bottom',to:'left',kind:'elbow3'});
+ link(s,b,d,{from:'bottom',to:'top',kind:'straight'});
+ link(s,c,d,{from:'bottom',to:'right',kind:'elbow3'});
+ link(s,d,e,{from:'bottom',to:'top'});
+ text(s,'Mappings preserve source identities; a shared term is not automatic equivalence.',60,644,1160,30,23,C.teal,true);
+}
+flow('L0–L4: the operating model','Business intent guides each technical capability and its accountable outcome.',[
+ 'L0 • Define the\nbusiness question','L1 • Collect and\nretain source evidence','L2 • Establish\nshared meaning','L3 • Execute and\nreview governed work','L4 • Consume decisions\nand reusable products','Feedback • Retain\nreviewed lessons'],
+ 'Each layer connects the business question to an accountable outcome.',
+ ['docs/WORKFLOW-ENGINE.md','docs/SEMANTIC_ANALYTICS.md','backend/agentic_service/learning_review.py']);
+rows('Workers, agents and people','Different responsibilities make execution predictable and decisions accountable.',[
+ ['Workers process','Run approved, repeatable jobs: parse sources, validate data, prepare analytics and retain execution results.'],
+ ['Agents investigate','Use registered tools to gather context, explain evidence and propose scoped actions. Model access is needed for live planning.'],
+ ['Governor and Steward','The Governor coordinates proposals and publication. The Steward evaluates retained proposals and explains holds.'],
+ ['People govern','Define the intended use, policy and business owner; authorize changes and review the resulting evidence.'],
+ ],['backend/data_pipeline_service/worker.py','backend/agentic_service/catalog.json','backend/ontology_service/governance.py']);
+flow('Workers turn complex input into usable evidence','Work continues independently of whether a user keeps the page open.',[
+ 'Select a supported\nsource and workflow','Retain the input\nand its source identity','Queue authorized\nprocessing','Worker validates\nand prepares results','Review completed output\nand any exceptions','Reuse retained results\nand publication receipts'],
+ 'A finished job proves execution completed; business approval and release remain separate.',
+ ['backend/data_pipeline_service/worker.py','backend/data_pipeline_service/run_records.py','backend/Services/unified_data_import.py']);
+flow('Agents connect product records to meaning','Example: connect imported specification records with the selected ontology.',[
+ 'Select product records\nand ontology version','Governor proposes\ncandidate connections','Steward checks meaning,\nambiguity and evidence','Review accepted\nand held candidates','Authorized workflow\npublishes permitted links','Inspect the connected\nbusiness context'],
+ 'Confidence is supporting evidence. Unresolved connections stay visible for review.',
  ['backend/agentic_service/catalog.json','backend/ontology_service/governance.py','backend/graph_service/bridge_publication.py'],
- 'Local acceptance example: 7 published / 50 held for one specification scope. Counts are not guaranteed. Optional agent review does not itself publish mappings.');
-flow('Two-ontology merge and recovery','A union is not proof that matching class names are equivalent.',[
- 'Select two\nontology versions','Prepare and save\nthe merge plan','Assess retained\nchanges and conflicts','Review reasoning\nlimits and authority','Approve/publish\nonly intended changes','Resume and verify\nreceipt after refresh'],
- 'Recovery reconciles the retained outcome before another write. Change Control aggregates evidence.',
- ['backend/ontology_service/governance.py','backend/agentic_service/workflow_receipts.py','backend/oslc_service/change_control.py']);
-flow('Change Control: one view across owning workflows','See what was proposed, authorized, executed and delivered without losing the source workflow.',[
- 'Prepare a proposal\nin its workspace','Inspect central\nChange Control evidence','Open the owning\nreview workflow','Record the intended\nauthorization','Worker executes;\nretain the receipt','Inspect execution\nand delivery separately'],
- 'OSLC CM resources support representation/linking. Central evidence does not replace workflow authority.',
- ['backend/oslc_service/change_control.py','backend/Services/oslc_service.py','docs/WORKFLOW-ENGINE.md'],
- 'Sources include merges, instance bridges, ontology publications, Data Flow runs, product releases and learning reviews. Approval, execution and delivery are separate fields. Full centralized CR/CO authoring is not implemented.');
+ 'Validated-only automation can publish within pre-authorized policy. It is not an agent approving itself. Similar labels and match scores do not establish identity equivalence.');
 {
- const s=slide('Approval and publication decision','Validation supplies evidence; authorization permits a specific retained change.',[
- 'backend/ontology_service/governance.py','backend/agentic_service/catalog.json','backend/agentic_service/workflow_receipts.py']);
- const proposal=box(s,'Retained proposal\nwith exact input scope',60,235);
- const decision=box(s,'Policy and authority\npermit this change?',460,235);
- const publish=box(s,'Permitted change:\nexecute publication',860,235);
- const held=box(s,'Held or rejected:\nremain unpublished',460,465);
- const receipt=box(s,'Verify receipt\nand delivery outcome',860,465);
- link(s,proposal,decision);link(s,decision,publish);
- link(s,decision,held,{from:'bottom',to:'top',kind:'elbow'});
- link(s,publish,receipt,{from:'bottom',to:'top',kind:'elbow'});
- text(s,'Permit',788,240,68,26,17,C.teal,true);
- text(s,'Hold',635,391,100,28,20,C.amber,true);
- text(s,'A successful worker or HermiT result does not grant approval. Verify the retained outcome before retry.',60,611,1160,53,24,C.teal,true);
+ const s=slide('Change and approval: proposal to verified outcome','A specific change is reviewed before it becomes part of the released knowledge.',[
+ 'backend/oslc_service/change_control.py','backend/ontology_service/governance.py','backend/agentic_service/workflow_receipts.py']);
+ const a=box(s,'Retained proposal\nwith business scope',60,235);
+ const b=box(s,'Review evidence\nand authorize change',460,235);
+ const c=box(s,'Permitted change:\nexecute publication',860,235);
+ const d=box(s,'Held / rejected:\nremain unpublished',460,465);
+ const e=box(s,'Verify publication\nand consumer delivery',860,465);
+ link(s,a,b);link(s,b,c);link(s,b,d,{from:'bottom',to:'top',kind:'elbow'});link(s,c,e,{from:'bottom',to:'top',kind:'elbow'});
+ text(s,'Permit',788,240,68,26,17,C.teal,true);text(s,'Hold',635,391,100,28,20,C.amber,true);
+ text(s,'An agent recommendation or a successful validation does not grant business approval.',60,613,1160,56,24,C.teal,true);
 }
-flow('OSLC TRS: track changes and assess refresh needs','Tracked Resource Set notifications identify change; they do not authorize a rebuild.',[
- 'A supported resource\nchange is recorded','Local TRS retains\nordered change events','Consumer resumes\nfrom its checkpoint','Review worker reads\na bounded event page','Reconcile selected\nrevisions and artifacts','Report refresh/review\nneeds to the user'],
- 'A gap requires review/rebase. Disabled or unavailable TRS stays explicit; publisher coverage is partial.',
- ['backend/Services/oslc_trs_service.py','backend/data_pipeline_service/semantic_configuration.py','backend/oslc_service/lifecycle.py'],
- 'Preparation captures the TRS head before source resolution. The existing semantic-source-review worker consumes one page and persists its checkpoint. Optional recurrence uses the existing scheduler, not a new broker. It does not modify graph publications or approved products.');
-flow('Configuration baselines: reproduce the selected evidence','An immutable baseline pins the source and declared dependencies for a prepared dataset.',[
- 'Choose registered\nsource and artifact','Declare ontology, mapping,\nKPI or shape references','Freeze versions and\ncontent digests','Prepare dataset with\nconfiguration identity','Analyze/review using\nthe same baseline','Compare changes;\nreview a new baseline'],
- 'A baseline is not approval. This is a PMem extension, not full OSLC streams/global configuration.',
+rows('Change Control makes status understandable','Three different questions need three different answers.',[
+ ['Was it authorized?','Who approved the retained scope, under which policy and version?'],
+ ['Did it execute?','Did the responsible workflow finish, fail or need recovery?'],
+ ['Is it available?','Does a publication receipt exist, and was the released product delivered to its catalog?'],
+ ['Where does review happen?','Central Change Control links reviewers to the workspace responsible for each change.'],
+ ],['backend/oslc_service/change_control.py','backend/Services/oslc_service.py'], 'Central Change Control is a read-only aggregate with links to owning services. Full unified CR/CO authoring and execution is not implemented. OSLC CM representation/linking is separate.');
+flow('OSLC TRS: keep review aware of changes','Tracked changes help identify evidence that may need to be refreshed.',[
+ 'A supported source\nresource changes','Record an ordered\nchange notification','Resume the review\nfrom its checkpoint','Check the selected\nversions and artifacts','Report refresh or\nreview needs','Authorize a new\npreparation or release'],
+ 'A change alert leads to review of the baseline before the next release.',
+ ['backend/Services/oslc_trs_service.py','backend/data_pipeline_service/semantic_configuration.py'],
+ 'The local TRS consumer is the existing semantic-source-review worker, optionally scheduled. It reads bounded pages and reconciles registered inputs because publisher coverage is partial. Disabled/unavailable feed or retention gaps remain uncertain; no new event broker or automatic subscription is claimed.');
+flow('Configuration management preserves the decision baseline','Know which combination of information supported a result.',[
+ 'Select the source\nand its revision','Declare ontology, mapping\nand rule references','Freeze selected versions\nand content identities','Prepare and analyze\nthat baseline','Retain baseline with\nresults and lineage','Compare changed inputs;\nreview a new baseline'],
+ 'A result remains traceable to the source versions selected for it.',
  ['backend/data_pipeline_service/semantic_configuration.py','backend/oslc_service/lifecycle.py','docs/SEMANTIC_ANALYTICS.md'],
- 'Configuration-Context accepts only this deployment\'s retained analytics-baseline URI. Conflicting or foreign context is rejected. Historical replay keeps pinned inputs. Dependency references record context; a KPI reference alone does not execute its formula.');
-flow('Explore contextual business relationships','Question: what recorded dependencies should be reviewed if this part changes?',[
- 'Overview: inspect\nsource groups','Ontology: choose\npublished vocabulary','Processes: choose\nloaded process scope','Instances: search and\nselect business identity','Expand neighbors\nand inspect Where Used','Run Change Impact,\nSimilar Parts or Context'],
- 'Visible slice counts are bounded. Missing paths, units or effectivity remain explicit limitations.',
- ['frontend/src/app/pageRegistry.js','frontend/src/features/recommendations/RecommendationsWorkspace.js','backend/graph_service/router.py']);
-flow('Prepare reusable analytics','Business journey: choose data → prepare → analyze → review.',[
- 'Select a registered\nsource/version','Run approved RDF\npreparation worker','Choose prepared dataset,\nnamespace and entity','Select properties and\nrun supported analysis','Review dimensional\nmodel when required','Inspect dimensions, ODS,\nmeasures and lineage'],
- 'XML materialization is an alternative. File retention alone does not populate analytics tables.',
- ['backend/data_pipeline_service/semantic_datasets.py','backend/data_pipeline_service/business_mart.py','backend/data_pipeline_service/xml_analytics.py','docs/SEMANTIC_ANALYTICS.md'],
- 'Job types: rdf-semantic-materialize, semantic-dataset-analysis, semantic-business-mart, xml-analytics-materialize. Review grain, formulas, units, revision and effectivity.');
-flow('Publish a governed data product','Example: AP242 Structural Inventory of observed records and source traceability.',[
- 'Select retained\nanalysis evidence','Review product owner\nand intended use','Select approved\nsemantic release','Validate the\npublication contract','Publish and verify\npackage/delivery','Find exact released\nversion in Data Catalog'],
- 'A test mart is not a customer-approved product. Inventory is not a complete BOM or certified PMI KPI.',
- ['docs/SEMANTIC_ANALYTICS.md','frontend/src/workflows/workspaceContracts.js','backend/oslc_service/change_control.py']);
-rows('Companion and three memory demonstrations','Use business names, descriptions, property values and source evidence.',[
- ['Question and follow-up','“What specifications are associated with induction motor?” Then: “Which of those link to a product or assembly?”'],
- ['Short-term / context','Check subject recall in the same scope. Reload retained history, then retrieve fresh evidence; old answers are historical.'],
- ['Long-term lesson','Receipted mapping → recorded outcome → prepared lesson → approval → scoped recall for that revision.'],
- ['Acceptance boundary','No approved lesson means no successful recall demo. Optional graph memory needs configuration; unavailable LLM means generation remains untested.'],
- ],['backend/agentic_service/companion_memory.py','backend/agentic_service/learning_review.py','docs/demo-narratives/memory/DEMO.md']);
-{
- const s=slide('Storage, lineage and consumption','Authoritative records and published relationships have different responsibilities.',[
- 'docs/WORKFLOW-ENGINE.md','backend/depo_platform/database_setup.py','docs/SEMANTIC_ANALYTICS.md']);
- const a=box(s,'PostgreSQL\nWorkflow state, approvals,\nartifacts and analytics',60,220,490,140);
- const b=box(s,'Published knowledge graph\nOntology, instances, mappings\nand context paths',730,220,490,140);
- const c=box(s,'Business consumption\nGraph • Companion • Recommendations • Catalog products',260,485,760,110);
- link(s,a,b);link(s,a,c,{from:'bottom',to:'left',kind:'elbow3'});link(s,b,c,{from:'bottom',to:'right',kind:'elbow3'});
- text(s,'Source/version → retained evidence → reviewed operation → publication receipt',60,622,1160,36,23,C.teal,true);
-}
-flow('Upgrade an existing customer installation','Place the complete matching release; preserve environment, credentials and customer records.',[
- 'Back up and run\nupdate preflight','Check configuration,\nhistory and privileges','Stop managed\napplication processes','Apply migrations\nand verify indexes','Restart matching APIs,\nworkers and frontend','Run diagnostics;\nreconnect and check receipts'],
- 'Existing updater includes migrations 015–017. It does not download code, reset data or approve drafts.',
- ['update-depo.ps1','infra/windows/update-depo-windows.ps1','install-depo.ps1','infra/windows/initialize-depo-schema.ps1'],
- 'From install root: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\update-depo.ps1 -EnvFile .\\.env.local -PreflightOnly; then rerun without -PreflightOnly. Full commands and dependency options are in the guide.');
-rows('Recovery during the demo','Inspect retained state before repeating an operation.',[
- ['Rejected access','Reconnect the required scopes. A 403 is not successful execution; do not repeatedly replay.'],
- ['Busy history or timeout','Retry a 503 read after the suggested delay. For a lost write acknowledgement, check retained status and receipt.'],
- ['Refresh / worker interruption','Resume the selected workflow and reconcile its outcome. Browser departure does not prove a worker stopped.'],
- ['Empty graph or catalog','Check exact source/version, publication and delivery. A registered definition or completed job alone is insufficient.'],
- ],['backend/data_pipeline_service/router.py','backend/agentic_service/workflow_receipts.py','docs/DEMO-USER-GUIDE.md']);
-rows('Demo completion and known limits','Demonstrate evidence that exists; keep unresolved checks visible.',[
- ['Successful local checks','Real HermiT: 24 tests passed. Pipeline/QoS/replay/logging regression: 58 passed. See the dated audit for scope.'],
- ['Timeout correction','Real isolated PostgreSQL lock test: four correlated 503 responses within about 5.5 seconds; reads recover after release.'],
- ['Still unresolved','Original three historical timeouts remain unattributed. Full external-import OWL-DL closure is not implemented.'],
- ['Customer acceptance','Verify actual data, business formulas, units, revisions, effectivity, scopes and model availability in the intended deployment.'],
- ],['docs/audits/owl-dl-timeout-verification-2026-11-02.md','docs/DEMO-USER-GUIDE.md']);
+ 'This is a PMem configuration extension. Configuration-Context is limited to retained deployment-local analytics baselines and documented jobs. Capturing a KPI artifact records reproducibility context; it does not itself execute the formula.');
+flow('Use case: assess an engineering change','Question: which recorded product dependencies need review if this part changes?',[
+ 'Select the intended\npart and revision','Find recorded\nassembly relationships','Trace connected\nrequirements and processes','Inspect evidence,\nscope and missing links','Team reviews\nrecommendations','Retain the decision\nand supporting sources'],
+ 'Value: a traceable review scope. Missing relationships do not prove that no impact exists.',
+ ['frontend/src/features/recommendations/RecommendationsWorkspace.js','backend/graph_service/router.py','docs/DEMO-USER-GUIDE.md']);
+rows('Use case: reuse and compare engineering parts','Question: which candidates deserve an engineering comparison?',[
+ ['Compare business meaning','Use type, classification, properties and recorded context rather than the part name alone.'],
+ ['Inspect comparable values','Review dimensions, declared units, missing values and conflicting evidence.'],
+ ['Explain the suggestion','Show the source records and why each candidate was returned; keep similarity distinct from equivalence.'],
+ ['Make the reuse decision','An engineer reviews suitability. A high similarity score is not interchangeability certification.'],
+ ],['frontend/src/features/recommendations/RecommendationsWorkspace.js','docs/recommendation-engineering-review.md']);
+rows('Use case: connect design, manufacturing and quality','Question: what evidence connects what we intend, build and inspect?',[
+ ['MBSE and requirements','Follow supplied requirement/model relationships; distinguish recorded traceability from satisfaction evidence.'],
+ ['Product and manufacturing','Review supplied parent/child part and process links with the intended revision and effectivity.'],
+ ['Design and inspection','Inspect features, characteristics or PMI only when their ownership and source associations are established.'],
+ ['Business outcome','Expose missing evidence for review. Do not infer a complete BOM, verified PMI ownership or manufacturing readiness.'],
+ ],['docs/SEMANTIC_ANALYTICS.md','docs/PLM_COMPANION_RESPONSE_CONTRACT.md','docs/DEMO-USER-GUIDE.md']);
+rows('Knowledge Companion and lifecycle memory','Question: what does the available evidence say about this product?',[
+ ['Contextual conversation','Ask about a named product, then follow up with “which of those?” using the same business scope.'],
+ ['Short-term memory','Keep the current subject and relevant conversation context; retrieve evidence for the next question.'],
+ ['Long-term memory','Retain reviewed mapping outcomes and approved revision-scoped lessons for later advisory use.'],
+ ['Trust and continuity','Show source references and uncertainty. Historical answers need fresh retrieval; reviewed lessons are not model training.'],
+ ],['backend/agentic_service/companion_memory.py','backend/agentic_service/learning_review.py'],
+ 'Optional graph memory requires explicit configuration and populated evidence. No universal self-learning, autonomous approval or successful recall without approved lessons is claimed. Live response generation requires an available model.');
+flow('Business data products for analytics and reuse','Select registered business data, then prepare and govern its use.',[
+ 'Choose product, part\nor domain evidence','Workers prepare\nversioned records','Define dimensions\nand reporting scope','Review measures, units\nand KPI meaning','Create reporting tables\nand retained results','Publish an owned product\nfor catalog discovery'],
+ 'Portfolio • classification • traceability • manufacturing context, according to the supplied data and model.',
+ ['backend/data_pipeline_service/semantic_datasets.py','backend/data_pipeline_service/business_mart.py','docs/SEMANTIC_ANALYTICS.md'],
+ 'Implemented workers include RDF semantic preparation, supported analysis, governed business marts and alternative XML materialization. Top-down evidence measures include recorded requirement-link rate and process-assignment rate. Denominators, units, grain, revisions and effectivity must be reviewed. Inventory and observed links are not automatic BOM completeness, compliance or certified quality KPIs.');
+rows('Business value and pilot measures','Measure improvement against the customer’s current process; do not assume an ROI.',[
+ ['Find trusted information','Measure time to locate a product record and its supporting source/version.'],
+ ['Review change scope','Measure review effort, unresolved dependencies and time to assemble impact evidence.'],
+ ['Reuse prepared data','Measure time to produce a governed dataset and the use of released product versions.'],
+ ['Preserve accountability','Measure availability of ownership, approval, lineage and publication evidence for sampled decisions.'],
+ ],['docs/WORKFLOW-ENGINE.md','docs/DEMO-USER-GUIDE.md'],
+ 'These are proposed pilot evaluation measures, not shipped benchmark dashboards or measured outcomes. Agree baseline, sample population and acceptance criteria with the customer.');
+rows('A business demonstration in three scenarios','Show the question, the supporting evidence and the decision boundary.',[
+ ['1 • Product context','Find a product and its requirement specifications; follow recorded links and ask a contextual follow-up.'],
+ ['2 • Governed change','Review a mapping or merge, show Governor/Steward roles, and inspect authorization, execution and publication separately.'],
+ ['3 • Reusable analytics','Prepare registered data, inspect supported dimensions/measures, and find an approved released version in the catalog.'],
+ ['Customer readiness','Confirm actual data coverage, access, model availability and agreed business definitions before promising the outcome.'],
+ ],['docs/DEMO-USER-GUIDE.md','docs/audits/demo-and-upgrade-review-2026-11-02.md'],
+ 'Presenter instructions and sample files are in the guide. Full external-import OWL-DL closure and attribution of three historical read timeouts remain unresolved; do not claim full ontology consistency or customer release certification.');
 
 // Check authored box geometry before exporting. Native connectors attach to
 // shape sides and use empty corridors; connector endpoints intentionally touch.

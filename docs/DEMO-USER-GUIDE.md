@@ -1,6 +1,6 @@
 # DEPO demo user guide
 
-Current: 2 November 2026. Companion: [editable workflow deck](../deliverables/DEPO-Workflow-Audited.pptx). This replaces the older customer demo sequence. Dated audits remain historical evidence.
+Current: 2 November 2026. Companion: [business/CXO workflow deck](../deliverables/DEPO-Workflow-Audited.pptx). The slides explain business value and capabilities; this guide supplies presenter clicks, sample files and operator instructions. This replaces the older customer demo sequence. Dated audits remain historical evidence.
 
 ## Demo objective and preparation
 

@@ -1,10 +1,12 @@
 # Deliverables
 
-For a current workflow demonstration, use [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx)
+For the business/CXO overview, use [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx)
 and its [demo user guide](../docs/DEMO-USER-GUIDE.md), updated 2 November 2026.
-The 20-slide deck contains editable arrow/elbow diagrams for ingestion, ontology,
-Governor/Steward review, Change Control, approval, OSLC TRS, configuration baselines,
-analytics, products and customer upgrades. Its speaker notes identify code sources.
+The 20-slide deck explains industry problems, the embedded ontology, workers versus
+agents, Governor/Steward review, Change Control, approval, OSLC TRS, configuration
+baselines, lifecycle memory and data products. Editable arrow/elbow diagrams show
+the workflows. Speaker notes identify code sources and capability boundaries.
+Technical demo/upgrade instructions remain in the user guide rather than the CXO slides.
 Builder: `scripts/presentations/build_workflow_audited.mjs`; use the same bundled
 runtime variables documented below. Render/validation output stays uncommitted.
 
