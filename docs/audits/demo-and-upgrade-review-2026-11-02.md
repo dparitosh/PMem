@@ -63,3 +63,29 @@ converging domain inputs rather than implying PLM, MBSE and manufacturing are
 sequential systems. The deployment PPTX is replaced with the validated business
 version after retaining its previous copy outside the release. Application services,
 databases and credentials are unchanged by this presentation update.
+
+## Marketing literature and AI led engineering review
+
+Added a six-page Word/PDF business overview: `DEPO-AI-Led-Engineering-Marketing`.
+It covers the business need, industry ontology versus DEPO application ontology,
+workers/agents, governance/memory, product merits and illustrative verticals.
+HiTech/electronics/telecom, semiconductors, automotive, aerospace, machinery,
+oil/gas, energy/utilities, food/beverages, pharma/life sciences and capital projects
+are applicability scenarios, not claims of ten packaged industry solutions.
+Process control, pharmaceutical validation, complete batch genealogy, simulation,
+CAD/EDA execution and measured ROI are not asserted as implemented DEPO outcomes.
+
+Functional claims were checked against the shipped foundation/business-core TTL,
+workflow ownership, agent roles and semantic analytics contracts. Current external
+context was reviewed from primary sources: PCA ontology-based interoperability,
+Siemens' 20 April 2026 engineering-agent announcement, NVIDIA's 21 October 2026
+agent-assisted digital-twin workflow, and Neo4j's memory-type documentation.
+Links are included in the brochure. No vendor gains are attributed to DEPO and
+no third-party integration or endorsement is implied.
+
+The bundled DOCX renderer was attempted but its LibreOffice executable was
+unavailable. The installed Microsoft Word rendered the document through a hidden,
+read-only instance; Poppler produced review images. All six pages were inspected,
+the inherited decorative title border was removed and the final changed pages
+were re-rendered/reviewed. PDF text/page-count and DOCX subject checks passed.
+No application behavior, deployment configuration or database was changed.

@@ -1,5 +1,15 @@
 # Deliverables
 
+Marketing literature for AI-led engineering:
+[PDF brochure](DEPO-AI-Led-Engineering-Marketing.pdf) and
+[editable Word version](DEPO-AI-Led-Engineering-Marketing.docx).
+The six-page business overview explains why DEPO is needed, the industry and
+application ontologies, workers/agents, product merits and ten vertical scenarios,
+including HiTech, oil and gas, food/beverages and pharmaceuticals. It distinguishes
+applicability from preconfigured integrations and cites primary industry sources.
+Builder: `tools/documentation/build_marketing_literature.py`; use bundled document
+dependencies and render/inspect all pages before publishing a revision.
+
 For the business/CXO overview, use [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx)
 and its [demo user guide](../docs/DEMO-USER-GUIDE.md), updated 2 November 2026.
 The 20-slide deck explains industry problems, the embedded ontology, workers versus
