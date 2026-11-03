@@ -1,24 +1,30 @@
 # Deliverables
 
-Marketing literature for AI-led engineering:
-[PDF brochure](DEPO-AI-Led-Engineering-Marketing.pdf) and
-[editable Word version](DEPO-AI-Led-Engineering-Marketing.docx).
-The six-page business overview explains why DEPO is needed, the industry and
-application ontologies, workers/agents, product merits and ten vertical scenarios,
-including HiTech, oil and gas, food/beverages and pharmaceuticals. It distinguishes
-applicability from preconfigured integrations and cites primary industry sources.
-Builder: `tools/documentation/build_marketing_literature.py`; use bundled document
-dependencies and render/inspect all pages before publishing a revision.
+Current business and industry presentation: [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx).
+The same 20-slide deck is also available as [DEPO-AI-Led-Engineering-Marketing.pptx](DEPO-AI-Led-Engineering-Marketing.pptx).
+Use these with the matching [Word brochure](DEPO-AI-Led-Engineering-Marketing.docx)
+and [PDF brochure](DEPO-AI-Led-Engineering-Marketing.pdf), revised 3 November 2026.
+Visible branding is Nexus; established filenames are retained for existing references.
 
-For the business/CXO overview, use [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx)
-and its [demo user guide](../docs/DEMO-USER-GUIDE.md), updated 2 November 2026.
-The 20-slide deck explains industry problems, the embedded ontology, workers versus
-agents, Governor/Steward review, Change Control, approval, OSLC TRS, configuration
-baselines, lifecycle memory and data products. Editable arrow/elbow diagrams show
-the workflows. Speaker notes identify code sources and capability boundaries.
-Technical demo/upgrade instructions remain in the user guide rather than the CXO slides.
-Builder: `scripts/presentations/build_workflow_audited.mjs`; use the same bundled
-runtime variables documented below. Render/validation output stays uncommitted.
+The narrative starts from business decisions, user roles and functional journeys:
+engineering change, part reuse, MBSE traceability, manufacturing/quality review,
+controlled release, contextual conversation and reusable business analytics.
+Dedicated HiTech, oil/gas, food/beverages and pharma scenarios are applicability
+examples requiring customer records and reviewed mappings. Proposed pilot measures
+are not measured ROI. The material does not claim sector certification or batch release.
+
+The presentation includes 15 diagram slides and 82 native arrow/elbow connectors,
+including business swimlanes, domain relationships, agent roles, contextual memory
+and four industry workflows. The brochure includes four matching diagrams. Implementation references and capability boundaries are in speaker notes;
+architecture internals do not lead the audience narrative. The six-page brochure
+explains industry ontology in business terms and separates proposals, approvals and
+released outcomes. The [demo user guide](../docs/DEMO-USER-GUIDE.md) remains the
+presenter's operational companion.
+
+Builders: `scripts/presentations/build_workflow_audited.mjs` and
+`tools/documentation/build_marketing_literature.py`. Use bundled document/presentation
+dependencies, validate exports and inspect every rendered slide/page before delivery.
+Private renders and validation reports remain outside this folder.
 
 The architecture decks below are background material; use the workflow deck
 and current guide for demo instructions and known limitations.
