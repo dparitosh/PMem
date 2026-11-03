@@ -40,6 +40,7 @@ test('missing processing definitions can be prepared as drafts without granting 
  api.definitions.mockResolvedValue({data:{definitions:[]}});
  api.createDefinition.mockResolvedValue({data:{lifecycle_state:'draft'}});
  render(<SemanticDataWorkbench/>);
+ fireEvent.click(screen.getByRole('button',{name:'3 Review workflow'}));
  const draftButton=await screen.findByRole('button',{name:'Prepare workflow draft for review'});
  await act(async()=>{fireEvent.click(draftButton);});
  await screen.findByText('Draft created. Review and approve this workflow in Data Flow before running it.');
@@ -112,4 +113,43 @@ test('namespace choices exclude unused defaults and duplicate aliases',async()=>
  await waitFor(()=>expect(select.options.length).toBe(2));
  expect(select.options[1].value).toBe('urn:parts:');
  expect(select).not.toHaveTextContent('unused');
+});
+
+test('partial inventory remains selectable and explains missing providers',async()=>{
+ api.semanticSources.mockResolvedValue({data:{sources:[{source_id:'catalog:parts:1',artifact_id:'sha256:source',name:'Parts'}],partial:true,warnings:['Metadata Registry is unavailable; catalog sources remain available.']}});
+ render(<SemanticDataWorkbench/>);
+ await screen.findByText('Connected requester: connected-user');
+ expect(await screen.findByRole('alert')).toHaveTextContent('Metadata Registry is unavailable');
+ expect(screen.getByRole('button',{name:'Prepare semantic records with worker'})).toBeDisabled();
+ expect(screen.getByText(/Choose a registered RDF source or a prepared dataset/)).toBeVisible();
+ fireEvent.change(screen.getByLabelText('Registered source'),{target:{value:'catalog:parts:1|sha256:source'}});
+ expect(screen.getByRole('button',{name:'Prepare semantic records with worker'})).toBeEnabled();
+});
+
+test('step navigation shows one setup section and preserves source selection',async()=>{
+ render(<SemanticDataWorkbench/>);
+ await screen.findByText('Connected requester: connected-user');
+ fireEvent.change(screen.getByLabelText('Registered source'),{target:{value:'catalog:parts:1|sha256:source'}});
+ expect(screen.getByRole('region',{name:'Choose analytics data'})).toBeVisible();
+ expect(screen.queryByRole('region',{name:'Review analytics workflow'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'3 Review workflow'}));
+ expect(screen.getByRole('region',{name:'Review analytics workflow'})).toBeVisible();
+ expect(screen.queryByRole('region',{name:'Choose analytics data'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'1 Choose data'}));
+ expect(screen.getByLabelText('Registered source')).toHaveValue('catalog:parts:1|sha256:source');
+});
+
+test('refresh restores scoped source selection and reconnect does not push history',async()=>{
+ window.history.replaceState(null,'','#/data-products?view=analytics&analytics_step=2');
+ sessionStorage.setItem('nexus.analytics.selection.v1',JSON.stringify({scope:'',source:'catalog:parts:1|sha256:source'}));
+ const push=vi.spyOn(window.history,'pushState');
+ render(<SemanticDataWorkbench/>);
+ await screen.findByText('Connected requester: connected-user');
+ expect(screen.getByLabelText('Registered source')).toHaveValue('catalog:parts:1|sha256:source');
+ const before=push.mock.calls.length;
+ act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
+ expect(push.mock.calls.length).toBe(before);
+ expect(window.location.hash).not.toContain('analytics_step');
+ expect(screen.getByLabelText('Registered source')).toHaveValue('');
+ push.mockRestore();
 });

@@ -47,8 +47,8 @@ def resolve_source(source_id, artifact_id):
         raise ValueError('Choose a versioned catalog source or registered metadata asset')
     if not record or artifact_id not in allowed:
         raise ValueError('The selected RDF artifact does not belong to this registered source')
-    if record.get('lifecycle_status',record.get('lifecycle_state')) in {'retired','deprecated'}:
-        raise ValueError('Retired or deprecated sources cannot supply a new analytics snapshot')
+    if record.get('lifecycle_status',record.get('lifecycle_state')) in {'retired','deprecated','revoked'}:
+        raise ValueError('Retired, deprecated or revoked sources cannot supply a new analytics snapshot')
     return {key:record.get(key) for key in ('name','product_id','version','asset_id','revision','updated_at','namespace_uri','namespace_prefix','owner','steward','domain')}
 
 

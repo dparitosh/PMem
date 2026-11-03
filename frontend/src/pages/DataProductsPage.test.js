@@ -169,6 +169,8 @@ it('starts with available analytics and a clear business next action',async()=>{
  dataPipelineAPI.analytics.mockResolvedValue({data:{datasets:[],total:0,next_offset:null}});
  render(<DataProductsPage/>);
  expect(screen.getByRole('tab',{name:'Available analytics'})).toHaveAttribute('aria-selected','true');
+ expect(await screen.findByText('Your data, ready for analysis')).toBeVisible();
+ fireEvent.click(screen.getByText('Prepare or analyse registered business data'));
  expect(await screen.findByText('Catalog-driven analytics')).toBeVisible();
  expect(screen.queryByLabelText('Workspace overview')).toBeNull();
 });
@@ -193,4 +195,16 @@ it('switching product views preserves the same retained run read',async()=>{
  fireEvent.click(screen.getByRole('tab',{name:'Create & review'}));
  expect(dataPipelineAPI.getRun).toHaveBeenCalledTimes(1);
  expect(window.location.hash).toContain('run_id=view-run');
+});
+
+it('legacy pipeline source link canonicalizes to stepped analytics',async()=>{
+ window.history.replaceState(null,'','#/data-products?view=pipeline&ontology_id=sysml-test');
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ dataPipelineAPI.analytics.mockResolvedValue({data:{datasets:[],total:0,next_offset:null}});
+ render(<DataProductsPage/>);
+ await screen.findByText('Your data, ready for analysis');
+ expect(window.location.hash).toContain('view=analytics');
+ expect(window.location.hash).toContain('analytics_step=0');
+ expect(window.location.hash).toContain('ontology_id=sysml-test');
+ expect(screen.getByRole('tab',{name:'Available analytics'})).toHaveAttribute('aria-selected','true');
 });

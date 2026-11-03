@@ -39,7 +39,7 @@ test('vanilla reset previews scope and cannot execute outside isolated maintenan
   await waitFor(() => expect(preview).toBeEnabled());
   fireEvent.click(preview);
   await screen.findByText('agentic_workflow_runs');
-  expect(screen.getByRole('button', { name: 'Reset DEPO to vanilla state' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Reset Nexus to vanilla state' })).toBeDisabled();
   expect(screen.getByText('Stop services and open isolated maintenance.')).toBeVisible();
   expect(API_METHODS.admin.resetVanilla).not.toHaveBeenCalled();
 });
@@ -53,10 +53,10 @@ test('vanilla reset requires exact phrase and submits the preview identity once'
   const preview = screen.getByRole('button', { name: 'Preview vanilla reset' });
   await waitFor(() => expect(preview).toBeEnabled());
   fireEvent.click(preview);
-  fireEvent.click(await screen.findByRole('button', { name: 'Reset DEPO to vanilla state' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset Nexus to vanilla state' }));
   const confirm = screen.getByRole('button', { name: 'Delete application data' });
   expect(confirm).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('Confirmation phrase'), { target: { value: 'RESET DEPO TO VANILLA' } });
+  fireEvent.change(screen.getByLabelText('Confirmation phrase'), { target: { value: 'RESET NEXUS TO VANILLA' } });
   fireEvent.click(confirm);
   await screen.findByText(/Vanilla reset completed. Receipt: vanilla-test/);
   expect(API_METHODS.admin.resetVanilla).toHaveBeenCalledWith('preview-identity');

@@ -4,24 +4,32 @@ import {getCredentialProfile} from '../services/serviceAuth';
 import {apiErrorMessage} from '../utils/apiErrorMessage';
 import {confirmedSubmissionRejection} from '../services/workflowSubmission';
 import './XmlAnalyticsLoader.css';
+import './SemanticDataWorkbench.css';
 import RdfSourceUpload from './RdfSourceUpload';
 import BusinessAnalyticsModel from './BusinessAnalyticsModel';
 import GovernedAnalyticsModel from './GovernedAnalyticsModel';
 import GraphSnapshotSource from './GraphSnapshotSource';
 
 const KEY='depo-semantic-data-task';
+const DRAFT_KEY='nexus.analytics.selection.v1';
+function savedSelection(){try{const saved=JSON.parse(sessionStorage.getItem(DRAFT_KEY));const scope=new URLSearchParams(window.location.hash.split('?')[1]||'').get('ontology_id')||'';return saved?.scope===scope?saved:{};}catch{return {};}}
 const events=['depo:session-replaced','depo:session-expired','depo:credentials-cleared','depo:credentials-changed'];
 const short=iri=>String(iri).split(/[#/:]/).filter(Boolean).pop()||iri;
 function retained(){try{return JSON.parse(sessionStorage.getItem(KEY))||null;}catch{return null;}}
 
-export default function SemanticDataWorkbench(){
+export default function SemanticDataWorkbench({refreshKey=0}){
+  const readStep=()=>{const value=Number(new URLSearchParams(window.location.hash.split('?')[1]||'').get('analytics_step'));return Number.isInteger(value)&&value>=0&&value<3?value:0;};
+  const [step,setLocalStep]=useState(readStep);
+  const setStep=next=>{const value=typeof next==='function'?next(step):next;const [path,search='']=window.location.hash.split('?');const params=new URLSearchParams(search);params.set('analytics_step',String(value));window.history.pushState(null,'',`${path||'#/data-products'}?${params}`);window.dispatchEvent(new HashChangeEvent('hashchange'));setLocalStep(value);};
+  useEffect(()=>{const update=()=>setLocalStep(readStep());window.addEventListener('hashchange',update);window.addEventListener('popstate',update);return()=>{window.removeEventListener('hashchange',update);window.removeEventListener('popstate',update);};},[]);
   const [sources,setSources]=useState(null),[datasets,setDatasets]=useState(null),[jobs,setJobs]=useState([]);
   const [sourceOffset,setSourceOffset]=useState(0),[sourceNext,setSourceNext]=useState(null),[datasetOffset,setDatasetOffset]=useState(0),[datasetNext,setDatasetNext]=useState(null);
-  const [source,setSource]=useState(''),[dataset,setDataset]=useState(''),[model,setModel]=useState(null);
+  const saved=useRef(savedSelection()).current;
+  const [source,setSource]=useState(saved.source||''),[dataset,setDataset]=useState(saved.dataset||''),[model,setModel]=useState(null);
   const [assessment,setAssessment]=useState(null);
-  const [businessModel,setBusinessModel]=useState({}),[analyticsModel,setAnalyticsModel]=useState('');
-  const [classId,setClassId]=useState(''),[prefix,setPrefix]=useState(''),[fields,setFields]=useState([]),[properties,setProperties]=useState([]);
-  const [algorithm,setAlgorithm]=useState('profile'),[actor,setActor]=useState(''),[jobChoice,setJobChoice]=useState('');
+  const [businessModel,setBusinessModel]=useState(saved.businessModel||{}),[analyticsModel,setAnalyticsModel]=useState(saved.analyticsModel||'');
+  const [classId,setClassId]=useState(saved.classId||''),[prefix,setPrefix]=useState(saved.prefix||''),[fields,setFields]=useState([]),[properties,setProperties]=useState(saved.properties||[]);
+  const [algorithm,setAlgorithm]=useState(saved.algorithm||'profile'),[actor,setActor]=useState(''),[jobChoice,setJobChoice]=useState(saved.jobChoice||'');
   const [revision,setRevision]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadErrors,setLoadErrors]=useState({});
   const [pending,setPending]=useState(retained),[checked,setChecked]=useState(false);
   const mounted=useRef(true);
@@ -29,7 +37,7 @@ export default function SemanticDataWorkbench(){
   function retain(value){if(mounted.current)setPending(value);try{if(value)sessionStorage.setItem(KEY,JSON.stringify(value));else sessionStorage.removeItem(KEY);}catch{/* The in-memory guard remains active. */}}
   useEffect(()=>{
     mounted.current=true;
-    const reset=()=>{generation.current++;selection.current++;details.current?.abort();setAssessment(null);setBusinessModel({});setAnalyticsModel('');setModel(null);setFields([]);setProperties([]);setSource('');setDataset('');setClassId('');setActor('');setJobs([]);setRevision(value=>value+1);};
+    const reset=()=>{generation.current++;selection.current++;details.current?.abort();setAssessment(null);setBusinessModel({});setAnalyticsModel('');setModel(null);setFields([]);setProperties([]);setSource('');setDataset('');setLocalStep(0);try{sessionStorage.removeItem(DRAFT_KEY);const [path,search='']=window.location.hash.split('?');const params=new URLSearchParams(search);params.delete('analytics_step');window.history.replaceState(null,'',`${path}?${params}`);window.dispatchEvent(new HashChangeEvent('hashchange'));}catch{};setClassId('');setActor('');setJobs([]);setRevision(value=>value+1);};
     events.forEach(event=>window.addEventListener(event,reset));
     return()=>{mounted.current=false;events.forEach(event=>window.removeEventListener(event,reset));generation.current++;selection.current++;details.current?.abort();};
   },[]);
@@ -39,18 +47,20 @@ export default function SemanticDataWorkbench(){
     setSources(null);setDatasets(null);setLoadErrors({});
     const options={signal:controller.signal,timeout:15000};
     const read=(key,call,apply)=>Promise.resolve().then(call).then(response=>{if(valid())apply(response.data);}).catch(failure=>{if(valid())setLoadErrors(old=>({...old,[key]:apiErrorMessage(failure,`${key} is unavailable. This does not establish that no records exist.`)}));});
-    read('Catalog and registry',()=>api.semanticSources(sourceOffset,options),data=>{if(!Array.isArray(data.sources))throw new Error('Invalid registered-source response');setSources(data.sources);setSourceNext(data.next_offset);});
+    read('Catalog and registry',()=>api.semanticSources(sourceOffset,options),data=>{if(!Array.isArray(data.sources))throw new Error('Invalid registered-source response');setSources(data.sources);setSourceNext(data.next_offset);if(data.partial)setLoadErrors(old=>({...old,['Partial source inventory']:(data.warnings||['Some sources could not be checked.']).join(' ')}));});
     read('Semantic datasets',()=>api.semanticDatasets(datasetOffset,options),data=>{if(!Array.isArray(data.datasets))throw new Error('Invalid semantic dataset response');setDatasets(data.datasets);setDatasetNext(data.next_offset);});
     read('Processing workflows',()=>api.definitions(),data=>{if(!Array.isArray(data.definitions))throw new Error('Invalid process response');setJobs(data.definitions);});
     const token=getCredentialProfile('DATA_JOB_EXECUTION_TOKEN');
     if(token)read('Execution access',()=>api.executionIdentity(token,options),data=>setActor(data.actor||''));
     return()=>controller.abort();
-  },[revision,sourceOffset,datasetOffset]);
-  async function chooseDataset(id){
+  },[revision,sourceOffset,datasetOffset,refreshKey]);
+  useEffect(()=>{if(saved.dataset)chooseDataset(saved.dataset,true);},[]);
+  useEffect(()=>{try{sessionStorage.setItem(DRAFT_KEY,JSON.stringify({scope:new URLSearchParams(window.location.hash.split('?')[1]||'').get('ontology_id')||'',source,dataset,businessModel,analyticsModel,classId,prefix,properties,algorithm,jobChoice}));}catch{}},[source,dataset,businessModel,analyticsModel,classId,prefix,properties,algorithm,jobChoice]);
+  async function chooseDataset(id,restore=false){
     details.current?.abort();const controller=new AbortController();details.current=controller;const current=++selection.current;
-    setDataset(id);setBusinessModel({});setAnalyticsModel('');setAssessment(null);setModel(null);setClassId('');setFields([]);setProperties([]);setError('');setPrefix('');
+    if(!restore){setDataset(id);setBusinessModel({});setAnalyticsModel('');setAssessment(null);setModel(null);setClassId('');setFields([]);setProperties([]);setError('');setPrefix('');}
     if(!id)return;
-    try{const response=await api.semanticSchema(id,{signal:controller.signal,timeout:15000});if(!controller.signal.aborted&&current===selection.current){if(response.data?.dataset?.dataset_id!==id)throw new Error('Dataset identity mismatch');setModel(response.data);}
+    try{const response=await api.semanticSchema(id,{signal:controller.signal,timeout:15000});if(!controller.signal.aborted&&current===selection.current){if(response.data?.dataset?.dataset_id!==id)throw new Error('Dataset identity mismatch');setModel(response.data);if(restore&&saved.classId){const fields=await api.semanticFields(id,saved.classId,{signal:controller.signal,timeout:15000});if(!controller.signal.aborted&&current===selection.current&&fields.data?.dataset_id===id&&fields.data?.class_iri===saved.classId)setFields(fields.data.rows||[]);}}
       const assessed=await api.semanticChangeAssessment(id,{signal:controller.signal,timeout:15000});if(!controller.signal.aborted&&current===selection.current)setAssessment(assessed.data);}
     catch(failure){if(!controller.signal.aborted&&current===selection.current)setError(apiErrorMessage(failure,'Dataset details could not be loaded.'));}
   }
@@ -98,29 +108,39 @@ export default function SemanticDataWorkbench(){
   }
   const namespaces=Array.from(new Map((model?.namespaces||[]).filter(item=>item.namespace_uri&&(model?.classes||[]).some(entity=>entity.iri.slice(0,Math.max(entity.iri.lastIndexOf('#'),entity.iri.lastIndexOf('/'),entity.iri.lastIndexOf(':'))+1)===item.namespace_uri)).map(item=>[item.namespace_uri,item])).values());
   const classes=(model?.classes||[]).filter(item=>!prefix||item.iri.startsWith(prefix));
-  return <section className="xml-analytics-loader" aria-label="Catalog driven analytics">
-    <header><h3>Build reports from registered business data</h3><p>Choose data from the Data Catalog or Metadata Registry. Reuse its vocabulary, records and source version; XSD is not required.</p><button disabled={busy} onClick={()=>{generation.current++;selection.current++;details.current?.abort();setModel(null);setDataset('');setClassId('');setFields([]);setProperties([]);setRevision(value=>value+1);}}>Refresh registered data</button></header>
+  return <section className="xml-analytics-loader semantic-workspace" aria-label="Catalog driven analytics">
+    <header><div><h3>Prepare or analyse business data</h3><p>Choose a retained RDF source from the Catalog or Registry, or select a prepared dataset to analyse. Other imports need preparation or a registered graph snapshot first.</p></div><button disabled={busy} onClick={()=>{generation.current++;selection.current++;details.current?.abort();setModel(null);setDataset('');setClassId('');setFields([]);setProperties([]);setRevision(value=>value+1);}}>Refresh registered data</button></header>
+    <nav className="semantic-steps" aria-label="Analytics setup steps">{['Choose data','Configure analysis','Review workflow'].map((title,index)=><button type="button" key={title} aria-current={step===index?'step':undefined} onClick={()=>setStep(index)}><span>{index+1}</span>{title}</button>)}</nav>
+    <section className="semantic-step" hidden={step!==0} aria-label="Choose analytics data"><h4>Choose your starting data</h4>
     <GraphSnapshotSource onRegistered={()=>{setSourceOffset(0);setRevision(value=>value+1);}}/>
     <RdfSourceUpload onRegistered={()=>{setSourceOffset(0);setRevision(value=>value+1);}}/>
     {Object.entries(loadErrors).map(([key,message])=><p role="alert" key={key}>{message}</p>)}
-    <div className="analytics-form-row"><label>Registered source<select value={source} disabled={busy||!!pending} onChange={event=>{setSource(event.target.value);setJobChoice('');chooseDataset('');}}><option value="">Choose from Catalog or Registry</option>{(sources||[]).map(item=><option key={`${item.source_id}|${item.artifact_id}`} value={`${item.source_id}|${item.artifact_id}`}>{item.name} · {item.version||item.status} · {item.filename||item.origin}</option>)}</select></label><span>Sources keep their owner, version and lineage.</span></div>
+    <p>Choose one starting point: prepare a registered RDF source, or analyse an existing dataset. Selecting one clears the other.</p><div className="analytics-form-row"><label>Registered source<select value={source} disabled={busy||!!pending} onChange={event=>{setSource(event.target.value);setJobChoice('');chooseDataset('');}}><option value="">Choose from Catalog or Registry</option>{(sources||[]).map(item=><option key={`${item.source_id}|${item.artifact_id}`} value={`${item.source_id}|${item.artifact_id}`}>{item.name} · {item.version||item.status} · {item.filename||item.origin}</option>)}</select></label><span>Sources keep their owner, version and lineage.</span></div>
     {sources?.length===0&&<p>No retained RDF references are registered on this page. <a href="#/catalog">Browse Data Catalog</a> or <a href="#/registry">register an RDF source</a>. Live graph data needs a registered snapshot before reproducible analysis.</p>}
     {selectedSource&&<p>Namespace: {selectedSource.namespace_uri||'Read from the RDF source'} · Owner: {selectedSource.owner||'Not recorded'}</p>}
     {(sourceNext!=null||sourceOffset>0)&&<p><button disabled={!sourceOffset} onClick={()=>setSourceOffset(Math.max(0,sourceOffset-50))}>Previous sources</button><button disabled={sourceNext==null} onClick={()=>setSourceOffset(sourceNext)}>More sources</button></p>}
     <div className="analytics-form-row"><label>Prepared semantic dataset<select value={dataset} disabled={busy||!!pending} onChange={event=>{setSource('');setJobChoice('');chooseDataset(event.target.value);}}><option value="">Choose existing records to analyse</option>{(datasets||[]).map(item=><option value={item.dataset_id} key={item.dataset_id}>{item.name} · source {item.source_version?.version||'version not recorded'} · snapshot {item.dataset_id.slice(0,8)} · {item.counts?.entities??0} typed records · {item.projection_version}</option>)}</select></label><span>Prepared records remain separate from approved published products.</span></div>
     {datasets?.length===0&&<p>No semantic snapshots have been prepared yet. Choose a registered RDF source, then run its approved preparation workflow.</p>}
     {(datasetNext!=null||datasetOffset>0)&&<p><button disabled={!datasetOffset} onClick={()=>setDatasetOffset(Math.max(0,datasetOffset-50))}>Previous datasets</button><button disabled={datasetNext==null} onClick={()=>setDatasetOffset(datasetNext)}>More datasets</button></p>}
+    </section>
+    <section className="semantic-step" hidden={step!==1} aria-label="Configure analytics"><h4>Choose the analysis you need</h4>{!model&&<p>Select a prepared dataset in Choose data to configure an analysis. A registered RDF source can go directly to Review workflow for preparation.</p>}
     {model&&<>{model.dataset.configuration_id&&<p>Input baseline retained. New source versions do not replace this snapshot automatically.</p>}<p role="status">Source change assessment: {String(assessment?.status||'not_assessed').replaceAll('_',' ')}{assessment?.assessed_at?` · ${assessment.assessed_at}`:''}. Published results are retained.</p><label>Vocabulary / namespace<select value={prefix} onChange={event=>{selection.current++;details.current?.abort();setPrefix(event.target.value);setClassId('');setProperties([]);setFields([]);}}><option value="">All vocabularies</option>{namespaces.map(item=><option key={`${item.namespace_uri}|${item.prefix}`} value={item.namespace_uri}>{item.prefix||'Unprefixed'} · {item.namespace_uri}</option>)}</select></label><label>Business records<select value={classId} onChange={event=>chooseClass(event.target.value)}><option value="">Choose an entity type</option>{classes.map(item=><option key={item.iri} value={item.iri}>{item.name} · {item.entities} records</option>)}</select></label>
       {!model.classes.length&&<p>This snapshot contains vocabulary but no explicitly typed business instances. Definitions alone cannot establish a business KPI.</p>}
       <label>Analysis<select value={algorithm} onChange={event=>{setAlgorithm(event.target.value);setProperties([]);}}><option value="business-mart">Create governed reporting tables and KPIs</option><option value="business-overview">Product portfolio, classification, traceability and manufacturing</option><option value="source-review">Check source changes and refresh needs</option><option value="profile">Data completeness and numeric coverage</option><option value="frequency">Group records by a property</option><option value="numeric-summary">Numeric measures: average, range and variation</option><option value="correlation">Compare two numeric properties</option><option value="dimension-preview">Preview dimension attributes</option></select></label>
       {!['profile','source-review','business-overview','business-mart'].includes(algorithm)&&<fieldset><legend>Select properties</legend>{fields.map(field=><label key={field.property_iri}><input type="checkbox" checked={properties.includes(field.property_iri)} onChange={()=>setProperties(old=>old.includes(field.property_iri)?old.filter(value=>value!==field.property_iri):[...old,field.property_iri])}/>{field.label||short(field.property_iri)} · {field.entities_with_value} records with a value{field.numeric_values?' · numeric values available':''}</label>)}</fieldset>}
       {['business-overview','business-mart'].includes(algorithm)&&<BusinessAnalyticsModel datasetId={dataset} classes={model.classes} value={businessModel} onChange={setBusinessModel}/>}
-      {algorithm==='business-mart'&&<GovernedAnalyticsModel key={dataset} datasetId={dataset} businessModel={businessModel} selected={analyticsModel} onSelect={setAnalyticsModel}/>}
       <p>No unit conversion or identity merging is assumed. Repeated/non-numeric values require review before numeric analysis. Dimension output is a bounded preview.</p></>}
+    </section>
+    <section className="semantic-step" hidden={step!==2} aria-label="Review analytics workflow"><h4>Review before execution</h4><p>{dataset?`Dataset: ${(datasets||[]).find(item=>item.dataset_id===dataset)?.name||dataset}`:selectedSource?`Source: ${selectedSource.name}`:'Choose a data source first.'}</p>
+    {model&&algorithm==='business-mart'&&<GovernedAnalyticsModel key={dataset} datasetId={dataset} businessModel={businessModel} selected={analyticsModel} onSelect={setAnalyticsModel}/>}
     <div className="analytics-form-row"><label>Approved processing workflow<select value={selectedJob?`${selectedJob.job_id}:${selectedJob.version}`:jobChoice} disabled={busy||!!pending} onChange={event=>setJobChoice(event.target.value)}><option value="">Choose an approved workflow</option>{processes.map(job=><option key={`${job.job_id}:${job.version}`} value={`${job.job_id}:${job.version}`}>{job.name} · {job.version}</option>)}</select></label><span>{actor?`Connected requester: ${actor}`:'Connect execution access in Admin.'}</span></div>
     {!processes.length&&<p>A steward must configure and approve a <strong>{dataset?(algorithm==='business-mart'?'Governed business reporting tables':algorithm==='source-review'?'Semantic source change assessment':'Semantic dataset analysis'):'RDF semantic preparation'}</strong> workflow. <a href="#/data-flow">Review processing workflows</a>. This screen never grants its own approval. {!jobs.some(job=>job.job_type===type)&&<button disabled={busy} onClick={createDraft}>Prepare workflow draft for review</button>}</p>}
-    <button disabled={busy||!!pending||!selectedJob||!actor||(!dataset&&!source)} onClick={submit}>{dataset?(algorithm==='source-review'?'Check source changes with worker':'Run analysis with worker'):'Prepare semantic records with worker'}</button>
+    </section>
+    <footer className="semantic-actions"><div><button type="button" disabled={step===0||busy} onClick={()=>setStep(value=>Math.max(0,value-1))}>Back</button>{step<2&&<button type="button" onClick={()=>setStep(value=>value+1)}>Next: {step===0?'Configure analysis':'Review workflow'}</button>}</div>
+    <button disabled={busy||!!pending||!selectedJob||!actor||(!dataset&&!selectedSource)} onClick={submit}>{dataset?(algorithm==='source-review'?'Check source changes with worker':'Run analysis with worker'):'Prepare semantic records with worker'}</button>
+    {!busy&&!pending&&(!actor||!selectedJob||(!dataset&&!selectedSource))&&<p role="status">{!dataset&&!selectedSource?'Choose a registered RDF source or a prepared dataset. ':''}{!selectedJob?'An approved processing workflow is required. ':''}{!actor?'Connect execution access in Admin.':''}</p>}
+    </footer>
     {error&&<p role="alert">{error}</p>}{pending&&<section aria-label="Retained semantic processing">{pending.previousConnection&&<p>This request belongs to the previous connection. Revalidate its retained result with your current access.</p>}<p>{pending.run_id?'Processing request retained. Inspect its result before creating another request.':'Submission outcome is unconfirmed. Inspect Data Flow history before retrying.'}</p><a href={pending.run_id?`#/data-flow?run_id=${encodeURIComponent(pending.run_id)}`:'#/data-flow'}>Open Data Flow result and publication review</a><label><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/>I checked the retained result or confirmed that no request was created</label><button disabled={!checked||busy} onClick={()=>{retain(null);setChecked(false);setRevision(value=>value+1);}}>Prepare another request</button></section>}
-    <details><summary>How the records are organised</summary><p>Versioned master records retain entity IRIs, property IRIs, namespace aliases, literal values, datatypes, languages and source provenance. Units remain explicit source metadata. Different namespaces or repeated values are never silently combined.</p><p>Supported now: completeness, frequency distributions, descriptive numeric statistics, Pearson correlation and dimension previews. Arbitrary code execution, automatic causal claims and automatic business approval are not supported.</p></details>
+    <details className="semantic-technical"><summary>Technical scope and safeguards</summary><p>Versioned master records retain entity IRIs, property IRIs, namespace aliases, literal values, datatypes, languages and source provenance. Units remain explicit source metadata. Different namespaces or repeated values are never silently combined.</p><p>Supported now: completeness, frequency distributions, descriptive numeric statistics, Pearson correlation and dimension previews. Arbitrary code execution, automatic causal claims and automatic business approval are not supported.</p></details>
   </section>;
 }

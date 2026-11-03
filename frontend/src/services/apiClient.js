@@ -417,7 +417,7 @@ function isUsableHealthResponse(response) {
 export const platformAPI = {
   health: (service, options = {}) => {
     const path = SERVICE_HEALTH_ENDPOINTS[service];
-    if (!path) throw new Error(`Unknown DEPO service '${service}'`);
+    if (!path) throw new Error(`Unknown Nexus service '${service}'`);
     return apiClient.get(buildSemanticServiceUrl(service, path), options);
   },
   coreHealth: async (options = {}) => {

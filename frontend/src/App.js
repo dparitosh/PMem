@@ -126,7 +126,7 @@ function App() {
       try {
         const health = await platformAPI.coreHealth({ signal: controller.signal, timeout: 15000 });
         const onlineCount = Object.values(health).filter(Boolean).length;
-        if (!onlineCount) throw new Error('All required DEPO services are unavailable.');
+        if (!onlineCount) throw new Error('All required Nexus services are unavailable.');
         if (active && !controller.signal.aborted) {
           setServiceStatus(onlineCount === Object.keys(health).length ? 'online' : 'degraded');
           retryDelayMs = 30000;
@@ -242,7 +242,7 @@ function App() {
                     productId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_id || '' : ''}
                     productVersion={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_version || '' : ''}
                     nodeId={page !== 'home' && activePage === 'graph' ? companionSelection?.node_id || '' : ''}
-                    ontologyId={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_id || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_id || '' : ''}
+                    ontologyId={page !== 'home' && recordCompanionSelection?.page === activePage && recordCompanionSelection?.ontology_id ? recordCompanionSelection.ontology_id : page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_id || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_id || '' : ''}
                     ontologyPrefix={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_prefix || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_prefix || '' : ''}
                     contextLabel={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.label || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.label || '' : ''}
                     setChatResults={setChatResults}

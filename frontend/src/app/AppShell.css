@@ -82,7 +82,8 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 }
 
 .depo-service-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-width: 0;
   height: auto;
@@ -94,7 +95,7 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
   background: var(--ui-surface);
 }
 
-.depo-service-card__link { display: inline-block; margin-top: 12px; color: var(--ui-accent, var(--depo-blue-600)); font-weight: 600; }
+.depo-service-card__link { display: inline-block; margin-top: auto; padding-top: 12px; color: var(--ui-accent, var(--depo-blue-600)); font-weight: 600; }
 .depo-agent-recommendations { min-width: 0; }
 .depo-agent-recommendations .depo-panel__header h3 { margin: 0; }
 .depo-agent-recommendations .depo-panel__body { display: grid; gap: 16px; }
@@ -834,8 +835,6 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 .depo-panel--workspace > .depo-panel__header { padding: 0 0 12px; }
 .depo-panel--workspace > .depo-panel__body { padding: 16px 0 0; }
 .depo-registry-widget input:focus-visible { outline: 2px solid var(--ui-primary, #005a9c); outline-offset: 2px; }
-.depo-service-card { display: flex; flex-direction: column; }
-.depo-service-card__link { margin-top: auto; padding-top: 12px; }
 .depo-kpi-cell { min-width: 0; }
 .depo-kpi-cell__label { min-height: 2.8em; }
 
@@ -853,3 +852,11 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 
 .depo-ix-content :where(button, select, input:not([type="checkbox"]):not([type="radio"])) { min-height: 44px; }
 .depo-ix-content button { min-width: 44px; }
+
+.workspace-navigation { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:8px 16px; }
+.workspace-navigation ol { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:0; margin:0; list-style:none; font-size:13px; }
+.workspace-navigation li+li::before { content:' / '; color:var(--ui-muted); margin-right:8px; }
+.workspace-navigation [aria-current=page] { color:var(--ui-text); font-weight:600; }
+.workspace-history { display:flex; gap:8px; }
+.workspace-history button { min-height:36px; padding:6px 12px; background:var(--ui-surface); color:var(--ui-text); border:1px solid var(--ui-border); border-radius:4px; cursor:pointer; }
+.workspace-navigation a:focus-visible,.workspace-history button:focus-visible { outline:2px solid var(--ui-primary,#005a9c); outline-offset:3px; }

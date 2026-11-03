@@ -221,9 +221,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
     if (vanillaBusy.current || !vanillaPreview?.can_execute) return;
     vanillaBusy.current = true;
     try {
-      const accepted = await requestConfirmation({ title: 'Reset DEPO to vanilla state?',
+      const accepted = await requestConfirmation({ title: 'Reset Nexus to vanilla state?',
         description: 'Permanently delete application graph data, application records, workflow and agent history, and retained uploads shown in the preview. Preserve credentials, configuration, embedded foundation and installation/reset logs. This cannot be undone.',
-        phrase: 'RESET DEPO TO VANILLA', confirmLabel: 'Delete application data' });
+        phrase: 'RESET NEXUS TO VANILLA', confirmLabel: 'Delete application data' });
       if (!accepted) return;
       setLoading(true); setError(''); setMessage('');
       const { data } = await API_METHODS.admin.resetVanilla(vanillaPreview.preview_digest);
@@ -236,7 +236,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       } catch { setError('Server reset completed. Browser storage could not be cleared; close this tab and reconnect after normal startup.'); }
       window.dispatchEvent(new Event('dt-schema-cleaned'));
       window.dispatchEvent(new Event('depo:ontologies-changed'));
-      setMessage(`Vanilla reset completed. Receipt: ${data.run_id}. Close the maintenance host and start DEPO normally. Credentials and embedded foundation were preserved.`);
+      setMessage(`Vanilla reset completed. Receipt: ${data.run_id}. Close the maintenance host and start Nexus normally. Credentials and embedded foundation were preserved.`);
       setVanillaPreview(null);
     } catch (err) {
       setError(apiErrorMessage(err, 'Reset outcome unavailable. Inspect logs/vanilla-reset before retrying.'));
@@ -705,13 +705,13 @@ export default function AdminPanel({ onSchemaCleaned }) {
             </button>
           </div>
           {vanillaPreview && <section aria-label="Vanilla reset preview" style={{ marginTop: 12 }}>
-            <h3>Reset DEPO to vanilla state</h3>
+            <h3>Reset Nexus to vanilla state</h3>
             <p>Deletes application graph data, workflow and agent history, application records and retained uploads. Credentials and the embedded foundation remain.</p>
             <table><thead><tr><th>Storage</th><th>Records or files to delete</th></tr></thead><tbody>
               {Object.entries({ ...vanillaPreview.registry_records, ...vanillaPreview.table_rows, ...vanillaPreview.retained_files }).map(([name, count]) => <tr key={name}><td>{name}</td><td>{count}</td></tr>)}
             </tbody></table>
             {!vanillaPreview.can_execute && <p role="status">{vanillaPreview.maintenance_instruction}</p>}
-            <button type="button" onClick={resetVanilla} disabled={loading || !maintenanceConnected || !vanillaPreview.can_execute} style={{ ...buttonStyle, color: colors.danger }}>Reset DEPO to vanilla state</button>
+            <button type="button" onClick={resetVanilla} disabled={loading || !maintenanceConnected || !vanillaPreview.can_execute} style={{ ...buttonStyle, color: colors.danger }}>Reset Nexus to vanilla state</button>
           </section>}
         </section>
       </div>

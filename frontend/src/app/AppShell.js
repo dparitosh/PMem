@@ -13,6 +13,7 @@ import {
 import { prefetchPage } from './pageRegistry';
 import { navigationItems, pageLabel } from './navigation';
 import { getServiceAuthToken, wasBrowserSessionExpired } from '../services/serviceAuth';
+import WorkspaceBreadcrumbs from './WorkspaceBreadcrumbs';
 import RunRecoveryNotice from './RunRecoveryNotice';
 import { verifyStoredAccess } from '../services/readAccessVerification';
 import './AppShell.css';
@@ -28,7 +29,7 @@ function initialColorSchema() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-// Matches the official Siemens IX React starter frame while keeping DEPO
+// Matches the official Siemens IX React starter frame while keeping Nexus
 // feature pages and their API integrations independent from the shell.
 export default function AppShell({
   activePage,
@@ -148,8 +149,8 @@ export default function AppShell({
     <>
       <a href="#main-content" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to main content</a>
       <IxApplication theme="classic" colorSchema={colorSchema}>
-        <IxApplicationHeader name="DEPO | Semantic Intelligence">
-          <div className="depo-app-mark" aria-label="DEPO">D</div>
+        <IxApplicationHeader name="Nexus">
+          <div className="depo-app-mark" aria-label="Nexus">N</div>
           <IxBadge type="label" variant={statusVariant} label={statusLabel} role="status" aria-live="polite" />
           <IxButton
             type="button"
@@ -212,6 +213,7 @@ export default function AppShell({
 
           <div className="depo-ix-page">
             <div aria-live="polite" className="depo-alert depo-access-status">{accessMessage || 'Application access status'}</div>
+            <WorkspaceBreadcrumbs page={activePage} label={pageLabel(activePage)} />
             <IxContentHeader
               headerTitle={pageLabel(activePage)}
               headerSubtitle={activePage === 'home' ? 'Digital thread workspace' : undefined}

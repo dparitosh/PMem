@@ -5,7 +5,8 @@ import { getCredentialProfile, handleSessionRejection, serviceAuthHeaders } from
 export async function verifyStoredAccess(options = {}) {
   const read = await verifyStoredReadAccess(options);
   const key = getCredentialProfile('ADMIN_API_KEY');
-  if (!key) return { ...read, message: `${read.message} Admin maintenance is not connected.` };
+  // Optional destructive-maintenance access is explained in Admin, not global read status.
+  if (!key) return read;
   const services = Object.keys(config.semanticServiceUrls || {}).filter(service => config.semanticServiceUrls[service]);
   const checks = await Promise.all(services.map(async service => {
     try {

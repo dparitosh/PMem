@@ -8,13 +8,23 @@ router=APIRouter(prefix='/pipeline/semantic',tags=['Semantic datasets'],dependen
 
 
 def source_page(offset=0):
-    total,products=PostgresRegistry('catalog_products').page(limit=50,offset=offset,exclude_latest=True)
     from .metadata_sources import read_metadata
-    page=read_metadata(offset=offset)
-    assets=page['assets'];more=page.get('has_more',False)
+    warnings=[]
+    total=0; products=[]; assets=[]; more=False
+    try:
+        total,products=PostgresRegistry('catalog_products').page(limit=50,offset=offset,exclude_latest=True)
+    except (DatabaseError,RuntimeError,OSError):
+        warnings.append('Catalog sources are unavailable. Showing only reachable sources; retry before assuming completeness.')
+    try:
+        page=read_metadata(offset=offset)
+        assets=page['assets'];more=page.get('has_more',False)
+    except (DatabaseError,RuntimeError,OSError):
+        warnings.append('Metadata Registry sources are unavailable. Showing only reachable sources; retry before assuming completeness.')
+    if len(warnings)==2:
+        raise RuntimeError('Both source registries are unavailable')
     sources=[]
     for origin,record in [('catalog',record) for record in products]+[('metadata',record) for record in assets]:
-        if record.get('lifecycle_status',record.get('lifecycle_state')) in {'retired','deprecated'}:continue
+        if record.get('lifecycle_status',record.get('lifecycle_state')) in {'retired','deprecated','revoked'}:continue
         identity=(str(record.get('product_id',''))+':'+str(record.get('version',''))) if origin=='catalog' else record.get('asset_id','')
         refs=record.get('artifacts',[]) if origin=='catalog' else [record.get('implementation_ref')]
         for ref in refs:
@@ -26,7 +36,7 @@ def source_page(offset=0):
                             'version':record.get('version'),'namespace_uri':record.get('namespace_uri',''),
                             'prefix':record.get('namespace_prefix',''),'owner':record.get('owner',''),
                             'origin':origin,'filename':filename,'status':record.get('lifecycle_status',record.get('lifecycle_state','not_recorded'))})
-    return {'sources':sources,'offset':offset,'next_offset':offset+50 if more or offset+50<total else None,
+    return {'sources':sources,'warnings':warnings,'partial':bool(warnings),'offset':offset,'next_offset':offset+50 if more or offset+50<total else None,
             'scope':'Retained RDF references from versioned catalog entries and metadata assets. Other files and live graph projections require a registered RDF snapshot.'}
 
 

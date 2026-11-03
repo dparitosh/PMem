@@ -32,7 +32,7 @@ const columns = [
 
 const PRODUCT_VIEWS=['analytics','prepare','library','create','governance'];
 const CATALOG_VIEWS=['sources','analytics','library','create','governance'];
-const LEGACY_VIEWS={portfolio:'library',structural:'create',pipeline:'create'};
+const LEGACY_VIEWS={portfolio:'library',structural:'create',pipeline:'analytics'};
 
 export default function DataProductsPage({ mode = 'products', onCompanionRecordChange }) {
   const catalog = mode === 'catalog';
@@ -51,9 +51,9 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const [detail, setDetail] = useState(null);
   useEffect(() => {
     onCompanionRecordChange?.({ page: catalog ? 'catalog' : 'data-products',
-      product_id: detail?.product_id || '', product_version: catalog ? '' : detail?.version || '' });
+      ...(selectedDraft?{ontology_id:selectedDraft}:{}), product_id: detail?.product_id || '', product_version: detail?.version || '' });
     return () => onCompanionRecordChange?.(null);
-  }, [onCompanionRecordChange, catalog, detail?.product_id, detail?.version]);
+  }, [onCompanionRecordChange, catalog, selectedDraft, detail?.product_id, detail?.version]);
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
   const [runDraft, setRunDraft] = useState(null);
@@ -67,7 +67,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const bindEvidence=kind=>node=>{const ref=kind==='structural'?structuralRef:pipelineRef;ref.current=node;if(node&&pendingEvidence.current===kind){node.open=true;node.scrollIntoView?.({behavior:'smooth',block:'start'});pendingEvidence.current=null;}};
   const revealEvidence=kind=>{
     const target=kind==='structural'?structuralRef.current:pipelineRef.current;
-    pendingEvidence.current=kind;setLocalWorkspace('create');
+    pendingEvidence.current=kind;setWorkspace('create');
     if(target){target.open=true;target.scrollIntoView?.({behavior:'smooth',block:'start'});pendingEvidence.current=null;}
   };
   const service = catalog ? 'catalog' : 'dataProducts';
@@ -77,12 +77,17 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     const query=new URLSearchParams(window.location.hash.split('?')[1]||'');
     if(query.get('ontology_id'))setSelectedDraft(query.get('ontology_id'));
     if(catalog)return;
-    const reveal=()=>{const view=new URLSearchParams(window.location.hash.split('?')[1]||'').get('view');if(['structural','pipeline'].includes(view))revealEvidence(view);};
+    const reveal=()=>{const [path,search='']=window.location.hash.split('?');const params=new URLSearchParams(search);const view=params.get('view');
+      setSelectedDraft(params.get('ontology_id')||'');
+      if(view==='pipeline'){params.set('view','analytics');params.set('analytics_step','0');window.history.replaceState(null,'',`${path}?${params}`);window.dispatchEvent(new HashChangeEvent('hashchange'));return;}
+      if(view==='structural')revealEvidence('structural');};
     reveal();window.addEventListener('hashchange',reveal);window.addEventListener('popstate',reveal);
     return()=>{window.removeEventListener('hashchange',reveal);window.removeEventListener('popstate',reveal);};
   },[catalog]);
 
+  const [analyticsRefresh,setAnalyticsRefresh]=useState(0);
   const load = useCallback(async (background = false) => {
+    if(background !== true) setAnalyticsRefresh(value=>value+1);
     if (background === true && listRequest.current) return;
     listRequest.current?.abort();
     if (background !== true) {
@@ -216,7 +221,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     {(ontologyError||ontologyWarning)&&<p role="alert">Schema inventory: {ontologyError||ontologyWarning}</p>}
     <DataWorkspace label={catalog?'Catalog workspace':'Product workspace'} active={workspace} onChange={setWorkspace}
       tabs={catalog?[{id:'sources',label:'Ingested sources'},{id:'analytics',label:'Available analytics'},{id:'library',label:'Published products'},{id:'create',label:'Product opportunities'},{id:'governance',label:'Governance'}]:[{id:'analytics',label:'Available analytics'},{id:'prepare',label:'Prepare data'},{id:'library',label:'Product portfolio'},{id:'create',label:'Create & review'},{id:'governance',label:'Governance'}]}>
-      {{prepare:workspace==='prepare'?<section aria-label="Prepare business data"><h3>{draft?`Prepare ${draft.label||draft.name}`:'Prepare data for reporting'}</h3><p>Add the business records that belong to your chosen source. We will check them before they become available for reporting.</p>{!draft&&<label>Choose a data source<select value={selectedDraft} onChange={event=>setSelectedDraft(event.target.value)}><option value="">Select a source</option>{drafts.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label>}{draft&&<XmlAnalyticsLoader expanded sources={drafts} selectedSchemaId={selectedDraft}/>}</section>:null,analytics:workspace==='analytics'?<AvailableAnalytics drafts={drafts} onPrepare={id=>{if(catalog){window.location.hash=`/data-products?view=pipeline&ontology_id=${encodeURIComponent(id)}`;}else{setSelectedDraft(id);setWorkspace('prepare');}}}/>:null,sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
+      {{prepare:workspace==='prepare'?<section aria-label="Prepare business data"><h3>{draft?`Prepare ${draft.label||draft.name}`:'Prepare data for reporting'}</h3><p>Add the business records that belong to your chosen source. We will check them before they become available for reporting.</p>{!draft&&<label>Choose a data source<select value={selectedDraft} onChange={event=>setSelectedDraft(event.target.value)}><option value="">Select a source</option>{drafts.map(source=><option key={source.ontology_id} value={source.ontology_id}>{source.label||source.name}</option>)}</select></label>}{draft&&<XmlAnalyticsLoader expanded sources={drafts} selectedSchemaId={selectedDraft}/>}</section>:null,analytics:workspace==='analytics'?<AvailableAnalytics refreshKey={analyticsRefresh} drafts={drafts} onPrepare={id=>{if(catalog){window.location.hash=`/data-products?view=analytics&analytics_step=0&ontology_id=${encodeURIComponent(id)}`;}else{setSelectedDraft(id);setWorkspace('prepare');}}}/>:null,sources:<IngestedDataInventory ontologies={ontologies || []}/>,library:<>
     {!state.loading && <section aria-label="Discover product versions">
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}

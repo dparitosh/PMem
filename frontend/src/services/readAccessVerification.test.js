@@ -49,9 +49,12 @@ test('read success cannot hide rejected maintenance access', async () => {
   expect(result.message).toContain('Invalid Admin key');
 });
 
-test('read-only revalidation explicitly reports missing maintenance scope', async () => {
+test('read-only access stays verified without optional maintenance scope', async () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'fixture-read-key');
   fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'authorized' }) });
-  expect((await verifyStoredAccess()).message).toContain('Admin maintenance is not connected');
+  const result = await verifyStoredAccess();
+  expect(result.status).toBe('verified');
+  expect(result.message).not.toContain('maintenance');
+  expect(result.message).toContain('Read access verified:');
   expect(fetch).toHaveBeenCalledTimes(2);
 });

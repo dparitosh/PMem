@@ -35,7 +35,7 @@ export default function OntologyFoundationPanel({ontologyId}) {
   }
   return <section aria-label="Embedded semantic foundation" style={{borderBottom:'1px solid var(--theme-color-soft-bdr)',padding:'0 0 16px',marginBottom:16}}>
     <h3>Embedded semantic foundation</h3>
-    <p>IDO 4.2 and DEPO business core distinguish physical parts, designs, documents and activities. Source mappings still require review.</p>
+    <p>IDO 4.2 and Nexus business core distinguish physical parts, designs, documents and activities. Source mappings still require review.</p>
     {!foundation && !error && <p role="status">Checking foundation availability…</p>}
     {foundation && <p>{foundation.owl_dl?.available ? 'OWL-DL engine available' : 'OWL-DL engine unavailable: install the verified worker and Java runtime.'} · Foundation bundled for offline use.</p>}
     <button type="button" disabled={busy || !ontologyId || !foundation?.owl_dl?.available} onClick={check}>{busy?'Checking logical consistency…':'Check OWL-DL consistency'}</button>

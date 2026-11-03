@@ -323,20 +323,36 @@ async def companion_chat(payload: ChatRequest, request: Request) -> dict:
     return await _companion_chat(payload, request)
 
 
-def _session_turns(session, limit=20):
-    """Bounded PostgreSQL history; never return another principal's turns."""
-    _, items = companion_job_store.page(limit=limit, field='session_id', value=session['session_id'], order_field='finished_at')
-    return [item for item in items if item.get('owner') == session['owner'] and item.get('status') == 'completed']
+def _session_turns(session, limit=20, scope=None, successful_only=False):
+    """Filter owner, successful status and business scope before limiting history."""
+    if scope is None:  # Compatibility callers retain their existing bounded view.
+        _, items = companion_job_store.page(limit=limit, field='session_id', value=session['session_id'], order_field='finished_at')
+        return [item for item in items if item.get('owner') == session['owner'] and item.get('status') == 'completed']
+    from .context_scope import companion_scope
+    selected = companion_scope(scope)
+    where = "namespace=%s AND value->>'session_id'=%s AND value->>'owner'=%s AND value->>'status'='completed'"
+    if successful_only: where += " AND COALESCE(value->>'answerable','true') <> 'false'"
+    args = [companion_job_store.namespace, session['session_id'], session['owner']]
+    anchored = any(selected[key] for key in ('node_id','run_id','product_id','reconciliation_id'))
+    for key, value in selected.items():
+        if key == 'page' and anchored: continue
+        where += " AND COALESCE(value->'graph_context'->>%s,'')=%s"
+        args.extend([key, value])
+    with companion_job_store._connect() as db, db.transaction(), db.cursor() as cursor:
+        cursor.execute('SET TRANSACTION READ ONLY')
+        cursor.execute("SET LOCAL statement_timeout='5s'")
+        cursor.execute("SELECT value FROM depo_registry WHERE " + where + " ORDER BY COALESCE(value->>'finished_at','') DESC,key DESC LIMIT %s", [*args, max(1,min(limit,50))])
+        return [row[0] for row in cursor.fetchall()]
 
 
 @router.get('/chat/sessions/{session_id}/history', dependencies=[Depends(graph_read_identity)])
 async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = Query(default='', max_length=256), run_id: str = Query(default='', max_length=256), product_id: str = Query(default='', max_length=256), product_version: str = Query(default='', max_length=256), reconciliation_id: str = Query(default='',max_length=256)):
     actor = graph_read_identity(request)
     session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
-    turns = await run_in_threadpool(_session_turns, session)
     from .context_scope import same_companion_scope
     selected = {'ontology': ontology_id, 'ontology_prefix': ontology_prefix, 'page': page, 'node_id': node_id,
                 'run_id': run_id, 'product_id': product_id, 'product_version': product_version,'reconciliation_id':reconciliation_id}
+    turns = await run_in_threadpool(_session_turns, session, 20, selected)
     turns = [turn for turn in turns if same_companion_scope(turn.get('graph_context'), selected)]
     return {'session_id': session_id, 'turns': [
         {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'answerable', 'retrieval', 'graph_context', 'finished_at')}
@@ -359,8 +375,8 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
         memory_key = sessions.memory_id(session)
         from .companion_memory import retrieval_query
-        turns = await run_in_threadpool(_session_turns, session, 6)
-        query = retrieval_query(message, turns, payload.get('graph_context') or {})
+        turns = await run_in_threadpool(_session_turns, session, 50, payload.get('graph_context') or {}, True)
+        query = await run_in_threadpool(retrieval_query, message, turns, payload.get('graph_context') or {})
         generation_budget = 0
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             from .local_llm import settings

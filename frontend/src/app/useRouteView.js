@@ -20,6 +20,7 @@ export default function useRouteView(allowed, fallback, aliases = NO_ALIASES, ro
     const [path, search = ''] = window.location.hash.split('?');
     const params = new URLSearchParams(search);
     params.set('view', next);
+    if(next!=='analytics') params.delete('analytics_step');
     const hash = `${path && path!=='#/'?path:route}?${params}`;
     if (window.location.hash !== hash) {
       window.history.pushState(null, '', hash);

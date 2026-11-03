@@ -9,4 +9,9 @@ def companion_scope(context):
 
 
 def same_companion_scope(left, right):
-    return companion_scope(left) == companion_scope(right)
+    a, b = companion_scope(left), companion_scope(right)
+    # A recorded business identity can follow the user between workspaces.
+    # Page-only conversations still require an exact page match.
+    if any(a[key] and a[key] == b[key] for key in ('node_id','run_id','product_id','reconciliation_id')):
+        a.pop('page'); b.pop('page')
+    return a == b

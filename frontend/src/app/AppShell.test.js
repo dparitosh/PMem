@@ -89,7 +89,7 @@ test('exposes active navigation, backend status, chat drawer state, and persiste
   expect(document.documentElement.dataset.ixColorSchema).toBe('dark');
   expect(window.localStorage.getItem('depo.colorSchema')).toBe('dark');
   expect(screen.getByRole('button', { name: 'Use light theme' })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.getByRole('navigation')).toHaveAttribute('data-theme-toggle', 'false');
+  expect(screen.getByRole('navigation', { name: 'Application navigation' })).toHaveAttribute('data-theme-toggle', 'false');
   expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
 });
 
