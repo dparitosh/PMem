@@ -1,0 +1,143 @@
+1
+00:00:00,000 --> 00:00:07,000
+NEXUS connects engineering knowledge to support accountable product decisions.
+
+2
+00:00:07,000 --> 00:00:20,000
+The landing page brings registered vocabularies and business information into one workspace.
+
+3
+00:00:20,000 --> 00:00:37,000
+The industrial foundation preserves shared meaning across parts, designs, requirements and activities.
+
+4
+00:00:37,000 --> 00:00:45,000
+Customer terminology remains connected to its original source.
+
+5
+00:00:45,000 --> 00:01:00,000
+Select the intended part and source version before investigating a change.
+
+6
+00:01:00,000 --> 00:01:15,000
+The agent retrieves recorded dependencies and retains its findings for review.
+
+7
+00:01:15,000 --> 00:01:30,000
+Assembly and manufacturing process records provide context for the change review.
+
+8
+00:01:30,000 --> 00:01:45,000
+Missing revision, configuration and effectivity information remains visible.
+
+9
+00:01:45,000 --> 00:01:53,000
+Similarity ranks reuse candidates and exposes missing engineering properties.
+
+10
+00:01:53,000 --> 00:02:00,000
+Recorded parent assemblies help specialists trace a component change backward.
+
+11
+00:02:00,000 --> 00:02:07,000
+Short-term, long-term and contextual memory each support a different kind of continuity.
+
+12
+00:02:07,000 --> 00:02:20,000
+Short-term continuity lets an engineer ask a follow-up without repeating the entire product story.
+
+13
+00:02:20,000 --> 00:02:37,000
+The PMI answer retains the housing context and returns the recorded tolerance and datum.
+
+14
+00:02:37,000 --> 00:02:52,000
+Long-term recall reopens retained conversation evidence after a reload.
+
+15
+00:02:52,000 --> 00:03:07,000
+A saved answer is historical evidence, so its freshness still requires checking.
+
+16
+00:03:07,000 --> 00:03:18,000
+Contextual memory binds the discussion to the selected business identity and ontology scope.
+
+17
+00:03:18,000 --> 00:03:30,000
+Conversation persistence does not establish automatic training or an approved engineering lesson.
+
+18
+00:03:30,000 --> 00:03:48,000
+The graph connects the housing to recorded CAD, MBSE, requirement, assembly, manufacturing and quality information.
+
+19
+00:03:48,000 --> 00:03:58,000
+A requirement question focuses the graph on the cited housing and requirement records.
+
+20
+00:03:58,000 --> 00:04:13,000
+A PMI follow-up changes the visualization to the recorded housing and bore-tolerance association.
+
+21
+00:04:13,000 --> 00:04:28,000
+The recorded PMI value is 0.02 millimetres with datum A.
+
+22
+00:04:28,000 --> 00:04:40,000
+Restore the broader context to explore the selected part and its supporting records.
+
+23
+00:04:40,000 --> 00:04:52,000
+Where Used traces backward from the housing to its recorded parent assembly.
+
+24
+00:04:52,000 --> 00:05:00,000
+Recorded paths support investigation without proving complete lifecycle coverage or requirement satisfaction.
+
+25
+00:05:00,000 --> 00:05:10,000
+The Governor coordinates the Teamcenter PLMXML and AP242 merge plan and its matching tools.
+
+26
+00:05:10,000 --> 00:05:20,000
+The Steward checks governance and validation evidence before publication can proceed.
+
+27
+00:05:20,000 --> 00:05:30,000
+Inspect each proposed pair using its definitions, labels, property context and character trigrams.
+
+28
+00:05:30,000 --> 00:05:40,000
+The combined similarity score ranks candidates for review and does not prove semantic equivalence.
+
+29
+00:05:40,000 --> 00:05:50,000
+Validation is still pending in this recorded plan, so approval remains blocked.
+
+30
+00:05:50,000 --> 00:06:00,000
+Neither original ontology is replaced, and no consolidation or publication is approved by this demonstration.
+
+31
+00:06:00,000 --> 00:06:10,000
+Catalog search finds retained engineering sources and their import history.
+
+32
+00:06:10,000 --> 00:06:20,000
+Registered sources remain separate from approved, published data products.
+
+33
+00:06:20,000 --> 00:06:30,000
+Data Products guides source selection, analysis configuration and workflow review.
+
+34
+00:06:30,000 --> 00:06:40,000
+Preparation and release approval remain distinct steps before data is shared.
+
+35
+00:06:40,000 --> 00:06:50,000
+Metadata Registry provides source-scoped vocabulary, definitions and ownership information.
+
+36
+00:06:50,000 --> 00:07:00,000
+Filter Teamcenter terms to inspect their meaning before preparing a governed draft.

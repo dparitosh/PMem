@@ -61,3 +61,24 @@ npm packages under `frontend/node_modules`, and the browser build under
 ## Current environment configuration reference
 
 For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](INSTALLATION.md) defines the complete deployment sequence.
+
+
+## Imported MBSE models in Modeling
+
+The Home ontology registry displays the verified embedded PCA IDO foundation separately from imported ontologies. Its version and provenance come from the foundation endpoint, without creating a customer catalog record or implying graph publication. Home branding reads “Nexus — Industrial knowledge grounded in ISO 23726-1 / PCA IDO.” The header product name remains Nexus.
+
+Open **Modeling → MBSE / SysML / UML**, select the retained XMI source and choose a **SysML view**. The reader uses the immutable source artifact attached to that ontology version. It preserves named diagram membership, original XMI element identities, available profile values and owned features. The canvas renders requirements, block/class definitions, use cases and available parametric elements with generated positioning; the Inspector shows retained source details. Tables/matrices expose available source records and relationships, without inventing missing vendor row/column configuration.
+
+MagicDraw exports can reference external binary drawing streams. If those are absent, original drawing coordinates, routing and complete notation cannot be reconstructed. Views without exported members show an explicit empty-content message. This is a read-only viewer, not a complete SysML authoring tool; source files remain unchanged. The reader is bounded to 25 MB per XMI, 256 named views and 4,096 member references per view.
+
+Select an element to ask the Companion or launch an existing read-only Graph Analyst investigation. Published graph identities are resolved against the selected ontology; unlinked XMI elements cannot masquerade as graph nodes. Original XMI IDs stay in the Inspector. The current worker/goal and scoped memory pipeline are reused; live agent planning requires an available configured LLM. No new memory store, model training or automatic approval is introduced.
+
+This update adds a read-authorized ontology-service endpoint (`/api/v1/modeling/xmi-diagrams/{ontology_id}`) and frontend components. Deploy both and restart the ontology service using the supported lifecycle scripts before loading the new frontend. No PostgreSQL migration or graph publication is required. Existing models need a retained original XMI artifact; a TTL-only registration cannot recover missing diagram definitions.
+
+### Engineering traceability in Inspector
+
+Selecting an imported XMI element progressively resolves its unique published identity through `/api/v1/modeling/xmi-context/{ontology_id}?source_id=...`. Diagrams do not wait for this graph lookup. Inspector separates complete source-model relationships (paged) from the current view, and shows the first 100 recorded adjacent graph associations with an explicit truncation notice. Ambiguous or unpublished identities cannot start a scoped agent investigation.
+
+**Engineering traceability** groups recorded web references into PLM records, CAD files, simulation datasets and other source references. Each link identifies its supporting source property or graph relationship; linked systems still enforce their own access. Ontology IRIs are not treated as engineering files. Unsafe schemes, embedded credentials and common credential-bearing query parameters are excluded. Missing associations remain explicit: the viewer does not invent CAD, PLM or simulation links, infer compatible revisions, or turn model references into approval.
+
+Deploy `ModelTraceability.js` with the updated viewer, API client, stylesheet and ontology service. Existing Windows install/update scripts already deploy those service and frontend trees; this change needs no database migration, new credential or worker. Restart using the supported lifecycle scripts and rebuild the frontend. Malformed retained XML returns 422, missing source returns 404, unavailable source files return 409, and failed graph-context reads return 503 while the independent XMI diagram remains usable.

@@ -6,12 +6,24 @@ import { operationForUrl } from './serviceContractRegistry';
 const profileTokens = new Map();
 let browserAccessExpired = false;
 let connectionStartedAt = Date.now();
+let connectionRevision = 0;
+// Non-secret logical clock orders reconnect/logout even within one millisecond.
+function nextSessionRevision() {
+  let stored = 0;
+  try {
+    const candidate=Number(window.localStorage.getItem('depo.sessionClock.v1'));
+    if (Number.isSafeInteger(candidate) && candidate >= 0 && candidate < Number.MAX_SAFE_INTEGER - 1) stored=candidate;
+  } catch { /* memory-only fallback */ }
+  connectionRevision = Math.max(connectionRevision, stored) + 1;
+  try { window.localStorage.setItem('depo.sessionClock.v1', String(connectionRevision)); } catch { /* optional cross-tab sync */ }
+  return connectionRevision;
+}
 export function wasBrowserSessionExpired() { return browserAccessExpired; }
 export function setCredentialProfile(profile, value) {
   if (!/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile)) throw new Error('Invalid credential profile');
   const token = String(value || '').trim();
   const previous = profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || '');
-  if (previous !== token) { connectionStartedAt=Date.now(); clearPendingPublications(); }
+  if (previous !== token) { connectionStartedAt=Date.now(); nextSessionRevision(); clearPendingPublications(); }
   if (profile === 'GRAPH_READ_TOKEN') {
     if (browserSession && token !== browserSession.token) expireBrowserSession(browserSession.token);
     serviceToken = token; if (token) browserAccessExpired = false; persistBrowserSession(); return;
@@ -53,14 +65,18 @@ const SESSION_SYNC_KEY = 'depo.sessionSignal.v1';
 function publishSessionSignal(action, sessionId = '') {
   try {
     window.localStorage.setItem(SESSION_SYNC_KEY, JSON.stringify({action, sessionId,
-      scope:connectionScope(), sentAt:Date.now(), nonce:createSubmissionId()}));
+      scope:connectionScope(), sentAt:Date.now(), revision:nextSessionRevision(), nonce:createSubmissionId()}));
   } catch { /* Restricted storage keeps per-tab expiry/revocation enforcement. */ }
 }
 if(typeof window!=='undefined')window.addEventListener('storage', event => {
   if(event.key!==SESSION_SYNC_KEY || !event.newValue || event.newValue.length>8192)return;
   try {
     const message=JSON.parse(event.newValue);
-    if(message.scope!==connectionScope() || !Number.isFinite(message.sentAt) || message.sentAt<connectionStartedAt)return;
+    if(message.scope!==connectionScope() || !Number.isFinite(message.sentAt))return;
+    if (Number.isSafeInteger(message.revision)) {
+      if (message.revision <= connectionRevision) return;
+      connectionRevision = message.revision;
+    } else if (message.sentAt <= connectionStartedAt) return;
     if(message.action==='logout')clearServiceAuthToken(false);
     else if(message.action==='expired' && browserSession?.syncId===message.sessionId)
       expireBrowserSession(browserSession.token,false);
@@ -121,6 +137,7 @@ function restoreBrowserSession() {
     if(typeof saved.syncId==='string' && /^[A-Za-z0-9._:-]{1,128}$/.test(saved.syncId))browserSession.syncId=saved.syncId;
     gatewaySubscriptionKey = typeof saved.subscription === 'string' && saved.subscription.length <= 4096 ? saved.subscription : '';
     serviceToken = saved.token;
+    nextSessionRevision();
     saved.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, saved.token));
     persistBrowserSession();
   } catch { removeStoredSession(); }
@@ -174,6 +191,7 @@ export function installBrowserSession(body, subscription = '') {
       body.profiles.some(profile => !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid delegated scopes');
   setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
   connectionStartedAt=Date.now();
+  nextSessionRevision();
   serviceToken = body.token;
   profileTokens.clear();
   body.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, body.token));
@@ -203,12 +221,13 @@ export function setBrowserSessionExpiry(token, expiresAt, absoluteExpiresAt = nu
 }
 
 export async function renewBrowserSession() {
-  if (renewalInFlight) return renewalInFlight;
   checkBrowserSessionExpiry();
   const current = browserSession;
   if (!current?.absoluteDeadline || Date.now() >= current.absoluteDeadline) return null;
+  if (renewalInFlight?.session === current) return renewalInFlight.promise;
   lastRenewalAttempt = Date.now();
-  renewalInFlight = (async () => {
+  const flight = { session: current, promise: null };
+  flight.promise = (async () => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     try {
@@ -221,14 +240,14 @@ export async function renewBrowserSession() {
         throw new Error(`Session renewal failed (${response.status})`);
       }
       // A concurrent logout or reconnect must never be undone by a late reply.
-      if (browserSession?.token !== current.token) return null;
+      if (browserSession !== current) return null;
       if (body.token !== current.token) throw new Error('Invalid renewed session');
       setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('depo:session-renewed'));
       return getBrowserSessionStatus();
     } catch (error) {
       // Retry transport/server failures within the existing session lifetime.
-      if (browserSession?.token === current.token && current.deadline - Date.now() > 11000) {
+      if (browserSession === current && current.deadline - Date.now() > 11000) {
         clearTimeout(renewalTimer);
         renewalTimer = setTimeout(() => {
           if (document.visibilityState !== 'hidden' && Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
@@ -237,7 +256,8 @@ export async function renewBrowserSession() {
       throw error;
     } finally { clearTimeout(timer); }
   })();
-  try { return await renewalInFlight; } finally { renewalInFlight = null; }
+  renewalInFlight = flight;
+  try { return await flight.promise; } finally { if (renewalInFlight === flight) renewalInFlight = null; }
 }
 
 export function setGatewaySubscriptionKey(value) {

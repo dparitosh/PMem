@@ -83,3 +83,14 @@ test('credential changes cancel pending requests and reject late session adoptio
   await expect(apiClient.interceptors.response.handlers[0].fulfilled({config:request,headers:{'x-session-id':'old-session'},data:{}})).rejects.toThrow(/previous credentials/);
   expect(getClientSessionId()).toBeNull();
 });
+
+test('request preparation failure removes the caller abort listener',()=>{
+ const parent=new AbortController();
+ const remove=vi.spyOn(parent.signal,'removeEventListener');
+ try {
+   expect(()=>apiClient.interceptors.request.handlers[0].fulfilled({
+     url:'http://legacy/read',method:'get',headers:{},signal:parent.signal,__deadlineAt:Date.now()-1,
+   })).toThrow('Request deadline exceeded');
+   expect(remove).toHaveBeenCalledWith('abort',expect.any(Function));
+ } finally { remove.mockRestore(); }
+});

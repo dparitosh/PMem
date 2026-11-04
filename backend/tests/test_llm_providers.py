@@ -98,10 +98,19 @@ class CloudTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('schema', payload['messages'][0]['content'])
         self.assertFalse(payload['stream'])
 
+    async def test_companion_strict_findings_schema_is_enforced_by_openai(self):
+        schema={'type':'object','properties':{'findings':{'type':'array','items':{'type':'string','enum':['C1']}}},'required':['findings'],'additionalProperties':False}
+        _, requests = await self.request(body={'messages': [], 'format': schema, 'strict_format': True})
+        response_format=json.loads(requests[0].content)['response_format']
+        self.assertEqual(response_format['type'],'json_schema')
+        self.assertTrue(response_format['json_schema']['strict'])
+        self.assertEqual(response_format['json_schema']['schema'],schema)
+
     async def test_tool_arguments_normalized_for_existing_allowlist_validation(self):
-        answer, _ = await self.request(result={'choices': [{'finish_reason': 'tool_calls', 'message': {
+        answer, requests = await self.request(body={'messages': [], 'tools': [{'type':'function','function':{'name':'tool_0','parameters':{'type':'object'}}}]}, result={'choices': [{'finish_reason': 'tool_calls', 'message': {
             'tool_calls': [{'function': {'name': 'tool_0', 'arguments': '{"id":1}'}}]}}]})
         self.assertEqual(answer['message']['tool_calls'][0]['function']['arguments'], {'id': 1})
+        self.assertFalse(json.loads(requests[0].content)['parallel_tool_calls'])
 
     async def test_incomplete_or_refused_responses_rejected(self):
         for choice in [{'finish_reason': 'length', 'message': {'content': 'partial'}},
@@ -299,3 +308,35 @@ class CapabilityDiagnosticDeadlineTests(unittest.IsolatedAsyncioTestCase):
             result=await local_llm.health()
         self.assertEqual(result['status'],'invalid_configuration')
         self.assertNotIn('PRIVATE-INVALID-URL',str(result))
+
+
+class OpenAIReasoningBudgetTests(unittest.IsolatedAsyncioTestCase):
+    async def test_minimal_effort_is_preserved_in_bounded_transport(self):
+        captured=[]
+        def handler(request):
+            captured.append(json.loads(request.content))
+            return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':'answer'}}]})
+        with patch.dict(os.environ,{**ENV,'OPENAI_REASONING_EFFORT':'minimal'},clear=True):
+            chat=cloud_chat('openai')
+            self.assertEqual(chat.reasoning,{'effort':'minimal'})
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+                await post_cloud_chat(client,'openai',{'messages':[],'options':{'num_predict':768}})
+        self.assertEqual(captured[0]['reasoning_effort'],'minimal')
+        self.assertEqual(captured[0]['max_completion_tokens'],768)
+
+    async def test_bad_effort_fails_readiness_without_sending_a_request(self):
+        with patch.dict(os.environ,{**ENV,'OPENAI_REASONING_EFFORT':'unbounded'},clear=True):
+            with self.assertRaisesRegex(ValueError,'OPENAI_REASONING_EFFORT'):
+                cloud_settings('openai')
+
+    async def test_other_providers_ignore_openai_specific_setting(self):
+        with patch.dict(os.environ,{**ENV,'OPENAI_REASONING_EFFORT':'unbounded'},clear=True):
+            self.assertEqual(cloud_settings('mistral').model,'fixture-mistral')
+
+
+class IncompleteOutputDiagnosticTests(unittest.TestCase):
+    def test_output_exhaustion_is_not_authentication_or_connection_failure(self):
+        from backend.core.llm_providers import IncompleteProviderResponse
+        error=IncompleteProviderResponse('Provider output budget exhausted')
+        self.assertEqual(local_llm.failure_status(error),'output_incomplete')
+        self.assertIn('Partial text was withheld',local_llm.failure_action(error,'openai'))

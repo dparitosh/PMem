@@ -47,7 +47,7 @@ export const pageRegistry = {
   registry: { component: MetadataRegistryPage },
   graph: { component: GraphExplorerPage, props: ({ graphProps }) => graphProps },
   'code-audit': { component: CodeAuditPage },
-  modeling: { component: ModelWorkbenchPage, props: ({ onNavigate }) => ({ onNavigate }) },
+  modeling: { component: ModelWorkbenchPage, props: ({ onNavigate, graphProps }) => ({ onNavigate, onBusinessSelection: graphProps?.onBusinessSelection, toggleChat: graphProps?.toggleChat }) },
   requirements: { component: RequirementsPage, props: ({ onNavigate }) => ({ onNavigate }) },
   qif: { component: QifPage },
   whereused: { component: WhereUsedPage, props: ({ graphProps, data }) => ({ ...graphProps, data }) },

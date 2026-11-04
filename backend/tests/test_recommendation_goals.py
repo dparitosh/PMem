@@ -69,3 +69,53 @@ def test_tools_advertise_the_controller_evidence_contract():
  response=router.tools()
  assert response['read_goal_capabilities']['recommendation_evidence']==1
  assert set(TOOLS.values()).issubset({tool['id'] for tool in response['tools']})
+
+def test_recommendation_goal_toolset_is_scoped_without_expanding_permissions():
+    from backend.agentic_service.goal_routes import scoped_tools
+    tools=[{'id':'recommendation.change_impact'},{'id':'recommendation.similar_parts'},{'id':'ontology.reason'}]
+    context={'recommendation_service':'change-impact','recommendation_object':'Housing'}
+    assert scoped_tools(tools,context)==[tools[0]]
+    assert scoped_tools(tools,{}) is tools
+    assert scoped_tools([tools[2]],context)==[]
+
+@pytest.mark.asyncio
+async def test_completed_recommendation_exposes_only_citable_conclusion_action():
+    seen=[]
+    decisions=[action('goal.plan',subtasks=['Read selected recommendation']),action(TOOL['id'],**INPUTS),action('goal.complete',summary='Review required.',evidence_steps=['observation-2'])]
+    async def propose(available,pad):
+        seen.append(available)
+        return decisions.pop(0)
+    result=await goals.drive(record(context=CONTEXT),propose=propose,dispatch=AsyncMock(return_value={'decision_policy':{'status':'not_configured'}}),save=AsyncMock(),tools=[TOOL])
+    assert result['status']=='completed'
+    assert [item['id'] for item in seen[-1]]==['goal.complete']
+    assert seen[-1][0]['input_schema']['properties']['evidence_steps']['items']['enum']==['observation-2']
+
+def test_controller_binds_exact_selected_recommendation_without_model_identity_generation():
+    from backend.agentic_service.recommendation_goals import bound_inputs
+    context={**CONTEXT,'node_id':'exact-node','ontology_prefix':'exact-prefix'}
+    inputs=bound_inputs(context)
+    assert inputs=={'part_name':'Motor','top_n':5,'node_id':'exact-node','scope':{'ontology_id':'selected','ontology_prefix':'exact-prefix'}}
+    validate_read(context,TOOL['id'],inputs)
+    inputs['node_id']='other'
+    with pytest.raises(ValueError):validate_read(context,TOOL['id'],inputs)
+
+def test_recommendation_business_summary_describes_actual_bounded_records():
+    item=observation('not_configured')
+    context={'recommendation_service':'change-impact','recommendation_object':'Housing'}
+    item.update(tool_id='recommendation.change_impact',inputs={'change_name':'Housing','scope':{}})
+    item['result'].update(assembly_impact=[{'name':'Assembly'}],process_impacts=[{'name':'Machining'}],impacted_requirements=[])
+    result=completion_evidence(context,[item],['observation-2'])
+    assert 'assembly records: 1' in result['business_summary']
+    assert 'manufacturing-process records: 1' in result['business_summary']
+    assert 'requirement records: 0' in result['business_summary']
+    assert 'not whole-graph totals or proof of absence' in result['business_summary']
+
+@pytest.mark.asyncio
+async def test_selected_recommendation_has_plan_read_conclude_stages_without_unneeded_replanning():
+    seen=[]
+    decisions=[action('goal.plan',subtasks=['Read']),action(TOOL['id'],**INPUTS),action('goal.complete',summary='Review evidence.',evidence_steps=['observation-2'])]
+    async def propose(available,pad):
+        seen.append([tool['id'] for tool in available]);return decisions.pop(0)
+    result=await goals.drive(record(context=CONTEXT),propose=propose,dispatch=AsyncMock(return_value={'decision_policy':{'status':'not_configured'}}),save=AsyncMock(),tools=[TOOL])
+    assert result['status']=='completed'
+    assert seen==[['goal.plan'],[TOOL['id']],['goal.complete']]

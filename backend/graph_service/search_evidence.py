@@ -2,7 +2,9 @@
 import json
 
 BUSINESS_FIELDS = {'name','title','partNumber','part_number','revision','material','mass','weight',
-                   'diameter','length','tolerance','value','unit','units','status'}
+                   'diameter','length','tolerance','value','unit','units','status',
+                   'quantity','datum','nominal','upperTolerance','lowerTolerance',
+                   'shape','geometry','representation','requirementText','identifier'}
 
 PREDICATES = {
     'http://www.w3.org/2004/02/skos/core#definition':'definition',

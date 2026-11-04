@@ -5,6 +5,10 @@ import json
 import os
 from urllib.parse import urlsplit
 
+class IncompleteProviderResponse(ValueError):
+    """The provider exhausted output before producing a complete answer."""
+
+
 CLOUD_PROVIDERS = ('openai', 'mistral', 'aoi')
 PROVIDERS = ('ollama', 'azure', *CLOUD_PROVIDERS)
 DEFAULT_BASES = {'openai': 'https://api.openai.com/v1', 'mistral': 'https://api.mistral.ai/v1'}
@@ -55,7 +59,17 @@ def cloud_settings(provider, *, embeddings=False, unstructured=False):
             if not 1 <= dimensions <= 8192: raise ValueError()
         except ValueError:
             raise ValueError('Set EMBEDDING_VECTOR_DIMENSIONS to the AOI embedding space') from None
+    if provider == 'openai' and not embeddings:
+        openai_reasoning_effort()
     return CloudSettings(provider, model, base, key)
+
+
+def openai_reasoning_effort():
+    """Optional provider setting; unsupported model combinations fail at the provider."""
+    effort = os.getenv('OPENAI_REASONING_EFFORT', '').strip().lower()
+    if effort and effort not in {'none', 'minimal', 'low', 'medium', 'high', 'xhigh'}:
+        raise ValueError('Invalid OPENAI_REASONING_EFFORT')
+    return effort
 
 
 def cloud_chat(provider, *, unstructured=False):
@@ -66,6 +80,8 @@ def cloud_chat(provider, *, unstructured=False):
                   timeout=ollama_timeout(), max_retries=0)
     # Responses is the OpenAI interface; Mistral exposes Chat Completions.
     kwargs['use_responses_api'] = provider == 'openai'
+    if provider == 'openai' and openai_reasoning_effort():
+        kwargs['reasoning'] = {'effort': openai_reasoning_effort()}
     if provider == 'aoi':
         import httpx
         kwargs.update(http_client=httpx.Client(trust_env=False), http_async_client=httpx.AsyncClient(trust_env=False))
@@ -97,11 +113,17 @@ async def post_cloud_chat(client, provider, body):
     payload = {'model': settings.model, 'messages': list(messages), 'stream': False}
     token_key = 'max_completion_tokens' if provider == 'openai' else 'max_tokens'
     payload[token_key] = body.get('options', {}).get('num_predict', 1024)
+    if provider == 'openai' and openai_reasoning_effort():
+        payload['reasoning_effort'] = openai_reasoning_effort()
     if body.get('tools'):
         payload['tools'] = body['tools']
         payload['tool_choice'] = 'required'
+        if provider == 'openai':
+            # The durable controller validates and persists one action at a time.
+            payload['parallel_tool_calls'] = False
     elif body.get('format'):
-        payload['response_format'] = {'type': 'json_object'}
+        payload['response_format'] = ({'type': 'json_schema', 'json_schema': {'name': 'nexus_companion_findings', 'strict': True, 'schema': body['format']}}
+            if provider == 'openai' and body.get('strict_format') is True else {'type': 'json_object'})
         payload['messages'] = [{'role': 'system', 'content':
             'Return only JSON conforming to this schema: ' + json.dumps(body['format'])}] + payload['messages']
     from backend.agentic_service.prompt_limits import bounded_prompt_json
@@ -123,6 +145,8 @@ async def post_cloud_chat(client, provider, body):
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
         raise ValueError('Invalid provider response')
     choice = choices[0]
+    if choice.get('finish_reason') == 'length':
+        raise IncompleteProviderResponse('Provider output budget exhausted')
     if choice.get('finish_reason') not in {'stop', 'tool_calls'}:
         raise ValueError('Incomplete provider response')
     message = choice.get('message')

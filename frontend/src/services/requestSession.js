@@ -23,11 +23,16 @@ export function prepareSessionRequest(config) {
     const controller=new AbortController();
     config.__credentialController=controller;
     config.__credentialGeneration=generation;
-    if(config.signal){
-      if(config.signal.aborted)controller.abort();
-      else config.signal.addEventListener('abort',()=>controller.abort(),{once:true,signal:controller.signal});
-    }
+    config.__callerSignal=config.signal;
     config.signal=controller.signal;
+  }
+  if(config.__callerSignal && !config.__callerAbort){
+    const controller=config.__credentialController;
+    if(config.__callerSignal.aborted)controller.abort();
+    else {
+      config.__callerAbort=()=>controller.abort();
+      config.__callerSignal.addEventListener('abort',config.__callerAbort,{once:true});
+    }
   }
   return config;
 }
@@ -35,6 +40,11 @@ export function trackSessionRequest(config) {
   if(staleRequest(config))throw new axios.CanceledError('Credentials changed while preparing request');
   pending.add(config.__credentialController);
 }
-export function releaseRequest(config) {
-  if(config?.__credentialController)pending.delete(config.__credentialController);
+export function releaseRequest(config, retainCaller = false) {
+  // A retry delay is still an in-flight read. Reconnect must abort it too.
+  if(!retainCaller && config?.__credentialController)pending.delete(config.__credentialController);
+  if(!retainCaller && config?.__callerAbort){
+    config.__callerSignal.removeEventListener('abort',config.__callerAbort);
+    delete config.__callerAbort;
+  }
 }

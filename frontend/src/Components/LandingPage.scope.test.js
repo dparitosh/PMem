@@ -8,6 +8,7 @@ vi.mock('@siemens/ix-react', () => {
 });
 vi.mock('../services/graphApi', () => ({ graphApi: { getMetrics: mocks.getMetrics } }));
 vi.mock('../contexts/OntologyContext', () => ({ useOntologies: () => ({ ontologies: [{ ontology_id: 'qif-id', ontology_prefix: 'qif', name: 'QIF' }], fetchOntologies: mocks.fetchOntologies }) }));
+vi.mock('./ontology/EmbeddedFoundationEntry',()=>({default:()=> <div>Embedded foundation entry</div>}));
 vi.mock('./Chatbot', () => ({ default: () => <div>Chat ready</div> }));
 import LandingPage from './LandingPage';
 

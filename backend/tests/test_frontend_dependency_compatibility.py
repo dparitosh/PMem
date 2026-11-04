@@ -22,16 +22,13 @@ def test_frontend_locked_dependency_probe_detects_missing_and_changed_versions(t
     assert probe()['current'] is False
 
 
-def test_upgrade_enables_checkpointed_installer_before_shutdown(tmp_path):
+def test_upgrade_reconciles_all_dependency_locks_by_default(tmp_path):
     shell=shutil.which('powershell.exe')
     if not shell:pytest.skip('Windows PowerShell unavailable')
-    text=(ROOT/'infra/windows/update-depo-windows.ps1').read_text(encoding='utf-8')
-    begin=text.index('# Detect changed locked frontend dependencies')
-    end=text.index('if ($EnableOcr',begin)
-    assert end<text.index("Write-Host 'Read-only database upgrade checks passed")
-    frontend=tmp_path/'frontend';frontend.mkdir()
-    (frontend/'checkDependencies.mjs').write_text('console.log(JSON.stringify({current:false,mismatches:["example"]}))')
-    script=tmp_path/'probe.ps1'
-    script.write_text("$ErrorActionPreference='Stop'\n$root='"+str(tmp_path)+"'\n$settings=@{}\n$SkipFrontend=$false\n$InstallDependencies=$false\nfunction Invoke-DepoUpgradeStep($Name,$Action){& $Action}\nfunction Get-DepoNodeRuntime {return @{Node='"+str(NODE)+"'}}\n"+text[begin:end]+"\nif(!$InstallDependencies){throw 'Installer not enabled'}\n",encoding='utf-8')
-    r=subprocess.run([shell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(script)],capture_output=True,text=True)
+    import os
+    env={**os.environ,'TEMP':str(tmp_path),'TMP':str(tmp_path)}
+    # Windows PowerShell must load its own Security module, not a module path
+    # inherited from a PowerShell 7 test runner.
+    env['PSModulePath']=str(Path(shell).parent/'Modules')
+    r=subprocess.run([shell,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'infra/windows/test-depo-update.ps1')],capture_output=True,text=True,env=env,timeout=60)
     assert r.returncode==0,r.stdout+r.stderr

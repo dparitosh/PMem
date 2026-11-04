@@ -14,6 +14,7 @@ const agenticClient = axios.create({
 });
 
 export function applyAgenticAuth(requestConfig) {
+  try {
   prepareSessionRequest(requestConfig);
   requestConfig.headers = requestConfig.headers || {};
   if (String(requestConfig.method).toLowerCase() === 'post' && /\/api\/v1\/(runs|workflow-runs)$/.test(String(requestConfig.url).split('?')[0]) && requestConfig.data && typeof requestConfig.data === 'object') {
@@ -28,6 +29,10 @@ export function applyAgenticAuth(requestConfig) {
   requireServiceReadAccess(requestConfig);
   trackSessionRequest(requestConfig);
   return requestConfig;
+  } catch (failure) {
+    releaseRequest(requestConfig);
+    throw failure;
+  }
 }
 
 agenticClient.interceptors.request.use(applyAgenticAuth);

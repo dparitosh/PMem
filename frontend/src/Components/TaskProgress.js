@@ -11,7 +11,7 @@ export default function TaskProgress({ run, kind = 'goal' }) {
     <p>{kind === 'goal' ? run.goal : run.workflow_id || run.task_label || 'Reviewed action'}</p>
     {run.status === 'needs_input' && <p role="alert">Select or supply: {(run.missing_fields || []).map(label).join(', ')}. Then start a new investigation. No write was performed.</p>}
     {run.status !== 'needs_input' && run.message && <p>{run.message}</p>}
-    {run.page_context && <p>Source context: {Object.entries(run.page_context).map(([key,value]) => `${label(key)}: ${value}`).join(' · ')}</p>}
+    {run.page_context && <details><summary>Source identities and scope</summary><dl>{Object.entries(run.page_context).map(([key,value]) => <React.Fragment key={key}><dt>{label(key)}</dt><dd>{String(value)}</dd></React.Fragment>)}</dl></details>}
     {run.plans?.length > 0 && <details open><summary>Current plan</summary><ol>{run.plans.at(-1).subtasks.map((step,i)=><li key={i}>{step}</li>)}</ol><p>Planned steps are not evidence that they have executed.</p></details>}
     <p>Recorded actions: {actions.length}. Completed: {actions.filter(item=>item.status==='completed').length}.</p>
     {actions.length > 0 && <details><summary>Actions and retained evidence</summary><ol>{actions.map((item,i)=><li key={item.id || item.sequence || i}>
@@ -20,7 +20,7 @@ export default function TaskProgress({ run, kind = 'goal' }) {
       {item.result && <p>Result evidence retained{item.result.truncated ? '; only a bounded excerpt is available' : ''}. Source validation and publication are separate.</p>}
       {item.result && <dl>{Object.entries(item.result.result || item.result).filter(([key,value]) => ['iri','ontology_id','preview_id','asset_id','version','status','resources','relationships','triple_count'].includes(key) && ['string','number','boolean'].includes(typeof value)).map(([key,value]) => <React.Fragment key={key}><dt>{label(key)}</dt><dd>{String(value).slice(0,1000)}</dd></React.Fragment>)}</dl>}
     </li>)}</ol></details>}
-    {result?.summary && <><strong>Evidence-based conclusion</strong><p>{result.summary}</p>{kind === 'goal' && <p>Agent interpretation for review. Evidence references do not independently verify each claim or grant engineering approval.</p>}{Array.isArray(result.evidence_steps) && <p>Evidence: {result.evidence_steps.join(', ')}. Review the retained observations.</p>}</>}
+    {(result?.business_summary || result?.summary) && <><strong>{result.business_summary ? 'Recorded findings' : 'Evidence-based conclusion'}</strong><p>{result.business_summary || result.summary}</p>{kind === 'goal' && <p>{result.business_summary ? 'Findings describe the retained read results and support review; they do not grant engineering approval.' : 'Agent interpretation for review. Evidence references do not independently verify each claim or grant engineering approval.'}</p>}{Array.isArray(result.evidence_steps) && <p>Evidence: {result.evidence_steps.join(', ')}. Review the retained observations.</p>}</>}
     {held && <p>The action finished with a review hold. No publication is established by task completion.</p>}
     {uncertain && <p>Verify the retained downstream receipt before retrying. This view never resubmits a write automatically.</p>}
     {run.error_code && <p role="alert">{label(run.error_code)}. Retained evidence remains available.</p>}

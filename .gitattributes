@@ -5,3 +5,10 @@ mendix/depo-graph-miner-widget/package-lock.json -diff
 # Linux lifecycle files must remain executable by Bash after a Windows checkout.
 *.sh text eol=lf
 *.service.template text eol=lf
+
+# Preserve generated document and media bytes across Windows checkouts.
+*.pdf binary
+*.docx binary
+*.pptx binary
+*.mp4 binary
+*.png binary

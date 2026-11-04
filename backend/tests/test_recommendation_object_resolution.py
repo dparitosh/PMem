@@ -104,3 +104,9 @@ def test_resolver_rejects_invalid_names_without_search(name):
             api.resolve_recommendation_object({'part_name': name})
         assert failure.value.status_code == 422
         search.assert_not_called()
+
+def test_declared_engineering_document_geometry_pmi_and_system_are_recognized():
+    from backend.graph_service.engineering_comparison import kind
+    for declared, expected in [('EngineeringDocument','document'),('CADModel','document'),('SimulationDataset','dataset'),('ShapeRepresentation','geometry'),('PMIAnnotation','pmi'),('SystemComponent','system')]:
+        assert kind({'properties':{'rdf_types':['https://example.org/vocab/'+declared]}})==expected
+    assert kind({'properties':{'label':'CAD Model - filename.step'}})=='unclassified'

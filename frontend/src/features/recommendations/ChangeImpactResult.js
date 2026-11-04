@@ -35,7 +35,7 @@ const ChangeImpactResult = ({ data }) => {
               <span style={{ fontSize: '16px', fontWeight: 700, color: C.textPrimary }}>{businessDisplayName(ce.name)}</span>
             </div>
             <div>
-              <Badge color={C.red}>{ce.source_tag}</Badge>
+              {ce.source_tag && <details><summary>Source provenance</summary><Badge color={C.red}>{ce.source_tag}</Badge></details>}
               {ce.revision && <Badge color={C.textSec}>Rev {ce.revision}</Badge>}
             </div>
           </div>

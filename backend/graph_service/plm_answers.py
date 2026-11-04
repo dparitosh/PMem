@@ -7,6 +7,33 @@ from backend.depo_platform.plm_questions import intent, business_subject
 CEIM='https://depo.example.org/ceim/0.1/'
 
 
+def recorded_detail(raw):
+    """Read descriptive literals retained in RDF, without exposing serialization."""
+    try: properties = json.loads(raw or '{}')
+    except (ValueError, TypeError): return ''
+    if not isinstance(properties, dict): return ''
+    for field in ('requirementText', 'description', 'text', 'definition', 'value'):
+        for predicate, values in properties.items():
+            if predicate.rsplit('/', 1)[-1].rsplit('#', 1)[-1] != field or not isinstance(values, list): continue
+            text = [str(item['value']) for item in values[:8] if isinstance(item, dict) and isinstance(item.get('value'), (str, int, float, bool))]
+            if text: return '; '.join(text)[:1000]
+    return ''
+
+
+def pmi_detail(raw):
+    try: properties = json.loads(raw or '{}')
+    except (ValueError, TypeError): return ''
+    if not isinstance(properties, dict): return ''
+    fields = {'value':'Value','unit':'Unit','units':'Unit','datum':'Datum','nominal':'Nominal','tolerance':'Tolerance','upperTolerance':'Upper tolerance','lowerTolerance':'Lower tolerance'}
+    details = []
+    for predicate, values in properties.items():
+        field = predicate.rsplit('/',1)[-1].rsplit('#',1)[-1]
+        if field not in fields or not isinstance(values,list): continue
+        text = [str(item['value'])[:120] for item in values[:8] if isinstance(item,dict) and isinstance(item.get('value'),(str,int,float,bool))]
+        if text: details.append(fields[field]+': '+'; '.join(text))
+    return '; '.join(details)[:1000]
+
+
 def name(label, raw):
     try: properties=json.loads(raw or '{}')
     except (ValueError,TypeError): properties={}
@@ -57,7 +84,7 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 'WITH p,q,head(collect(path)) AS path,count(*) AS recorded_path_count '
                 'RETURN elementId(p) AS subject_id,coalesce(p.name,p.label,p.title) AS subject, '
                 'elementId(q) AS requirement_id,coalesce(q.name,q.label,q.title) AS requirement, '
-                "coalesce(q.description,q.text,q.value,'') AS detail, "
+                "coalesce(q.description,q.text,q.value,'') AS detail, q.rdf_properties AS detail_props, "
                 "[r IN relationships(path) | {id:elementId(r),type:type(r),predicate:r['predicate']}] AS path, "
                 'recorded_path_count,coalesce(q.ontology_id,q.source_ontology,q.import_id) AS source,coalesce(q.prefix,q.ontology_prefix) AS prefix '
                 'ORDER BY subject_id,requirement_id LIMIT 21',
@@ -67,6 +94,9 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 requirement_types=[CEIM+k for k in ('Requirement','Specification','RequirementRevision')],
                 requirement_labels=['Requirement','Specification','RequirementRevision'],
                 schema_types=['http://www.w3.org/2002/07/owl#Class','http://www.w3.org/2002/07/owl#ObjectProperty','http://www.w3.org/2002/07/owl#DatatypeProperty'])
+        for row in rows:
+            detail = recorded_detail(row.pop('detail_props', None))
+            if not row.get('detail') and detail: row['detail'] = detail
     elif selected=='parts_with_pmi':
         subject = business_subject(query, node_id)
         rows=publisher._session_rows(
@@ -87,7 +117,9 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 'https://depo.example.org/ontology/bill-of-characteristics/1.0/TolerancedCharacteristic'],
             outgoing=[CEIM+'hasPMI',CEIM+'hasCharacteristic'],annotates=CEIM+'annotates')
         for row in rows:
-            row['part']=name(row['part'],row.pop('part_props',None));row['pmi']=name(row['pmi'],row.pop('pmi_props',None))
+            raw_pmi = row.pop('pmi_props',None)
+            row['part']=name(row['part'],row.pop('part_props',None));row['pmi']=name(row['pmi'],raw_pmi)
+            row['characteristic'] = pmi_detail(raw_pmi)
             predicate=row.get('predicate')
             trace=predicate==CEIM+'traceTo' if predicate is not None else row['relationship']=='TRACE_TO'
             row['association_status']='source_reference' if trace else 'recorded_association'

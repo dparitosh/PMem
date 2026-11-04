@@ -1,5 +1,6 @@
 import OntologyGroupOverview from './OntologyGroupOverview';
 import GraphInvestigation from './GraphInvestigation';
+import {focusCompanionEvidence} from './companionGraphEvidence';
 import GraphInspector from './GraphInspector';
 import useGraphData from './hooks/useGraphData';
 import GraphCanvas from "./GraphCanvas";
@@ -941,7 +942,8 @@ const GraphWorkspace = ({
       ? graphData
       : emptyGraphDataset;
   }, [emptyGraphDataset, filteredData, graphData, graphViewMode, initialData, isFullGraphMode, isOntologyGraphMode]);
-  const activeDisplayData = useMemo(() => {
+  const [companionFocusIds, setCompanionFocusIds] = useState(null);
+  const unfocusedDisplayData = useMemo(() => {
     if (graphViewMode === 'individual') {
       return baseGraphDataset;
     }
@@ -954,6 +956,7 @@ const GraphWorkspace = ({
 
     return baseGraphDataset;
   }, [baseGraphDataset, emptyGraphDataset, graphSearchActive, graphViewMode, searchResultData]);
+  const activeDisplayData = useMemo(() => focusCompanionEvidence(unfocusedDisplayData, companionFocusIds), [unfocusedDisplayData, companionFocusIds]);
   const activeGraphDataset = useMemo(() => {
     if (graphSearchActive) {
       return baseGraphDataset;
@@ -2569,6 +2572,17 @@ const boundaryForce = (width, height) => {
   const companionOntologyId = investigationNode?.properties?.ontology_id || investigationNode?.properties?.source_ontology || '';
   const companionOntologyPrefix = investigationNode?.properties?.ontology_prefix || investigationNode?.properties?.prefix || '';
   const companionLabel = investigationNode?.properties?.name || investigationNode?.properties?.label || '';
+  useEffect(() => { setCompanionFocusIds(null); }, [searchQuery, selectedOntology, investigationNodeId]);
+  useEffect(() => {
+    const handler = ({detail}) => {
+      if (!companionNodeId || detail?.rootId !== companionNodeId || detail.ontologyId !== companionOntologyId || detail.ontologyPrefix !== companionOntologyPrefix) return;
+      const available = new Set(unfocusedDisplayData.nodes.map(node => node.elementId));
+      const ids = Array.isArray(detail.ids) ? detail.ids.filter(id => available.has(id)) : [];
+      setCompanionFocusIds(ids.includes(companionNodeId) && ids.length > 1 ? ids : null);
+    };
+    window.addEventListener('nexus:companion-graph-evidence',handler);
+    return () => window.removeEventListener('nexus:companion-graph-evidence',handler);
+  }, [companionNodeId,companionOntologyId,companionOntologyPrefix,unfocusedDisplayData]);
   useEffect(() => {
     if (typeof onBusinessSelection !== 'function') return undefined;
     onBusinessSelection(companionNodeId ? {node_id:companionNodeId, ontology_id:companionOntologyId, ontology_prefix:companionOntologyPrefix, label:companionLabel} : null);
@@ -2699,6 +2713,7 @@ const boundaryForce = (width, height) => {
         showChat={showChat}
         onToggleChat={toggleChat}
       />
+      {companionFocusIds && <div role="status">Graph focused on {companionFocusIds.length} cited records already loaded. Only recorded edges are shown. <button type="button" onClick={() => setCompanionFocusIds(null)}>Show all search context</button></div>}
       {(isLoading || scopeLoading) && (
         <div className="loading-state" style={{
           position: 'absolute',

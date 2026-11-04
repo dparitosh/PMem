@@ -11,6 +11,14 @@ try {
   foreach ($name in @('update-depo-windows.ps1','update-depo-runtime-timeouts.ps1','runtime-config.ps1','service-runtimes.ps1','process-control.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $scripts $name)
   }
+  # Process ownership itself is covered with fake CIM records separately.
+  # This fixture verifies its ordering relative to edits and shutdown.
+  Add-Content -LiteralPath (Join-Path $scripts 'process-control.ps1') -Value @'
+function Assert-DepoTrackedProcessVisibility {
+  param($Root,[switch]$SkipFrontend)
+  if(Test-Path -LiteralPath (Join-Path $Root 'fail-ownership')) { throw 'simulated process ownership failure' }
+}
+'@
   # Compatibility inspection is a child boundary too: this offline sequencing
   # test must not require a real Node installation or frontend dependency tree.
   Add-Content -LiteralPath (Join-Path $scripts 'runtime-config.ps1') -Value @'
@@ -32,6 +40,7 @@ param([string]$EnvFile, [string]$RootEnvFile, [string]$Profile, [int]$ServiceSta
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 Add-Content -LiteralPath (Join-Path $root 'order.txt') -Value ([IO.Path]::GetFileNameWithoutExtension($PSCommandPath))
 if ($PSScriptRoot -eq $env:DEPO_UPDATE_TEST_ROOT -and $PSCommandPath -like '*install-depo.ps1' -and (Test-Path -LiteralPath (Join-Path $root 'fail-install'))) { throw 'simulated migration failure' }
+if ($PSScriptRoot -eq $env:DEPO_UPDATE_TEST_ROOT -and $SkipDependencyInstall) { throw 'Default update skipped backend/frontend lock reconciliation.' }
 if ($PSScriptRoot -eq $env:DEPO_UPDATE_TEST_ROOT -and (Test-Path -LiteralPath (Join-Path $root 'fail-install-exit'))) { $global:LASTEXITCODE = 17; return }
 if ($PSCommandPath -like '*test-depo-*' -and (Test-Path -LiteralPath (Join-Path $root 'fail-preflight'))) { throw 'simulated preflight failure' }
 if ([IO.Path]::GetFileName($PSCommandPath) -eq 'install-depo.ps1' -and $PSScriptRoot -ne $env:DEPO_UPDATE_TEST_ROOT) {
@@ -60,6 +69,16 @@ if ([IO.Path]::GetFileName($PSCommandPath) -eq 'install-depo.ps1' -and $PSScript
   & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile -PreflightOnly
   if ((Get-Content -LiteralPath (Join-Path $workspace 'order.txt')) -match '^stop-depo-') { throw 'Preflight-only stopped services.' }
   if ([IO.File]::ReadAllText($envFile) -ne $beforeFailure) { throw 'Preflight-only modified settings.' }
+  Set-Content -LiteralPath (Join-Path $workspace 'fail-ownership') -Value 'fail'
+  Set-Content -LiteralPath (Join-Path $workspace 'order.txt') -Value ''
+  $failed=$false
+  try { & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile -LlmTimeoutSeconds 600 } catch { $failed=$true }
+  if (-not $failed -or ((Get-Content -LiteralPath (Join-Path $workspace 'order.txt')) -match '^stop-depo-')) { throw 'Ownership failure must prevent shutdown.' }
+  if ([IO.File]::ReadAllText($envFile) -ne $beforeFailure) { throw 'Ownership failure must precede timeout configuration edits.' }
+  $failed=$false
+  try { & (Join-Path $scripts 'update-depo-windows.ps1') -EnvFile $envFile -PreflightOnly } catch { $failed=$true }
+  if (-not $failed) { throw 'Preflight-only must report inaccessible tracked processes.' }
+  Remove-Item -LiteralPath (Join-Path $workspace 'fail-ownership')
   Set-Content -LiteralPath (Join-Path $workspace 'order.txt') -Value ''
   Set-Content -LiteralPath (Join-Path $workspace 'fail-agentic') -Value 'fail'
   $failed = $false

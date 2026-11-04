@@ -211,7 +211,7 @@ export default function AppShell({
 
         <IxContent id="main-content" tabIndex={-1} className="depo-ix-content">
 
-          <div className="depo-ix-page">
+          <div className={`depo-ix-page${showChat && rightDrawer && !chatExpanded ? ' depo-ix-page--with-chat' : ''}`}>
             <div aria-live="polite" className="depo-alert depo-access-status">{accessMessage || 'Application access status'}</div>
             <WorkspaceBreadcrumbs page={activePage} label={pageLabel(activePage)} />
             <IxContentHeader

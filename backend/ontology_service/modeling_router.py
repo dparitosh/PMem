@@ -95,3 +95,31 @@ def approve_proposal(proposal_id: str, payload: ModelDecisionBody | None = None)
 def reject_proposal(proposal_id: str, payload: ModelDecisionBody | None = None) -> dict:
     data = payload or {}
     return _call(agentic_modeling_service.reject_proposal, proposal_id, rejected_by=data.get("rejected_by") or "user", comment=data.get("comment") or "")
+
+
+@router.get('/xmi-diagrams/{ontology_id}')
+def xmi_diagrams(ontology_id: str) -> dict:
+    from .xmi_diagrams import retained_diagrams
+    try:
+        return retained_diagrams(ontology_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(409, 'Retained model source is unavailable; restore or re-import the source') from exc
+
+
+@router.get('/xmi-context/{ontology_id}')
+def xmi_context(ontology_id: str, source_id: str = Query(..., min_length=1, max_length=512)) -> dict:
+    from .xmi_diagrams import model_context, ModelContextUnavailable
+    try:
+        return model_context(ontology_id, source_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(409, 'Retained model source is unavailable; restore or re-import the source') from exc
+    except ModelContextUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc

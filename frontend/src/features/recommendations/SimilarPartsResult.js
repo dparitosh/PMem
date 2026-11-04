@@ -26,7 +26,7 @@ const SimilarPartsResult = ({ data }) => {
           </span>
         </div>
         <div>
-          <Badge color={C.primary}>{sp.source_tag}</Badge>
+          {sp.source_tag && <details><summary>Source provenance</summary><Badge color={C.primary}>{sp.source_tag}</Badge></details>}
           {sp.rflp_layer && <Badge color={C.textSec}>{sp.rflp_layer}</Badge>}
           <span style={{ marginLeft: '10px', fontSize: '13px', color: C.textSec }}>{data.similar_parts?.length || 0} results</span>
         </div>
@@ -65,7 +65,9 @@ const SimilarPartsResult = ({ data }) => {
             <table style={TABLE}>
               <thead><tr><th style={TH}>Part</th><th style={TH}>Match score</th><th style={TH}>Engineering review</th><th style={TH}>Assessed properties</th><th style={TH}>Comparison evidence</th></tr></thead>
               <tbody>{data.similar_parts.map((p,i)=><tr key={p.node_id || i}>
-                <td style={TD}>{p.name}</td>
+                <td style={TD}><strong>{p.name}</strong>{p.revision && <div>Revision: {p.revision}</div>}
+                  <details><summary>Record identity and source</summary><dl><dt>Identity</dt><dd>{p.node_id || 'Not supplied'}</dd><dt>Source</dt><dd>{p.ontology_id || p.source_ontology || p.source_tag || 'Not supplied'}</dd></dl></details>
+                </td>
                 <td style={TD}><SimilarityBar score={p.similarity_score}/></td>
                 <td style={TD}>{p.conflicts?.length ? `Conflicts: ${p.conflicts.join(', ')}` : 'Review required; substitution is not approved'}</td>
                 <td style={TD}>{p.score_evidence?.engineering_assessed ?? 0} of {p.engineering_comparisons?.length ?? 0}</td>

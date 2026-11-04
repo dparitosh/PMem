@@ -65,29 +65,15 @@ Invoke-DepoUpgradeStep 'Agentic configuration before shutdown' {
     if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Correct the listed settings. Services were not stopped.' }
   } finally { Pop-Location }
 }
-# Detect changed locked frontend dependencies before stopping a working release.
-if (-not $SkipFrontend -and -not $InstallDependencies) {
-  Invoke-DepoUpgradeStep 'Frontend dependency compatibility' {
-    $nodeRuntime = Get-DepoNodeRuntime -Root $root -NodeJsDir $settings.DEPO_NODEJS_DIR
-    $report = & $nodeRuntime.Node (Join-Path $root 'frontend/checkDependencies.mjs')
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency inspection failed. Services were not stopped.' }
-    $compatibility = ($report -join "`n") | ConvertFrom-Json
-    if ($compatibility.current -ne $true) {
-      Write-Host 'Frontend locked dependencies changed. Enabling checkpointed dependency installation for this upgrade.'
-      $script:InstallDependencies = $true
-    }
-  }
-}
-if ($EnableOcr -and -not $InstallDependencies) { throw '-EnableOcr requires -InstallDependencies during upgrade.' }
-if (-not $InstallDependencies) {
-  $manifest = Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
-  foreach ($entry in (@($manifest.services) + @($manifest.workers))) {
-    $runtime = Get-DepoServicePython -Root $root -ServiceId $entry.id -Mode $settings.DEPO_SERVICE_RUNTIME_MODE
-    if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "Missing runtime for '$($entry.id)'. Rerun with -InstallDependencies. Services were not stopped." }
-  }
-}
+# Always reconcile both Python and frontend locks through the existing installer.
+# Its receipts skip verified unchanged runtimes. A directory's existence does
+# not prove compatibility, including for isolated APIs and worker environments.
+# Keep -InstallDependencies accepted for older operator commands.
+$InstallDependencies = $true
+Write-Host 'Dependency reconciliation enabled: unchanged verified checkpoints are reused; changed locks are installed after shutdown.'
 Invoke-DepoUpgradeStep 'PostgreSQL upgrade history and privileges' { & (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $envPath -UpgradePreflight }
 Invoke-DepoUpgradeStep 'Neo4j existing schema compatibility' { & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $envPath -UpgradePreflight }
+Invoke-DepoUpgradeStep 'Tracked process ownership preflight' { Assert-DepoTrackedProcessVisibility -Root $root -SkipFrontend:$SkipFrontend }
 if ($PreflightOnly) { Write-Host 'Upgrade preflight passed. No services stopped, migrations applied, or configuration changed.'; return }
 if ($PSBoundParameters.ContainsKey('LlmTimeoutSeconds')) {
   Invoke-DepoUpgradeStep 'Explicit timeout configuration update' { & (Join-Path $PSScriptRoot 'update-depo-runtime-timeouts.ps1') -EnvFile $envPath -LlmTimeoutSeconds $LlmTimeoutSeconds }

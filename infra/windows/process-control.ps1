@@ -7,7 +7,8 @@ function Test-DepoAdministrator {
 function Invoke-DepoVisibleManagement {
   [CmdletBinding()]
   param([string]$Root,[string]$Action,[string]$EnvFile,[string]$Profile,
-    [switch]$SkipPostgres,[switch]$SkipFrontend,[switch]$SkipBaselineProvisioning,[switch]$ElevatedRetry)
+    [switch]$SkipPostgres,[switch]$SkipFrontend,[switch]$SkipBaselineProvisioning,[switch]$ElevatedRetry,
+    [string]$Python='py',[string]$CredentialPolicy='Synchronize',[switch]$ForceReinstall)
   $tracking = Join-Path $Root 'logs/windows-services'
   if(-not(Test-Path -LiteralPath $tracking)){return $false}
   $tracked = @(Get-ChildItem -LiteralPath $tracking -Filter '*.pid' -File | Where-Object { -not $SkipFrontend -or $_.Name -ne 'frontend.pid' })
@@ -32,8 +33,15 @@ function Invoke-DepoVisibleManagement {
   # This preserves spaces, apostrophes and the selected environment without shell interpolation.
   $quote = {param([string]$Value) "'"+$Value.Replace("'","''")+"'"}
   $command = '& '+(& $quote $scriptPath)+' -Action '+(& $quote $Action)+' -EnvFile '+(& $quote $selectedEnv)+' -Profile '+(& $quote $Profile)+' -ElevatedRetry'
-  foreach($name in @('SkipPostgres','SkipFrontend','SkipBaselineProvisioning')) {
-    if(Get-Variable -Name $name -ValueOnly){$command+=' -'+$name}
+  if ($Action -eq 'Setup') {
+    $scriptPath = Join-Path $Root 'infra/windows/setup-depo.ps1'
+    $command = '& '+(& $quote $scriptPath)+" -Action 'Setup' -ElevatedRetry -Python "+(& $quote $Python)+' -CredentialPolicy '+(& $quote $CredentialPolicy)
+    if ($ForceReinstall) { $command+=' -ForceReinstall' }
+  }
+  if ($Action -ne 'Setup') {
+    foreach($name in @('SkipPostgres','SkipFrontend','SkipBaselineProvisioning')) {
+      if(Get-Variable -Name $name -ValueOnly){$command+=' -'+$name}
+    }
   }
   $command = 'try { '+$command+'; if(-not $?){exit 1}; exit 0 } catch { Write-Error $_; exit 1 }'
   $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
@@ -41,13 +49,44 @@ function Invoke-DepoVisibleManagement {
   try {
     $child = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -Verb RunAs -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) -ErrorAction Stop
   } catch {
-    throw 'Windows elevation was cancelled or unavailable. No lifecycle action was started. Open PowerShell with Run as administrator and rerun the same manage-depo.ps1 command.'
+    throw 'Windows elevation was cancelled or unavailable. No lifecycle action was started. Open PowerShell with Run as administrator and rerun the same setup/management command.'
   }
   # Start-Process -Wait also waits for newly launched service descendants.
   # Wait only for the lifecycle process; PMem services intentionally remain alive.
   $child.WaitForExit()
-  if($child.ExitCode -ne 0){throw 'The elevated PMem lifecycle command failed. Inspect the latest manage log under logs/installation/runs; tracking and ownership checks were retained.'}
+  if($child.ExitCode -ne 0){throw 'The elevated PMem lifecycle command failed. Inspect the latest setup/manage log under logs/installation/runs; tracking and ownership checks were retained.'}
   return $true
+}
+
+# Fail before the first stop request, not halfway through a service batch.
+# Identity checks are still repeated immediately before termination.
+function Assert-DepoTrackedProcessVisibility([string]$Root,[switch]$SkipFrontend) {
+  $tracking=Join-Path $Root 'logs/windows-services'
+  if (-not (Test-Path -LiteralPath $tracking)) { return }
+  $manifestPath=Join-Path $Root 'infra/deployment/services.json'
+  $entries=@()
+  if (Test-Path -LiteralPath $manifestPath) {
+    . (Join-Path $Root 'infra/windows/service-runtimes.ps1')
+    $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $entries=@($manifest.services)+@($manifest.workers)
+  }
+  foreach ($file in @(Get-ChildItem -LiteralPath $tracking -Filter '*.pid' -File)) {
+    if ($SkipFrontend -and $file.Name -eq 'frontend.pid') { continue }
+    $trackedId=0
+    if (-not [int]::TryParse(([string](Get-Content -LiteralPath $file.FullName -Raw)).Trim(),[ref]$trackedId) -or $trackedId -le 0) {
+      throw "Invalid tracking file '$($file.Name)'. No shutdown was started; tracking retained."
+    }
+    $process=Get-CimInstance Win32_Process -Filter "ProcessId = $trackedId" -ErrorAction Stop
+    if ($process -and (-not $process.ExecutablePath -or -not $process.CommandLine)) {
+      throw "Cannot inspect tracked process '$($file.BaseName)' (PID $trackedId). No shutdown was started; tracking retained. Rerun the same setup/update command in PowerShell opened with Run as administrator. ExecutionPolicy Bypass does not grant process inspection privileges. If already elevated, inspect Windows CIM/WMI and process-access policy."
+    }
+    $entry=$entries | Where-Object { $_.id -eq $file.BaseName } | Select-Object -First 1
+    if ($entry -and $process) {
+      $allowed=@((Get-DepoServicePython -Root $Root -ServiceId $entry.id -Mode shared),(Get-DepoServicePython -Root $Root -ServiceId $entry.id -Mode isolated))
+      try { $null=Get-DepoTrackedProcessState $process $allowed ([string]$entry.module) }
+      catch { throw "Pre-shutdown ownership check failed for '$($file.BaseName)' (PID $trackedId). No shutdown was started; tracking retained. $($_.Exception.Message)" }
+    }
+  }
 }
 
 function Get-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module) {

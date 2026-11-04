@@ -25,3 +25,12 @@ test('ALL scope is not sent as an ontology identity',()=>{
  render(<GraphInvestigation node={{elementId:'record',name:'Part'}} ontologyId="ALL" nodeCount={1} relationshipCount={0}/>);
  expect(props.context.ontology_id).toBeUndefined();
 });
+
+test('model investigations retain model page and distinguish schema from business instances',()=>{
+ render(<GraphInvestigation node={{elementId:'model:42',properties:{name:'Drive requirements'}}} ontologyId="sysml-v2" nodeCount={4} relationshipCount={3} page="modeling"/>);
+ expect(props.context).toMatchObject({page:'modeling',node_id:'model:42',ontology_id:'sysml-v2'});
+ expect(props.task).toContain('not necessarily a manufactured business instance');
+ fireEvent.change(screen.getByLabelText('Engineering task'),{target:{value:'Trace recorded requirement, function and component relationships for this element. Cite each path and identify missing traceability; do not claim satisfaction without evidence.'}});
+ expect(props.task).toContain('do not claim satisfaction without evidence');
+ expect(props.task).toContain('Do not publish or alter data');
+});

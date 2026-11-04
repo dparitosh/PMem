@@ -22,7 +22,11 @@ SCHEMAS = json.loads((ROOT/'backend/tests/fixtures/prompt-tool-schemas.json').re
 from backend.ontology_service.app import app as ontology_app
 from backend.agentic_service.app import app as agentic_app
 from backend.agentic_service.proposal_contracts import input_schema
+from backend.data_pipeline_service.app import app as pipeline_app
+from backend.data_catalog_service.app import app as catalog_app
 for tool in CATALOG['tools']:
+    if tool['id'] not in SCHEMAS and tool.get('service') in {'data_pipeline','catalog'}:
+        SCHEMAS[tool['id']] = input_schema((pipeline_app if tool['service']=='data_pipeline' else catalog_app).openapi(), tool)
     if tool['id'] == 'learning.lessons':
         SCHEMAS[tool['id']] = input_schema(agentic_app.openapi(), tool)
     if tool['id'] in {'ontology.foundation.inspect','ontology.consistency.check','ontology.semantic.evidence'}:
@@ -192,3 +196,65 @@ def test_recommendation_samples_cover_business_analyses():
     samples = sample_queries('recommendations')['queries']
     assert samples != HOME_PROMPTS and len(samples) == 3
     assert 'dimensions' in samples[0] and 'changed item' in samples[1] and 'process context' in samples[2]
+
+
+def test_compact_citation_ids_preserve_authority_without_merging_same_name_records():
+    from backend.agentic_service.prompt_security import compact_evidence_citations, expand_evidence_citations
+    evidence=[{'resource_id':'urn:source:one','label':'Housing'},{'resource_id':'urn:source:two','label':'Housing'}]
+    mapped,aliases=compact_evidence_citations(evidence,['urn:source:one','urn:source:two'])
+    assert [item['resource_id'] for item in mapped]==['C1','C2']
+    summary=validate_summary('Housing [evidence:C1] and Housing [evidence:C2]',list(aliases))
+    assert expand_evidence_citations(summary,aliases)=='Housing [evidence:urn:source:one] and Housing [evidence:urn:source:two]'
+    with pytest.raises(ValueError):validate_summary('Invented [evidence:C99]',list(aliases))
+    assert evidence[0]['resource_id']=='urn:source:one'
+
+
+
+def test_grouped_citations_are_canonicalized_only_when_every_target_is_known():
+    assert validate_summary('Housing [evidence: C1, C2; C3]',['C1','C2','C3'])=='Housing [evidence:C1] [evidence:C2] [evidence:C3]'
+    with pytest.raises(ValueError):validate_summary('Housing [evidence: C1, UNKNOWN]',['C1'])
+    assert validate_summary('Housing [evidence:urn:a,b]',['urn:a,b'])=='Housing [evidence:urn:a,b]'
+
+
+def test_internal_summary_findings_render_as_cited_business_table():
+    from backend.agentic_service.prompt_security import render_summary_findings
+    rendered=render_summary_findings(json.dumps({'findings':[{'statement':'Housing has a recorded mass of 2 kg.','evidence_ids':['C1']}]}),['C1'])
+    assert '| Business finding | Evidence |' in rendered
+    assert 'Housing has a recorded mass of 2 kg.' in rendered
+    assert '[evidence:C1]' in rendered
+    assert '"findings"' not in rendered
+    for invalid in [
+        {'findings':[{'statement':'Invented','evidence_ids':['unknown']}]},
+        {'findings':[{'statement':'<Part>Housing</Part>','evidence_ids':['C1']}]},
+        {'findings':[{'statement':'First\nSecond','evidence_ids':['C1']}]},
+        {'findings':[]},
+    ]:
+        with pytest.raises(ValueError):render_summary_findings(json.dumps(invalid),['C1'])
+
+
+def test_factual_selection_cannot_invent_design_parentage_or_change_values():
+    from backend.agentic_service.prompt_security import business_fact_candidates, render_selected_facts
+    facts=business_fact_candidates([{'evidence_type':'graph_resource','resource_id':'C1','label':'Housing','properties':{'description':'Recorded machined cover','value':2,'unit':'kg'}}])
+    text=render_selected_facts('{"fact_ids":["F1"]}',facts)
+    assert 'Recorded machined cover' in text and '2 kg' in text and '[evidence:C1]' in text
+    assert 'parent' not in text
+    for bad in ['{"fact_ids":["Invented"]}','{"fact_ids":["F1"],"statement":"Housing is interchangeable"}']:
+        with pytest.raises(ValueError):render_selected_facts(bad,facts)
+
+def test_business_facts_preserve_part_properties_and_recorded_links_without_empty_descriptions():
+    from backend.agentic_service.prompt_security import business_fact_candidates, render_selected_facts
+    facts=business_fact_candidates([
+        {'evidence_type':'graph_resource','resource_id':'P','label':'CAD Housing','kind':'Part','properties':{'partNumber':'P-42','revision':'B','material':'Steel'}},
+        {'evidence_type':'graph_resource','resource_id':'M','label':'Diameter tolerance','kind':'PMI','properties':{'value':'0.02','unit':'mm'}},
+        {'evidence_type':'graph_relationship','resource_id':'R','source_id':'P','target_id':'M','relationship':'HAS_PMI'}])
+    text=render_selected_facts('{"fact_ids":["F1","F2","F3"]}',facts)
+    assert 'P-42' in text and 'Revision: B' in text and 'Steel' in text and '0.02 mm' in text
+    assert 'Not recorded' not in text and '[evidence:R]' in text
+    assert 'does not establish ownership' in text
+
+
+def test_home_examples_cover_engineering_business_questions():
+    from backend.agentic_service.companion_prompts import HOME_PROMPTS
+    text=' '.join(HOME_PROMPTS).lower()
+    for term in ('ap242','cad','pmi','shape','geometry','requirement','mbse','manufacturing bom'):
+        assert term in text

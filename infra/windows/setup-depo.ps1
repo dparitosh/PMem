@@ -1,6 +1,6 @@
 <# .SYNOPSIS Guided workstation setup; reuse this launcher to resume installation. #>
 [CmdletBinding()]
-param([string]$Python='py', [switch]$ForceReinstall, [ValidateSet('Menu','Setup','Start','Stop','Restart')][string]$Action='Menu', [ValidateSet('Synchronize','Validate')][string]$CredentialPolicy='Synchronize')
+param([string]$Python='py', [switch]$ForceReinstall, [ValidateSet('Menu','Setup','Start','Stop','Restart')][string]$Action='Menu', [ValidateSet('Synchronize','Validate')][string]$CredentialPolicy='Synchronize', [switch]$ElevatedRetry)
 $ErrorActionPreference='Stop'
 # Direct PowerShell invocation must protect nested release helpers too.
 # This changes only this process; enforced organization policy remains authoritative.
@@ -147,11 +147,14 @@ if (-not (Test-Path -LiteralPath $envPath)) {
 $browser=Join-Path $root 'frontend/.env.local'
 if(-not(Test-Path -LiteralPath $browser)){Copy-Item -LiteralPath (Join-Path $root 'frontend/.env.example') -Destination $browser}
 Write-Host 'Validating release, configuration and prerequisites before stopping PMem...'
+. (Join-Path $PSScriptRoot 'process-control.ps1')
+if (Invoke-DepoVisibleManagement -Root $root -Action Setup -EnvFile $envPath -Python $Python -CredentialPolicy $CredentialPolicy -ForceReinstall:$ForceReinstall -ElevatedRetry:$ElevatedRetry) { return }
 Invoke-DepoSetupPreflight -Root $root -EnvPath $envPath -Python $Python
 $setupConfiguration=Read-DepoEnvironment -Root $root -EnvFile $envPath
 $synchronizeCredentials=($CredentialPolicy -eq 'Synchronize' -and $setupConfiguration['AUTH_MODE'] -eq 'token' -and $setupConfiguration['DEPO_CREDENTIAL_STORE'] -eq 'postgres')
 if($synchronizeCredentials) { Write-Host 'Credential policy: Synchronize. Changed supplied application profiles will be updated from root .env.local after migration; matching and omitted profiles are retained. Changed keys require clients to reconnect.' }
 else { Write-Host 'Credential replacement is disabled for this setup; existing central profiles must match when central token storage is enabled.' }
+Assert-DepoTrackedProcessVisibility -Root $root
 Write-Host 'Preflight passed. Stopping tracked PMem processes before upgrade; database servers remain running.'
 foreach($name in @('stop-depo-frontend','stop-depo-services')) {
   $global:LASTEXITCODE=0

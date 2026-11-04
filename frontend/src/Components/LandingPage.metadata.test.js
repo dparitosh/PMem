@@ -8,9 +8,9 @@ import { OntologyList, ontologyTypeLabel, ExistingOntologyMetrics, GraphProfileM
 test('landing shows the namespace prefix separately from immutable identity', () => {
   const rows = normalizeOntologyRows([{ ontology_id: 'uuid-123', prefix: 'qif', file_type: 'xsd' }]);
   render(<OntologyList ontologies={rows} />);
-  expect(screen.getByRole('columnheader', { name: 'Prefix' })).toBeVisible();
-  expect(screen.getAllByText('qif')).toHaveLength(2);
-  expect(screen.queryByText('uuid-123')).not.toBeInTheDocument();
+  expect(screen.getByText('Prefix')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'qif' })).toHaveAttribute('href', '#/ontology?target=uuid-123');
+  expect(screen.getByText('uuid-123')).toBeInTheDocument();
   expect(rows[0].ontology_id).toBe('uuid-123');
 });
 
@@ -59,3 +59,18 @@ test('empty scope states missing records without a misleading zero metric grid',
   expect(screen.getByText('Registry registration and graph publication are separate. Review the publication status in Ontology Junction; if it is published, refresh data and check the selected version.')).toBeVisible();
   expect(screen.queryByLabelText('Published ontology metrics')).not.toBeInTheDocument();
 });
+
+ test('registry distinguishes merge provenance and does not fabricate usage or publication', () => {
+  render(<OntologyList ontologies={[{ontology_id:'merge/a',label:'Reviewed vocabulary',status:'merged',source:'governed-merge:receipt',created_at:'invalid'}]} />);
+  expect(screen.getByText('Merged vocabulary')).toBeVisible();
+  expect(screen.getByRole('link', {name:'Reviewed vocabulary'})).toHaveAttribute('href','#/ontology?target=merge%2Fa');
+  expect(screen.queryByText('Uses')).not.toBeInTheDocument();
+  expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument();
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  expect(screen.getByText(/Registration does not establish/)).toBeInTheDocument();
+ });
+ test('refresh retains usable ontology links', () => {
+  render(<OntologyList loading ontologies={[{ontology_id:'one',label:'Plant vocabulary'}]} />);
+  expect(screen.getByRole('link', {name:'Plant vocabulary'})).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent('Refreshing registry');
+ });

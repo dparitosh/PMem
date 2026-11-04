@@ -51,3 +51,12 @@ test('process context exposes limited coverage and does not imply an ordered man
  expect(screen.getByText(/do not establish manufacturing sequence/)).toBeVisible();
  expect(screen.queryByText('Analysis completed')).toBeNull();
 });
+
+test('same-name candidate records retain distinct identities for review',()=>{
+ render(<SimilarPartsResult data={{source_part:{name:'Reference'},similar_parts:[{node_id:'part-one',name:'Motor Cover',similarity_score:35},{node_id:'part-two',name:'Motor Cover',similarity_score:35}]}}/>);
+ fireEvent.click(screen.getByText('Similar Parts'));
+ expect(screen.getAllByText('Motor Cover')).toHaveLength(2);
+ expect(screen.getByText('part-one')).toBeInTheDocument();
+ expect(screen.getByText('part-two')).toBeInTheDocument();
+ expect(screen.getAllByText('Record identity and source')).toHaveLength(2);
+});

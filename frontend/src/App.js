@@ -241,10 +241,10 @@ function App() {
                     runId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.run_id || '' : ''}
                     productId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_id || '' : ''}
                     productVersion={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_version || '' : ''}
-                    nodeId={page !== 'home' && activePage === 'graph' ? companionSelection?.node_id || '' : ''}
-                    ontologyId={page !== 'home' && recordCompanionSelection?.page === activePage && recordCompanionSelection?.ontology_id ? recordCompanionSelection.ontology_id : page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_id || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_id || '' : ''}
-                    ontologyPrefix={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_prefix || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.ontology_prefix || '' : ''}
-                    contextLabel={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.label || '' : page !== 'home' && activePage === 'graph' ? companionSelection?.label || '' : ''}
+                    nodeId={page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.node_id || '' : ''}
+                    ontologyId={page !== 'home' && recordCompanionSelection?.page === activePage && recordCompanionSelection?.ontology_id ? recordCompanionSelection.ontology_id : page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_id || '' : page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.ontology_id || '' : ''}
+                    ontologyPrefix={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_prefix || '' : page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.ontology_prefix || '' : ''}
+                    contextLabel={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.label || '' : page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.label || '' : ''}
                     setChatResults={setChatResults}
                   />}
                 </Suspense>

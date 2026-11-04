@@ -22,6 +22,7 @@ export const OntologyProvider = ({ children }) => {
   const requestRef = useRef(null);
   const abortRef = useRef(null);
   const registryFailureRef = useRef(false);
+  const sourceRowsRef = useRef([]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -53,6 +54,11 @@ export const OntologyProvider = ({ children }) => {
         // This prevents existing QIF/AP242 artifacts from disappearing while
         // their catalog migration is completed.
         const paths = ['/api/v1/ontologies', '/api/v1/ontology/registered'];
+        // Keep a source's last confirmed rows while that same identity refreshes.
+        // Otherwise a fast empty ingestion response briefly deletes native rows
+        // and consumers lose their selection before the catalog responds.
+        const availableSources = sourceRowsRef.current.slice();
+        const refreshedSources = new Array(paths.length);
         const results = await Promise.allSettled(paths.map(async path => {
           if (path !== '/api/v1/ontologies') return apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 });
           const rows = [];
@@ -73,7 +79,23 @@ export const OntologyProvider = ({ children }) => {
             offset = next;
           } while (!controller.signal.aborted);
           throw new DOMException('Aborted', 'AbortError');
-        }));
+        }).map((promise, index) => promise.then(response => {
+          if (controller.signal.aborted || abortRef.current !== controller || !mountedRef.current) return response;
+          const payload = response?.data || {};
+          const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
+          if (!Array.isArray(rows)) return response;
+          availableSources[index] = normalizeOntologyRows(rows);
+          refreshedSources[index] = availableSources[index];
+          const available = new Map();
+          // Merge in source order, regardless of response order: native wins.
+          availableSources.forEach(source => source?.forEach(row => {
+            if (row.value) available.set(row.value, available.has(row.value)
+              ? mergeOntologyMetadata(available.get(row.value), row) : row);
+          }));
+          setOntologies([...available.values()]);
+          setWarning('Registry refresh in progress. Available results are shown; completeness is not yet verified.');
+          return response;
+        })));
         const merged = new Map();
         let successes = 0;
         const failedSources = [];
@@ -100,6 +122,7 @@ export const OntologyProvider = ({ children }) => {
         if (controller.signal.aborted) return [];
         const ontologyList = [...merged.values()];
         if (mountedRef.current) {
+          sourceRowsRef.current = refreshedSources;
           registryFailureRef.current = failedSources.length > 0;
           setOntologies(ontologyList);
           setWarning(failedSources.length ? `Partial ontology list: ${failedSources.join(', ')} could not be loaded. Other registry results are shown; retry to verify completeness.` : '');
@@ -132,7 +155,7 @@ export const OntologyProvider = ({ children }) => {
    */
   useEffect(() => {
     fetchOntologies();
-    const refresh = () => { setOntologies([]); fetchOntologies(true); };
+    const refresh = () => { sourceRowsRef.current = []; setOntologies([]); fetchOntologies(true); };
     const changed = () => fetchOntologies(true);
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);

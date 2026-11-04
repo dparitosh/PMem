@@ -39,11 +39,12 @@ def test_existing_customer_schema_upgrade_preserves_records_and_is_idempotent(mo
             migrations.apply_migrations(db)
             assert db.execute('SELECT version,name,checksum,applied_at FROM depo_schema_migrations ORDER BY version').fetchall() == first_history
             # A failing future additive step must roll back its DDL and history.
-            broken = (18, 'fixture_rollback', ('CREATE TABLE fixture_partial(id integer)', 'SELECT missing_upgrade_column FROM fixture_partial'))
+            future_version = max(version for version, _, _ in migrations.MIGRATIONS) + 1
+            broken = (future_version, 'fixture_rollback', ('CREATE TABLE fixture_partial(id integer)', 'SELECT missing_upgrade_column FROM fixture_partial'))
             with patch.object(migrations, 'MIGRATIONS', [*migrations.MIGRATIONS, broken]):
                 with pytest.raises(migrations.MigrationExecutionError):
                     migrations.apply_migrations(db)
             assert db.execute("SELECT to_regclass('fixture_partial')").fetchone()[0] is None
-            assert db.execute('SELECT count(*) FROM depo_schema_migrations WHERE version=18').fetchone()[0] == 0
+            assert db.execute('SELECT count(*) FROM depo_schema_migrations WHERE version=%s', (future_version,)).fetchone()[0] == 0
         finally:
             db.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))

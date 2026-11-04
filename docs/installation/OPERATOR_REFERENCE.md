@@ -5344,3 +5344,75 @@ Deploy the complete matching release and run the normal repository-root `update-
 The Windows launcher now gives the runtime exclusive ownership of application `.out.log`/`.err.log` files so rotation works. Check `.bootstrap.err.log` if initialization fails before those files receive output. No new environment setting, package, database migration or credential rotation is required. Existing workflow receipts remain authoritative after reconnect; switching pages or browser history never approves work.
 
 Frontend upgrades check direct locked npm dependency versions before shutdown and enable checkpointed dependency installation when needed. For optional local UI measurements open /?measure_ui=1#/data-flow?view=runs; inspect script#depo-performance-probe in DevTools. Null means no observation, not a zero score. Measurements remain local and are not customer field certification. Offline installation requires cached locked packages or registry access.
+
+
+### Local acceptance fixes (2026-11-02)
+
+The Windows vanilla-reset isolation check recognizes the verified direct Python launcher of its own maintenance host; unrelated services and workers still prevent reset. Use the documented managed maintenance procedure in `docs/VANILLA_RESET.md`, not a manual schema drop. No new dependency or PostgreSQL migration is required for these fixes.
+
+After updating the frontend, reload the browser. Home distinguishes registered ontology artifacts from published graph resources and refreshes metrics when the tab regains focus. In Ontology Junction, choose **Class list** or **Class hierarchy**; restrictions remain accessible through **Axioms**. Data Flow approvals require a reviewer identity; use **Set reviewer for approvals** before approving a job definition.
+
+Merge validation fixes also require the matching backend release and a managed restart. Regenerate or resume and revalidate an old merge plan after upgrading: old validation evidence must not be reused across changed validator/policy fingerprints. Typed literals retain their RDF identity. Under `ONTOLOGY_GOVERNANCE_PROFILE=imported_standard`, warnings from the generated editorial metadata shapes remain visible advice; `enterprise_curated` and authored/custom semantic shapes remain strict. Approval/publication still use their existing authorized workflows. Successful requests slower than five seconds now emit a sanitized WARNING with request ID and route template for investigation. These changes require no credential rotation or schema drop.
+
+### Demo and upgrade verification — 2 November 2026
+
+Use [the current demo user guide](docs/DEMO-USER-GUIDE.md) and
+`deliverables/DEPO-Workflow-Audited.pptx` for examples, Change Control, approval,
+TRS, configuration baselines and the customer upgrade command sequence.
+`update-depo.ps1` upgrades a complete release already placed in the install root;
+it does not fetch repository changes. The root installer applies pending migrations
+including semantic datasets (015), business marts (016) and event pagination (017),
+verifies the schema/indexes, rebuilds the frontend and restarts matching APIs/workers.
+Preparing/populating analytics and publishing products are separate authorized jobs.
+
+The run-history read-budget correction requires the updated pipeline service and
+a managed restart. Lock/query cancellation returns a bounded retryable 503;
+retry the read, not an unverified replay. No new migration or package is required.
+External offline OWL imports remain a separate unresolved reasoning prerequisite.
+
+Upgrade regression entry point: `infra/windows/test-depo-update.ps1`. The obsolete
+duplicate `test-upgrade-flow.ps1` fixture has been removed; nonzero installer exits
+are covered by the maintained test. Real upgrade coverage is
+`backend/tests/test_customer_upgrade_postgres.py`: it only accepts
+`depo_acceptance_test`, creates a disposable schema, upgrades v11 through the
+current migrations, verifies retained records/credentials and idempotency, and
+checks rollback of a deliberately failing future migration. Never point this test
+at customer application databases.
+
+After reload, use **Resume saved plan** for a completed merge. It verifies the current publication receipt through read-only requests and does not repeat the write. An incomplete optional OWL-DL check is now identified separately: unresolved referenced imports require an approved local import bundle for a full check; structural review does not prove OWL-DL consistency.
+
+### Process inspection before customer upgrades (4 November 2026)
+
+Setup previously entered shutdown without the visibility/elevation guard used by manage-depo.ps1. An unreadable ingestion PID could interrupt an already-started batch. Setup now requests UAC elevation with the selected Python, reinstall and credential policy preserved. Setup, update and backend stop verify relevant tracked identities before the first shutdown request. Ownership and creation-time checks still run before termination.
+
+If UAC is cancelled, rerun the original command in PowerShell opened with Run as administrator. ExecutionPolicy Bypass does not grant process privileges. If identities remain hidden when elevated, investigate Windows CIM/WMI and process-access policy. Do not delete PID files or terminate all Python processes. After an interrupted shutdown, rerun complete setup after resolving privileges. This fix adds no migration or credential rotation; the updater still applies existing migrations and rebuilds the frontend.
+
+### Customer release reconciliation (4 November 2026)
+
+The root updater now always delegates dependency reconciliation to the checkpointed installer. Previously, a present runtime directory could cause an update to skip changed Python locks when frontend dependencies had not changed. Verified matching checkpoints still skip installation; changed Python, isolated-service/worker and frontend locks are installed. Retain access to the approved package sources or cached artifacts when deploying changed locks. `-InstallDependencies` remains a compatible optional argument, but is no longer necessary to obtain this verification.
+
+Ownership checks run during `-PreflightOnly` and before explicit timeout edits, not just before shutdown. Guided Setup resolves hidden identities before entering that preflight. Direct `install-depo.ps1` now validates the release package before dependency installation or migrations too. None of these checks authorizes a schema reset, credential replacement, workflow replay or publication.
+
+For an existing customer installation, place the complete matching release under the existing root, preserve `.env.local`, durable artifacts and installation checkpoints, then run from Administrator PowerShell:
+
+```powershell
+Set-Location -LiteralPath 'E:\App\PMem'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local -PreflightOnly
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 -Phase All -EnvFile .\.env.local
+& .\infra\windows\test-depo-browser-session.ps1 -EnvFile .\.env.local
+```
+
+Stop if preflight fails. After a successful upgrade, refresh the browser, reconnect access when required and inspect retained workflow receipts before retrying operations. A script/test pass in the development checkout is not customer-host acceptance.
+
+### Low-cost OpenAI demonstration profile
+
+Configure `USE_LLM=openai`, an accessible `OPENAI_MODEL`, and the key only in the root `.env.local`. Set `COMPANION_LLM_ENABLED=true` and `ONTOLOGY_AGENT_LLM_ENABLED=true` for model-backed demonstration flows. Restart with the existing `manage-depo.ps1 -Action Restart` after changing root settings. Credentials must never be included in the frontend build.
+
+`OPENAI_REASONING_EFFORT` is optional and accepts `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`; omit it for models without reasoning-effort support. The selected model must support the chosen value. For a verified accessible GPT-5 nano demo, `minimal` reduces reasoning overhead while the existing completion budgets, admission limits, approval controls and citation checks remain in effect. The provider can reject unsupported model/effort combinations; there is no silent model fallback. Check current model lifecycle and pricing before customer rollout: a low-cost legacy demo model is not a long-term deployment recommendation.
+
+For the Companion, `COMPANION_MAX_OUTPUT_TOKENS` bounds summary output between 128 and 4096 (default 768). For this GPT-5 nano demo, 2048 plus minimal reasoning accommodates cited business tables. Incomplete provider output is withheld and reported as `output_incomplete`, independently of authentication or listener failures.
+
+For the tested OpenAI agent demo, use `OLLAMA_PROPOSAL_MODE=native` (the existing setting name also applies to cloud providers). Native OpenAI calls request one action at a time. Recommendation goals expose only the selected analysis; the controller binds the user-selected identity, source scope and result limit, and then validates against the owning API contract. A retained successful read is required before the conclusion stage. This does not authorize graph writes or engineering changes.
+
+Optional local demonstration data can be generated with `backend\.dt_venv\Scripts\python.exe scripts\generate_engineering_demo.py --output outputs\engineering-demo`. This writes a labeled RDF fixture and a computed KPI receipt, without database writes. Register/review/publish it through the existing authorized workflow only when specifically approved for the test installation. It is not customer-approved data, real CAD geometry or a computed simulation. No install/update migration automatically seeds this fixture, drops application data, or changes existing customer model settings.

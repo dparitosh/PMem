@@ -1,7 +1,22 @@
 # Deliverables
 
-Current business and industry presentation: [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx).
-The same 20-slide deck is also available as [DEPO-AI-Led-Engineering-Marketing.pptx](DEPO-AI-Led-Engineering-Marketing.pptx).
+Current executive marketing bundle — updated 4 November 2026:
+
+- [Business outcomes presentation](NEXUS-Business-Outcomes-Marketing.pptx): 22 slides with icons, diagrams and business outcomes.
+- [Business brochure](NEXUS-Business-Outcomes-Marketing.docx): 8 pages, editable Word document.
+- [Brochure PDF](NEXUS-Business-Outcomes-Marketing.pdf): visual reading copy; use Word for editable text.
+- [Three-minute video script](NEXUS-Business-Outcomes-Video-Script.docx): six 30-second scenes with narration, captions and visual direction.
+
+Dedicated coverage includes decision support, similarity, recommendations, a 360-degree product view, three memory perspectives, and the business value of services, workers, agents, skills and personas. Industry scenarios are applicability examples, not measured customer outcomes or certification claims. Approval remains an accountable human decision.
+
+The DEPO-AI-Led-Engineering-Marketing filenames are compatibility copies of this current bundle. Earlier workflow and architecture decks below are background material and are not the current marketing deck.
+
+## Earlier reference material
+
+
+
+Earlier workflow presentation: [DEPO-Workflow-Audited.pptx](DEPO-Workflow-Audited.pptx).
+The DEPO-AI-Led-Engineering-Marketing files now contain the current marketing bundle listed above.
 Use these with the matching [Word brochure](DEPO-AI-Led-Engineering-Marketing.docx)
 and [PDF brochure](DEPO-AI-Led-Engineering-Marketing.pdf), revised 3 November 2026.
 Visible branding is Nexus; established filenames are retained for existing references.
@@ -64,3 +79,10 @@ not be used to regenerate the current business deck.
 Environment reference generators are in `tools/documentation/`. Run
 `python tools/documentation/expand_env_reference.py` from the repository root
 with document-generation dependencies installed. Their output remains here.
+
+## Final recorded demonstration
+
+- [Combined live demonstration — 7 minutes](NEXUS-Final-Live-Demo.mp4), with [captions](NEXUS-Final-Live-Demo.srt) and [notes](NEXUS-Final-Live-Demo-Notes.txt). Includes Catalog, Data Products and Metadata Vocabulary, gentle piano without narration, and a five-second Change Impact reading pause.
+- [PLMXML–AP242 merge review — 1 minute](NEXUS-PLMXML-AP242-Merge-Review.mp4), with [captions](NEXUS-PLMXML-AP242-Merge-Review.srt). Shows proposed matching scores; validation and publication are separate and were not completed in this recording.
+
+Recordings use local demo evidence and preserve its underlying provenance. They do not establish customer approval, completed OWL-DL validation or materialized customer analytics.

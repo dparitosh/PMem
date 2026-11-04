@@ -130,6 +130,7 @@ function isStandaloneServiceRequest(url) {
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    try {
     prepareSessionRequest(requestConfig);
     applyRequestDeadline(requestConfig);
     prepareMultipartHeaders(requestConfig);
@@ -173,6 +174,10 @@ apiClient.interceptors.request.use(
     }
     trackSessionRequest(requestConfig);
     return requestConfig;
+    } catch (failure) {
+      releaseRequest(requestConfig);
+      throw failure;
+    }
   },
   (error) => {
     logger.error('[API] Request could not be prepared');
@@ -200,8 +205,11 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const requestConfig = error?.config || {};
-    releaseRequest(requestConfig);
-    if (staleRequest(requestConfig)) throw new axios.CanceledError('Credentials changed; previous request discarded');
+    releaseRequest(requestConfig, true);
+    if (staleRequest(requestConfig)) {
+      releaseRequest(requestConfig);
+      throw new axios.CanceledError('Credentials changed; previous request discarded');
+    }
     if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|pipeline|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
     const method = String(requestConfig.method || 'get').toLowerCase();
     const retryCount = requestConfig.__retryCount || 0;
@@ -218,9 +226,12 @@ apiClient.interceptors.response.use(
           message: error.message,
         });
       }
-      await abortableDelay(backoff, requestConfig.signal);
+      try { await abortableDelay(backoff, requestConfig.signal); }
+      catch (failure) { releaseRequest(requestConfig); throw failure; }
       return apiClient(requestConfig);
     }
+
+    releaseRequest(requestConfig);
 
     const errorInfo = {
       status: error.response?.status,
@@ -687,6 +698,8 @@ export const requirementsAPI = {
 
 // ========== MODELING WORKBENCH ENDPOINTS ==========
 export const modelingAPI = {
+  xmiContext: (ontologyId, sourceId, signal) => apiClient.get(buildUrl(`/api/v1/modeling/xmi-context/${encodeURIComponent(ontologyId)}`), { params: { source_id: sourceId }, signal, timeout: 15000 }),
+  diagrams: (ontologyId, signal) => apiClient.get(buildUrl(`/api/v1/modeling/xmi-diagrams/${encodeURIComponent(ontologyId)}`), { signal, timeout: 30000 }),
   metamodel: () => apiClient.get(buildUrl(API.modeling.metamodel)),
   ensureIndexes: () => apiClient.post(buildUrl(API.modeling.indexes)),
   graph: (params = {}, signal) => apiClient.get(buildUrl(API.modeling.graph), { params, signal }),

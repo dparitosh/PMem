@@ -5,6 +5,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { UI_COLORS } from '../styles/uiTokens';
 import './LandingPage.css';
 import { useOntologies } from '../contexts/OntologyContext';
+import EmbeddedFoundationEntry from './ontology/EmbeddedFoundationEntry';
 
 const Chatbot = lazy(() => import('./Chatbot'));
 
@@ -61,45 +62,34 @@ export function ontologyTypeLabel(ontology) {
   return 'Ontology';
 }
 
-export function OntologyList({ ontologies, loading }) {
-  if (loading) return <div style={{ color: UI_COLORS.textSec, fontSize: 12, padding: 8 }}>Loading ontologies...</div>;
-  if (!ontologies.length) return <div style={{ color: UI_COLORS.textSec, fontSize: 12, padding: 8 }}>No ontologies registered yet.</div>;
-
-  return (
-    <div style={{ overflowX: 'auto' }} aria-label="Ontology registry table">
-      <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 12, overflowWrap: 'normal', whiteSpace: 'nowrap' }}>
-        <thead>
-          <tr style={{ background: 'var(--theme-color-component-2)', color: 'var(--theme-color-std-text)', borderBottom: '1px solid #cfd8e3' }}>
-            {['Name', 'Prefix', 'Type', 'Uses', 'Last used / registered'].map(h => (
-              <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {ontologies.map((o, i) => (
-            <tr key={o.id || i} style={{ background: i % 2 === 0 ? 'var(--theme-color-component-1)' : 'transparent' }}>
-              <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'normal', minWidth: 180, color: 'var(--ui-primary, #005a9c)' }}>
-                {o.label || o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
-              </td>
-              <td style={{ padding: '6px 10px' }}>{o.prefix || o.ontology_prefix || 'Not supplied'}</td>
-              <td style={{ padding: '6px 10px' }}>
-                <span style={{
-                  background: UI_COLORS.primaryLight, color: 'var(--ui-primary, #005a9c)',
-                  borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600,
-                }}>
-                  {ontologyTypeLabel(o).toUpperCase()}
-                </span>
-              </td>
-              <td style={{ padding: '6px 10px', color: 'var(--theme-color-std-text)' }}>{fmt(o.usageCount)}</td>
-              <td style={{ padding: '6px 10px', color: 'var(--theme-color-soft-text)' }}>
-                {o.lastUsed || o.created_at ? new Date(o.lastUsed || o.created_at).toLocaleDateString() : '-'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+export function OntologyList({ ontologies = [], loading }) {
+  if (loading && !ontologies.length) return <p role="status">Loading ontologies…</p>;
+  if (!ontologies.length) return <p>No ontologies registered yet. <a href="#/import">Import an ontology</a></p>;
+  return <section className="ix-landing-page__ontology-list" aria-label="Ontology registry">
+    <p className="ix-landing-page__registry-help">{ontologies.length} registered {ontologies.length === 1 ? 'ontology' : 'ontologies'}. Open one to inspect its vocabulary and publication.</p>
+    {loading && <p role="status">Refreshing registry…</p>}
+    <ul aria-label="Registered ontologies">
+      {ontologies.map((o, i) => {
+        const id = o.ontology_id || o.id || o.value;
+        const label = o.label || o.name || o.ontology_name || o.prefix || id || 'Unnamed ontology';
+        const prefix = o.prefix || o.ontology_prefix;
+        const date = o.created_at ? new Date(o.created_at) : null;
+        const validDate = date && !Number.isNaN(date.getTime());
+        const merged = String(o.source || '').startsWith('governed-merge:') || o.status === 'merged';
+        return <li key={id || i}>
+          <div className="ix-landing-page__ontology-name">{id ? <a href={`#/ontology?target=${encodeURIComponent(id)}`}>{label}</a> : <strong>{label}</strong>}</div>
+          <div className="ix-landing-page__ontology-meta"><span>{merged ? 'Merged vocabulary' : 'Registered vocabulary'}</span>{prefix && <span>Prefix: {prefix}</span>}</div>
+          <details><summary>Registration details</summary><dl>
+            <dt>Prefix</dt><dd>{prefix || 'Not supplied'}</dd>
+            <dt>Format</dt><dd>{ontologyTypeLabel(o)}</dd>
+            <dt>Source version</dt><dd>{o.version || o.ontology_version || 'Not supplied'}</dd>
+            <dt>Registered</dt><dd>{validDate ? date.toLocaleDateString() : 'Not supplied'}</dd>
+            <dt>Identity</dt><dd>{id || 'Not supplied'}</dd>
+          </dl><p>Registration does not establish graph publication or approval. Check the selected version in Ontology Junction.</p></details>
+        </li>;
+      })}
+    </ul>
+  </section>;
 }
 
 // â”€â”€â”€ Metrics breakdown tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -230,7 +220,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           <IxBadge type="label" variant="info" label="Digital thread workspace" />
           <h2>Engineering knowledge, connected. Decisions, grounded.</h2>
           <p>Govern ontology assets and expose traceable product knowledge across PLM, MBSE, and manufacturing.</p>
-          <p>Built on an embedded industrial vocabulary connecting physical parts, designs, documents and activities through reviewed mappings.</p>
+          <p className="ix-landing-page__foundation-brand"><strong>Nexus — Industrial knowledge grounded in ISO 23726-1 / PCA IDO.</strong></p><p>Embedded IDO foundation with a Nexus application ontology connects physical parts, designs, documents and activities through reviewed mappings.</p>
         </div>
         <div className="ix-landing-page__intro-actions">
           {lastRefreshed && <span>Updated {lastRefreshed.toLocaleTimeString()}</span>}
@@ -241,13 +231,13 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       <IxLayoutGrid className="ix-landing-page__workspace" columns={12} gap="16" noMargin>
         <IxCol size={4} sizeMd={12}>
           <div className="ix-landing-page__insights">
-          <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__registry">
-            <IxCardTitle>Ontology registry</IxCardTitle>
-            <IxCardContent>
+          <section className="ix-landing-page__card ix-landing-page__registry" aria-label="Ontology library">
+            <h3>Ontology registry</h3>
+              <details className="ix-landing-page__foundation-summary"><summary>Embedded foundation · ISO 23726-1 / IDO</summary><EmbeddedFoundationEntry /></details>
+              <h4>Registered ontologies</h4>
               {ontologiesWarning && <div role="alert" className="ix-landing-page__alert">{ontologiesWarning}<IxButton type="button" variant="tertiary" onClick={() => loadOntologies(true)}>Retry registries</IxButton></div>}
               {ontologiesError ? <div role="alert" className="ix-landing-page__alert">{ontologiesError}<IxButton type="button" variant="tertiary" onClick={loadOntologies}>Retry</IxButton></div> : <OntologyList ontologies={ontologies} loading={ontologiesLoading} />}
-            </IxCardContent>
-          </IxCard>
+          </section>
           <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__profile">
             <IxCardTitle>Graph profile</IxCardTitle>
             <IxCardContent>

@@ -84,6 +84,9 @@ if ($ReplaceExistingCredentials -and ($settings['AUTH_MODE'] -ne 'token' -or $se
   throw '-ReplaceExistingCredentials requires AUTH_MODE=token and DEPO_CREDENTIAL_STORE=postgres.'
 }
 . (Join-Path $windows 'deployment-process-guards.ps1')
+Invoke-DepoStage 'Release package validation (before installation or migrations)' {
+  & (Join-Path $root 'infra/deployment/test-installation-package.ps1')
+}
 Invoke-DepoStage 'Stopped backend verification (before installation or migrations)' {
   Assert-DepoWindowsManagementAccess
   Assert-DepoDeploymentStopped -Root $root

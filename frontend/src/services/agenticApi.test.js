@@ -5,6 +5,15 @@ import { buildSemanticServiceUrl } from '../config';
 
 afterEach(() => clearServiceAuthToken());
 
+test('agent preparation errors detach caller cancellation listeners',()=>{
+ const parent=new AbortController();
+ const remove=vi.spyOn(parent.signal,'removeEventListener');
+ try {
+   expect(()=>applyAgenticAuth({signal:parent.signal,headers:{get(){throw new Error('invalid headers');}}})).toThrow('invalid headers');
+   expect(remove).toHaveBeenCalledWith('abort',expect.any(Function));
+ } finally {remove.mockRestore();}
+});
+
 test('execution metadata captures the page without modifying tool inputs',()=>{
  window.location.hash='#/ontology';
  const inputs={ontology_id:'selected'};

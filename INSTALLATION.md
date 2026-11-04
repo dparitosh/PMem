@@ -191,7 +191,7 @@ Continue only after preflight passes:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1 -EnvFile .\.env.local
 ```
 
-Use `-InstallDependencies` on the second command when dependency files changed. Do not use `-SkipFrontend` for this release's import, workflow-access or graph-display fixes. The updater validates agentic settings before shutdown, applies pending database migrations/indexes, rebuilds the UI and restarts services. It retains credentials, artifacts, workflow history and publication decisions. It does not replay failed imports or approve pending mappings.
+The updater reconciles Python and frontend dependency locks automatically. Its checkpoints reuse verified unchanged dependencies; `-InstallDependencies` remains accepted for older commands. Do not use `-SkipFrontend` for this release's import, workflow-access or graph-display fixes. It validates settings and tracked process ownership before shutdown, applies pending migrations/indexes, rebuilds the UI and restarts services. Credentials, artifacts, histories and publication decisions are retained; failed imports and pending mappings are not replayed or approved.
 
 Ontology inspection now uses `backend/Services/ontology_semantic_runtime.py`; the former optional Owlready runtime is removed. Semantica 0.6.7 is already pinned in `backend/requirements.txt`, `backend/requirements-lock.txt` and the ontology, graph and schema-sets service profiles. Do not install Owlready to resolve an ontology error. If those service environments predate the pinned profiles, run `update-depo.ps1 -EnvFile .\.env.local -InstallDependencies`. Lightweight conversion services can inspect asserted RDF with RDFLib; their result explicitly reports when Semantica validation has not run. Structural validation does not prove logical consistency. Existing SHACL, OWL-RL, lifecycle and publication checks remain separate.
 
@@ -291,37 +291,8 @@ Use the [detailed operator reference](docs/installation/OPERATOR_REFERENCE.md#re
 
 See [semantic event recovery](docs/SEMANTIC-EVENT-WORKFLOW.md), [memory configuration](docs/AGENT_MEMORY_AUGMENTATION.md) and [live memory demo readiness](docs/demo-narratives/memory/DEMO.md). Optional graph memory remains off unless explicitly configured. Do not interpret stored conversations, approved hints or completed workflows as proof of current business correctness.
 
-### Local acceptance fixes (2026-11-02)
+See [release verification notes](docs/installation/OPERATOR_REFERENCE.md#local-acceptance-fixes-2026-11-02) for the November fixes, demo steps and upgrade acceptance checks.
 
-The Windows vanilla-reset isolation check recognizes the verified direct Python launcher of its own maintenance host; unrelated services and workers still prevent reset. Use the documented managed maintenance procedure in `docs/VANILLA_RESET.md`, not a manual schema drop. No new dependency or PostgreSQL migration is required for these fixes.
+If Windows hides a tracked process identity, Setup requests elevation before shutdown. Run the same launcher as administrator if elevation is unavailable. ExecutionPolicy Bypass does not grant process privileges; keep PID files and credentials.
 
-After updating the frontend, reload the browser. Home distinguishes registered ontology artifacts from published graph resources and refreshes metrics when the tab regains focus. In Ontology Junction, choose **Class list** or **Class hierarchy**; restrictions remain accessible through **Axioms**. Data Flow approvals require a reviewer identity; use **Set reviewer for approvals** before approving a job definition.
-
-Merge validation fixes also require the matching backend release and a managed restart. Regenerate or resume and revalidate an old merge plan after upgrading: old validation evidence must not be reused across changed validator/policy fingerprints. Typed literals retain their RDF identity. Under `ONTOLOGY_GOVERNANCE_PROFILE=imported_standard`, warnings from the generated editorial metadata shapes remain visible advice; `enterprise_curated` and authored/custom semantic shapes remain strict. Approval/publication still use their existing authorized workflows. Successful requests slower than five seconds now emit a sanitized WARNING with request ID and route template for investigation. These changes require no credential rotation or schema drop.
-
-### Demo and upgrade verification — 2 November 2026
-
-Use [the current demo user guide](docs/DEMO-USER-GUIDE.md) and
-`deliverables/DEPO-Workflow-Audited.pptx` for examples, Change Control, approval,
-TRS, configuration baselines and the customer upgrade command sequence.
-`update-depo.ps1` upgrades a complete release already placed in the install root;
-it does not fetch repository changes. The root installer applies pending migrations
-including semantic datasets (015), business marts (016) and event pagination (017),
-verifies the schema/indexes, rebuilds the frontend and restarts matching APIs/workers.
-Preparing/populating analytics and publishing products are separate authorized jobs.
-
-The run-history read-budget correction requires the updated pipeline service and
-a managed restart. Lock/query cancellation returns a bounded retryable 503;
-retry the read, not an unverified replay. No new migration or package is required.
-External offline OWL imports remain a separate unresolved reasoning prerequisite.
-
-Upgrade regression entry point: `infra/windows/test-depo-update.ps1`. The obsolete
-duplicate `test-upgrade-flow.ps1` fixture has been removed; nonzero installer exits
-are covered by the maintained test. Real upgrade coverage is
-`backend/tests/test_customer_upgrade_postgres.py`: it only accepts
-`depo_acceptance_test`, creates a disposable schema, upgrades v11 through the
-current migrations, verifies retained records/credentials and idempotency, and
-checks rollback of a deliberately failing future migration. Never point this test
-at customer application databases.
-
-After reload, use **Resume saved plan** for a completed merge. It verifies the current publication receipt through read-only requests and does not repeat the write. An incomplete optional OWL-DL check is now identified separately: unresolved referenced imports require an approved local import bundle for a full check; structural review does not prove OWL-DL consistency.
+For optional model and local demo settings, see the [OpenAI demonstration profile](docs/installation/OPERATOR_REFERENCE.md#low-cost-openai-demonstration-profile).

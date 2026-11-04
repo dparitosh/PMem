@@ -178,7 +178,7 @@ test('cross-tab logout clears access without copying credential material', () =>
   const signal=localStorage.getItem('depo.sessionSignal.v1');
   expect(signal).not.toContain('depo_session_');
   connect();
-  const currentSignal=JSON.stringify({...JSON.parse(signal),sentAt:Date.now()});
+  const currentSignal=JSON.stringify({...JSON.parse(signal),sentAt:Date.now(),revision:Number(localStorage.getItem('depo.sessionClock.v1'))+1});
   window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:currentSignal}));
   expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('');
 });

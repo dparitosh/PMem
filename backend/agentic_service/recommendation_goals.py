@@ -40,6 +40,17 @@ def validate_read(context, tool_id, inputs):
         raise ValueError('Recommendation action changed the selected result limit')
 
 
+def bound_inputs(context):
+    """User-selected read inputs are controller state, not model-generated text."""
+    chosen = selection(context)
+    if not chosen: raise ValueError('No recommendation was selected')
+    result = {'change_name' if chosen['service'] == 'change-impact' else 'part_name': chosen['object'],
+              'scope': chosen['scope']}
+    if chosen['node_id']: result['node_id'] = chosen['node_id']
+    if chosen['service'] == 'similar-parts': result['top_n'] = chosen['top_n']
+    return result
+
+
 def completion_evidence(context, observations, evidence_steps):
     selected = selection(context)
     if not selected:
@@ -53,7 +64,15 @@ def completion_evidence(context, observations, evidence_steps):
         validate_read(context, observation['tool_id'], observation.get('inputs', {}))
         policy = result.get('decision_policy')
         if isinstance(policy, dict) and policy.get('status') in POLICY_STATES:
+            fields = {'change-impact': [('assembly_impact','assembly records'),('process_impacts','manufacturing-process records'),('impacted_requirements','requirement records')],
+                      'similar-parts': [('similar_parts','comparison candidates')],
+                      'manufacturing': [('direct_processes','direct manufacturing-process records')]}[selected['service']]
+            counts = [label + ': ' + str(len(result[key])) for key, label in fields if isinstance(result.get(key),list)]
+            summary = selected['object'] + ' — ' + ('; '.join(counts) if counts else 'selected analysis evidence retained') + '. '
+            summary += 'These are returned records in a bounded view, not whole-graph totals or proof of absence. '
+            summary += 'Decision policy: ' + policy['status'].replace('_',' ') + '. Review configuration, effectivity and missing evidence before acting. No engineering change or substitution is approved.'
             return {'recommendation_observation_id': observation['id'],
+                    'business_summary': summary,
                     **({'semantic_support': result['semantic_support']} if isinstance(result.get('semantic_support'), dict) else {}),
                     'decision_policy_status': policy['status'], 'advisory_only': True}
     raise ValueError('Complete only after citing selected recommendation evidence with a policy assessment')

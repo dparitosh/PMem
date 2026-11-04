@@ -28,6 +28,13 @@ def selected(agent_id):
     return agent, tools
 
 
+def scoped_tools(tools, context):
+    """A selected recommendation needs its own read, not every analyst tool."""
+    from .recommendation_goals import selection
+    chosen = selection(context or {})
+    return [tool for tool in tools if tool['id'] == chosen['tool_id']] if chosen else tools
+
+
 def model_contract():
     from .local_llm import settings
     provider, model, endpoint, _, _ = settings()
@@ -109,6 +116,7 @@ async def create_goal(agent_id: str, payload: ToolSuggestionBody, request: Reque
         raise HTTPException(409, 'Read goals require durable worker execution and server token authorization')
     try:
         agent, tools = await asyncio.to_thread(selected, agent_id)
+        tools = scoped_tools(tools, context)
     except (ValueError, KeyError):
         raise HTTPException(422, 'Choose an agent with registered read tools')
     if recommendation and not any(tool['id'] == recommendation['tool_id'] for tool in tools):
@@ -198,6 +206,7 @@ async def execute_candidate(record):
         from .context_envelope import verify
         verify(record, context=record.get('context') or {}, contract_digest=record.get('contract_digest', ''))
         agent, tools = await asyncio.to_thread(selected, record['agent_id'])
+        tools = scoped_tools(tools, record.get('context'))
         binding = model_contract()
     except (ValueError, KeyError):
         await asyncio.to_thread(store.compare_and_put, record['run_id'], record,
@@ -264,12 +273,26 @@ async def execute_candidate(record):
         if budget < 2048:
             raise ValueError('Selected tools leave no model context for the investigation; narrow the tool selection')
         scratchpad = engine.scratchpad(claimed, limit=min(120000, budget))
-        proposal = await suggest_tool(prompt_agent, [*real, *[tool for tool in available if tool['id'].startswith('goal.')]],
-                                      claimed['goal'], context={'untrusted_scratchpad': scratchpad})
+        from .recommendation_goals import selection, bound_inputs
+        chosen = selection(claimed.get('context') or {})
+        visible = [*real, *[tool for tool in available if tool['id'].startswith('goal.')]]
+        if chosen:
+            visible = [{**tool, 'description': tool.get('description','') + ' The controller supplies the exact user-selected object and scope; supply no arguments.',
+                        'input_schema': {'type':'object','properties':{},'additionalProperties':False}}
+                       if tool['id'] == chosen['tool_id'] else tool for tool in visible]
+            for tool in visible:
+                if tool['id'] == engine.COMPLETE['id']:
+                    tool['input_schema'] = copy.deepcopy(tool['input_schema'])
+                    tool['input_schema']['properties'].pop('semantic_conclusion', None)
+        proposal = await suggest_tool(prompt_agent, visible, claimed['goal'], context={'untrusted_scratchpad': scratchpad})
+        if chosen and proposal.get('tool_id') == chosen['tool_id']:
+            if proposal.get('inputs') != {}: raise ValueError('Bound recommendation read accepts no model-supplied arguments')
+            proposal['inputs'] = bound_inputs(claimed['context'])
         await verify_sources(claimed, dict(request.headers))
         return proposal
     async def dispatch(tool_id, inputs):
         current_agent, current_tools = await asyncio.to_thread(selected, claimed['agent_id'])
+        current_tools = scoped_tools(current_tools, claimed.get('context'))
         if engine.contract(current_agent, current_tools) != claimed['contract_digest']:
             raise HTTPException(403, 'Read goal tool contract changed')
         await asyncio.to_thread(verify_grant, claimed['credential_fingerprints'])

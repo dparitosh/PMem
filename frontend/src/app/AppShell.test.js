@@ -160,7 +160,9 @@ test('a subsequent credential rejection invalidates an earlier verified banner',
 test('expands the Companion table workspace without remounting its input', () => {
   render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} showChat onToggleChat={vi.fn()} rightDrawer={<input aria-label="Question fixture" defaultValue="Part PMI" />}><div>Page</div></AppShell>);
   const input=screen.getByRole('textbox',{name:'Question fixture'});
+  expect(screen.getByText('Page').closest('.depo-ix-page')).toHaveClass('depo-ix-page--with-chat');
   fireEvent.click(screen.getByRole('button',{name:'Expand Knowledge Companion'}));
+  expect(screen.getByText('Page').closest('.depo-ix-page')).not.toHaveClass('depo-ix-page--with-chat');
   expect(screen.getByRole('button',{name:'Expand Knowledge Companion'})).toHaveAttribute('aria-pressed','true');
   expect(screen.getByRole('textbox',{name:'Question fixture'})).toBe(input);
   expect(input).toHaveValue('Part PMI');

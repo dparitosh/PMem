@@ -18,6 +18,11 @@ def test_credential_option_is_validated_before_installation_side_effects(tmp_pat
         pytest.skip('Windows PowerShell required')
     windows = tmp_path / 'infra/windows'
     windows.mkdir(parents=True)
+    deployment=tmp_path/'infra/deployment'
+    deployment.mkdir()
+    # Package structure is tested separately; this fixture isolates credential
+    # option validation before the first process-management side effect.
+    (deployment/'test-installation-package.ps1').write_text('$global:LASTEXITCODE=0')
     shutil.copyfile(ROOT/'install-depo.ps1', tmp_path/'install-depo.ps1')
     shutil.copyfile(ROOT/'infra/windows/native-install-command.ps1', windows/'native-install-command.ps1')
     (tmp_path/'.env.local').write_text('AUTH_MODE='+mode+'\nDEPO_CREDENTIAL_STORE='+store+'\n')

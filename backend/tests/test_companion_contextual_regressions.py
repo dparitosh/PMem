@@ -4,6 +4,14 @@ import httpx
 import pytest
 
 from backend.depo_platform.plm_questions import intent, requirement_subject
+from backend.depo_platform.plm_questions import business_subject
+
+
+def test_selected_housing_reference_does_not_filter_by_instruction_text():
+    question = 'What PMI and requirement details are recorded for this housing? Show the values and recorded associations.'
+    assert business_subject(question, 'selected-node') == ''
+    assert business_subject('Show requirements for SYN Housing P1001.', 'selected-node') == 'SYN Housing P1001'
+    assert business_subject('Show requirements for this housing.') == 'this housing'
 from backend.agentic_service import companion, companion_context
 
 
@@ -229,3 +237,35 @@ def test_http_chat_round_trip_preserves_selected_identity_and_retains_the_valida
     assert stored['graph_context']['node_id']=='selected-id'
     if answerable:assert '| Housing | Diameter 5 mm |' in body['response']
     else:assert 'could not verify' in body['response']
+
+def test_ap242_and_mbse_values_survive_rdf_property_projection():
+    import json
+    from backend.agentic_service.companion import descriptive_properties
+    result=descriptive_properties({'rdf_properties':json.dumps({
+        'urn:ap242/datum':[{'value':'A'}], 'urn:ap242/geometry':[{'value':'Cylindrical surface'}],
+        'urn:mbse/requirementText':[{'value':'Operate continuously'}], 'urn:bom/quantity':[{'value':2}],
+        'urn:secret/password':[{'value':'hidden'}]})})
+    assert result['datum']=='A' and result['geometry']=='Cylindrical surface'
+    assert result['requirementText']=='Operate continuously' and result['quantity']=='2'
+    assert 'hidden' not in str(result)
+
+def test_cad_detail_question_does_not_route_to_name_only_product_inventory():
+    from backend.depo_platform.plm_questions import intent
+    assert intent('Show Motor Cover Machined CAD part details: part number, revision, material and recorded links.') == ''
+    assert intent('Show AP242 part details with shape and geometry.') == ''
+
+def test_requirement_description_reads_retained_rdf_literals():
+    import json
+    from backend.graph_service.plm_answers import recorded_detail
+    assert recorded_detail(json.dumps({'urn:demo/description':[{'value':'Operate continuously for eight hours'}]}))=='Operate continuously for eight hours'
+    assert recorded_detail(json.dumps({'urn:demo/password':[{'value':'hidden'}]}))==''
+    assert recorded_detail('invalid')==''
+
+def test_pmi_answer_shows_values_units_and_datums_without_raw_rdf():
+    import json
+    from backend.graph_service.plm_answers import pmi_detail
+    from backend.agentic_service.business_answers import render
+    detail=pmi_detail(json.dumps({'urn:demo/value':[{'value':0.02}],'urn:demo/unit':[{'value':'mm'}],'urn:demo/datum':[{'value':'A'}],'urn:demo/password':[{'value':'hidden'}]}))
+    text=render([{'intent':'parts_with_pmi','resource_id':'demo','rows':[{'part':'Housing','pmi':'Bore tolerance','characteristic':detail,'association':'Recorded typed association','association_status':'recorded_association'}]}])
+    assert '0.02' in text and 'mm' in text and 'Datum: A' in text
+    assert 'hidden' not in text and 'urn:demo' not in text

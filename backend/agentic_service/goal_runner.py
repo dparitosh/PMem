@@ -243,6 +243,32 @@ async def drive(record, *, propose, dispatch, save, tools):
                 record['decisions'] += 1
                 await persist()
                 available = [PLAN, NEEDS_INPUT] if not record['plans'] else [*tools, COMPLETE, NEEDS_INPUT] + ([PLAN] if len(record['plans']) < 3 else [])
+                # A recommendation is already a user-selected bounded read.
+                # After retaining its result, ask for a conclusion instead of
+                # inviting another identical read or an unrelated re-plan.
+                from .recommendation_goals import selection, completion_evidence
+                chosen = selection(record.get('context', {}))
+                if chosen and not record['plans']:
+                    available = [PLAN]
+                elif chosen:
+                    completed = []
+                    for observation in record['observations']:
+                        try:
+                            completion_evidence(record['context'], [observation], [observation['id']])
+                            completed.append(observation['id'])
+                        except (ValueError, KeyError):
+                            pass
+                    if completed:
+                        conclusion = copy.deepcopy(COMPLETE)
+                        conclusion['input_schema']['properties']['evidence_steps']['items']['enum'] = completed
+                        available = [conclusion]
+                    elif any(item.get('tool_id') == chosen['tool_id'] and item.get('status') == 'failed' for item in record['observations']):
+                        record.update(status='blocked', error_code='recommendation_read_failed',
+                                      message='The selected read failed. Review its retained error and restore the source before starting a new investigation.')
+                        await persist()
+                        return record
+                    else:
+                        available = [tool for tool in tools if tool['id'] == chosen['tool_id']]
                 proposal = await propose(available, scratchpad(record))
                 try:
                     tool_id, inputs = validate_action(record, proposal, tools)

@@ -1,12 +1,5 @@
 """Read-only examples; prompts request evidence rather than assert data exists."""
-HOME_PROMPTS = [
-    'Find product and assembly information with source references.',
-    'Find requirement-to-model links and identify missing traceability evidence.',
-    'Find MBSE functions, system components and their recorded relationships.',
-    'Find quality and measurement evidence, and explain what is missing.',
-    'Summarize saved AP242–QIF mapping reviews and distinguish proposals from published mappings.',
-    'Find source provenance and lineage for ingested engineering data.',
-]
+HOME_PROMPTS = ['Show AP242 product and CAD part details: part number, revision, description, shape and geometry, with source references.', 'Which parts have recorded PMI dimensions, tolerances and datums? Show the part-to-PMI links and values.', 'Show requirement specifications, their descriptions and recorded links to parts and MBSE elements.', 'Show MBSE blocks, functions, interfaces and their recorded requirement relationships.', 'Show the manufacturing BOM: parent assemblies, child parts, recorded quantities and manufacturing process links.', 'Show the selected CAD part’s recorded links to design files, assemblies, simulation datasets and requirements.']
 PAGE_PROMPTS = {
     'recommendations': [
         'Compare the selected part with alternatives using recorded dimensions, materials and units; identify conflicts and missing evidence.',

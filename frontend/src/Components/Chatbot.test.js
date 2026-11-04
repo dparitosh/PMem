@@ -337,7 +337,7 @@ test('malformed sample-query responses retain safe prompts',async()=>{
  render(<Chatbot />);
  await waitFor(()=>expect(global.fetch).toHaveBeenCalled());
  expect(screen.getByRole('button',{name:'Send chat question'})).toBeInTheDocument();
- expect(screen.getByRole('button',{name:'Find MBSE functions, system components and their recorded relationships.'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'Show MBSE blocks, functions, interfaces and their recorded requirement relationships.'})).toBeVisible();
  expect(screen.queryByRole('button',{name:'Find ontology resources matching product'})).not.toBeInTheDocument();
 });
 
@@ -418,4 +418,23 @@ test('navigation restores only the selected page history without losing the conv
  rerender(<Chatbot pageId="home"/>);
  expect(await screen.findByText('Retained motor evidence')).toBeVisible();
  expect(fetcher.mock.calls.some(([url])=>String(url).includes('page=graph'))).toBe(true);
+});
+
+
+test('completed graph answers focus retained identities in the selected scope', async () => {
+ setCredentialProfile('GRAPH_READ_TOKEN','focus-fixture');
+ const observed=vi.fn();window.addEventListener('nexus:companion-graph-evidence',observed);
+ let sent=false;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,headers:{get:()=>null},json:async()=>({queries:[]})});
+  const evidence=[{evidence_type:'business_answer',rows:[{subject_id:'part',requirement_id:'req'}]}];
+  const frames='data: '+JSON.stringify({response:'Recorded requirement',evidence,answerable:true})+'\n\ndata: {"done":true}\n\n';
+  return Promise.resolve({ok:true,status:200,headers:{get:()=>null},body:{getReader:()=>({read:async()=>{if(sent)return {done:true};sent=true;return {done:false,value:bytes(frames)};}})}});
+ });
+ render(<Chatbot pageId="graph" nodeId="part" ontologyId="ontology-A" ontologyPrefix="demo"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Which requirements are associated with this part?'}});
+ fireEvent.click(screen.getByLabelText('Send chat question'));
+ await waitFor(()=>expect(observed).toHaveBeenCalledTimes(1));
+ expect(observed.mock.calls[0][0].detail).toEqual({ids:['part','req'],rootId:'part',ontologyId:'ontology-A',ontologyPrefix:'demo'});
+ window.removeEventListener('nexus:companion-graph-evidence',observed);
 });

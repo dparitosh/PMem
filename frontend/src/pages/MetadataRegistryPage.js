@@ -68,7 +68,7 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
 }
 
 export default function MetadataRegistryPage() {
-  const { ontologies, loading, error, lastUpdated, fetchOntologies } = useOntologies();
+  const { ontologies, loading, error, warning, lastUpdated, fetchOntologies } = useOntologies();
   const [query, setQuery] = useState('');
   const [section, setSection] = useRouteView(REGISTRY_VIEWS,'assets',undefined,'#/registry');
   const [selectedOntology, setSelectedOntology] = useState('');
@@ -319,6 +319,7 @@ export default function MetadataRegistryPage() {
           </button>
         </div>
         <div className="depo-panel__body" style={{ display: 'grid', gap: 12 }}>
+          {warning && <p role="status" className="depo-alert depo-alert--warning">{warning}</p>}
           {registryStale && <p role="status">Registry refresh failed. Retained rows may be stale; current counts are unavailable until refresh succeeds.</p>}
           <WorkspaceTabs label="Metadata registry views" tabs={[{id:'assets',label:'Registry assets'},{id:'dictionary',label:'Data Dictionary'}]} value={section} onChange={setSection} />
 

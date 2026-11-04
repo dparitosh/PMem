@@ -9,6 +9,7 @@ import { clearClientSessionId, getClientSessionId, setClientSessionId } from '..
 import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection, wasBrowserSessionExpired } from '../services/serviceAuth';
 import { createChatFrameParser } from '../services/chatStreamFrames';
 import { companionFallbackPrompts } from '../services/companionPrompts';
+import { companionEvidenceIds } from '../features/graph/companionGraphEvidence';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -289,6 +290,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         setStatusLabel(null);
                         setShowSpinner(false);
                         if (!streamFailed && setChatResults) setChatResults([{ query: validated, response: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, timestamp: new Date().toISOString() }]);
+                        if (!streamFailed && pageId === 'graph') {
+                            const ids = companionEvidenceIds(responseEvidence, scopeNodeId);
+                            window.dispatchEvent(new CustomEvent('nexus:companion-graph-evidence', {detail: {ids, rootId:scopeNodeId, ontologyId:scopeId, ontologyPrefix:scopePrefix}}));
+                        }
                     } else if (parsed.error) {
                         streamCompleted = true;
                         streamFailed = true;

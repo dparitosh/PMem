@@ -4,6 +4,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Boxes, Network, GitFork, Layers, RefreshCcw, ZoomIn, ZoomOut, ScanSearch } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import graphApi from '../services/graphApi';
+import SysMLDiagram from './SysMLDiagram';
+import ModelTraceability from './ModelTraceability';
+import GraphInvestigation from '../features/graph/GraphInvestigation';
+import { useOntologies } from '../contexts/OntologyContext';
 import GraphVisualizationWidget from '../Components/GraphMiner/GraphVisualizationWidget';
 import { createDiagramModel } from '../diagram/engine/diagramEngine';
 import './ModelWorkbenchPage.css';
@@ -67,6 +71,7 @@ function normalizeDataset(payload) {
     links: Array.from(linksById.values()).sort((a, b) => a.type.localeCompare(b.type)),
     message: data.message || payload?.message || '',
     representations: (data.representations || data.views || []).map((item) => ({
+      ...item,
       id: String(item.id || item.identifier || item.name || ''),
       name: String(item.name || item.label || item.id || 'Diagram'),
       type: String(item.type || 'Diagram'),
@@ -325,8 +330,16 @@ function TreeBranch({ item, selectedId, onSelect, depth = 0 }) {
   );
 }
 
-export default function ModelWorkbenchPage({ onNavigate }) {
+export default function ModelWorkbenchPage({ onNavigate, onBusinessSelection, toggleChat }) {
   const [activeView, setActiveView] = useState('architecture');
+  const { ontologies, loading: sourcesLoading, error: sourcesError } = useOntologies();
+  const [sourceByMode, setSourceByMode] = useState({});
+  const modelSources = useMemo(() => ontologies.filter(source => {
+    const format = [source.type, source.schema_format, source.file_type, source.ontology_type, source.label, source.prefix].filter(Boolean).join(' ');
+    return activeView === 'architecture' ? /archimate/i.test(format) : /xmi|sysml|mbse|uml/i.test(format);
+  }), [ontologies, activeView]);
+  const sourceId = sourceByMode[activeView] ?? modelSources[0]?.ontology_id ?? '';
+  const selectedSource = modelSources.find(source => source.ontology_id === sourceId);
   const [query, setQuery] = useState('');
   const [dataset, setDataset] = useState({ nodes: [], links: [], message: '', representations: [] });
   const [selectedId, setSelectedId] = useState('');
@@ -350,14 +363,17 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     setDecompositionRootId('');
     try {
       const response = activeView === 'architecture'
-        ? await graphApi.getArchitectureGraph('archimate', 1800, controller.signal)
-        : await API_METHODS.modeling.graph({ limit: 1600 }, controller.signal);
+        ? await graphApi.getArchitectureGraph(selectedSource?.prefix || 'archimate', 1800, controller.signal)
+        : sourceId
+          ? await API_METHODS.modeling.diagrams(sourceId, controller.signal)
+          : await API_METHODS.modeling.graph({ limit: 1600 }, controller.signal);
       if (requestId !== loadRequestIdRef.current) return;
       const normalized = normalizeDataset(response?.data);
+      if (response?.data?.status === 'error') throw new Error(response.data.message || 'Model projection unavailable');
       setDataset(normalized);
       setSelectedId('');
       setActiveTreeItem(null);
-      setActiveRepresentationId(normalized.representations?.[0]?.id || '');
+      setActiveRepresentationId((normalized.representations.find(view => /Requirement Diagram|Block Definition/.test(view.type)) || normalized.representations[0])?.id || '');
       setDecompositionRootId('');
       setReactFlowGraph(null);
       setStatus({ loading: false, error: '' });
@@ -371,7 +387,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
       setReactFlowGraph(null);
       setStatus({ loading: false, error: apiErrorMessage(err, 'Unable to load model viewer data.') });
     }
-  }, [activeView]);
+  }, [activeView, sourceId, selectedSource?.prefix, selectedSource?.label]);
 
   useEffect(() => { loadView(); }, [loadView]);
   useEffect(() => () => {
@@ -383,11 +399,52 @@ export default function ModelWorkbenchPage({ onNavigate }) {
   const matchedNodes = useMemo(() => dataset.nodes.filter((node) => matchesQuery(node, query)), [dataset.nodes, query]);
   const activeRepresentation = useMemo(() => (dataset.representations || []).find((item) => item.id === activeRepresentationId) || null, [dataset.representations, activeRepresentationId]);
 
+  const [engineeringContext, setEngineeringContext] = useState(null);
+  const [contextStatus, setContextStatus] = useState({loading:false,error:''});
+  const contextGeneration = useRef(0);
+  const [relationshipPage, setRelationshipPage] = useState(0);
+
   const selectedElement = useMemo(() => dataset.nodes.find((node) => node.id === selectedId) || null, [dataset.nodes, selectedId]);
+
+  useEffect(() => {
+    const generation = ++contextGeneration.current;
+    const controller = new AbortController();
+    setEngineeringContext(null); setRelationshipPage(0);
+    if (!sourceId || !selectedElement || activeView !== 'mbse') {
+      setContextStatus({loading:false,error:''}); return () => controller.abort();
+    }
+    setContextStatus({loading:true,error:''});
+    API_METHODS.modeling.xmiContext(sourceId, selectedElement.id, controller.signal).then(response => {
+      if (controller.signal.aborted || generation !== contextGeneration.current) return;
+      setEngineeringContext({key:`${sourceId}|${selectedElement.id}`, ...response.data});
+      setContextStatus({loading:false,error:''});
+    }).catch(error => {
+      if (controller.signal.aborted || generation !== contextGeneration.current) return;
+      setContextStatus({loading:false,error:apiErrorMessage(error,'Engineering associations could not be checked. Retry Refresh.')});
+    });
+    return () => controller.abort();
+  }, [sourceId, selectedElement, activeView]);
+  const currentContext = engineeringContext?.key === `${sourceId}|${selectedId}` ? engineeringContext : null;
+  const selectedGraphId = sourceId && activeView === 'mbse' ? (currentContext?.status === 'resolved' ? currentContext.node_id : '') : selectedElement?.id;
+
+  useEffect(() => {
+    if (typeof onBusinessSelection !== 'function') return undefined;
+    onBusinessSelection(selectedElement ? {
+      node_id: selectedGraphId || '',
+      ontology_id: sourceId || selectedElement.properties?.ontology_id || '',
+      ontology_prefix: selectedSource?.prefix || '',
+      label: selectedElement.label,
+    } : null);
+    return () => onBusinessSelection(null);
+  }, [onBusinessSelection, selectedElement, selectedGraphId, sourceId, selectedSource?.prefix]);
 
   const visibleNodes = useMemo(() => {
     const ids = new Set();
-    if (query.trim()) {
+    if (activeView === 'mbse' && sourceId && activeRepresentation) {
+      const members = new Set(activeRepresentation.nodeIds);
+      const contextIds = activeTreeItem?.nodeId ? buildOneHopContextSet(activeTreeItem.nodeId, dataset.links) : members;
+      dataset.nodes.filter(node => members.has(node.id) && contextIds.has(node.id) && matchesQuery(node, query)).forEach(node => ids.add(node.id));
+    } else if (query.trim()) {
       matchedNodes.forEach((node) => ids.add(node.id));
     } else if (decompositionRootId) {
       buildDecompositionSet(decompositionRootId, dataset.links).forEach((id) => ids.add(id));
@@ -407,24 +464,23 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     } else if (activeRepresentation) {
       representationNodeIds(activeRepresentation, dataset.links).forEach((id) => ids.add(id));
     }
-    if (ids.size === 0) dataset.nodes.filter((node) => !isContainerType(node.type)).slice(0, 160).forEach((node) => ids.add(node.id));
+    if (ids.size === 0 && !query.trim() && !activeTreeItem && !activeRepresentation && !decompositionRootId) dataset.nodes.filter((node) => !isContainerType(node.type)).slice(0, 160).forEach((node) => ids.add(node.id));
     return dataset.nodes.filter((node) => ids.has(node.id) && !(/^id\d+$/i.test(node.label) && !query.trim()));
-  }, [activeRepresentation, activeTreeItem, dataset.links, dataset.nodes, decompositionRootId, matchedNodes, query]);
+  }, [activeRepresentation, activeTreeItem, activeView, sourceId, dataset.links, dataset.nodes, decompositionRootId, matchedNodes, query]);
 
   const visibleIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
   const visibleLinks = useMemo(() => dataset.links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target) && !/VIEW_CONTAINS/i.test(link.type)), [dataset.links, visibleIds]);
   const selectedRelationships = useMemo(() => {
     if (!selectedElement) return [];
-    return visibleLinks
+    return dataset.links
       .filter((link) => link.source === selectedElement.id || link.target === selectedElement.id)
-      .slice(0, 12)
       .map((link) => ({
         id: link.id,
         type: link.type,
         direction: link.source === selectedElement.id ? 'outgoing' : 'incoming',
         otherId: link.source === selectedElement.id ? link.target : link.source,
       }));
-  }, [selectedElement, visibleLinks]);
+  }, [selectedElement, dataset.links]);
   const selectedRelationshipTargets = useMemo(() => {
     const byId = new Map(dataset.nodes.map((node) => [node.id, node]));
     return selectedRelationships.map((link) => ({
@@ -442,8 +498,10 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     const ids = new Set(dataset.nodes.map((node) => node.id));
     dataset.links.forEach((link) => { if (!ids.has(link.source) || !ids.has(link.target)) issues.push(`Broken endpoint: ${link.type}`); });
     dataset.nodes.forEach((node) => { if (!node.label || node.label === node.id) issues.push(`Missing business label: ${node.id}`); });
-    return issues.slice(0, 8);
-  }, [dataset]);
+    (activeRepresentation?.unresolvedIds || []).forEach(id => issues.push(`Unresolved source reference: ${id}`));
+    if (activeRepresentation && /Table|Matrix/.test(activeRepresentation.type)) issues.push('Semantic fallback: original table or matrix configuration is unavailable.');
+    return issues;
+  }, [dataset, activeRepresentation]);
 
   const handleTreeSelect = useCallback((item) => {
     setActiveTreeItem(item);
@@ -457,8 +515,8 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     if (item?.type && /ArchiMate Model|Model|Folder|Element Group/i.test(item.type) && !item?.nodeId) {
       return;
     }
-    setActiveRepresentationId('');
-  }, []);
+    if (!(activeView === 'mbse' && sourceId)) setActiveRepresentationId('');
+  }, [activeView, sourceId]);
 
   const handleCanvasDoubleClick = useCallback((item) => {
     if (!item?.id) return;
@@ -492,11 +550,33 @@ export default function ModelWorkbenchPage({ onNavigate }) {
       </header>
 
 
+      <section className="model-source-selector model-viewer-note">
+        <label htmlFor="model-source">Model source</label>
+        <select id="model-source" value={sourceId} onChange={event => {
+          loadRequestIdRef.current += 1;
+          loadAbortControllerRef.current?.abort();
+          setDataset({ nodes: [], links: [], message: '', representations: [] });
+          setReactFlowGraph(null); setQuery(''); setSelectedId(''); setActiveTreeItem(null); setActiveRepresentationId(''); setDecompositionRootId('');
+          setSourceByMode(previous => ({ ...previous, [activeView]: event.target.value }));
+        }}>
+          <option value="">{activeView === 'architecture' ? 'Default ArchiMate import' : 'Native modeling workspace'}</option>
+          {modelSources.map(source => <option key={source.ontology_id} value={source.ontology_id}>{source.label} [{source.prefix || source.ontology_id}]</option>)}
+        </select>
+        {sourcesLoading && <span role="status">Loading registered model sources…</span>}
+        {sourcesError && <span role="alert">Model source registry unavailable: {sourcesError}</span>}
+        {!sourcesLoading && !sourcesError && modelSources.length === 0 && <span>No imported {activeView === 'architecture' ? 'ArchiMate' : 'XMI / SysML'} source is registered. Import a model to browse it here.</span>}
+      </section>
+      {activeView === 'mbse' && sourceId && <section className="model-source-selector model-viewer-note"><label htmlFor="sysml-view">SysML view</label><select id="sysml-view" value={activeRepresentationId} onChange={event=>{setActiveRepresentationId(event.target.value);setActiveTreeItem(null);setSelectedId('');setQuery('');setDecompositionRootId('');}}>{dataset.representations.map(view=><option key={view.id} value={view.id}>{view.name} — {view.type}</option>)}</select></section>}
+      <section className="model-source-selector model-viewer-note">
+        <label htmlFor="model-search">Find model element</label>
+        <input id="model-search" type="search" value={query} onChange={event => {setQuery(event.target.value);setSelectedId('');setActiveTreeItem(null);}} placeholder="Name, description or source identifier" />
+        <span>{dataset.nodes.length} loaded elements; the overview starts with up to 160. Select a tree item or search to focus its context.</span>
+      </section>
       <section className="model-viewer-inspector-bar">
         <div><strong>{getModelName(dataset, activeView)}</strong><span>{decompositionRootId ? `Decomposition: ${selectedElement?.label || decompositionRootId}` : activeTreeItem?.label || activeRepresentation?.name || 'Overview'}</span></div>
         <div><strong>{visibleNodes.length}</strong><span>Visible elements</span></div>
         <div><strong>{visibleLinks.length}</strong><span>Visible relationships</span></div>
-        <div><strong>{query.trim() ? matchedNodes.length : dataset.nodes.length}</strong><span>{query.trim() ? 'Matches' : 'Model elements'}</span></div>
+        <div><strong>{query.trim() ? matchedNodes.length : dataset.nodes.length}</strong><span>{query.trim() ? `Model matches (${visibleNodes.length} in this view)` : 'Model elements'}</span></div>
         <div><strong>{validation.length}</strong><span>Checks</span></div>
         {selectedElement && <div className="selected-inline"><strong>{selectedElement.label}</strong><span>{selectedElement.type}</span></div>}
       </section>
@@ -509,14 +589,14 @@ export default function ModelWorkbenchPage({ onNavigate }) {
           <div className="panel-title"><Boxes size={16} /> Model Tree</div>
           <div className="archi-model-tree">
             {modelTree.map((item) => <TreeBranch key={item.id} item={item} selectedId={activeTreeItem?.id || selectedId || activeRepresentationId} onSelect={handleTreeSelect} />)}
-            {dataset.nodes.length === 0 && <div className="empty-state">No model loaded.</div>}
+            {dataset.nodes.length === 0 && <div className="empty-state">{status.loading ? 'Loading selected model…' : status.error ? 'Model could not be loaded. See the error above.' : sourceId ? 'No published elements for this source.' : 'No elements in the native modeling workspace. Select an imported model above.'}</div>}
           </div>
         </section>
 
         <section className="model-viewer-panel model-diagram-panel semantic-diagram-panel">
           <div className="panel-title model-diagram-header"><span className="model-diagram-title"><Network size={16} /> Diagram Canvas <span className="diagram-count">{`${visibleNodes.length} elements / ${visibleLinks.length} relationships`}</span></span><span className="model-diagram-controls"><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`zoom-out:${Date.now()}`)} aria-label="Zoom out"><ZoomOut size={14} /></button><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`zoom-in:${Date.now()}`)} aria-label="Zoom in"><ZoomIn size={14} /></button><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`fit:${Date.now()}`)} aria-label="Fit diagram"><ScanSearch size={14} /></button></span></div>
           <div className="semantic-canvas-wrap react-flow-wrap">
-            {(activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Select a view/folder or clear the search filter.</div> : <GraphVisualizationWidget renderer="react-flow" graph={activeCanvasGraph} diagramKind={activeView === 'architecture' ? 'archimate' : 'uaf'} selectedId={selectedElement?.id} viewportCommand={viewportCommand} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} onNodeDoubleClick={handleCanvasDoubleClick} />}
+            {activeView === 'mbse' && sourceId && activeRepresentation ? <SysMLDiagram graph={{nodes:visibleNodes,links:visibleLinks}} diagram={activeRepresentation} selectedId={selectedId} viewportCommand={viewportCommand} filtered={Boolean(query.trim() || activeTreeItem?.nodeId)} onSelect={item=>setSelectedId(item.id)}/> : (activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Select a view/folder or clear the search filter.</div> : <GraphVisualizationWidget renderer="react-flow" graph={activeCanvasGraph} diagramKind={activeView === 'architecture' ? 'archimate' : 'uaf'} selectedId={selectedElement?.id} viewportCommand={viewportCommand} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} onNodeDoubleClick={handleCanvasDoubleClick} />}
           </div>
         </section>
 
@@ -531,28 +611,40 @@ export default function ModelWorkbenchPage({ onNavigate }) {
                   <small>{selectedElement.type}</small>
                 </div>
               </div>
+              <div className="model-context-actions">
+                <button type="button" onClick={() => toggleChat?.()} disabled={!toggleChat || (Boolean(sourceId) && !selectedGraphId)}>Ask Companion about this element</button>
+                <p>The selected source and element scope the conversation. Retained findings are evidence for review, not approval or verified satisfaction.</p>
+              </div>
+              <GraphInvestigation
+                key={JSON.stringify([selectedElement.id, sourceId])}
+                node={{ elementId: selectedGraphId || '', properties: { ...selectedElement.properties, name: selectedElement.label, type: selectedElement.type } }}
+                ontologyId={sourceId || selectedElement.properties?.ontology_id || ''}
+                nodeCount={visibleNodes.length} relationshipCount={visibleLinks.length} page="modeling"
+              />
+              <ModelTraceability element={selectedElement} context={currentContext} loading={contextStatus.loading} error={contextStatus.error}/>
               <div className="context-list">
                 <strong>Context</strong>
                 <span>{`ID: ${selectedElement.id}`}</span>
-                <span>{`${selectedRelationshipTargets.length} connected relationships`}</span>
+                <span>{`${selectedRelationshipTargets.length} source-model relationships (${visibleLinks.filter(link => link.source === selectedId || link.target === selectedId).length} visible in this view)`}</span>
                 {decompositionRootId === selectedElement.id && <span>Active decomposition root</span>}
               </div>
               <div className="property-list">
-                {Object.entries(selectedElement.properties || {}).slice(0, 24).map(([key, value]) => (
+                {Object.entries(selectedElement.properties || {}).map(([key, value]) => (
                   <div key={key}>
                     <span>{key}</span>
-                    <strong>{String(value ?? '') || '-'}</strong>
+                    <strong>{(typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value ?? '')) || '-'}</strong>
                   </div>
                 ))}
                 {Object.keys(selectedElement.properties || {}).length === 0 && <div><span>Properties</span><strong>-</strong></div>}
               </div>
               <div className="validation-list">
                 <strong>Relationships</strong>
-                {selectedRelationshipTargets.length > 0 ? selectedRelationshipTargets.map((link) => (
+                {selectedRelationshipTargets.length > 0 ? selectedRelationshipTargets.slice(relationshipPage*12,(relationshipPage+1)*12).map((link) => (
                   <span key={link.id}>
                     {`${link.direction === 'outgoing' ? '->' : '<-'} ${link.type} ${link.otherNode?.label || link.otherId}`}
                   </span>
-                )) : <span>No visible relationships in current canvas scope.</span>}
+                )) : <span>No relationships recorded in this source model.</span>}
+                {selectedRelationshipTargets.length > 12 && <nav aria-label="Relationship pages"><button disabled={relationshipPage===0} onClick={()=>setRelationshipPage(page=>page-1)}>Previous relationships</button><span>Page {relationshipPage+1} of {Math.ceil(selectedRelationshipTargets.length/12)}</span><button disabled={(relationshipPage+1)*12>=selectedRelationshipTargets.length} onClick={()=>setRelationshipPage(page=>page+1)}>Next relationships</button></nav>}
               </div>
             </>
           ) : (

@@ -18,6 +18,8 @@ def descriptive_properties(properties):
                'datatype', 'unit', 'units', 'value', 'prefLabel', 'altLabel', 'prefix', 'updated_at', 'publication_revision'}
     from backend.graph_service.search_evidence import BUSINESS_FIELDS, search_properties
     allowed |= BUSINESS_FIELDS
+    allowed |= {'quantity', 'datum', 'nominal', 'upperTolerance', 'lowerTolerance',
+                'shape', 'geometry', 'representation', 'requirementText', 'identifier'}
     properties = {**properties, **search_properties(properties)}
     result = {}
     for key in sorted(allowed):
@@ -216,11 +218,13 @@ class KnowledgeCompanion:
         selected_ids = {str(node.get("elementId")) for node in selected}
         edge_budget = max(0, self.max_evidence - len(selected))
         selected_edges = [edge for edge in relationships if str(edge.get("start")) in selected_ids and str(edge.get("end")) in selected_ids][:edge_budget]
+        from backend.graph_service.engineering_comparison import kind as declared_business_kind
         evidence = [
             {
                 "evidence_type": "graph_resource", "resource_id": str(node.get("elementId") or ""),
                 "label": str((node.get("properties") or {}).get("label") or node.get("elementId") or ""),
-                "kind": str((node.get("properties") or {}).get("kind") or (node.get("labels") or ["resource"])[0]),
+                "kind": (declared_business_kind(node) if declared_business_kind(node) != 'unclassified' else
+                         str((node.get("properties") or {}).get("kind") or (node.get("labels") or ["resource"])[0])),
                 "ontology_id": (node.get("properties") or {}).get("ontology_id"), "source": endpoint,
                 "properties": descriptive_properties(node.get("properties") or {}),
                 "why_included": inclusion.get(node['elementId']),
@@ -332,7 +336,7 @@ class KnowledgeCompanion:
                 logging.getLogger(__name__).warning('Companion generation failed: stage=generation status=%s error_type=%s', status, type(failure).__name__)
                 generation = {'enabled': True, 'status': status, 'prompt_details': prompt_details, 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'action': failure_action(failure, os.getenv('USE_LLM', 'ollama').strip().lower())}
                 response_text += ('\n\nThe evidence exceeds the configured model context. Narrow the question or selected scope; retrieved business evidence remains available.'
-                                  if status == 'context_budget_exceeded' else '\n\nThe configured language model is unavailable; the retrieved evidence above remains available.')
+                                  if status == 'context_budget_exceeded' else '\n\nThe model reached its output limit; no partial summary was shown. Retrieved evidence remains available.' if status == 'output_incomplete' else '\n\nThe configured language model is unavailable; the retrieved evidence above remains available.')
         if model_support is not None:
             response_text += '\n\nModel evidence: ' + str(model_support.get('status', 'unknown')) + '. ' + model_support['business_summary'] + ' [evidence:semantic:' + str(model_support.get('evidence_id') or ontology_id) + ']'
         if on_token:

@@ -36,7 +36,7 @@ const ManufacturingResult = ({ data }) => {
                 Processes for: <span style={{ color: C.green }}>{pt.name}</span>
               </span>
             </div>
-            <Badge color={C.green}>{pt.source_tag}</Badge>
+            {pt.source_tag && <details><summary>Source provenance</summary><Badge color={C.green}>{pt.source_tag}</Badge></details>}
           </div>
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ textAlign: 'center' }}>

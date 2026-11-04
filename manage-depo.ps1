@@ -28,6 +28,7 @@ foreach($name in @('SkipPostgres','SkipFrontend','SkipBaselineProvisioning')) {
   if(Get-Variable -Name $name -ValueOnly){$visibilityParameters[$name]=$true}
 }
 if(Invoke-DepoVisibleManagement @visibilityParameters){return}
+Assert-DepoTrackedProcessVisibility -Root $PSScriptRoot -SkipFrontend:$SkipFrontend
 function Invoke-ManagedStep([string]$Script,[hashtable]$Parameters=@{}) {
   $global:LASTEXITCODE=0
   & $Script @Parameters

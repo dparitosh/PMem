@@ -197,13 +197,20 @@ const RELATIONSHIP_DISPLAY_NAMES = {
 };
 
 const getRelationshipDisplayName = (relationship) => {
+  if (relationship?.properties?.collapsed) return 'Trace Link';
+  const vocabularyLabel = relationship?.business_label || relationship?.properties?.business_label;
+  if (typeof vocabularyLabel === 'string' && vocabularyLabel.trim()) return vocabularyLabel.trim().slice(0, 100);
   const rawType = String(
     typeof relationship === 'string'
       ? relationship
       : (relationship?.type || relationship?.properties?.type || '')
   ).trim();
   const normalized = normalizeRelationshipType(rawType);
-  if (relationship?.properties?.collapsed) return 'Trace Link';
+  const predicate = relationship?.properties?.predicate || relationship?.predicate;
+  if (normalized === 'SEMANTIC_RELATION' && typeof predicate === 'string') {
+    const term = predicate.split(/[/#]/).pop();
+    if (/^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(term || '')) return term.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replaceAll('_', ' ');
+  }
   return RELATIONSHIP_DISPLAY_NAMES[normalized] || RELATIONSHIP_DISPLAY_NAMES[rawType] || rawType || 'Relationship';
 };
 

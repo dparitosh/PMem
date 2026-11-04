@@ -298,7 +298,7 @@ def create_service_app(
         return {"status": "authorized", "service": title}
 
     @app.get("/healthz", include_in_schema=False)
-    def liveness() -> dict[str, str]:
+    async def liveness() -> dict[str, str]:
         """Process liveness probe; never depends on an external dependency."""
         return {"status": "ok", "service": title, "version": version}
 

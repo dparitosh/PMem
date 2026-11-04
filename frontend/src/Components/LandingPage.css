@@ -36,3 +36,30 @@
 .ix-landing-page__scope { display: grid; gap: 6px; margin-bottom: 12px; color: var(--theme-color-std-text); }
 .ix-landing-page__scope select { width: 100%; min-width: 0; padding: 8px; color: var(--theme-color-std-text); background: var(--theme-color-component-1); border: 1px solid var(--theme-color-weak-bdr); }
 .ix-landing-page__profile .ix-landing-page__projection-note { margin: 8px 0; line-height: 1.5; }
+
+.embedded-foundation-entry {padding:12px; margin-bottom:16px; border:1px solid var(--theme-color-weak-bdr,#cfd8e3); border-left:4px solid var(--ui-primary,#005a9c); border-radius:6px; overflow-wrap:anywhere;}
+.embedded-foundation-entry h4 {margin:0 0 8px;}
+.embedded-foundation-entry p {font-size:13px; line-height:1.5; margin:8px 0;}
+.embedded-foundation-entry dd {margin-left:0; margin-bottom:8px;}
+.ix-landing-page__foundation-brand {color:var(--ui-primary,#005a9c);}
+
+/* Registry is a narrow summary, not a horizontally scrolling data grid. */
+.ix-landing-page__registry { height: auto; min-width: 0; }
+.ix-landing-page__registry ix-card-content { overflow: visible; min-width: 0; }
+.ix-landing-page__ontology-list { min-width: 0; }
+.ix-landing-page__registry-help { font-size: 12px; line-height: 1.5; color: var(--theme-color-soft-text, #5a6772); }
+.ix-landing-page__ontology-list ul { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow-y: auto; scrollbar-gutter: stable; }
+.ix-landing-page__ontology-list li { padding: 12px 0; border-bottom: 1px solid var(--theme-color-weak-bdr, #d9e2ec); overflow-wrap: anywhere; }
+.ix-landing-page__ontology-name a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; color: var(--ui-primary, #005a9c); }
+.ix-landing-page__ontology-name a:focus-visible { outline: 2px solid var(--ui-primary, #005a9c); outline-offset: 2px; }
+.ix-landing-page__ontology-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--theme-color-soft-text, #5a6772); }
+.ix-landing-page__ontology-list summary { padding: 8px 0; cursor: pointer; font-size: 12px; }
+.ix-landing-page__ontology-list dl { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: 6px; font-size: 12px; }
+.ix-landing-page__ontology-list dd { margin: 0; }
+.ix-landing-page__ontology-list details p { font-size: 12px; line-height: 1.5; }
+
+.ix-landing-page__registry { padding: 16px; box-sizing: border-box; border: 1px solid var(--theme-color-weak-bdr, #d9e2ec); background: var(--theme-color-component-1, #fff); }
+.ix-landing-page__registry h3 { margin: 0 0 12px; font-size: 16px; }
+.ix-landing-page__registry h4 { margin: 16px 0 4px; font-size: 14px; }
+.ix-landing-page__foundation-summary > summary { padding: 12px 0; cursor: pointer; font-size: 13px; color: var(--ui-primary, #005a9c); }
+.ix-landing-page__ontology-list ul { max-height: none; overflow: visible; }

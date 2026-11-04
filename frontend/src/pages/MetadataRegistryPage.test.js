@@ -20,6 +20,7 @@ vi.mock('../contexts/OntologyContext', () => ({
     ontologies: [{ ontology_id: 'onto-1', label: 'Fallback Ontology', prefix: 'fallback', status: 'approved' }],
     loading: false,
     error: null,
+    warning: 'Partial ontology list: ingestion unavailable',
     lastUpdated: null,
     fetchOntologies: vi.fn(),
   }),
@@ -41,6 +42,13 @@ vi.mock('../services/apiClient', () => ({
 beforeEach(() => {
   window.history.replaceState(null,'','#/registry');
   jest.clearAllMocks();
+});
+
+test('shows source completeness warnings alongside registry content', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
+  render(<MetadataRegistryPage />);
+  expect(screen.getByText('Partial ontology list: ingestion unavailable')).toBeVisible();
+  await screen.findByText('No governed metadata assets are registered yet.');
 });
 
 test('dictionary pages bound rendering and filtering returns to the first page', async () => {
