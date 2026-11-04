@@ -48,6 +48,7 @@ class KnowledgeCompanion:
         query = " ".join(str(message or "").split())
         if not query:
             raise ValueError("message is required")
+        from .answerability import assess
         if headers is None:
             headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
         if run_id or product_id or reconciliation_id:
@@ -58,6 +59,11 @@ class KnowledgeCompanion:
                 selected = {'status': 'unavailable', 'answerable': False,
                     'response': 'The selected record could not be verified. Refresh its owning service and access before retrying; no other record was substituted.',
                     'evidence': [], 'sources': [], 'generation': {'enabled': False, 'status': 'not_requested'}}
+            coverage = assess(query, selected.get('evidence', []))
+            if selected.get('answerable') and not coverage['answerable']:
+                selected.update(status=coverage['status'], answerable=False)
+                selected['response'] += '\n\n' + coverage['response']
+                selected.setdefault('retrieval', {})['answerability'] = {key: coverage[key] for key in ('status', 'answerable')}
             if on_token: await on_token(selected['response'])
             return selected
         from .companion_context import semantic_context
@@ -68,8 +74,19 @@ class KnowledgeCompanion:
                 'response': 'Semantic evidence could not be checked. Verify read access and ontology-service readiness; no consistency conclusion was generated.',
                 'evidence': [], 'sources': [], 'generation': {'enabled': False, 'status': 'not_requested'}}
         if semantic is not None:
+            coverage = assess(query, semantic.get('evidence', []))
+            if semantic.get('answerable') and not coverage['answerable']:
+                semantic.update(status=coverage['status'], answerable=False)
+                semantic['response'] += '\n\n' + coverage['response']
             if on_token: await on_token(semantic['response'])
             return semantic
+        calculation = assess(query, [])
+        if calculation['status'] == 'unsupported_calculation':
+            if on_token:
+                await on_token(calculation['response'])
+            return {**calculation, 'evidence': [], 'sources': [],
+                    'retrieval': {'answer_scope': 'approved_analysis_required', 'calculation_executed': False},
+                    'generation': {'enabled': False, 'status': 'not_requested'}}
         from backend.depo_platform.plm_questions import intent
         business_intent=intent(query)
         from .companion_context import mapping_context
@@ -255,6 +272,8 @@ class KnowledgeCompanion:
             from .business_answers import business_text
             response_text+=('\n\n' if response_text else '')+'Retrieved excerpts (source freshness is unverified):\n'+'\n'.join(business_text(item['description'])[:1000]+f" [evidence:{item['resource_id']}]" for item in excerpts[:3])
         business_items=[item for item in evidence if item['evidence_type']=='business_answer']
+        answerability = assess(query, evidence)
+        retrieval['answerability'] = {key: answerability[key] for key in ('status', 'answerable')}
         if business_items:
             from .business_answers import render
             response_text=render(business_items)
@@ -293,10 +312,12 @@ class KnowledgeCompanion:
             response_text += '\n\nConnected objects are included through recorded graph paths. Source references do not by themselves establish business impact or semantic equivalence.'
         elif business_status=='ambiguous':
             response_text += '\n\nSeveral business objects may match. Select a specific graph node and use Investigate with agent to preserve its identity and retrieve its context.'
+        if not answerability['answerable'] and answerability['response']:
+            response_text += '\n\n' + answerability['response']
         generation = {'enabled': False, 'status': 'disabled', 'action': 'This is a retrieval answer. Enable COMPANION_LLM_ENABLED=true with a configured provider for cited model summaries.'}
-        if os.getenv('COMPANION_LLM_ENABLED','false').lower()=='true' and business_items and not any(item.get('rows') for item in business_items):
-            generation={'enabled':True,'status':'not_requested','action':'No verified business rows were returned; the model was not asked to invent an answer.'}
-        if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true' and (not business_items or any(item.get('rows') for item in business_items)):
+        if os.getenv('COMPANION_LLM_ENABLED','false').lower()=='true' and not answerability['answerable']:
+            generation={'enabled':True,'status':'not_requested','action':'Business evidence is insufficient or its ownership is unverified; no model interpretation was requested.'}
+        if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true' and answerability['answerable'] and (not business_items or any(item.get('rows') for item in business_items)):
             prompt_details = {}
             try:
                 from .local_llm import summarize
@@ -317,7 +338,7 @@ class KnowledgeCompanion:
         if on_token:
             await on_token(response_text)
         return {
-            "status": "grounded", "answerable": True, "response": response_text,
+            "status": "grounded" if answerability['answerable'] else answerability['status'], "answerable": answerability['answerable'], "response": response_text,
             "evidence": evidence, "sources": sorted({item['source'] for item in evidence}), "retrieval": retrieval, 'generation': generation,
         }
 

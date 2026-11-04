@@ -1,0 +1,4 @@
+[
+  {"name":"Observed part count by classification","table":"parts","measure":"part_id","aggregate":"count","unit":"records","dimensions":["classification"]},
+  {"name":"Mean recorded part mass","table":"parts","measure":"mass_kg","aggregate":"avg","unit":"kg","dimensions":["classification"]}
+]
