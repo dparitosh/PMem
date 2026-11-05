@@ -1,0 +1,24 @@
+Continuous Nexus demos — 6 November 2026
+
+NEXUS-Slides-6-9-Continuous-Demo.mp4: 6 minutes 18 seconds.
+NEXUS-QIF-Continuous-Demo.mp4: separate 1 minute 36 second QIF page walkthrough.
+
+These replace the periodic-screenshot production method. Both videos use a
+continuous Windows Desktop Duplication video stream captured at 30 fps while
+the agent operates the documented Codex in-app browser controls. Waiting time
+is trimmed between workflow sequences; the footage within them remains live
+continuous video. Captions are complete sentences. Quiet piano, no voiceover.
+Only the Nexus viewport is shown; chat, browser toolbar and desktop are excluded.
+
+Main sequence: contextual requirement question; PMI follow-up; retained context
+and storage report; mapping-score comparison and validation hold; MBSE requirement,
+subsystem, manufacturing BOM, part, CAD document, shape, PMI and quality traceability.
+QIF sequence: digital-thread explanation; exact version selection; schema inventory
+comparison. It does not claim a completed agent review or approved instance mapping.
+
+Known boundaries remain explicit: the new QIF/Teamcenter merge was not published
+because metadata validation failed. CAD is a linked file reference, not a rendered
+mesh. Recorded verification links do not certify requirement satisfaction. Local
+generated engineering records are test evidence, not customer-approved product data.
+
+Video capture and generation utilities remain in outputs, outside application code.
