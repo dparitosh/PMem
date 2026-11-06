@@ -1,0 +1,89 @@
+SLIDE 1
+PRESENTER NOTES - DEFINITIONS
+- Personas: intended business users, not extra agents or permission grants.
+- Named personas: Product leader, Design engineer, Systems engineer, Manufacturing planner, Quality specialist, Steward and approver.
+- Retrieve finds relevant evidence; Trace follows recorded links; Compare checks similarities and conflicts.
+- Validate checks configured rules; Explain presents grounded findings; Prepare creates reviewable drafts or evidence.
+- Agent role: a configured responsibility with task instructions, permitted tools and approval boundaries, not a separate person or service.
+- Skills: reusable task capabilities such as retrieve, trace, compare, validate, explain and prepare; these six labels describe capabilities, not six separately registered agents.
+- Worker: a background process that executes queued work and retains progress independently of the open browser.
+- Services: the ten APIs that own data and business operations used by the UI, agents and workers.
+- Four agent groups on this slide are presentation groupings of 16 core agents, not four extra agents.
+AGENTS - ONE-LINE PURPOSES
+- Ontology Intake: inspects retained source evidence and prepares it for ontology generation and review.
+- Engineering Parser: inspects engineering files and runs configured parsing profiles.
+- Engineering Schema-Set Agent: handles related schema files and tracks reviewed schema tasks through commit.
+- CEIM Mapper: normalizes supported source records into the common engineering interchange contract.
+- Ontology Orchestrator: coordinates ontology review tasks through the registered orchestration tool.
+- Ontology Structure Review: reviews declared classes, properties and observable structural issues.
+- Semantic Bridge Planner: proposes mappings and identifies unresolved alignment checks.
+- Graph Analyst: investigates recorded relationships, where-used, change dependencies and similar-part evidence.
+- Business Context Analyst: saves and retrieves business context and recorded where-used relationships.
+- OSLC Link Agent: queries linked engineering resources and synchronizes approved remote information.
+- Ontology Governor: prepares lifecycle changes, merges and mappings and publishes only through authorized workflows.
+- Ontology Steward: evaluates mapping and merge proposals against policy and available reasoning evidence.
+- Data Product Governor: prepares, publishes or revokes retained data-product packages through governed operations.
+- Data Quality Monitor: inspects pipeline telemetry and invokes registered transformation and processing checks.
+- Ontology Inference Advisor: previews available inference and inspects reasoning evidence without granting approval.
+- Ontology Export: produces an ontology export through the registered export operation.
+WORKERS - ONE-LINE PURPOSES
+- Data pipeline worker: executes approved data jobs, including configured distributed processing, using durable job leases.
+- Agent workflow worker: executes saved multi-step agent workflows and supports controlled recovery after interruption.
+- Data product outbox worker: retries delivery of retained product registrations to the catalog.
+STANDARDS - ONE-LINE BUSINESS MEANINGS
+- PCA IDO 4.2: the embedded public industrial reference snapshot linked to ISO 23726-1; this is not an ISO certification claim.
+- Application ontology: the Nexus-owned vocabulary separating physical parts, designs, documents, requirements and activities.
+- AP242: product definitions, model-based engineering information and PMI under ISO 10303-242.
+- AP239 / PLCS: product lifecycle support information under ISO 10303-239.
+- AP243 / MoSSEC: collaboration and traceability context for modelling and simulation under ISO 10303-243, not a simulation solver.
+- QIF: manufacturing quality and measurement information under ISO 23952.
+- B2MML / ISA-95: manufacturing operations information connecting business planning and production activities.
+- BatchML / ISA-88: recipe, batch information and batch production record structures.
+- JEP30 / JEDEC: electronic part model schema information for exchanging component data.
+SUPPORT BOUNDARIES
+- AP243 has a registered schema profile and retained MoSSEC domain model; this does not establish a complete simulation execution workflow.
+- B2MML has a registered schema profile; the schema conversion configuration also includes BatchML recipe and batch record structures.
+- JEP30 uses generic schema-set ingestion; no dedicated JEP30 CEIM publication mapping pack was found in this review.
+- AP239, B2MML and BatchML schema/parser support is not proof of a dedicated CEIM instance-publication mapping pack.
+- Registered roles still depend on configured services, source evidence, permissions and model availability where applicable.
+- A score or agent recommendation does not approve interchangeability, engineering change or publication.
+SOURCE REFERENCES
+- backend/agentic_service/catalog.json; infra/deployment/services.json; backend/qif/standards.py.
+- backend/Services/owl_xsd_engine.py; data/domain_models/mossec/DomainModel.json; data/ceim/mapping-packs/.
+- backend/ontology_service/resources/foundation/manifest.json and depo-business-core.ttl.
+- https://www.iso.org/standard/72491.html; https://www.iso.org/standard/78832.html; https://www.iso.org/standard/77461.html.
+- Reference slide: original alpha deck slide 4; checked 5 November 2026.
+CURRENT INVENTORY — 6 November 2026
+- The effective validated registry contains 28 agents, 62 tools and six workflows. The four groups shown contain the 16 core agents.
+- Twelve additional digital-thread agents: DT Intake, DT Domain Identifier, DT Structure Review, DT Semantic Bridge Planner, DT Entity Conflict Review, DT Property Conflict Review, DT Context Graph Conflict Review, DT Data Product Interaction, DT Knowledge Graph Interaction, DT Export, DT Self-Learning Review and DT Orchestrator.
+- These are configured agent responsibilities with explicit allowed tools. They are not 28 independent models or running processes.
+- Personas identify intended business users. Steward and approver form one business audience grouping here, but an agent cannot grant a person approval authority.
+- The six skill labels summarize business capabilities. They are not six separately registered executable skill packages.
+- Workers execute retained background jobs: data pipeline, agent workflows and product catalog delivery.
+- Admin > Agents & workflows > Agent Registry displays responsibility, allowed tools, workflow use and write boundaries from one validated catalog revision.
+- Registration does not establish provider availability or verified agent performance. Seven agents appear in predefined workflows; 21 support standalone or caller-selected execution.
+- Embedded foundations: PCA IDO 4.2, NEXUS business core 1.0.0, DIN EN 61360 reference pattern 2.0.4. No standards certification or automatic equivalence is implied.
+- Current source: backend/agentic_service/catalog.json, dt_bindings.py, registry_view.py, agent_usage.py; infra/deployment/services.json; backend/ontology_service/resources/foundation/manifest.json.
+- Local verification: registry discovery and browser-session access passed. Live model capability and customer acceptance remain separate checks.
+
+SLIDE 2
+DIN EN 61360 2.0.4 is now embedded offline with exact commit and checksum, alongside PCA IDO and NEXUS application definitions. It describes type and instance descriptions, units and expression goals. Companion retrieves the requested DIN module and uses readable local-name labels when upstream labels are absent. Missing definitions are explicitly disclosed. No automatic mapping, unit conversion, tolerance evaluation or ISO/DIN certification is implied. Industry schemas converted to vocabulary are not necessarily native OWL ontologies. Standards availability and acceptance depend on the deployed sources.
+Sources: https://github.com/hsu-aut/IndustrialStandard-ODP-DINEN61360 ; https://pca-posc-caesar-association.github.io/Public_ISO23726-1/latest/ ; https://www.iso.org/standard/84300.html ; https://www.iso.org/standard/78832.html ; https://www.iso.org/standard/72491.html ; https://committee.iso.org/standard/77461.html ; https://github.com/MESAInternational/B2MML-BatchML .
+Code: backend/ontology_service/resources/foundation/manifest.json; backend/qif/standards.py; backend/Services/owl_xsd_engine.py.
+
+SLIDE 3
+IIF is the user-requested name for the agentic AI layer. It is not a claim that a new IIF service has been installed or that the separate AOI wrapper owns orchestration. NEXUS currently has ten API services and three workers. The named roles are configured responsibilities in the existing agent catalog, not separate processes. Governor prepares and coordinates proposed changes; Steward assesses retained evidence; authorized workflows control publication. The model provider is optional and must be configured for model-dependent work.
+Short-term conversation/context and reviewed long-term lesson records are retained in PostgreSQL through the existing registry. Business-entity relationships and evidence are retrieved from the graph store. Retrieval is scoped and advisory; memory never grants approval or becomes verified source evidence automatically. Retained files preserve original source artifacts; this diagram does not assert that all bytes are stored in the graph database.
+The diagram adapts the user-provided service/ontology/data layer reference with an explicit IIF layer and worker row. Arrows are schematic interfaces, not a complete network topology. No automatic source equivalence or complete manufacturing/simulation coverage is claimed.
+Code: infra/deployment/services.json; backend/agentic_service/catalog.json; backend/agentic_service/companion_memory.py; backend/agentic_service/context_envelope.py; backend/ontology_service/foundation.py; backend/ontology_service/owl_dl.py; backend/ontology_service/merge_service.py; backend/depo_platform/authorization.py.
+
+SLIDE 4
+Arrows describe evidence flow, not synchronous calls between every box. Source records enter via supported files or configured remote providers. Remote OSLC operations are read/discover/query/pull-stage; staging does not publish or push remote changes. Pipeline jobs use durable leases; Apache Spark is an optional configured execution runtime and not an extra microservice. Approved publication is a separate governed step. Data can then be retrieved by IIF, Companion and reporting functions. Read-only discovery remains available before publication; this diagram describes the governed consumption path.
+PostgreSQL owns operational state, approvals, conversation/lesson records and analytics. Graph projections retain engineering relationships and provenance. Original files remain in retained artifact storage. Workers do not rewrite embedded reference ontologies.
+Sources: infra/deployment/services.json; backend/data_pipeline_service/runner.py; backend/data_pipeline_service/worker.py; backend/oslc_service/client.py; backend/oslc_service/sync.py; backend/ontology_service/merge_service.py; backend/depo_platform/authorization.py.
+
+SLIDE 5
+Verified DOMAIN_SHAPES in backend/Services/oslc_service.py: RM Requirement and RequirementCollection; AM Resource; CM ChangeRequest; QM TestCase and TestResult. These are read-only resource/query/discovery profiles, not full conformance certification. CM domain name means Change Management, distinct from Configuration Management.
+TRS base/changelog endpoints: backend/routes/oslc_routes.py. Lifecycle extensions: backend/oslc_service/lifecycle.py. These do not implement the complete OSLC Configuration Management specification.
+Client discovery/query and pull staging: backend/oslc_service/client.py and sync.py. Remote push and graph publication are explicitly excluded from pull staging. Enterprise alignments describe intended compatible provider roles, not already configured vendor connections. Simulation source context is not a simulation solver. MES-specific real-time execution is not implied.
+Schema routes and standards profiles: backend/qif/standards.py; backend/Services/owl_xsd_engine.py.
