@@ -1,0 +1,132 @@
+# Application and plugin installation
+
+The DEPO application and optional MBSE plugin are independent processes. Install
+and configure them separately; start DEPO before using plugin imports.
+
+## DEPO application
+
+Follow the [single installation sequence](../INSTALLATION.md)
+from the repository root. It is the only normative DEPO installation procedure.
+Use `Setup-DEPO.cmd` for guided setup, or root `install-depo.ps1` for advanced configuration. The root installer orchestrates the lifecycle and
+owns dependency installation, frontend build, database initialization,
+service startup, validation, and release preflight. PostgreSQL, Neo4j and
+optional Java/Spark runtimes must be provisioned before that command.
+
+The application has no GitHub Actions installation dependency. Optional plugins
+below have their own packages and are not installed by the DEPO installer.
+
+## Pipeline execution configuration
+
+### Spark runtime and smoke test
+
+Use Spark 4.1.2 (Scala 2.13), Java 21, and the application Python runtime.
+Install the official Spark binary distribution and a trusted Java distribution
+on the execution host. The application installer does not download them.
+Verify vendor checksums/signatures before extracting; provision the Windows
+Hadoop helper from your approved runtime source, not an unverified executable.
+Merge needed settings from `config/spark.env.example` into `.env.local`; the example
+file is not loaded automatically. Preserve existing graph credentials and replace
+the runtime-path placeholders with approved installation paths. Set `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`,
+`DEPO_HADOOP_HOME`, `DEPO_SPARK_OUTPUT_ROOT`, and `DEPO_SPARK_MASTER` for the host.
+
+The supported installer runs this smoke test itself. Enable it with
+`-EnableSpark` on root `install-depo.ps1`; add the connector
+and scheduler switches only when their customer capability has been approved.
+
+The connector switch requires Spark. Connector dependency resolution needs
+access to an approved Maven repository/cache. Omit the connector switch when
+graph reads through Spark are not needed. API health alone does not prove a
+Spark job executed: `configured` means runtime files exist, `initialized` means
+a session exists, and `unavailable` means required runtime files are missing.
+Use smoke-job output and durable run/quality evidence for execution acceptance.
+
+### Frontend integration and startup
+
+The backend lifecycle script does not start a web server. After dependency
+installation, configure browser-safe service URLs/origins in `frontend/.env.local`.
+Without explicit routing configuration, the pipeline defaults to the browser
+host on port `8019`; gateway
+deployments use `VITE_API_GATEWAY_URL` or an explicit
+`VITE_DATA_PIPELINE_SERVICE_URL`. Never embed an admin key in frontend settings.
+
+```powershell
+# Separate terminal, from the repository root:
+cd frontend
+npm.cmd run build
+if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+npm.cmd run dev -- --host 127.0.0.1 --port 3000
+```
+
+Open `http://127.0.0.1:3000/#/data-flow` and verify health, definitions, run
+details, quality and lineage. Replay additionally requires an authorized
+execution identity through the gateway. This command is for local development;
+customer deployments serve `frontend/dist` with the supplied
+`infra/windows/start-depo-frontend.ps1` launcher or a customer-managed static web
+server. HTTP private-network token mode and gateway mode follow INSTALLATION.md. Stop the local web server
+with Ctrl+C. Do not expose Vite's development server as the customer web server.
+
+Enable Spark with `-EnableSpark` on the single Windows installer after installing
+the supported Spark/Java runtime. Use `-EnablePipelineScheduler` to enable
+scheduled replay; this is separate from HTTP job execution. Configure
+`DEPO_SPARK_MASTER` for the chosen runtime; its default is `local[2]`.
+
+Customer deployments use `DEPO_PIPELINE_EXECUTION_MODE=worker`. Job submissions
+are persisted in PostgreSQL and executed by `data-pipeline-worker`; the HTTP API
+returns a run ID and clients poll its durable status. Inline execution is retained
+only for isolated developer compatibility. The outbox worker is a separate process
+for catalog registration. Use the documented endpoint response contract rather
+than assuming every workflow returns the same HTTP status.
+Cluster execution also requires shared artifact access; changing the master URL
+alone does not make local artifact paths available to remote executors.
+
+New handlers belong in trusted deployed Python packages and are registered during
+startup through `backend.data_pipeline_service.handlers.registry`. Deploy the
+same registrations to every service process before approving definitions that
+reference them. Version job definitions when contracts or behavior change.
+
+External agents communicate through the configured API gateway. The optional
+DT manifest compatibility endpoint does not execute or connect those agents.
+For outbound OSLC retrieval, set `OSLC_REMOTE_BASE_URL` to the gateway base before
+`/oslc`, and supply `OSLC_REMOTE_TOKEN` when required. The external DT client's
+`PMEM_OSLC_GATEWAY_URL` instead ends in `/oslc`; these settings are distinct.
+
+## MBSE plugin (MBSE, Teamcenter/SMW, Cameo preparation)
+
+Run from `plugins/mbse_plugin` within the project root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Install
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure -EnvFile E:\App\PMem\.env.local -IngestionUrl http://10.0.2.16:8014/api/v1
+# Replace 10.0.2.16 with the ingestion service's reachable address.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Verify
+```
+
+This creates a separate venv and starts the plugin on `127.0.0.1:8020`. It contains
+the MBSE importer/viewer, offline Teamcenter/SMW mapping preview, and Cameo MDK
+configuration checks. It does not install Cameo, MDK, MMS, Teamcenter or Java.
+Its `.runtime\config.json` contains a plaintext local token; protect that directory
+and do not commit it. HTTPS, gateway exposure and secret-manager injection are
+deployment responsibilities.
+
+For a wheel, pass `-WheelPath` to the Install action. Keep the previous wheel for
+rollback and run Verify after every upgrade.
+
+## Native Cameo MDK
+
+Native MDK installation is separate from this Python plugin. Install the official
+compatible plugin ZIP through Cameo's Resource/Plugin Manager, restart Cameo, and
+verify Model Development Kit is listed as installed. Then prepare the draft config:
+
+```powershell
+.runtime\venv\Scripts\python.exe -m mbse_plugin.cameo_mdk configure --config .runtime\cameo.json
+.runtime\venv\Scripts\python.exe -m mbse_plugin.cameo_mdk verify --config .runtime\cameo.json
+```
+
+These checks record local paths and declared versions; they do not claim MDK/MMS
+compatibility or perform synchronization.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

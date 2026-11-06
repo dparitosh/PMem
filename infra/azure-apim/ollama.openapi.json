@@ -1,0 +1,49 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DEPO Ollama Gateway",
+    "version": "1.0.0",
+    "description": "Native Ollama discovery, generation and embedding operations. Configure the private Ollama backend root when importing into APIM; use API suffix ollama. Authentication is configured in APIM policies and subscription settings."
+  },
+  "paths": {
+    "/api/tags": {
+      "get": {
+        "operationId": "listModels",
+        "summary": "List installed models",
+        "responses": {"200": {"description": "Installed models", "content": {"application/json": {"schema": {"type": "object", "required": ["models"], "properties": {"models": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "model": {"type": "string"}}}}}}}}}}
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "operationId": "chat",
+        "summary": "Generate a chat response or tool proposal",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["model", "messages"], "properties": {"model": {"type": "string"}, "messages": {"type": "array", "items": {"type": "object", "required": ["role", "content"], "properties": {"role": {"type": "string"}, "content": {"type": "string"}}}}, "stream": {"type": "boolean"}}}}}},
+        "responses": {"200": {"description": "JSON result or streaming NDJSON frames", "content": {"application/json": {"schema": {"type": "object"}}, "application/x-ndjson": {"schema": {"type": "string"}}}}}
+      }
+    },
+    "/api/generate": {
+      "post": {
+        "operationId": "generate",
+        "summary": "Generate a completion",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["model", "prompt"], "properties": {"model": {"type": "string"}, "prompt": {"type": "string"}, "stream": {"type": "boolean"}}}}}},
+        "responses": {"200": {"description": "JSON result or streaming NDJSON frames", "content": {"application/json": {"schema": {"type": "object"}}, "application/x-ndjson": {"schema": {"type": "string"}}}}}
+      }
+    },
+    "/api/embed": {
+      "post": {
+        "operationId": "embed",
+        "summary": "Generate embeddings",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["model", "input"], "properties": {"model": {"type": "string"}, "input": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}}}}}},
+        "responses": {"200": {"description": "Embeddings", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    },
+    "/api/embeddings": {
+      "post": {
+        "operationId": "legacyEmbeddings",
+        "summary": "Legacy embedding client compatibility",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["model", "prompt"], "properties": {"model": {"type": "string"}, "prompt": {"type": "string"}}}}}},
+        "responses": {"200": {"description": "Embedding", "content": {"application/json": {"schema": {"type": "object"}}}}}
+      }
+    }
+  }
+}

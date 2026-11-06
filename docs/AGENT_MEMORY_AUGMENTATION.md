@@ -1,0 +1,145 @@
+# Agent Memory Augmentation
+
+This app now has an optional graph-native memory layer inspired by
+`neo4j-labs/agent-memory`.
+
+It is intentionally **off by default** and is implemented as a local Neo4j
+adapter so customer environments do not need a new experimental dependency.
+
+## What It Adds
+
+- Short-term memory: chat turns by `session_id`
+- Long-term memory: approved Semantic Bridge mappings
+- Reasoning memory: compact tool/workflow traces and summaries
+- Provenance edges from assistant messages to graph nodes when graph context is supplied
+
+## What It Does Not Replace
+
+- Neo4j remains the product/ontology/instance graph store.
+- Semantica provides structural/context capabilities; RDFLib handles RDF parsing and exchange. Optional isolated OWLAPI/HermiT supplies supported OWL-DL checks. See [semantic evidence](SEMANTIC_DECISION_LOOP.md).
+- RDFLib / OWL / TTL exports remain the ontology exchange path.
+- Semantic Bridge remains the approval workflow for instance-to-ontology mappings.
+
+## Enable It
+
+Set these in root `.env.local` and restart through the deployment lifecycle launcher:
+
+```env
+AGENT_MEMORY_ENABLED=true
+AGENT_MEMORY_SCOPE=customer-id:project-id
+AGENT_MEMORY_QUERY_TIMEOUT=5
+AGENT_MEMORY_RETENTION_DAYS=30
+```
+
+`AGENT_MEMORY_RETENTION_DAYS` also expires completed PostgreSQL companion results
+in `agentic_companion_jobs`. The service runs this cleanup every five minutes,
+including when optional Neo4j memory is disabled. Authenticated owners can read a
+retained result after its conversation session expires; reading does not renew
+the session. Streaming responses include `retained_prompt_job_id` for recovery.
+
+The adapter uses the existing Neo4j connection and official Neo4j driver. It
+creates lightweight constraints/indexes on first use.
+
+Memory operations are best-effort and bounded. The default memory query timeout
+is 5 seconds. Configuration outside 1 to 30 seconds is rejected, not silently clamped.
+
+`AGENT_MEMORY_SCOPE` is the isolation boundary for sessions and reusable mapping
+facts. Give each customer/project deployment a unique value. If it is omitted,
+the service derives the scope from `DEPO_TENANT_ID:DEPO_PROJECT_ID`.
+
+PostgreSQL conversation history is authoritative. LangGraph does not keep a
+second process-local checkpoint, so history remains consistent across restarts
+and multiple service workers. Neo4j provides optional context, reasoning traces,
+and approved Semantic Bridge facts.
+
+## API Endpoints
+
+- `GET /api/v1/memory/status` on the agentic service (normally port 8012),
+  with configured graph-read authorization.
+- `GET /api/v1/memory/maintenance` reports the retained maintenance receipt.
+
+The older `/api/v1/agent-memory/sessions/...` examples belonged to the
+compatibility host. Do not use them for a current microservice deployment.
+Use the Companion's Clear conversation control for its current conversation.
+Resolve service addresses from the selected deployment configuration rather
+than assuming the former port 8000 host is running.
+
+## Stored Graph Labels
+
+- `AgentMemorySession`
+- `AgentMemoryMessage`
+- `AgentMemoryTrace`
+- `AgentMemoryFact`
+
+Relationships:
+
+- `HAS_MESSAGE`
+- `FOLLOWED_BY`
+- `HAS_REASONING_TRACE`
+- `TOUCHED`
+
+## Current Hooks
+
+### Knowledge Companion
+
+The current agentic-service Companion retains its original question, resolved retrieval query, response, evidence and selected scope in PostgreSQL. Follow-up subject resolution uses owner-bound turns from the same selected scope. Failed or unanswerable turns do not supply a subject; current owning-service evidence is retrieved again.
+
+When enabled, optional graph enrichment records the question, response and bounded selection identifiers. It is best-effort and does not replace required evidence retention. This Companion does not inject arbitrary graph-memory messages into its prompt. The legacy chat helper has a separate compact memory-context formatter; it is not evidence of current Companion recall.
+
+Workflow/read-goal plans, tool observations and outcomes are retained separately in PostgreSQL. Optional graph traces record only calls explicitly wired to the adapter; not every Companion request writes a graph reasoning trace. Recorded execution is not a model's private reasoning.
+
+### Semantic Bridge
+
+The Semantic Bridge UI invokes Ontology Governor to create a saved recommendation
+preview. Recommendations are retained in PostgreSQL (`semantic_bridge_jobs_v1`)
+and displayed with evidence, validation, eligibility and the agent run ID. Users
+can reload the saved preview ID or download its evidence. Manual mapping drafts
+are included in the preview; the server resolves source rows and graph targets
+instead of accepting browser-supplied graph identifiers.
+
+Connect governed agent credentials in Admin and enter the steward identity before
+creating a preview. Select eligible recommendations and confirm review before
+publishing. A recommendation never approves itself. Changes to the selected
+source, ontology or manual mappings require a new preview. Publication receipts
+and saved job status support recovery after an interrupted request.
+
+Automatic mapping uses the server's validated-only policy. Memory reuse retains
+the target IRI and generic-match status, preserves the recorded confidence, and
+requires review against the new instance. Name-only legacy memories do not
+establish target identity. Stored memory cannot grant automatic publication.
+
+The ontology merge controls also invoke Ontology Governor. Preview two registered
+ontologies with retained RDF artifacts, review conflicts, then explicitly create
+the merged draft. Graph-only ingestion records are sufficient for mapping lookup
+but do not replace the RDF artifacts required for ontology merge or reasoning.
+
+After `instance.link`, the app records approved mappings as reusable facts:
+
+- source instance term
+- source type
+- target ontology term
+- target ontology type
+- confidence
+- mapping type
+- import task id
+- workflow task id
+
+This supports future mapping reuse and auditability.
+
+When memory is enabled, `instance.link` also reuses prior approved mapping facts
+as an additional scorer. A remembered mapping is only used when it resolves to a
+current graph-linkable ontology class or property and passes validation.
+
+## Remaining Enhancements
+
+1. Add a UI panel that shows “memory used” and “nodes touched”.
+2. Schedule `AgentMemoryService.prune_expired_sessions()` in the customer job
+   scheduler using `AGENT_MEMORY_RETENTION_DAYS`.
+3. Add tenant/project scope management in Admin.
+4. If the customer accepts the dependency, wrap the official
+   `neo4j-agent-memory` SDK behind the same `AgentMemoryService` interface.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

@@ -1,0 +1,233 @@
+"""PostgreSQL-backed workflow execution; persist grants, never caller credentials."""
+import asyncio
+import hashlib
+import os
+from backend.depo_platform.network import agent_run_timeout_seconds
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+from .recovery import execution_payload, fingerprint, prepare_recovery
+
+
+def execution_mode():
+    value = os.getenv('AGENTIC_EXECUTION_MODE', 'worker').strip().lower()
+    if value not in {'process', 'worker'}:
+        raise ValueError('AGENTIC_EXECUTION_MODE must be process or worker')
+    return value
+
+
+def credential_snapshot(names=None):
+    # Only fingerprints are persisted; worker obtains current keys from its environment.
+    names = names if names is not None else ('GRAPH_READ_TOKEN', 'AGENTIC_APPROVAL_TOKEN', 'ONTOLOGY_APPROVAL_TOKEN',
+             'INGESTION_WRITE_TOKEN', 'DATA_PRODUCT_APPROVAL_TOKEN', 'DATA_JOB_EXECUTION_TOKEN', 'GRAPH_PUBLICATION_TOKEN')
+    return {name: hashlib.sha256(os.environ[name].strip().encode()).hexdigest()
+            for name in names if os.getenv(name, '').strip()}
+
+
+def workflow_credentials(steps):
+    """Retain only the authorization profiles used by this approved plan."""
+    names = {'GRAPH_READ_TOKEN'}
+    if any(step['requires_approval'] for step in steps):
+        names.add('AGENTIC_APPROVAL_TOKEN')
+    for step in steps:
+        tool = step['tool']
+        service = tool.get('service')
+        if str(tool.get('method', 'GET')).upper() not in {'GET', 'HEAD', 'OPTIONS'}:
+            if service in {'ontology', 'qif'}:
+                names.add('ONTOLOGY_APPROVAL_TOKEN')
+            elif service == 'ingestion':
+                names.add('INGESTION_WRITE_TOKEN')
+        if tool.get('mutates'):
+            from .transport_auth import APPROVAL_TOKENS
+            profile = APPROVAL_TOKENS.get(tool['id'])
+            if not profile:
+                raise ValueError('Mutating workflow tool has no approval contract')
+            names.add(profile)
+        # Engineering publication delegates registration and graph publication.
+        if tool.get('id') == 'engineering.publish':
+            names.update({'ONTOLOGY_APPROVAL_TOKEN', 'GRAPH_PUBLICATION_TOKEN'})
+    return names
+
+
+def transport_snapshot():
+    names = ('AUTH_MODE','AGENTIC_SERVICE_URL','GRAPH_SERVICE_URL','ONTOLOGY_SERVICE_URL',
+             'INGESTION_SERVICE_URL','OSLC_SERVICE_URL','QIF_SERVICE_URL','DATA_CATALOG_URL',
+             'DATA_PRODUCT_SERVICE_URL','CEIM_SERVICE_URL','DATA_PIPELINE_SERVICE_URL','DEPO_API_GATEWAY_URL')
+    return fingerprint({name:os.getenv(name,'').strip() for name in names})
+
+
+def clean_command(payload):
+    command = execution_payload(payload)
+    def check(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key.lower().endswith(('_token', '_api_key', '_password', '_secret')) or key.lower() in {'headers', 'credentials'}:
+                    raise ValueError('Durable workflow inputs cannot contain credentials or arbitrary headers')
+                check(item)
+        elif isinstance(value, list):
+            for item in value: check(item)
+    check(command)
+    return command
+
+
+async def enqueue(payload, request, recovery=None):
+    from fastapi import HTTPException
+    from backend.depo_platform.authorization import approval_identity, graph_read_identity
+    from backend.depo_platform.network import bounded_timeout_seconds
+    from . import router as routes, sessions
+    if os.getenv('AUTH_MODE', 'token').lower() != 'token':
+        raise HTTPException(503, 'Durable worker mode requires token service identities; Entra delegation is not persisted')
+    plan = routes.workflow_plan(payload)
+    actor = approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN') if any(step['requires_approval'] for step in plan['steps']) else graph_read_identity(request)
+    workflow = routes.catalog.item('workflows', payload['workflow_id'])
+    command = clean_command(payload)
+    from .page_tasks import page_binding
+    clean_page = page_binding('validation', command.get('page_context'))
+    if clean_page: command['page_context'] = clean_page['page_context']
+    requested = command.get('step_inputs')
+    if requested is not None and (not isinstance(requested,list) or len(requested) != len(workflow['steps']) or any(not isinstance(item,dict) for item in requested)):
+        raise ValueError('step_inputs must contain one object for each workflow step')
+    if not isinstance(command.get('inputs',{}),dict): raise ValueError('inputs must be an object')
+    commands = [{**step,'inputs':{**(requested[index] if requested is not None else command.get('inputs',{})),**step.get('input_bindings',{})}} for index,step in enumerate(workflow['steps'])]
+    await routes._preflight_tools(commands, request, deferred=True)
+    required_credentials = workflow_credentials(plan['steps'])
+    credentials = credential_snapshot(required_credentials)
+    if set(credentials) != required_credentials:
+        raise HTTPException(503, 'Configure all required workflow credential profiles before queueing')
+    if 'GRAPH_READ_TOKEN' not in credentials or (any(step['requires_approval'] for step in plan['steps']) and 'AGENTIC_APPROVAL_TOKEN' not in credentials):
+        raise HTTPException(503,'Configure current server read and approval profiles before queueing workflows')
+    now = datetime.now(timezone.utc)
+    definition = {'workflow':workflow,'steps':plan['steps']}
+    record = {**(recovery or {}), 'run_id': recovery['run_id'] if recovery else 'run-'+str(uuid4()),
+              'owner': recovery['owner'] if recovery else routes._workflow_owner(request,actor),
+              'workflow_id':workflow['id'],'status':'queued','execution_mode':'worker',
+              'execution_id':uuid4().hex,'execution_payload':command,'workflow_definition':definition,
+              'workflow_digest':fingerprint(definition),'approved_actor':actor,'credential_fingerprints':credentials,
+              'transport_fingerprint':transport_snapshot(),
+              'started_at': recovery['started_at'] if recovery else now.isoformat(), 'updated_at':now.isoformat(),
+              'deadline_at':recovery['deadline_at'] if recovery else (now+timedelta(seconds=agent_run_timeout_seconds())).isoformat(),
+              'traces': recovery['traces'] if recovery else []}
+    from .page_tasks import page_binding
+    record.update(page_binding(record['owner'], command.get('page_context')))
+    from .context_envelope import assemble
+    record['context_envelope'] = assemble(owner=record['owner'], run_id=record['run_id'],
+        purpose='approved_workflow', context=command.get('page_context') or {},
+        deadline_at=record['deadline_at'], contract_digest=record['workflow_digest'])
+    record.pop('_expected_record',None)
+    if recovery:
+        if not await routes._agent_io(routes.workflow_store.compare_and_put,record['run_id'],recovery['_expected_record'],record):
+            raise HTTPException(409,'Recovery was claimed by another executor')
+    else:
+        await routes._agent_io(routes.workflow_store.create,record['run_id'],record)
+    return {'run_id':record['run_id'],'status':'queued','execution_mode':'worker','deadline_at':record['deadline_at']}
+
+
+async def execute_candidate(record):
+    from starlette.requests import Request
+    from backend.depo_platform.authorization import require_active_token
+    from backend.depo_platform.credentials import uses_postgres, verify_key
+    from . import router as routes
+    from .workflow_control import last_activity
+    run_id = record['run_id']
+    if record.get('execution_mode') != 'worker' or record.get('status') not in {'queued','running','interrupted'}: return
+    if record.get('reconciliation_required') or (record.get('pending_step') or {}).get('mutates') or record.get('compensations'): return
+    from .context_envelope import verify
+    try:
+        verify(record, context=(record.get('execution_payload') or {}).get('page_context') or {},
+               contract_digest=record.get('workflow_digest', ''))
+    except (ValueError, KeyError, TypeError):
+        await routes._agent_io(routes.workflow_store.compare_and_put, run_id, record,
+            {**record, 'status': 'blocked', 'error_type': 'WorkerContextChanged'})
+        return
+    if datetime.now(timezone.utc) >= datetime.fromisoformat(record['deadline_at']):
+        await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,{**record,'status':'timed_out','error_type':'QueueDeadlineElapsed','updated_at':datetime.now(timezone.utc).isoformat()})
+        return
+    try:
+        definition = {'workflow':routes.catalog.item('workflows',record['workflow_id']), 'steps':routes.workflow_plan({'workflow_id':record['workflow_id']})['steps']}
+    except (KeyError,ValueError):
+        await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,{**record,'status':'failed','error_type':'WorkerDefinitionChanged'})
+        return
+    if record['status'] in {'running','interrupted'}:
+        heartbeat = await routes._agent_io(routes.workflow_heartbeats.get,f"{run_id}:{record.get('execution_id','')}")
+        try: recovery = prepare_recovery(record,definition,activity_at=last_activity(record,heartbeat))
+        except ValueError: return  # Active, expired or uncertain mutations are never replayed.
+    else: recovery = dict(record)
+    def verify_grant():
+        if record.get('credential_fingerprints') != credential_snapshot(record.get('credential_fingerprints', {}).keys()) or record.get('workflow_digest') != fingerprint(definition) or record.get('transport_fingerprint') != transport_snapshot():
+            raise ValueError('Authorization or tool contracts changed')
+        for name in record['credential_fingerprints']:
+            require_active_token(name)
+            if uses_postgres(): verify_key(name,os.environ[name].strip())
+    try:
+        await routes._agent_io(verify_grant)
+    except Exception as exc:
+        # Authority outages do not revoke an existing grant. The queue retries
+        # verification; the original deadline remains authoritative.
+        if getattr(exc, 'status_code', None) == 503:
+            retries = min(int(record.get('authorization_retry_count', 0)) + 1, 8)
+            now = datetime.now(timezone.utc)
+            await routes._agent_io(routes.workflow_store.compare_and_put, run_id, record, {
+                **record, 'authorization_retry_count': retries,
+                'authorization_retry_at': (now + timedelta(seconds=min(2 ** retries, 60))).isoformat(),
+                'updated_at': now.isoformat(),
+            })
+            return
+        await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,{**record,'status':'failed','error_type':'WorkerAuthorizationChanged'})
+        return
+    claimed = {**record,'status':'running','execution_id':uuid4().hex,'updated_at':datetime.now(timezone.utc).isoformat(),
+               'authorization_retry_at': None, 'authorization_retry_count': 0}
+    if not await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,claimed): return
+    recovery.update(_expected_record=claimed,execution_id=claimed['execution_id'])
+    request = Request({'type':'http','method':'POST','path':'/api/v1/workflow-runs','headers':[(b'authorization',('Bearer '+os.environ['GRAPH_READ_TOKEN'].strip()).encode())],'client':('127.0.0.1',0)})
+    request.state.request_id = record.get('request_id','')
+    payload = {**record['execution_payload'],'approved_by':record['approved_actor'],'approval_token':os.getenv('AGENTIC_APPROVAL_TOKEN','')}
+    await routes._execute_workflow(payload,request,recovery=recovery)
+
+
+async def worker_loop():
+    import logging
+    from backend.mesh_store import PostgresRegistry
+    from . import router as routes
+    from .workflow_control import execution_heartbeat
+    status_store = PostgresRegistry('agentic_workflow_workers')
+    async with execution_heartbeat(status_store,'workflow-worker-'+uuid4().hex,{'execution_mode':execution_mode()}):
+        await _worker_loop(routes,logging)
+
+
+async def _worker_loop(routes, logging):
+    capacity = int(os.getenv('AGENTIC_WORKER_CONCURRENCY','4'))
+    if not 1 <= capacity <= 16: raise ValueError('AGENTIC_WORKER_CONCURRENCY must be between 1 and 16')
+    active = {}
+    prefer_goals = True
+    try:
+        while True:
+            for run_id, task in list(active.items()):
+                if task.done():
+                    active.pop(run_id)
+                    if not task.cancelled() and task.exception():
+                        failure = task.exception()
+                        logging.getLogger(__name__).warning('Workflow worker execution failed run_id=%s error_type=%s http_status=%s; inspect retained workflow diagnostics',
+                                                            run_id, type(failure).__name__, getattr(failure, 'status_code', None))
+            if execution_mode() == 'worker':
+                for family in (('goals', 'workflows') if prefer_goals else ('workflows', 'goals')):
+                    if len(active) >= capacity: break
+                    try:
+                        if family == 'goals':
+                            from .goal_routes import candidates as goal_candidates, execute_candidate as execute_goal
+                            records = await goal_candidates(min(capacity-len(active), max(1, capacity//2)))
+                            execute = execute_goal
+                        else:
+                            stale = (datetime.now(timezone.utc)-timedelta(seconds=60)).isoformat()
+                            records = await routes._agent_io(routes.workflow_store.execution_candidates,capacity-len(active),stale,'agentic_workflow_heartbeats')
+                            execute = execute_candidate
+                        for record in records:
+                            if record['run_id'] not in active:
+                                active[record['run_id']] = asyncio.create_task(execute(record))
+                                prefer_goals = family == 'workflows'
+                            if len(active) >= capacity: break
+                    except asyncio.CancelledError: raise
+                    except Exception as failure:
+                        logging.getLogger(__name__).warning('Worker queue unavailable family=%s error_type=%s',family,type(failure).__name__)
+            await asyncio.sleep(2)
+    finally:
+        for task in active.values(): task.cancel()
+        await asyncio.gather(*active.values(),return_exceptions=True)

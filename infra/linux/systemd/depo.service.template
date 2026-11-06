@@ -1,0 +1,23 @@
+[Unit]
+Description=DEPO application services and Spark data pipeline
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=__DEPO_USER__
+Group=__DEPO_GROUP__
+WorkingDirectory=__DEPO_ROOT__
+ExecStart=/usr/bin/bash __DEPO_ROOT__/infra/linux/start-depo-services.sh __DEPO_ROOT__/.env.local
+ExecStop=/usr/bin/bash __DEPO_ROOT__/infra/linux/stop-depo-services.sh
+TimeoutStartSec=600
+TimeoutStopSec=120
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=__DEPO_ROOT__/logs __ARTIFACT_STORAGE__ __SPARK_OUTPUT_ROOT__
+
+[Install]
+WantedBy=multi-user.target

@@ -1,19 +1,34 @@
+"""Legacy aggregate compatibility host, retained for tests and migrating callers.
+
+Customer deployment starts the ten modules in infra/deployment/services.json.
+Do not launch this module as the customer production API.
+"""
+
+from backend.depo_platform.request_bodies import ContextBody, InferenceBody, ModelDecisionBody, ModelLinkBody, ModelNodeBody, ModelProposalBody, ModelSeedBody, ReportBody
+from typing import Any, Dict
 import os
 import sys
 import asyncio
 import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query
+from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query, BackgroundTasks
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
+from starlette.concurrency import run_in_threadpool
 import logging as _logging
 from logging.handlers import RotatingFileHandler
 import json
 import re
+from pathlib import Path as FileSystemPath
 
-# ✅ Load environment variables from .env file
-load_dotenv()
+# Compatibility development defaults must not fill managed deployment settings.
+if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+    os.getenv(key, '').lower() in {'prod', 'production'}
+    for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+):
+    load_dotenv(override=False)
 
 # 🔒 MEDIUM PRIORITY: Enhanced logging configuration
 def setup_logging():
@@ -64,6 +79,35 @@ def setup_logging():
 
 logger = setup_logging()
 
+try:
+    from .Services.runtime_state_store import (
+        allow_request as allow_shared_request,
+        acquire_session_lease,
+        clear_chat_messages,
+        delete_chat_job as delete_shared_chat_job,
+        delete_session as delete_shared_session,
+        get_chat_job as get_shared_chat_job,
+        get_session as get_shared_session,
+        list_chat_jobs as list_shared_chat_jobs,
+        save_chat_job as save_shared_chat_job,
+        save_session as save_shared_session,
+        release_session_lease,
+    )
+except ImportError:
+    from Services.runtime_state_store import (
+        allow_request as allow_shared_request,
+        acquire_session_lease,
+        clear_chat_messages,
+        delete_chat_job as delete_shared_chat_job,
+        delete_session as delete_shared_session,
+        get_chat_job as get_shared_chat_job,
+        get_session as get_shared_session,
+        list_chat_jobs as list_shared_chat_jobs,
+        save_chat_job as save_shared_chat_job,
+        save_session as save_shared_session,
+        release_session_lease,
+    )
+
 # Sensitive data patterns to filter from logs
 SENSITIVE_PATTERNS = [
     r'password["\']?\s*[:=]\s*["\']?([^"\'\s]+)',
@@ -82,74 +126,201 @@ def sanitize_log_message(message: str) -> str:
     
     return message
 
-# Ensure Neo4j vector + keyword indexes exist BEFORE any module tries to
-# connect to them (e.g. chains/vector.py imported via agent.chat).
-ensure_indexes_standalone = None
+_CYPHER_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_cypher_identifier(value: str, *, default: str) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return default
+    if not _CYPHER_IDENTIFIER_PATTERN.fullmatch(candidate):
+        logger.warning("Unsafe Cypher identifier '%s' replaced with '%s'", candidate, default)
+        return default
+    return candidate
+
+
+def _graph_service_unavailable(endpoint: str, exc: Exception) -> HTTPException:
+    logger.warning("%s unavailable: %s", endpoint, exc)
+    return HTTPException(
+        status_code=503,
+        detail={
+            "status": "unavailable",
+            "endpoint": endpoint,
+            "message": str(exc),
+        },
+    )
+
+_index_preparer = None
+_index_preparer_load_error = None
+
+
+def _load_index_preparer():
+    """Load graph embedding dependencies only when the index task is enabled."""
+    global _index_preparer, _index_preparer_load_error
+    if _index_preparer is not None:
+        return _index_preparer
+    try:
+        from .Services.graph_embeddings import ensure_indexes_standalone
+    except Exception as import_error:
+        try:
+            from Services.graph_embeddings import ensure_indexes_standalone
+        except Exception as full_error:
+            _index_preparer_load_error = full_error
+            logger.warning("Index pre-creation module unavailable: %s", import_error)
+            return None
+    _index_preparer = ensure_indexes_standalone
+    return _index_preparer
+
 try:
-    from .Services.graph_embeddings import ensure_indexes_standalone
+    from .Services.agent_memory_service import AgentMemoryService
 except Exception:
     try:
-        from Services.graph_embeddings import ensure_indexes_standalone
-    except Exception as _exc:
-        logger.warning("Index pre-creation skipped: %s", _exc)
+        from Services.agent_memory_service import AgentMemoryService
+    except Exception as _agent_memory_exc:
+        logger.warning("Agent memory service unavailable: %s", _agent_memory_exc)
+        AgentMemoryService = None
 
-try:
-    if ensure_indexes_standalone is not None:
-        ensure_indexes_standalone()
-except Exception as _exc:
-    logger.warning("Index pre-creation skipped: %s", _exc)
+_chat_generate_response = None
+_chat_generate_response_stream = None
+_chat_load_error = None
 
-try:
-    from .agent.chat import generate_response, generate_response_stream #generate_response_with_cypher
-except Exception as _exc:
+
+def _load_chat_generators():
+    """Load the optional GraphRAG stack on first chat use, not API startup."""
+    global _chat_generate_response, _chat_generate_response_stream, _chat_load_error
+    if _chat_generate_response is not None and _chat_generate_response_stream is not None:
+        return _chat_generate_response, _chat_generate_response_stream
     try:
-        from agent.chat import generate_response, generate_response_stream #generate_response_with_cypher
-    except Exception as _full_exc:
-        logger.warning("Agent chat module not available: %s", _exc)
-        logger.info("Using fallback chat implementation with Ollama")
-        
-        # Fallback: Simple Ollama-based chat without the complex agent
-        from Services.ollama_service import get_ollama_service
-        
-        async def _fallback_generate_response(session_id: str, message: str) -> str:
-            """Fallback chat implementation using Ollama directly"""
-            try:
-                service = get_ollama_service()
-                response = service.query(message)
-                return response or "I couldn't generate a response. Please try again."
-            except Exception as e:
-                logger.error(f"Fallback chat error: {type(e).__name__}: {e}", exc_info=True)
-                return "I encountered an error processing your request. Please try again later."
-        
-        async def _fallback_generate_response_stream(session_id: str, message: str):
-            """Fallback streaming chat implementation using Ollama directly"""
-            try:
-                service = get_ollama_service()
-                response = service.query(message)
-                if response:
-                    # Stream the response in chunks
-                    chunk_size = 6
-                    for i in range(0, len(response), chunk_size):
-                        yield f"data: {json.dumps({'token': response[i:i + chunk_size]})}\n\n"
-                yield f"data: {json.dumps({'done': True})}\n\n"
-            except Exception as e:
-                logger.error(f"Fallback stream error: {type(e).__name__}: {e}", exc_info=True)
-                yield f"data: {json.dumps({'error': 'Error processing your request'})}\n\n"
-                yield f"data: {json.dumps({'done': True})}\n\n"
-        
-        generate_response = _fallback_generate_response
-        generate_response_stream = _fallback_generate_response_stream
+        from .agent.chat import generate_response as response_fn, generate_response_stream as stream_fn
+    except Exception as import_error:
+        try:
+            from agent.chat import generate_response as response_fn, generate_response_stream as stream_fn
+        except Exception as full_error:
+            _chat_load_error = full_error
+            logger.warning("Agent chat module not available; using lazy Ollama fallback: %s", import_error)
+
+            def _format_graph_context_for_fallback(graph_context) -> str:
+                if not graph_context:
+                    return ""
+                try:
+                    return "Current graph context:\n" + json.dumps(graph_context, indent=2, default=str)[:3500]
+                except Exception:
+                    return f"Current graph context: {str(graph_context)[:3500]}"
+
+            def _live_graph_context_for_fallback(message: str, graph_context=None):
+                """Resolve a small Neo4j context when the optional agent stack is absent.
+
+                The browser normally sends a graph snapshot, but external clients do not
+                have that snapshot. Keep this lookup bounded and read-only so the fallback
+                remains GraphRAG-grounded without requiring LangChain integrations.
+                """
+                if isinstance(graph_context, dict):
+                    visible = graph_context.get("visibleGraph") or graph_context.get("visible_graph") or graph_context
+                    if isinstance(visible, dict) and (visible.get("nodes") or visible.get("links") or visible.get("relationships")):
+                        return graph_context
+                try:
+                    try:
+                        from .Services.graph_view_service import GraphViewService
+                    except Exception:
+                        from Services.graph_view_service import GraphViewService
+
+                    text = str(message or "").strip()
+                    candidates = []
+                    for value in re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{2,}", text):
+                        lowered = value.lower()
+                        if lowered not in {
+                            "what", "which", "where", "when", "why", "how", "show", "find",
+                            "list", "with", "from", "this", "that", "about", "impact", "analysis",
+                            "context", "graph", "please", "does", "have", "give", "and", "the",
+                        } and value not in candidates:
+                            candidates.append(value)
+                    for candidate in candidates[:8]:
+                        payload = GraphViewService.get_contextual_subgraph(
+                            search=candidate,
+                            limit=24,
+                            search_mode="broader",
+                            expand_neighbors=True,
+                        )
+                        if payload and (payload.get("nodes") or payload.get("relationships")):
+                            return {
+                                "source": "backend-neo4j-context",
+                                "query": message,
+                                "contextualGraph": payload,
+                            }
+                except Exception as exc:
+                    logger.warning("Live Neo4j fallback context unavailable: %s", exc)
+                return graph_context
+
+            async def response_fn(session_id: str, message: str, graph_context=None) -> str:
+                from Services.ollama_service import get_ollama_service
+                try:
+                    prompt = message
+                    live_context = _live_graph_context_for_fallback(message, graph_context)
+                    context_text = _format_graph_context_for_fallback(live_context)
+                    if context_text:
+                        prompt = f"{context_text}\n\nUser question: {message}"
+                    response = get_ollama_service().query(prompt)
+                    return response or "I couldn't generate a response. Please try again."
+                except Exception as exc:
+                    logger.error("Fallback chat error: %s: %s", type(exc).__name__, exc, exc_info=True)
+                    return "I encountered an error processing your request. Please try again later."
+
+            def stream_fn(session_id: str, message: str, graph_context=None):
+                async def _stream():
+                    from Services.ollama_service import get_ollama_service
+                    try:
+                        prompt = message
+                        live_context = _live_graph_context_for_fallback(message, graph_context)
+                        context_text = _format_graph_context_for_fallback(live_context)
+                        if context_text:
+                            prompt = f"{context_text}\n\nUser question: {message}"
+                        response = get_ollama_service().query(prompt)
+                        if response:
+                            for index in range(0, len(response), 6):
+                                yield f"data: {json.dumps({'token': response[index:index + 6]})}\n\n"
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                    except Exception as exc:
+                        logger.error("Fallback stream error: %s: %s", type(exc).__name__, exc, exc_info=True)
+                        yield f"data: {json.dumps({'error': 'Error processing your request'})}\n\n"
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                return _stream()
+
+        _chat_load_error = _chat_load_error or import_error
+    _chat_generate_response = response_fn
+    _chat_generate_response_stream = stream_fn
+    return _chat_generate_response, _chat_generate_response_stream
+
+
+async def generate_response(session_id: str, message: str, graph_context=None):
+    response_fn, _ = _load_chat_generators()
+    return await response_fn(session_id, message, graph_context)
+
+
+def generate_response_stream(session_id: str, message: str, graph_context=None):
+    _, stream_fn = _load_chat_generators()
+    return stream_fn(session_id, message, graph_context)
 
 try:
     from .core.graph import graph, get_graph_schema, cleanup_graph_connection
     # from .models.schema import ChatRequest, ChatResponse, ResetRequest, TextSearchRequest, ChatWithCypherResponse
     # from .agent.memory import reset_memory
     from .models.schema import ChatRequest, ChatResponse, TextSearchRequest
-    from .data_ingestion import router as ingestion_router
+    from .ingestion_service.router import router as ingestion_router
     from .Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from .routes.ontology_routes import router as ontology_router
+    from .routes.oslc_routes import router as oslc_router
     from .routes.threedxml_routes import router as threedxml_router
     from .routes.admin_routes import router as admin_router
+    from .qif.router import router as qif_router
+    from .ontology_service.router import router as semantica_ontology_router
+    from .graph_service.router import router as graph_service_router
+    from .routes.sysml_v2_routes import router as sysml_v2_router
+    from .routes.metadata_registry_routes import router as metadata_registry_router
+    try:
+        from .Services.documents_api import router as documents_router
+    except Exception:
+        documents_router = None
+    from .Services.oslc_trs_service import OSLCTRSService
 except ImportError:
     # Script mode (python backend/main.py): add project root for backend.* imports.
     _backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -159,11 +330,22 @@ except ImportError:
 
     from backend.core.graph import graph, get_graph_schema, cleanup_graph_connection
     from backend.models.schema import ChatRequest, ChatResponse, TextSearchRequest
-    from backend.data_ingestion import router as ingestion_router
+    from backend.ingestion_service.router import router as ingestion_router
     from backend.Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from backend.routes.ontology_routes import router as ontology_router
+    from backend.routes.oslc_routes import router as oslc_router
     from backend.routes.threedxml_routes import router as threedxml_router
     from backend.routes.admin_routes import router as admin_router
+    from backend.qif.router import router as qif_router
+    from backend.ontology_service.router import router as semantica_ontology_router
+    from backend.graph_service.router import router as graph_service_router
+    from backend.routes.sysml_v2_routes import router as sysml_v2_router
+    from backend.routes.metadata_registry_routes import router as metadata_registry_router
+    try:
+        from backend.Services.documents_api import router as documents_router
+        from backend.Services.oslc_trs_service import OSLCTRSService
+    except Exception:
+        documents_router = None
 
 # Optional imports - gracefully handle missing modules
 try:
@@ -178,6 +360,35 @@ from contextlib import asynccontextmanager
 
 class TextSearchRequest(BaseModel):
     search: str
+    ontology_prefix: str = ""
+
+
+def _normalize_search_term(value: str) -> str:
+    normalized = re.sub(r"\*+", "", str(value or "")).strip().lower()
+    return re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", normalized)
+
+
+GRAPH_SEARCH_PROPERTY_KEYS = [
+    "name",
+    "title",
+    "code",
+    "label",
+    "identifier",
+    "requirement_id",
+    "part_number",
+    "catalogue_id",
+    "item_id",
+    "uid",
+    "id",
+]
+
+GRAPH_SEARCH_RELATIONSHIP_PROPERTY_KEYS = [
+    "name",
+    "label",
+    "type",
+    "semantic_role",
+    "target_source_id",
+]
 
 
 class WorkflowExecuteRequest(BaseModel):
@@ -192,13 +403,62 @@ class WorkflowExecuteRequest(BaseModel):
 #    database = "mbse-sysml"
 #)
 
+def _startup_flag(name: str, default: bool = True) -> bool:
+    """Read a boolean startup setting without making deployments brittle."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+async def _prepare_neo4j_indexes(app: FastAPI) -> None:
+    """Prepare optional indexes without blocking Uvicorn from accepting requests."""
+    preparer = _load_index_preparer()
+    if preparer is None:
+        app.state.neo4j_index_status = "unavailable"
+        return
+
+    app.state.neo4j_index_status = "running"
+    try:
+        await asyncio.to_thread(preparer)
+    except Exception as exc:
+        app.state.neo4j_index_status = "failed"
+        logger.warning("Neo4j index preflight failed after startup: %s", exc)
+    else:
+        app.state.neo4j_index_status = "ready"
+        logger.info("Neo4j index preflight completed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Application startup complete — yield to allow request handling
+    # Bind the API first. Index creation can involve a database connection and
+    # must not delay health checks, OpenAPI, or the first UI request.
+    index_task = None
+    app.state.neo4j_index_status = "disabled"
+    if _startup_flag("PREPARE_NEO4J_INDEXES_ON_STARTUP", default=True):
+        index_task = asyncio.create_task(_prepare_neo4j_indexes(app))
+        app.state.neo4j_index_task = index_task
+    try:
+        from .qif.task_service import task_service
+    except ImportError:
+        from backend.qif.task_service import task_service
+    try:
+        recovery = task_service.recover_pending()
+        logger.info("QIF workflow recovery: %s", recovery)
+    except Exception as exc:
+        logger.warning("QIF workflow recovery skipped: %s", exc)
     try:
         yield
     finally:
         logger.info("Application shutting down...")
+        if index_task is not None and not index_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(index_task), timeout=5)
+            except asyncio.TimeoutError:
+                logger.warning("Neo4j index preflight did not finish before shutdown")
+                index_task.cancel()
+            except Exception as exc:
+                logger.debug("Neo4j index preflight ended during shutdown: %s", exc)
         try:
             cleanup_graph_connection()
         except Exception as e:
@@ -237,26 +497,15 @@ app = FastAPI(
     },
 )
 
-# ✅ SECURE: Load allowed origins from environment with fallback
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
-
-# Add CORS middleware with secure configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,  # Restricted to specific origins from .env
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],  # Only allow safe HTTP methods
-    allow_headers=["Content-Type", "Authorization", "Cache-Control"],  # Cache-Control needed for no-cache requests
-)
-
 # 🔒 SECURITY: Rate limiting to prevent brute force attacks
 from collections import defaultdict
 from time import time as unix_time
 
 request_counts = defaultdict(list)  # Track requests per IP: {ip: [timestamp, timestamp, ...]}
 RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX = 100  # max requests per window
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "100"))  # max requests per window
+RATE_LIMIT_SKIP_LOCAL_READS = os.getenv("RATE_LIMIT_SKIP_LOCAL_READS", "true").lower() == "true"
+RATE_LIMITED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 class RateLimitMiddleware:
     """Simple in-memory rate limiter for single-instance deployments"""
@@ -270,16 +519,23 @@ class RateLimitMiddleware:
         
         # Get client IP
         client_ip = scope.get("client", ("unknown", 0))[0]
+        method = (scope.get("method") or "GET").upper()
+        path = scope.get("path", "")
         current_time = unix_time()
+
+        is_loopback_client = client_ip in {"127.0.0.1", "::1", "localhost"}
+        is_read_request = method not in RATE_LIMITED_METHODS
+        if RATE_LIMIT_SKIP_LOCAL_READS and is_loopback_client and is_read_request:
+            await self.app(scope, receive, send)
+            return
+
+        if is_read_request:
+            await self.app(scope, receive, send)
+            return
         
-        # Clean old requests (older than window)
-        request_counts[client_ip] = [
-            t for t in request_counts[client_ip]
-            if current_time - t < RATE_LIMIT_WINDOW
-        ]
-        
-        # Check rate limit
-        if len(request_counts[client_ip]) >= RATE_LIMIT_MAX:
+        # Use shared SQLite state so the limit is consistent across workers.
+        if not allow_shared_request(client_ip, current_time, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX):
+            logger.warning("Rate limit exceeded for %s %s from %s", method, path, client_ip)
             await send({
                 "type": "http.response.start",
                 "status": 429,
@@ -290,9 +546,6 @@ class RateLimitMiddleware:
                 "body": b'{"detail": "Too many requests. Please try again later."}',
             })
             return
-        
-        # Record request
-        request_counts[client_ip].append(current_time)
         
         await self.app(scope, receive, send)
 
@@ -324,23 +577,23 @@ class SessionSecurityMiddleware:
         # Get or create session ID
         headers = dict(scope.get("headers", []))
         session_id = headers.get(b"x-session-id", b"").decode()
+        supplied_session_id = bool(session_id)
         client_ip = scope.get("client", ("unknown", 0))[0]
         
         current_time = unix_time()
         
-        # Clean expired sessions
-        expired_sessions = [
-            sid for sid, sess in session_store.items()
-            if current_time - sess.get('last_accessed_at', current_time) > SESSION_TIMEOUT
-        ]
-        for sid in expired_sessions:
-            del session_store[sid]
-            if sid in session_ips:
-                del session_ips[sid]
-        
-        # Check session validity
-        if session_id and session_id in session_store:
-            session = session_store[session_id]
+        # Check shared session validity; the local dictionaries remain a small hot cache.
+        session = session_store.get(session_id) if session_id else None
+        shared_session = get_shared_session(session_id) if session_id else None
+        if shared_session:
+            session = {
+                'created_at': shared_session['created_at'],
+                'last_accessed_at': shared_session['last_accessed_at'],
+                'data': {},
+            }
+            session_ips[session_id] = shared_session.get('ips', [])
+
+        if session_id and session and current_time - session.get('last_accessed_at', current_time) <= SESSION_TIMEOUT:
             
             # Check for IP change (session fixation detection)
             if client_ip not in session_ips[session_id]:
@@ -350,13 +603,18 @@ class SessionSecurityMiddleware:
                 session_id = str(uuid4())
                 session_store[session_id] = session
                 session_ips[session_id] = [client_ip]
-                del session_store[old_session_id]
-                del session_ips[old_session_id]
+                session_store.pop(old_session_id, None)
+                session_ips.pop(old_session_id, None)
+                delete_shared_session(old_session_id)
             
             # Update last accessed time
             session['last_accessed_at'] = current_time
+            session_store[session_id] = session
+            save_shared_session(session_id, session.get('created_at', current_time), current_time, session_ips[session_id])
         else:
             # Create new session
+            if session_id:
+                delete_shared_session(session_id)
             session_id = str(uuid4())
             session_store[session_id] = {
                 'created_at': current_time,
@@ -364,13 +622,32 @@ class SessionSecurityMiddleware:
                 'data': {}
             }
             session_ips[session_id] = [client_ip]
+            save_shared_session(session_id, current_time, current_time, [client_ip])
         
         # Pass session ID to app via scope
         scope['session_id'] = session_id
-        
-        await self.app(scope, receive, send)
+        scope['session_id_supplied'] = supplied_session_id
+
+        async def send_with_session(message):
+            if message.get("type") == "http.response.start":
+                headers_out = list(message.get("headers") or [])
+                headers_out.append((b"x-session-id", session_id.encode("ascii")))
+                message = {**message, "headers": headers_out}
+            await send(message)
+
+        await self.app(scope, receive, send_with_session)
 
 app.add_middleware(SessionSecurityMiddleware)
+
+
+def _bind_chat_session(http_request: Request, requested_session_id: str) -> str:
+    """Bind chat payloads to the server-issued session carried by the header."""
+    server_session_id = http_request.scope.get("session_id")
+    if not server_session_id:
+        raise HTTPException(status_code=401, detail="A valid client session is required")
+    if http_request.scope.get("session_id_supplied") and requested_session_id != server_session_id:
+        raise HTTPException(status_code=403, detail="Chat session does not match the client session")
+    return server_session_id
 
 # 🔒 SECURITY: HTTP Security Headers Middleware
 class SecurityHeadersMiddleware:
@@ -397,7 +674,7 @@ class SecurityHeadersMiddleware:
                 # Add security headers
                 security_headers = [
                     # Content Security Policy - prevent XSS
-                    (b"content-security-policy", b"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:"),
+                    (b"content-security-policy", b"default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; connect-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com;"),
                     # Prevent clickjacking
                     (b"x-frame-options", b"SAMEORIGIN"),
                     # Prevent MIME sniffing
@@ -632,24 +909,28 @@ class TimeoutMiddleware:
     ⏱️ CRITICAL FIX: Handle request timeouts for long-running endpoints
     - Import operations: 5 minutes (300s)
     - Chat/streaming: 5 minutes (300s)
-    - Graph operations: 2 minutes (120s)
+    - Graph operations: 5 minutes (300s)
     - All others: 1 minute (60s)
     """
     
     def __init__(self, app):
         self.app = app
         # Endpoint-specific timeout mappings
+        import_timeout = int(os.getenv('IMPORT_REQUEST_TIMEOUT_SECONDS', os.getenv('REQUEST_IMPORT_TIMEOUT_SECONDS', '3600')))
+        ontology_timeout = int(os.getenv('ONTOLOGY_REQUEST_TIMEOUT_SECONDS', str(import_timeout)))
+        graph_timeout = int(os.getenv('GRAPH_REQUEST_TIMEOUT_SECONDS', '300'))
         self.endpoint_timeouts = {
-            '/api/v1/import': 300,  # 5 minutes for import operations
-            '/api/import': 300,      # Legacy route
-            '/api/v1/ontology/upload': 300,  # 5 minutes for ontology uploads
-            '/api/ontology/upload': 300,     # Legacy route
-            '/chat': 300,            # 5 minutes for chat responses
-            '/chat-stream': 300,     # 5 minutes for streaming responses
-            '/graphvis': 120,        # 2 minutes for graph visualization
-            '/graphfilter': 120,     # 2 minutes for filtering
+            '/api/v1/import': import_timeout,
+            '/api/import': import_timeout,      # Legacy route
+            '/data-import': import_timeout,     # Legacy route
+            '/api/v1/ontology/upload': ontology_timeout,
+            '/api/ontology/upload': ontology_timeout,     # Legacy route
+            '/chat': int(os.getenv('CHAT_REQUEST_TIMEOUT_SECONDS', '900')),  # 15 min default for chat responses
+            '/chat-stream': int(os.getenv('CHAT_STREAM_TIMEOUT_SECONDS', '900')),  # 15 min default for streaming responses
+            '/graphvis': graph_timeout,
+            '/graphfilter': graph_timeout,
         }
-        self.default_timeout = 60  # 1 minute default
+        self.default_timeout = 60  # Keep unmatched endpoints fast-failing by default
     
     def get_timeout_for_path(self, path: str) -> int:
         """Get appropriate timeout for the given path"""
@@ -693,16 +974,108 @@ class TimeoutMiddleware:
 
 app.add_middleware(TimeoutMiddleware)
 
+# CORS is configured solely by the shared root environment.
+def _build_allowed_origins() -> list[str]:
+    from backend.depo_platform.service_runtime import allowed_origins
+    return allowed_origins()
+
+
+allowed_origins = _build_allowed_origins()
+
+# Add CORS middleware last so it wraps error responses too.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Session-ID"],
+)
+
 # 🔒 SECURITY: Neo4j query timeout configuration
-NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))  # 30 seconds default
+NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "300"))  # 5 minutes default
 NEO4J_DRIVER_TIMEOUT = 60  # Connection timeout
 
 # Chat/session timing controls
 # Extended timeouts for Ollama model inference and streaming responses
-CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "180"))  # 3 min
-CHAT_STREAM_TIMEOUT_SECONDS = int(os.getenv("CHAT_STREAM_TIMEOUT_SECONDS", "300"))  # 5 min
+CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "900"))  # 15 min
+CHAT_STREAM_TIMEOUT_SECONDS = int(os.getenv("CHAT_STREAM_TIMEOUT_SECONDS", "900"))  # 15 min
 SESSION_LOCK_TIMEOUT_SECONDS = int(os.getenv("SESSION_LOCK_TIMEOUT_SECONDS", "15"))  # Allow slower systems
 SESSION_LOCK_TTL_SECONDS = int(os.getenv("SESSION_LOCK_TTL_SECONDS", "1800"))
+CHAT_JOB_TTL_SECONDS = int(os.getenv("CHAT_JOB_TTL_SECONDS", "3600"))
+CHAT_JOB_MAX_COUNT = int(os.getenv("CHAT_JOB_MAX_COUNT", "200"))
+
+_CHAT_JOBS: dict[str, dict] = {}
+_CHAT_JOBS_LOCK = asyncio.Lock()
+
+
+async def _cleanup_chat_jobs() -> None:
+    now = time.time()
+    async with _CHAT_JOBS_LOCK:
+        persisted_jobs = {job.get("job_id"): job for job in list_shared_chat_jobs() if job.get("job_id")}
+        _CHAT_JOBS.update(persisted_jobs)
+        expired = [job_id for job_id, job in _CHAT_JOBS.items()
+                   if (now - float(job.get("updated_at") or job.get("created_at") or now)) > CHAT_JOB_TTL_SECONDS]
+        for job_id in expired:
+            _CHAT_JOBS.pop(job_id, None)
+            delete_shared_chat_job(job_id)
+        if len(_CHAT_JOBS) > CHAT_JOB_MAX_COUNT:
+            overflow = len(_CHAT_JOBS) - CHAT_JOB_MAX_COUNT
+            oldest = sorted(_CHAT_JOBS.items(), key=lambda item: item[1].get("updated_at") or item[1].get("created_at") or 0)[:overflow]
+            for job_id, _ in oldest:
+                _CHAT_JOBS.pop(job_id, None)
+
+
+async def _update_chat_job(job_id: str, **updates) -> None:
+    async with _CHAT_JOBS_LOCK:
+        job = _CHAT_JOBS.get(job_id) or get_shared_chat_job(job_id)
+        if not job:
+            return
+        job.update(updates)
+        job["updated_at"] = time.time()
+        _CHAT_JOBS[job_id] = job
+        save_shared_chat_job(job_id, job)
+
+
+async def _execute_chat_job(job_id: str, session_id: str, message: str, graph_context=None) -> None:
+    await _update_chat_job(job_id, status="running", started_at=time.time())
+    try:
+        async with _session_lock(session_id):
+            result = await _run_with_timeout(
+                generate_response,
+                CHAT_REQUEST_TIMEOUT_SECONDS,
+                session_id,
+                message,
+                graph_context,
+            )
+        if AgentMemoryService is not None:
+            try:
+                AgentMemoryService.record_chat_turn(
+                    session_id=session_id,
+                    user_message=message,
+                    assistant_response=result,
+                    graph_context=graph_context,
+                    status="completed",
+                )
+                AgentMemoryService.record_reasoning_trace(
+                    session_id=session_id,
+                    task="async_chat_job",
+                    tool_name="knowledge_companion",
+                    input_payload={"job_id": job_id, "message": message, "graph_context_present": bool(graph_context)},
+                    result_summary={"response_length": len(str(result or "")), "status": "completed"},
+                    success=True,
+                )
+            except Exception as memory_exc:
+                logger.warning("Agent memory chat job record skipped: %s", memory_exc)
+        await _update_chat_job(job_id, status="completed", completed_at=time.time(), response=result)
+    except asyncio.TimeoutError:
+        logger.warning("Chat job timed out for session %s job %s", session_id, job_id)
+        await _update_chat_job(job_id, status="timeout", completed_at=time.time(), error="Chat request timed out. Please retry with a narrower question.")
+    except HTTPException as exc:
+        await _update_chat_job(job_id, status="failed", completed_at=time.time(), error=str(exc.detail))
+    except Exception as exc:
+        logger.error("Chat job failed for session %s job %s: %s", session_id, job_id, exc, exc_info=True)
+        await _update_chat_job(job_id, status="failed", completed_at=time.time(), error="Failed to process chat request. Please try again later.")
 
 _SESSION_LOCKS: dict[str, asyncio.Lock] = {}
 _SESSION_LOCK_LAST_USED: dict[str, float] = {}
@@ -732,6 +1105,7 @@ async def _get_session_lock(session_id: str) -> asyncio.Lock:
 @asynccontextmanager
 async def _session_lock(session_id: str):
     lock = await _get_session_lock(session_id)
+    owner = f"{os.getpid()}:{id(lock)}:{uuid4()}"
     try:
         await asyncio.wait_for(lock.acquire(), timeout=SESSION_LOCK_TIMEOUT_SECONDS)
     except asyncio.TimeoutError as exc:
@@ -740,9 +1114,24 @@ async def _session_lock(session_id: str):
             detail="Another request is in progress for this session. Please retry shortly.",
         ) from exc
 
+    shared_acquired = False
     try:
+        deadline = time.monotonic() + SESSION_LOCK_TIMEOUT_SECONDS
+        lease_ttl = max(SESSION_LOCK_TTL_SECONDS, CHAT_REQUEST_TIMEOUT_SECONDS + 60, CHAT_STREAM_TIMEOUT_SECONDS + 60)
+        while time.monotonic() < deadline:
+            shared_acquired = await asyncio.to_thread(acquire_session_lease, session_id, owner, lease_ttl)
+            if shared_acquired:
+                break
+            await asyncio.sleep(0.1)
+        if not shared_acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="Another request is in progress for this session. Please retry shortly.",
+            )
         yield
     finally:
+        if shared_acquired:
+            await asyncio.to_thread(release_session_lease, session_id, owner)
         if lock.locked():
             lock.release()
         _SESSION_LOCK_LAST_USED[session_id] = time.monotonic()
@@ -758,11 +1147,42 @@ async def _run_with_timeout(func, timeout_seconds: int, *args):
         return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=timeout_seconds)
 
 
-async def _stream_with_timeout(session_id: str, message: str):
+async def _stream_with_timeout(session_id: str, message: str, graph_context=None):
     stream_iter = None
+    response_parts: list[str] = []
+    stream_failed = False
+    memory_recorded = False
+
+    async def record_completed_stream() -> None:
+        nonlocal memory_recorded
+        if memory_recorded or stream_failed or AgentMemoryService is None:
+            return
+        assistant_response = "".join(response_parts)
+        try:
+            await asyncio.to_thread(
+                AgentMemoryService.record_chat_turn,
+                session_id=session_id,
+                user_message=message,
+                assistant_response=assistant_response,
+                graph_context=graph_context,
+                status="completed",
+            )
+            await asyncio.to_thread(
+                AgentMemoryService.record_reasoning_trace,
+                session_id=session_id,
+                task="chat-stream",
+                tool_name="knowledge_companion",
+                input_payload={"message": message, "graph_context_present": bool(graph_context)},
+                result_summary={"response_length": len(assistant_response), "status": "completed"},
+                success=True,
+            )
+            memory_recorded = True
+        except Exception as memory_exc:
+            logger.warning("Agent memory stream record skipped: %s", memory_exc)
+
     try:
         async with _session_lock(session_id):
-            stream_iter = generate_response_stream(session_id, message)
+            stream_iter = generate_response_stream(session_id, message, graph_context)
             deadline = time.monotonic() + CHAT_STREAM_TIMEOUT_SECONDS
             while True:
                 remaining = deadline - time.monotonic()
@@ -772,7 +1192,22 @@ async def _stream_with_timeout(session_id: str, message: str):
                     event = await asyncio.wait_for(stream_iter.__anext__(), timeout=remaining)
                 except StopAsyncIteration:
                     break
+                for line in str(event or "").splitlines():
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        payload = json.loads(line[5:].strip())
+                    except (TypeError, ValueError):
+                        continue
+                    if payload.get("token"):
+                        response_parts.append(str(payload["token"]))
+                    if payload.get("error"):
+                        stream_failed = True
+                    if payload.get("done") and not stream_failed:
+                        await record_completed_stream()
                 yield event
+            if response_parts and not stream_failed:
+                await record_completed_stream()
     except asyncio.TimeoutError:
         logger.warning("Chat stream timed out for session %s", session_id)
         yield f"data: {json.dumps({'error': 'Chat stream timed out. Please retry with a narrower or more specific question.'})}\n\n"
@@ -794,27 +1229,6 @@ async def _stream_with_timeout(session_id: str, message: str):
                 pass
 
 # 🔒 MEDIUM PRIORITY: Simple API Key Authentication
-from functools import wraps
-
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", None)  # Optional: Require API key for sensitive endpoints
-
-def require_api_key(func):
-    """
-    Decorator to require API key for sensitive endpoints
-    Pass key via X-API-Key header: X-API-Key: your-secret-key
-    """
-    @wraps(func)
-    async def wrapper(request: Request, *args, **kwargs):
-        if ADMIN_API_KEY:
-            api_key = request.headers.get("X-API-Key")
-            if api_key != ADMIN_API_KEY:
-                logger.warning(f"Unauthorized API access attempt from {request.client.host}")
-                raise HTTPException(status_code=401, detail="Invalid or missing API key")
-        
-        return await func(request, *args, **kwargs)
-    
-    return wrapper
-
 # ✅ ERROR HANDLING: Global exception handler to prevent stack trace leakage
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -827,8 +1241,43 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={
             "detail": "An internal server error occurred. Please contact support if the problem persists.",
-            "status": "error"
+            "status": "error",
+            "error_code": "INTERNAL_SERVER_ERROR",
+            "path": request.url.path,
         }
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Keep client errors predictable without exposing implementation details."""
+    detail = exc.detail if isinstance(exc.detail, str) else "Request failed"
+    if exc.status_code >= 500:
+        detail = "An internal server error occurred. Please try again later."
+    return JSONResponse(
+        status_code=exc.status_code,
+        headers=exc.headers,
+        content={
+            "detail": detail,
+            "status": "error",
+            "error_code": f"HTTP_{exc.status_code}",
+            "path": request.url.path,
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return one validation shape for every API route."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "status": "error",
+            "error_code": "VALIDATION_ERROR",
+            "path": request.url.path,
+            "errors": exc.errors(),
+        },
     )
 
 def safe_error(endpoint: str, error: Exception):
@@ -894,8 +1343,18 @@ app.include_router(ingestion_router, prefix="/api/v1", tags=["v1-ingestion"])
 app.include_router(unified_import_router, prefix="/api/v1", tags=["v1-data-import"])
 app.include_router(ontology_upload_router, prefix="/api/v1", tags=["v1-ontology-upload"])
 app.include_router(ontology_router, prefix="/api/v1", tags=["v1-ontology"])
+app.include_router(oslc_router)
 app.include_router(threedxml_router, prefix="/api/v1", tags=["v1-3dxml"])
 app.include_router(admin_router, prefix="/api/v1", tags=["v1-admin"])
+app.include_router(qif_router, prefix="/api/v1", tags=["v1-qif"])
+app.include_router(semantica_ontology_router, prefix="/api/v1", tags=["v1-semantica-ontology"])
+app.include_router(graph_service_router, prefix="/api/v1", tags=["v1-graph-service"])
+app.include_router(sysml_v2_router, prefix="/api/v1", tags=["v1-sysml-v2"])
+app.include_router(metadata_registry_router, prefix="/api/v1", tags=["v1-metadata-registry"])
+if documents_router is not None:
+    app.include_router(documents_router, prefix="/api/v1", tags=["v1-documents"])
+else:
+    logger.warning("Documents router not mounted because document pipeline imports are unavailable")
 
 # API versioning enabled: All endpoints use /api/v1/* for consistent routing
 # Legacy /api/* routes have been deprecated and removed (June 2026)
@@ -943,42 +1402,112 @@ def schema():
         return get_graph_schema()
     except Exception as e:
         logger.error(f"Schema endpoint error: {type(e).__name__}: {str(e)}", exc_info=True)
-        # Return empty schema gracefully instead of 500 error
-        return {
-            "node_labels": {},
-            "rel_types": {},
-            "display_names": {},
-            "message": "Neo4j database temporarily unavailable. Schema will load when database is connected."
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "unavailable",
+                "endpoint": "/schema",
+                "message": "Neo4j database temporarily unavailable. Schema will load when database is connected.",
+            },
+        )
+
+
+@app.post("/chat/validate")
+async def chat_validate(http_request: Request, request: ChatRequest):
+    """Validate external chat request payloads without invoking the LLM."""
+    session_id = _bind_chat_session(http_request, request.session_id)
+    return {
+        "status": "ok",
+        "session_id": session_id,
+        "message_length": len(request.message),
+        "graph_context_present": bool(request.graph_context),
+        "execute_endpoint": "/chat",
+        "stream_endpoint": "/chat-stream",
+    }
+
+
+@app.post("/chat/jobs")
+async def chat_job_submit(http_request: Request, request: ChatRequest, background_tasks: BackgroundTasks):
+    """Submit an asynchronous chat job for external apps that cannot wait on long LLM calls."""
+    if generate_response is None:
+        raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
+    session_id = _bind_chat_session(http_request, request.session_id)
+    await _cleanup_chat_jobs()
+    now = time.time()
+    job_id = f"chatjob-{uuid4()}"
+    async with _CHAT_JOBS_LOCK:
+        _CHAT_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "session_id": session_id,
+            "message_length": len(request.message),
+            "created_at": now,
+            "updated_at": now,
+            "poll_endpoint": f"/chat/jobs/{job_id}",
         }
+        save_shared_chat_job(job_id, _CHAT_JOBS[job_id])
+    background_tasks.add_task(_execute_chat_job, job_id, session_id, request.message, request.graph_context)
+    return JSONResponse(status_code=202, content={
+        "status": "accepted",
+        "job_id": job_id,
+        "session_id": session_id,
+        "poll_endpoint": f"/chat/jobs/{job_id}",
+        "message": "Chat job accepted. Poll the job endpoint for completion.",
+    })
 
 
-# @app.post("/chat")
-# def chat(prompt):
-#     try:
-#       completion = secure_models.complete(prompt)
-#       return {"results": completion.text}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+@app.get("/chat/jobs/{job_id}")
+async def chat_job_status(http_request: Request, job_id: str):
+    """Return async chat job status and response when complete."""
+    await _cleanup_chat_jobs()
+    async with _CHAT_JOBS_LOCK:
+        job = dict(_CHAT_JOBS.get(job_id) or get_shared_chat_job(job_id) or {})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Chat job not found or expired: {job_id}")
+    if not http_request.scope.get("session_id_supplied") or job.get("session_id") != http_request.scope.get("session_id"):
+        raise HTTPException(status_code=403, detail="Chat job is not available for this client session")
+    return job
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(http_request: Request, request: ChatRequest):
     if generate_response is None:
         raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
+    session_id = _bind_chat_session(http_request, request.session_id)
 
     try:
-        async with _session_lock(request.session_id):
+        async with _session_lock(session_id):
             result = await _run_with_timeout(
                 generate_response,
                 CHAT_REQUEST_TIMEOUT_SECONDS,
-                request.session_id,
+                session_id,
                 request.message,
+                request.graph_context,
             )
-        return ChatResponse(session_id=request.session_id, response=result)
+        if AgentMemoryService is not None:
+            try:
+                AgentMemoryService.record_chat_turn(
+                    session_id=session_id,
+                    user_message=request.message,
+                    assistant_response=result,
+                    graph_context=request.graph_context,
+                    status="completed",
+                )
+                AgentMemoryService.record_reasoning_trace(
+                    session_id=session_id,
+                    task="chat",
+                    tool_name="knowledge_companion",
+                    input_payload={"message": request.message, "graph_context_present": bool(request.graph_context)},
+                    result_summary={"response_length": len(str(result or "")), "status": "completed"},
+                    success=True,
+                )
+            except Exception as memory_exc:
+                logger.warning("Agent memory chat record skipped: %s", memory_exc)
+        return ChatResponse(session_id=session_id, response=result)
     except HTTPException:
         raise
     except asyncio.TimeoutError:
-        logger.warning("Chat request timed out for session %s", request.session_id)
+        logger.warning("Chat request timed out for session %s", session_id)
         raise HTTPException(status_code=504, detail="Chat request timed out. Please retry with a narrower question.")
     except Exception as e:
         logger.error(f"Chat endpoint error: {type(e).__name__}: {str(e)}", exc_info=True)
@@ -986,7 +1515,7 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/chat-stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(http_request: Request, request: ChatRequest):
     """Streaming chat endpoint — returns Server-Sent Events (text/event-stream).
     Each event is a JSON object:
       {"token": "..."}   — next text chunk
@@ -996,9 +1525,10 @@ async def chat_stream(request: ChatRequest):
     """
     if generate_response_stream is None:
         raise HTTPException(status_code=503, detail="Chat stream service is unavailable. Please check backend configuration.")
+    session_id = _bind_chat_session(http_request, request.session_id)
 
     return StreamingResponse(
-        _stream_with_timeout(request.session_id, request.message),
+        _stream_with_timeout(session_id, request.message, request.graph_context),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1006,6 +1536,120 @@ async def chat_stream(request: ChatRequest):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.get("/chat/health")
+@app.get("/chat/status")
+async def chat_health():
+    return {
+        "status": "ok" if generate_response is not None else "unavailable",
+        "chat_post_available": generate_response is not None,
+        "chat_stream_available": generate_response_stream is not None,
+        "session_id_required": False,
+        "session_id_behavior": "The server issues a session id in X-Session-ID; clients should return it on subsequent requests.",
+        "methods": {
+            "ask": "POST /chat",
+            "stream": "POST /chat-stream",
+            "submit_job": "POST /chat/jobs",
+            "poll_job": "GET /chat/jobs/{job_id}",
+            "sample_queries": "GET /chat/sample-queries",
+            "health": "GET /chat/health",
+            "status": "GET /chat/status",
+            "validate": "POST /chat/validate",
+            "capabilities": "GET /chat/capabilities",
+        },
+    }
+
+
+@app.get("/api/v1/agent-memory/status")
+async def agent_memory_status():
+    """Return graph-native agent memory availability and operating mode."""
+    if AgentMemoryService is None:
+        return {
+            "enabled": False,
+            "status": "unavailable",
+            "message": "Agent memory service could not be imported.",
+        }
+    return {"status": "ok", **AgentMemoryService.status()}
+
+
+@app.get("/api/v1/agent-memory/sessions/{session_id}/context")
+async def agent_memory_session_context(request: Request, session_id: str, limit: int = Query(6, ge=1, le=20)):
+    """Return compact recent memory for a chat session."""
+    if AgentMemoryService is None:
+        raise HTTPException(status_code=503, detail="Agent memory service unavailable")
+    if not request.scope.get("session_id_supplied") or request.scope.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Session context is not available for this client session")
+    return AgentMemoryService.recent_context(session_id, limit=limit)
+
+
+@app.delete("/api/v1/agent-memory/sessions/{session_id}")
+async def delete_agent_memory_session(request: Request, session_id: str):
+    """Delete only the caller's server-bound conversation memory."""
+    if AgentMemoryService is None:
+        raise HTTPException(status_code=503, detail="Agent memory service is unavailable")
+    if not request.scope.get("session_id_supplied") or request.scope.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="The requested memory session is not bound to this client")
+    deleted = await asyncio.to_thread(AgentMemoryService.delete_session, session_id)
+    await asyncio.to_thread(clear_chat_messages, session_id)
+    return {"status": "ok", "session_id": session_id, "deleted": bool(deleted)}
+
+
+@app.get("/chat/capabilities")
+async def chat_capabilities():
+    return {
+        "name": "knowledge-companion",
+        "integration_pattern": "POST for question execution, GET for discovery/health/sample prompts",
+        "endpoints": {
+            "validate": {
+                "method": "POST",
+                "path": "/chat/validate",
+                "description": "Validates Teamcenter/AWC or external request body without invoking the model.",
+                "body": {
+                    "session_id": "string optional; use the server-issued X-Session-ID header",
+                    "message": "string",
+                    "graph_context": "object optional"
+                }
+            },
+            "async_job": {
+                "method": "POST",
+                "path": "/chat/jobs",
+                "description": "Submits a long-running chat request and returns a job id for polling.",
+                "poll": "GET /chat/jobs/{job_id}"
+            },
+            "ask": {
+                "method": "POST",
+                "path": "/chat",
+                "body": {
+                    "session_id": "string optional; use the server-issued X-Session-ID header",
+                    "message": "string",
+                    "graph_context": "optional object",
+                },
+            },
+            "stream": {
+                "method": "POST",
+                "path": "/chat-stream",
+                "body": {
+                    "session_id": "string optional; use the server-issued X-Session-ID header",
+                    "message": "string",
+                    "graph_context": "optional object",
+                },
+            },
+            "sample_queries": {
+                "method": "GET",
+                "path": "/chat/sample-queries",
+            },
+            "health": {
+                "method": "GET",
+                "path": "/chat/health",
+            },
+        },
+        "notes": [
+            "Use POST /chat for Teamcenter action-handler invocations that execute a user question.",
+            "Use GET companion endpoints for readiness checks, UI bootstrap, and integration discovery.",
+            "GET should not be used for prompt execution because prompts can be large and may carry graph context.",
+        ],
+    }
 
 
 @app.get("/chat/sample-queries")
@@ -1017,10 +1661,15 @@ async def get_sample_queries():
       - GeneralOperation / HeaderOperation → assembly process queries
       - MbseNode Class → SysML MBSE queries
       - UseCase → use-case queries
-    Falls back to hardcoded domain-specific defaults when the graph is empty.
+    Falls back to ontology-registry-driven templates when the graph is empty.
     """
     try:
         from chains.cypher import query_cypher
+        from Services.ontology_upload_manager import OntologyUploadManager
+        try:
+            registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+        except Exception:
+            registry = OntologyUploadManager.list_ontologies()
 
         def _fetch(cypher):
             try:
@@ -1028,76 +1677,129 @@ async def get_sample_queries():
             except Exception:
                 return []
 
-        parts       = _fetch("MATCH (n:ProvidedPart) RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5")
-        operations  = _fetch("MATCH (n:GeneralOperation) RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 3")
-        assemblies  = _fetch("MATCH (n:ManufacturingAssembly) RETURN DISTINCT n.name AS name LIMIT 2")
-        mbse_cls    = _fetch("MATCH (n:Class:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name ORDER BY n.name LIMIT 3")
-        use_cases   = _fetch("MATCH (n:UseCase:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name LIMIT 2")
-        packages    = _fetch("MATCH (n:Package:MbseNode) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' RETURN n.name AS name LIMIT 2")
+        parts       = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (any(lbl IN labels(n) WHERE lbl IN ['ProvidedPart', 'Part', 'Product', 'ProductRevision']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'part')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
+        """)
+        operations  = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (any(lbl IN labels(n) WHERE lbl IN ['GeneralOperation', 'HeaderOperation', 'LoadingOperation', 'Process']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'operation')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 3
+        """)
+        assemblies  = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (any(lbl IN labels(n) WHERE lbl IN ['ManufacturingAssembly', 'Assembly']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'assembly')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 2
+        """)
+        requirements = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (any(lbl IN labels(n) WHERE lbl IN ['Requirement', 'RequirementRevision']) OR toLower(coalesce(n.name, '')) CONTAINS 'requirement' OR toLower(coalesce(n.element_type, '')) CONTAINS 'requirement')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
+        """)
+        mbse_cls    = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND size(n.name) > 3 AND any(lbl IN labels(n) WHERE lbl IN ['Class', 'MbseNode']) RETURN n.name AS name ORDER BY n.name LIMIT 3")
+        use_cases   = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND size(n.name) > 3 AND any(lbl IN labels(n) WHERE lbl IN ['UseCase', 'MbseNode']) RETURN n.name AS name LIMIT 2")
+        packages    = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' AND any(lbl IN labels(n) WHERE lbl IN ['Package', 'MbseNode']) RETURN n.name AS name LIMIT 2")
+        generic_entities = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND NOT any(lbl IN labels(n) WHERE lbl IN ['DatasheetChunk', 'GraphChunk', 'OntologyClass', 'ObjectProperty', 'DatatypeProperty'])
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 8
+        """)
+        ontology_rows = (registry.get("ontologies", []) if isinstance(registry, dict) else [])[:3]
+        ontology_names = [
+            str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
+            for row in ontology_rows
+            if str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
+        ]
 
-        data_available = any([parts, operations, assemblies, mbse_cls, use_cases])
+        data_available = any([parts, operations, assemblies, requirements, mbse_cls, use_cases, ontology_names, generic_entities])
 
         if data_available:
-            part1  = parts[0]       if parts       else "ROTOR SHAFT"
-            part2  = parts[1]       if len(parts) > 1 else "LAMINATED ROTOR CORE"
-            part3  = parts[2]       if len(parts) > 2 else "THREE PHASE WINDINGS"
-            asm1   = assemblies[0]  if assemblies  else "5 HP MOTOR ASSEMBLY"
+            part1  = parts[0]       if parts       else (generic_entities[0] if generic_entities else "selected part")
+            part2  = parts[1]       if len(parts) > 1 else (generic_entities[1] if len(generic_entities) > 1 else part1)
+            part3  = parts[2]       if len(parts) > 2 else (generic_entities[2] if len(generic_entities) > 2 else part1)
+            asm1   = assemblies[0]  if assemblies  else (generic_entities[0] if generic_entities else "selected assembly")
             op1    = operations[0]  if operations  else "#170_Operation-FDA Unit Electric A"
             cls1   = mbse_cls[0]    if mbse_cls    else "Variable Speed Drive"
             cls2   = mbse_cls[1]    if len(mbse_cls) > 1 else "Sugar Production Plant"
-            uc1    = use_cases[0]   if use_cases   else "Energy efficiency for juice purification"
+            uc1    = use_cases[0]   if use_cases   else (requirements[0] if requirements else "selected requirement")
             pkg1   = packages[0]    if packages    else "2 Functional Analysis"
+            onto1  = ontology_names[0] if ontology_names else "the selected ontology"
+            onto2  = ontology_names[1] if len(ontology_names) > 1 else onto1
 
-            sample_queries = [
-                # Motor / XPDMXML domain
-                f'What are all the parts in the "{asm1}" and in what sequence are they assembled?',
-                f'Show the complete assembly operation sequence for "{asm1}"',
-                f'Recommend manufacturing processes for "{part1}"',
-                f'Find parts similar to "{part2}" that could be substituted',
-                f'What operations does "{part3}" go through during assembly?',
-                f'Analyse change impact if "{part1}" is modified',
-                # SysML / MBSE domain
-                f'What are the SysML requirements related to "{cls1}"?',
-                f'Show all use cases and actors in the "{pkg1}" package',
-                f'Trace the MBSE requirements for use case "{uc1}"',
-                f'Which SysML blocks are associated with "{cls2}"?',
-                # Cross-domain
-                f'Analyse change impact if "{part1}" is modified',
-                f'What ontology classes does "{asm1}" instantiate?',
-            ]
+            sample_queries = []
+            if assemblies:
+                sample_queries.extend([
+                    f'What are all the parts in the "{asm1}" and in what sequence are they assembled?',
+                    f'Show the complete assembly operation sequence for "{asm1}"',
+                ])
+            if parts:
+                sample_queries.extend([
+                    f'Recommend manufacturing processes for "{part1}"',
+                    f'Find parts similar to "{part2}" that could be substituted',
+                    f'What operations does "{part3}" go through during assembly?',
+                    f'Analyse change impact if "{part1}" is modified',
+                ])
+            if requirements:
+                sample_queries.append(f'Trace requirement context and downstream realization for "{uc1}"')
+            if mbse_cls or use_cases:
+                sample_queries.extend([
+                    f'What are the SysML requirements related to "{cls1}"?',
+                    f'Show all use cases and actors in the "{pkg1}" package',
+                    f'Trace the MBSE requirements for use case "{uc1}"',
+                    f'Which SysML blocks are associated with "{cls2}"?',
+                ])
+            if generic_entities:
+                sample_queries.extend([
+                    f'Show one-hop graph context for "{generic_entities[0]}"',
+                    f'Find traceability links around "{generic_entities[min(1, len(generic_entities)-1)]}"',
+                ])
+            sample_queries.extend([
+                f'What ontology classes does "{onto1}" expose?',
+                f'Compare the taxonomy of "{onto1}" and "{onto2}"',
+            ])
+            sample_queries = sample_queries[:8]
         else:
-            # Hardcoded domain-specific fallbacks
+            # Registry-driven fallbacks for empty graphs
+            ontology1 = ontology_names[0] if ontology_names else "the selected ontology"
+            ontology2 = ontology_names[1] if len(ontology_names) > 1 else ontology1
             sample_queries = [
-                'What are all the parts in the 5 HP MOTOR ASSEMBLY and in what sequence are they assembled?',
-                'Show the complete assembly operation sequence for 5 HP MOTOR ASSEMBLY',
-                'Recommend manufacturing processes for ROTOR SHAFT',
-                'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
-                'What SysML requirements relate to the Variable Speed Drive?',
-                'Show all use cases and actors in the Sugar Production Plant MBSE model',
-                'Analyse change impact if ROTOR SHAFT is modified',
-                'Analyse change impact if THREE PHASE WINDINGS is modified',
+                f'Show the ontology graph for "{ontology1}"',
+                f'List the classes, properties, and individuals in "{ontology1}"',
+                f'Show the taxonomy for "{ontology1}"',
+                f'Find the active ontology scopes available in this workspace',
+                f'Compare "{ontology1}" and "{ontology2}" for overlapping concepts',
+                'Recommend manufacturing processes for the selected part',
+                'Find similar parts using the currently loaded graph data',
+                'Analyse change impact for a selected entity in the active ontology scope',
             ]
 
-        all_entities = parts + operations + assemblies + mbse_cls + use_cases
+        all_entities = parts + operations + assemblies + requirements + mbse_cls + use_cases + generic_entities
         return JSONResponse({
             "queries": sample_queries,
             "data_available": data_available,
             "entity_count": len(all_entities),
             "sample_entities": all_entities[:8],
+            "ontology_scopes": ontology_names,
         })
 
     except Exception as e:
         logger.error(f"Sample queries error: {e}", exc_info=True)
         return JSONResponse({
             "queries": [
-                'What are all the parts in the 5 HP MOTOR ASSEMBLY and in what sequence are they assembled?',
-                'Show the complete assembly operation sequence for 5 HP MOTOR ASSEMBLY',
-                'Recommend manufacturing processes for ROTOR SHAFT',
-                'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
-                'What SysML requirements relate to the Variable Speed Drive?',
-                'Show all use cases and actors in the Sugar Production Plant MBSE model',
-                'Analyse change impact if ROTOR SHAFT is modified',
-                'Analyse change impact if THREE PHASE WINDINGS is modified',
+                'Show the ontology graph for the selected ontology',
+                'List the classes, properties, and individuals in the selected ontology',
+                'Show the taxonomy for the selected ontology',
+                'Find the active ontology scopes available in this workspace',
+                'Compare two loaded ontologies for overlapping concepts',
+                'Recommend manufacturing processes for the selected part',
+                'Find similar parts using the currently loaded graph data',
+                'Analyse change impact for a selected entity in the active ontology scope',
             ],
             "data_available": False,
             "error": "Could not fetch dynamic queries from database",
@@ -1122,48 +1824,65 @@ async def get_sample_queries():
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-_graphvis_cache: dict = {"data": None, "ts": 0.0}
+from backend.core.graphvis_cache import graphvis_cache as _graphvis_cache
 _GRAPHVIS_CACHE_TTL = 60  # 60 seconds — short enough that deleting Neo4j clears within a minute
+from backend.core.graphvis_cache import GRAPHVIS_CACHE_ENABLED as _GRAPHVIS_CACHE_ENABLED
 
-def invalidate_graphvis_cache():
-    """Clear graph cache when Neo4j connection fails"""
-    global _graphvis_cache
-    _graphvis_cache["data"] = None
-    _graphvis_cache["ts"] = 0.0
-    logger.info("Graph cache invalidated due to connection error")
+from backend.core.graphvis_cache import invalidate_graphvis_cache
 
 @app.get("/health/neo4j")
 async def check_neo4j_health():
     """Health check endpoint to verify Neo4j connectivity"""
     try:
         loop = asyncio.get_event_loop()
+
+        def _official_driver_probe():
+            try:
+                from backend.core.db_config import get_config, get_driver
+            except Exception:
+                from core.db_config import get_config, get_driver
+            config = get_config()
+            with get_driver().session(database=config.database) as session:
+                record = session.run("RETURN 1 AS ok").single()
+                return record and record.get("ok") == 1
+
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: graph.query("MATCH (n) RETURN count(n) as cnt LIMIT 1")),
+            loop.run_in_executor(None, _official_driver_probe),
             timeout=5.0
         )
-        is_connected = result and len(result) > 0
+        is_connected = bool(result)
+        if not is_connected:
+            invalidate_graphvis_cache()
+            return JSONResponse(status_code=503, content={
+                "status": "unhealthy",
+                "error_code": "NEO4J_UNAVAILABLE",
+                "neo4j_connected": False,
+                "timestamp": time.time(),
+            })
         return {
-            "status": "healthy" if is_connected else "degraded",
-            "neo4j_connected": is_connected,
+            "status": "healthy",
+            "neo4j_connected": True,
             "timestamp": time.time()
         }
     except Exception as e:
         logger.warning(f"Neo4j health check failed: {type(e).__name__}: {str(e)}")
         # Invalidate cache on health check failure
         invalidate_graphvis_cache()
-        return {
+        return JSONResponse(status_code=503, content={
             "status": "unhealthy",
+            "error_code": "NEO4J_UNAVAILABLE",
             "neo4j_connected": False,
-            "error": str(e),
+            "detail": "Neo4j is unavailable.",
             "timestamp": time.time()
-        }
+        })
 
 @app.get("/graphvis")
 async def get_entire_graph():
     import asyncio, time
     now = time.monotonic()
-    if _graphvis_cache["data"] is not None and (now - _graphvis_cache["ts"]) < _GRAPHVIS_CACHE_TTL:
-        cached = _graphvis_cache["data"]
+    from backend.core.graphvis_cache import get_cached_graph, store_cached_graph
+    cached = get_cached_graph()
+    if cached is not None:
         has_edges = any(isinstance(row, dict) and row.get("r") for row in cached)
         if has_edges:
             return {"results": cached}
@@ -1191,7 +1910,7 @@ async def get_entire_graph():
         loop = asyncio.get_event_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(connected_query)),
-            timeout=25.0
+            timeout=300.0
         )
         try:
             isolated = await asyncio.wait_for(
@@ -1201,20 +1920,327 @@ async def get_entire_graph():
             results = results + isolated
         except Exception:
             pass
-        if results:
-            _graphvis_cache["data"] = results
-            _graphvis_cache["ts"] = time.monotonic()
+        if results and _GRAPHVIS_CACHE_ENABLED:
+            store_cached_graph(results)
         return {"results": results}
     except asyncio.TimeoutError:
         logger.warning("/graphvis timed out — clearing cache and returning empty graph")
         # Clear cache on timeout to force fresh query on next attempt
         invalidate_graphvis_cache()
-        return {"results": [], "message": "Graph query timed out. Try a more specific ontology type filter."}
+        return JSONResponse(status_code=504, content={
+            "status": "error", "error_code": "GRAPH_QUERY_TIMEOUT", "results": [],
+            "message": "Graph query timed out. Try a more specific ontology type filter.",
+        })
     except Exception as e:
         logger.warning(f"/graphvis error: {type(e).__name__}: {str(e)}")
         # Clear cache on any error to prevent serving stale data
         invalidate_graphvis_cache()
-        return {"results": [], "message": "Neo4j database temporarily unavailable. Graph will display when database is connected."}
+        return JSONResponse(status_code=503, content={
+            "status": "error", "error_code": "GRAPH_SERVICE_UNAVAILABLE", "results": [],
+            "message": "Neo4j database temporarily unavailable.",
+        })
+
+
+def _empty_graph_service_response(message: str, *, status_code: int = 503) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "unavailable",
+            "message": message,
+            "nodes": [],
+            "relationships": [],
+            "counts": {"nodes": 0, "relationships": 0},
+        },
+    )
+
+
+@app.get("/api/v1/graph/view")
+async def get_graph_view(limit: int = 750, scope: str = "all"):
+    """Return a visualization-ready graph payload using the official Neo4j driver."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    try:
+        return GraphViewService.get_graph_overview(limit=limit, scope=scope)
+    except RuntimeError as exc:
+        raise _graph_service_unavailable("/api/v1/graph/view", exc)
+
+
+@app.get("/api/v1/code-audit")
+async def get_code_audit(refresh: bool = Query(default=False)):
+    """Return the repository dependency graph, optionally rebuilding it first."""
+    try:
+        from tools.code_graph_audit import OUTPUT, audit
+
+        if refresh or not OUTPUT.exists():
+            report = await run_in_threadpool(audit)
+            OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+            OUTPUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        else:
+            report = json.loads(OUTPUT.read_text(encoding="utf-8"))
+        report["generated_at"] = FileSystemPath(OUTPUT).stat().st_mtime
+        return report
+    except Exception as exc:
+        logger.exception("Code audit generation failed")
+        raise HTTPException(status_code=500, detail="Code audit generation failed") from exc
+
+
+@app.get("/api/v1/graph/view/architecture/{prefix}")
+async def get_architecture_process_view(prefix: str = "archimate", limit: int = 750):
+    """Return connected architecture/process model graph view, including ArchiMate imports."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    try:
+        return GraphViewService.get_architecture_process_view(prefix=prefix, limit=limit)
+    except Exception as exc:
+        logger.warning("/api/v1/graph/view/architecture/%s unavailable: %s", prefix, exc)
+        return {
+            "status": "unavailable",
+            "message": str(exc),
+            "nodes": [],
+            "relationships": [],
+            "counts": {"nodes": 0, "relationships": 0},
+            "view": {"type": "architecture-process", "prefix": prefix},
+        }
+
+
+@app.get("/api/v1/graph/view/ontology/{prefix}")
+async def get_virtual_ontology_view(prefix: str, limit: int = 750):
+    """Return a generated ontology-centric graph view without mutating base data."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    try:
+        return GraphViewService.get_virtual_ontology_view(prefix=prefix, limit=limit)
+    except RuntimeError as exc:
+        raise _graph_service_unavailable(f"/api/v1/graph/view/ontology/{prefix}", exc)
+
+
+@app.get("/api/v1/graph/contextual-subgraph")
+async def get_contextual_subgraph(
+    search: str = "",
+    ontology_prefix: str = "",
+    import_id: str = "",
+    limit: int = 400,
+    search_mode: str = "best",
+    expand_neighbors: bool = False,
+):
+    """Return a contextual subgraph for GraphRAG-style inspection."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    try:
+        return await run_in_threadpool(
+            GraphViewService.get_contextual_subgraph,
+            search=search,
+            ontology_prefix=ontology_prefix,
+            import_id=import_id,
+            limit=limit,
+            expand_neighbors=expand_neighbors,
+            search_mode=search_mode,
+        )
+    except RuntimeError as exc:
+        raise _graph_service_unavailable("/api/v1/graph/contextual-subgraph", exc)
+
+
+def _requirement_source_bucket(source_value: str, labels: list[str] | None = None) -> str:
+    text = str(source_value or "").lower()
+    label_text = " ".join(labels or []).lower()
+    combined = f"{text} {label_text}"
+    if "reqif" in combined:
+        return "ReqIF"
+    if "plmxml" in combined:
+        return "PLMXML"
+    if "xmi" in combined or "sysml" in combined or "mbse" in combined or "mdxml" in combined:
+        return "MBSE"
+    if "oslc" in combined:
+        return "OSLC"
+    if "alm" in combined or "teamcenter" in combined or "polarion" in combined or "doors" in combined:
+        return "ALM"
+    if "document" in combined or "unstructured" in combined or "pdf" in combined or "doc" in combined or "html" in combined:
+        return "Unstructured"
+    return "Graph"
+
+
+@app.get("/api/v1/requirements")
+async def get_normalized_requirements(
+    source: str = "all",
+    search: str = "",
+    limit: int = Query(default=500, ge=1, le=5000),
+):
+    """Return normalized requirement-like records from the live context graph.
+
+    This endpoint intentionally stays source-neutral: PLMXML, ReqIF, MBSE/XMI,
+    OSLC, ALM, and unstructured ingestion can all project requirement-like nodes
+    into the same table and GraphRAG context without forcing the UI to know each
+    parser's internal schema.
+    """
+    try:
+        from backend.core.graph import query_with_timeout
+    except Exception:
+        from core.graph import query_with_timeout
+
+    source_norm = str(source or "all").strip().lower()
+    search_norm = _normalize_search_term(search)
+    cypher = """
+    MATCH (n)
+    WITH n, labels(n) AS node_labels, properties(n) AS p
+    WITH n, node_labels, p,
+         toLower(coalesce(
+           toString(p['source_format']),
+           toString(p['file_format']),
+           toString(p['source_system']),
+           toString(p['source']),
+           toString(p['ontology_prefix']),
+           ''
+         )) AS source_hint,
+         coalesce(
+           toString(p['requirement_id']),
+           toString(p['requirement_ref']),
+           toString(p['identifier']),
+           toString(p['code']),
+           toString(p['id']),
+           toString(p['uid']),
+           elementId(n)
+         ) AS requirement_id,
+         coalesce(
+           toString(p['title']),
+           toString(p['name']),
+           toString(p['label']),
+           toString(p['requirement_id']),
+           toString(p['id']),
+           elementId(n)
+         ) AS title,
+         coalesce(
+           toString(p['description']),
+           toString(p['text']),
+           toString(p['body']),
+           toString(p['value']),
+           toString(p['statement']),
+           ''
+         ) AS requirement_text,
+         coalesce(
+           toString(p['semantic_role']),
+           toString(p['element_type']),
+           toString(p['entity_type']),
+           ''
+         ) AS semantic_role
+    WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role,
+         toLower(coalesce(toString(p['row_type']), '')) AS row_type,
+         toLower(coalesce(toString(p['type_ref']), '')) AS type_ref,
+         toLower(coalesce(toString(p['original_id']), '')) AS original_id,
+         toLower(requirement_id + ' ' + title + ' ' + requirement_text + ' ' + semantic_role + ' ' + source_hint + ' ' + reduce(acc = '', lbl IN node_labels | acc + ' ' + lbl)) AS haystack
+    WHERE
+      NOT any(lbl IN node_labels WHERE lbl IN ['OntologyClass', 'OntologyProperty', 'OntologyDatatypeProperty', 'OntologyObjectProperty', 'OntologyAnnotationProperty'])
+      AND NOT (toLower(requirement_id) =~ '^id[0-9]+$' AND NOT (haystack CONTAINS 'requirement' OR row_type IN ['requirement', 'requirementrelation', 'relation', 'specification']))
+      AND (
+        any(lbl IN node_labels WHERE lbl IN ['Requirement', 'RequirementRevision', 'RequirementRelation'])
+        OR semantic_role IN ['Requirement', 'RequirementRevision', 'RequirementRelation', 'requirement', 'requirementrevision', 'requirementrelation']
+        OR row_type IN ['requirement', 'requirementrelation', 'relation', 'specification']
+        OR type_ref CONTAINS 'requirement'
+        OR original_id STARTS WITH 'req-'
+        OR toLower(requirement_id) STARTS WITH 'req-'
+      )
+    WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role, haystack
+    WHERE $search = '' OR haystack CONTAINS $search
+    OPTIONAL MATCH (n)-[r]-(m)
+    WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role,
+         collect(DISTINCT {type: type(r), other: coalesce(m.name, m.title, m.label, m.id, elementId(m))})[0..8] AS context_links,
+         count(DISTINCT r) AS relationship_count
+    RETURN
+      elementId(n) AS element_id,
+      node_labels AS labels,
+      requirement_id,
+      title,
+      requirement_text,
+      semantic_role,
+      source_hint,
+      coalesce(toString(p['source_file']), toString(p['filename']), toString(p['source_path']), '') AS source_file,
+      coalesce(toString(p['ontology_prefix']), toString(p['prefix']), '') AS ontology_prefix,
+      coalesce(toString(p['ontology_class']), toString(p['class_name']), toString(p['element_type']), '') AS ontology_class,
+      coalesce(toString(p['status']), toString(p['lifecycle_status']), '') AS status,
+      coalesce(toString(p['owner']), toString(p['author']), '') AS owner,
+      relationship_count,
+      context_links
+    ORDER BY requirement_id, title
+    LIMIT toInteger($limit)
+    """
+    try:
+        rows = query_with_timeout(cypher, {"search": search_norm, "limit": limit}, timeout=60) or []
+    except Exception as exc:
+        raise _graph_service_unavailable("/api/v1/requirements", exc)
+
+    requirements_by_key: dict[str, dict] = {}
+    for row in rows:
+        source_bucket = _requirement_source_bucket(row.get("source_hint"), row.get("labels") or [])
+        if source_norm not in {"", "all"} and source_bucket.lower() != source_norm:
+            continue
+        requirement_id = row.get("requirement_id") or row.get("element_id")
+        item = {
+            "id": requirement_id,
+            "requirement_id": requirement_id,
+            "title": row.get("title") or requirement_id or row.get("element_id"),
+            "text": row.get("requirement_text") or "",
+            "source": source_bucket,
+            "source_hint": row.get("source_hint") or "",
+            "source_file": row.get("source_file") or "",
+            "ontology_prefix": row.get("ontology_prefix") or "",
+            "ontology_class": row.get("ontology_class") or "",
+            "semantic_role": row.get("semantic_role") or "",
+            "status": row.get("status") or "",
+            "owner": row.get("owner") or "",
+            "labels": row.get("labels") or [],
+            "element_id": row.get("element_id"),
+            "relationship_count": int(row.get("relationship_count") or 0),
+            "context_links": [link for link in (row.get("context_links") or []) if link.get("type") and link.get("other")],
+        }
+        dedupe_key = f"{source_bucket.lower()}::{str(requirement_id or item['title']).lower()}"
+        existing = requirements_by_key.get(dedupe_key)
+        if not existing:
+            requirements_by_key[dedupe_key] = item
+            continue
+
+        merged_labels = list(dict.fromkeys((existing.get("labels") or []) + (item.get("labels") or [])))
+        merged_links = list({
+            (str(link.get("type")), str(link.get("other"))): link
+            for link in ((existing.get("context_links") or []) + (item.get("context_links") or []))
+            if link.get("type") and link.get("other")
+        }.values())[:12]
+        prefer_item = (
+            "Requirement" in (item.get("labels") or [])
+            and "Requirement" not in (existing.get("labels") or [])
+        )
+        base = item if prefer_item else existing
+        base["labels"] = merged_labels
+        base["context_links"] = merged_links
+        base["relationship_count"] = max(int(existing.get("relationship_count") or 0), int(item.get("relationship_count") or 0), len(merged_links))
+        if not base.get("text"):
+            base["text"] = item.get("text") or existing.get("text") or ""
+        requirements_by_key[dedupe_key] = base
+
+    requirements = list(requirements_by_key.values())
+    source_counts: dict[str, int] = {}
+    for item in requirements:
+        source_counts[item["source"]] = source_counts.get(item["source"], 0) + 1
+
+    return {
+        "status": "success",
+        "requirements": requirements,
+        "count": len(requirements),
+        "source_counts": source_counts,
+        "sources": ["ReqIF", "PLMXML", "MBSE", "OSLC", "ALM", "Unstructured", "Graph"],
+        "search": search,
+        "source": source,
+    }
 
 
 @app.get("/graphvis/by-ontology/{prefix}")
@@ -1293,14 +2319,14 @@ async def get_graph_by_ontology(prefix: str):
                 return False
 
             # Pick a sample XMI from the repo.
-            workspace_root = Path(__file__).resolve().parents[2]
+            workspace_root = Path(__file__).resolve().parents[1]
 
             sample_path: Path | None = None
             ontology_name = prefix_token.upper()
             description = "Bootstrapped from workspace sample file"
 
             if prefix_token == "sysml":
-                candidates = list((workspace_root / "Depo_onto" / "backend" / "uploads").glob("**/SugarPlantMBSE.xmi"))
+                candidates = list((workspace_root / "backend" / "uploads").glob("**/SugarPlantMBSE.xmi"))
                 if candidates:
                     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                     sample_path = candidates[0]
@@ -1309,7 +2335,6 @@ async def get_graph_by_ontology(prefix: str):
             if prefix_token == "ap239" and sample_path is None:
                 ap239_candidates = [
                     workspace_root
-                    / "Depo_onto"
                     / "data"
                     / "domain_models"
                     / "product_life_cycle_support"
@@ -1319,7 +2344,6 @@ async def get_graph_by_ontology(prefix: str):
                     / "AP239"
                     / "AP239.xmi",
                     workspace_root
-                    / "Depo_onto"
                     / "data"
                     / "domain_models"
                     / "product_life_cycle_support"
@@ -1378,7 +2402,7 @@ async def get_graph_by_ontology(prefix: str):
         loop = asyncio.get_event_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(connected_query, params={"prefix": prefix_safe})),
-            timeout=25.0,
+            timeout=300.0,
         )
 
         try:
@@ -1406,7 +2430,7 @@ async def get_graph_by_ontology(prefix: str):
             try:
                 bootstrapped = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: _bootstrap_if_missing(prefix_safe)),
-                    timeout=60.0,
+                    timeout=300.0,
                 )
                 if bootstrapped:
                     nodes_only = await asyncio.wait_for(
@@ -1520,6 +2544,151 @@ async def debug_ontology(ontology_id: str):
     return await ontology_debug_payload(ontology_id)
 
 
+@app.get("/api/v1/ontology/{ontology_id}/taxonomy")
+async def get_uploaded_ontology_taxonomy(ontology_id: str):
+    """Return extracted taxonomy terms and hierarchy links for an uploaded ontology."""
+    try:
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+
+        return OntologyTaxonomyService.get_taxonomy(ontology_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception("Ontology taxonomy degraded for %s: %s", ontology_id, e)
+        return {
+            "status": "degraded",
+            "ontology_id": ontology_id,
+            "prefix": ontology_id,
+            "source_filename": "",
+            "extraction_source": "error",
+            "nodes": [],
+            "edges": [],
+            "reasoning_summary": {},
+            "summary": {"terms": 0, "taxonomy_links": 0, "triple_count": 0},
+            "diagnostics": [{"severity": "error", "message": str(e)}],
+        }
+
+
+@app.get("/api/v1/ontology/{ontology_id}/reason")
+async def get_uploaded_ontology_reasoning(ontology_id: str):
+    """Return cached semantic runtime-backed classes, properties, individuals, and diagnostics."""
+    try:
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+
+        return OntologyTaxonomyService.get_reasoning(ontology_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception("Ontology reasoning degraded for %s: %s", ontology_id, e)
+        return {
+            "status": "degraded",
+            "engine": "semantica",
+            "available": False,
+            "ontology_id": ontology_id,
+            "prefix": ontology_id,
+            "classes": [],
+            "object_properties": [],
+            "datatype_properties": [],
+            "annotation_properties": [],
+            "individuals": [],
+            "subclass_edges": [],
+            "diagnostics": [{"severity": "error", "message": str(e)}],
+            "summary": {},
+        }
+
+
+@app.post("/api/v1/ontology/{ontology_id}/inference/preview")
+async def preview_uploaded_ontology_inference(ontology_id: str, body: InferenceBody | None = None):
+    """Preview selectable ontology inferences without mutating Neo4j."""
+    try:
+        from backend.ontology_service.domain.reasoning import OntologyReasoningService
+
+        return OntologyReasoningService.preview_inferences(ontology_id, body or {})
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/inference/preview", e)
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
+
+
+@app.get("/api/v1/ontology/{ontology_id}/data-dictionary")
+def get_registered_ontology_data_dictionary(ontology_id: str):
+    """Return a generic ontology data dictionary for any registered ontology id or prefix."""
+    from backend.ontology_service.domain.reasoning import OntologyReasoningService
+    try:
+        reasoning = OntologyReasoningService.get_reasoning(ontology_id)
+
+        def entry(row, kind):
+            label = str(row.get("label") or row.get("name") or row.get("term_id") or row.get("iri") or "").strip()
+            if not label:
+                return None
+            return label, {
+                "label": label,
+                "iri": row.get("iri") or row.get("uri") or row.get("term_id") or label,
+                "definition": row.get("definition") or row.get("comment") or "",
+                "kind": kind,
+                "domain": row.get("domain") or [],
+                "range": row.get("range") or [],
+                "source": "semantic_inspection",
+            }
+
+        entities = {}
+        properties = {}
+        relationships = {}
+        for row in reasoning.get("classes") or []:
+            item = entry(row, "Class")
+            if item:
+                entities[item[0]] = item[1]
+        for row in reasoning.get("datatype_properties") or []:
+            item = entry(row, "DatatypeProperty")
+            if item:
+                properties[item[0]] = item[1]
+        for row in reasoning.get("object_properties") or []:
+            item = entry(row, "ObjectProperty")
+            if item:
+                relationships[item[0]] = {**item[1], "type": "objectProperty", "connections": []}
+        for row in reasoning.get("annotation_properties") or []:
+            item = entry(row, "AnnotationProperty")
+            if item:
+                properties.setdefault(item[0], item[1])
+
+        return {
+            "status": "success",
+            "ontology_id": reasoning.get("ontology_id") or ontology_id,
+            "prefix": reasoning.get("prefix") or ontology_id,
+            "total_terms": len(entities) + len(properties) + len(relationships),
+            "data": {
+                "entities": entities,
+                "properties": properties,
+                "relationships": relationships,
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/data-dictionary", e)
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
+
+
+@app.get("/api/v1/ontology/{ontology_id}/mappings/{mapping_type}")
+def get_registered_ontology_mapping_edges(ontology_id: str, mapping_type: str):
+    """Return mapping edges for a registered ontology; empty is valid for OWL-only ontologies."""
+    try:
+        from backend.ontology_service.domain.reasoning import OntologyReasoningService
+        resolved = OntologyReasoningService.resolve_ontology_id(ontology_id) or ontology_id
+        return {
+            "status": "success",
+            "ontology_id": resolved,
+            "mapping_type": mapping_type,
+            "mappings": {},
+            "mapping_edges": [],
+            "message": "No curated mapping edges are stored for this ontology yet. Use Semantic Bridge to create mappings.",
+        }
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/mappings/{mapping_type}", e)
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
+
+
 @app.get("/ontology/registered")
 async def list_ontologies_registered():
     """Alias for /ontologies/list — used by frontend OntologyContext"""
@@ -1606,16 +2775,22 @@ async def get_schema_graph():
         # Query ontology/schema nodes
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(schema_query)),
-            timeout=20.0
+            timeout=300.0
         )
         
         return {"results": results or [], "layerType": "schema"}
     except asyncio.TimeoutError:
         logger.warning("/schema-graph timed out")
-        return {"results": [], "message": "Schema graph query timed out"}
+        return JSONResponse(status_code=504, content={
+            "status": "error", "error_code": "GRAPH_QUERY_TIMEOUT", "results": [],
+            "message": "Schema graph query timed out",
+        })
     except Exception as e:
         logger.warning(f"/schema-graph error: {type(e).__name__}: {str(e)}")
-        return {"results": [], "message": "Failed to fetch schema graph"}
+        return JSONResponse(status_code=503, content={
+            "status": "error", "error_code": "GRAPH_SERVICE_UNAVAILABLE", "results": [],
+            "message": "Failed to fetch schema graph",
+        })
 
 
 def fetch_instances_and_rels(prefix, class_ids=None):
@@ -1735,38 +2910,154 @@ async def get_instance_graph():
         loop = asyncio.get_event_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(instance_query)),
-            timeout=20.0,
+            timeout=300.0,
         )
         return {"results": results or [], "layerType": "instance"}
     except asyncio.TimeoutError:
         logger.warning("/instance-graph timed out")
-        return {"results": [], "message": "Instance graph query timed out"}
+        return JSONResponse(status_code=504, content={
+            "status": "error", "error_code": "GRAPH_QUERY_TIMEOUT", "results": [],
+            "message": "Instance graph query timed out",
+        })
     except Exception as e:
         logger.warning(f"/instance-graph error: {type(e).__name__}: {str(e)}")
-        return {"results": [], "message": "Failed to fetch instance graph"}
+        return JSONResponse(status_code=503, content={
+            "status": "error", "error_code": "GRAPH_SERVICE_UNAVAILABLE", "results": [],
+            "message": "Failed to fetch instance graph",
+        })
 
 
 @app.post("/graphfilter")
 def filter_graph_nodes(request: TextSearchRequest):
-    """Search graph nodes by text and return local relationships in graphvis shape."""
-    input_val = (request.search or "").strip()
+    """Search graph nodes by text and return local relationships in graphvis shape.
+
+    Search is intentionally instance/business-object first. Ontology schema terms are
+    retained as fallback matches, but they should not hide data-bearing nodes for user
+    searches such as REQ-* or part names.
+    """
+    input_val = _normalize_search_term(request.search)
+    ontology_prefix = (request.ontology_prefix or "").strip()
     if not input_val:
         return {"results": []}
 
+    wildcard_prefix_search = "*" in str(request.search or "")
     query = """
-        MATCH (n)
-        WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
-          AND (
-            toLower(coalesce(n.name, '')) CONTAINS toLower($input)
-            OR toLower(coalesce(n.label, '')) CONTAINS toLower($input)
-            OR toLower(coalesce(n.FileName, '')) CONTAINS toLower($input)
-            OR toLower(coalesce(n.id, '')) CONTAINS toLower($input)
-            OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
-          )
-        WITH collect(DISTINCT n)[..100] AS matchedNodes
-        UNWIND matchedNodes AS n
+        CALL {
+          MATCH (n)
+          WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+            AND (
+              toLower(elementId(n)) CONTAINS toLower($input)
+              OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
+              OR any(field IN $search_fields WHERE
+                CASE
+                  WHEN $wildcard_prefix_search THEN toLower(toString(coalesce(n[field], ''))) STARTS WITH toLower($input)
+                  ELSE toLower(toString(coalesce(n[field], ''))) CONTAINS toLower($input)
+                END
+              )
+            )
+            AND (
+              $ontology_prefix = ''
+              OR n.prefix = $ontology_prefix
+              OR n.ontology_prefix = $ontology_prefix
+              OR EXISTS {
+                MATCH (n)-[typed_rel]->(cls)
+                WHERE type(typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (cls.prefix = $ontology_prefix OR cls.ontology_prefix = $ontology_prefix)
+              }
+            )
+          RETURN n
+          LIMIT 120
+        UNION
+          MATCH (a)-[matched_rel]-(b)
+          WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+            AND (
+              toLower(type(matched_rel)) CONTAINS toLower($input)
+              OR any(field IN $relationship_search_fields WHERE
+                toLower(toString(coalesce(matched_rel[field], ''))) CONTAINS toLower($input)
+              )
+            )
+            AND (
+              $ontology_prefix = ''
+              OR a.prefix = $ontology_prefix
+              OR a.ontology_prefix = $ontology_prefix
+              OR b.prefix = $ontology_prefix
+              OR b.ontology_prefix = $ontology_prefix
+              OR EXISTS {
+                MATCH (a)-[a_typed_rel]->(a_cls)
+                WHERE type(a_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (a_cls.prefix = $ontology_prefix OR a_cls.ontology_prefix = $ontology_prefix)
+              }
+              OR EXISTS {
+                MATCH (b)-[b_typed_rel]->(b_cls)
+                WHERE type(b_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (b_cls.prefix = $ontology_prefix OR b_cls.ontology_prefix = $ontology_prefix)
+              }
+            )
+          RETURN a AS n
+          LIMIT 80
+        UNION
+          MATCH (a)-[matched_rel]-(b)
+          WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+            AND (
+              toLower(type(matched_rel)) CONTAINS toLower($input)
+              OR any(field IN $relationship_search_fields WHERE
+                toLower(toString(coalesce(matched_rel[field], ''))) CONTAINS toLower($input)
+              )
+            )
+            AND (
+              $ontology_prefix = ''
+              OR a.prefix = $ontology_prefix
+              OR a.ontology_prefix = $ontology_prefix
+              OR b.prefix = $ontology_prefix
+              OR b.ontology_prefix = $ontology_prefix
+              OR EXISTS {
+                MATCH (a)-[a_typed_rel]->(a_cls)
+                WHERE type(a_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (a_cls.prefix = $ontology_prefix OR a_cls.ontology_prefix = $ontology_prefix)
+              }
+              OR EXISTS {
+                MATCH (b)-[b_typed_rel]->(b_cls)
+                WHERE type(b_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (b_cls.prefix = $ontology_prefix OR b_cls.ontology_prefix = $ontology_prefix)
+              }
+            )
+          RETURN b AS n
+          LIMIT 80
+        }
+        WITH DISTINCT n,
+          toLower(toString(coalesce(
+            n['name'], n['title'], n['code'], n['label'],
+            n['identifier'], n['requirement_id'], n['part_number'], n['catalogue_id'], n['item_id'], n['uid'], n['id'], ''
+          ))) AS displayText
+        WITH n, displayText,
+          CASE
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['OntologyClass','Class','ObjectProperty','DatatypeProperty','OntologyProperty']) THEN 900
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['DatasheetChunk','GraphChunk']) THEN 950
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['AttributeContext','MetadataWrapper','RelationshipCarrier','GeneralRelation']) THEN 850
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['Part','Requirement','Function','LogicalElement','PhysicalElement','Process','Product','Document']) THEN 0
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['Individual','ProductInstance']) AND NOT displayText STARTS WITH 'id' THEN 20
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['Individual','ProductInstance']) THEN 250
+            ELSE 100
+          END AS schemaPenalty,
+          CASE
+            WHEN displayText = toLower($input) THEN 0
+            WHEN any(lbl IN labels(n) WHERE toLower(lbl) = toLower($input)) THEN 5
+            WHEN displayText STARTS WITH toLower($input) THEN 10
+            WHEN displayText STARTS WITH 'id' THEN 120
+            WHEN any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input)) THEN 80
+            ELSE 50
+          END AS matchRank
+        ORDER BY schemaPenalty ASC, matchRank ASC, displayText ASC, elementId(n) ASC
+        WITH collect({node: n, schemaPenalty: schemaPenalty, matchRank: matchRank})[..90] AS rankedMatches
+        WITH rankedMatches, [item IN rankedMatches | item.node] AS matchedNodes
+        UNWIND range(0, size(rankedMatches) - 1) AS matchedIndex
+        WITH rankedMatches[matchedIndex].node AS n, matchedIndex, matchedNodes
         OPTIONAL MATCH (n)-[r]-(m)
-        WHERE m IN matchedNodes
+        WHERE r IS NULL
+           OR m IN matchedNodes
+           OR toLower(type(r)) CONTAINS toLower($input)
+        WITH n, r, m, matchedIndex
+        ORDER BY matchedIndex ASC
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
           CASE WHEN r IS NOT NULL THEN {
@@ -1781,7 +3072,13 @@ def filter_graph_nodes(request: TextSearchRequest):
           } ELSE null END AS m
     """
     try:
-        results = graph.query(query, params={"input": input_val})
+        results = graph.query(query, params={
+            "input": input_val,
+            "ontology_prefix": ontology_prefix,
+            "search_fields": GRAPH_SEARCH_PROPERTY_KEYS,
+            "relationship_search_fields": GRAPH_SEARCH_RELATIONSHIP_PROPERTY_KEYS,
+            "wildcard_prefix_search": wildcard_prefix_search,
+        })
         return {"results": results}
     except Exception as e:
         safe_error("/graphfilter", e)
@@ -1791,18 +3088,144 @@ class ComparativeSearchRequest(BaseModel):
     nodeType: str = ""
     name: str = ""
     version: str = ""
+    limit: int = 12
 
 
-@app.post("/comparative-search")
-def comparative_search(request: ComparativeSearchRequest):
-    """Search a node by type/name/version for the graph comparison UI."""
-    node_type = (request.nodeType or "").strip()
-    name = (request.name or "").strip()
-    version = (request.version or "").strip()
+def _comparative_query_text(node_type: str, name: str, version: str) -> str:
+    parts = []
+    if name:
+        parts.append(name)
+    if version:
+        parts.append(f"revision {version}")
+    if node_type:
+        parts.append(f"type {node_type}")
+    return " | ".join(parts).strip()
 
-    if not name and not node_type and not version:
-        return {"results": []}
 
+def _text_match_strength(value, term: str) -> float:
+    if not term:
+        return 0.0
+    text = str(value or "").strip().lower()
+    wanted = term.strip().lower()
+    if not text or not wanted:
+        return 0.0
+    if text == wanted:
+        return 1.0
+    if text.startswith(wanted):
+        return 0.75
+    if wanted in text:
+        return 0.45
+    return 0.0
+
+
+def _comparative_rank_boost(node: dict, node_type: str, name: str, version: str) -> float:
+    props = node.get("properties") or {}
+    labels = [str(label or "").lower() for label in (node.get("labels") or [])]
+    boost = 0.0
+
+    if name:
+        boost += max(
+            _text_match_strength(props.get("name"), name),
+            _text_match_strength(props.get("title"), name),
+            _text_match_strength(props.get("label"), name),
+            _text_match_strength(props.get("code"), name),
+            _text_match_strength(props.get("id"), name),
+        ) * 0.35
+
+    if node_type:
+        label_score = max((_text_match_strength(label, node_type) for label in labels), default=0.0)
+        boost += max(
+            label_score,
+            _text_match_strength(props.get("type"), node_type),
+            _text_match_strength(props.get("node_type"), node_type),
+            _text_match_strength(props.get("entity_type"), node_type),
+        ) * 0.2
+
+    if version:
+        boost += max(
+            _text_match_strength(props.get("version"), version),
+            _text_match_strength(props.get("Version"), version),
+            _text_match_strength(props.get("revision"), version),
+            _text_match_strength(props.get("external_version"), version),
+        ) * 0.15
+
+    return boost
+
+
+def _comparative_similarity_results(node_type: str, name: str, version: str, limit: int):
+    query_text = _comparative_query_text(node_type, name, version)
+    if not query_text:
+        return []
+
+    try:
+        try:
+            from .core.llm import embeddings, EMBEDDER_AVAILABLE
+        except Exception:
+            from core.llm import embeddings, EMBEDDER_AVAILABLE
+
+        if not EMBEDDER_AVAILABLE:
+            return []
+
+        vector_index_name = os.getenv("NEO4J_GRAPH_VECTOR_INDEX", "graph_embedding")
+        candidate_limit = max(min(limit * 4, 60), limit)
+        query_embedding = embeddings.embed_query(query_text)
+
+        rows = graph.query(
+            """
+            CALL db.index.vector.queryNodes($index_name, $candidate_limit, $embedding)
+            YIELD node, score
+            MATCH (node)-[:EMBEDDED_FROM]->(src)
+            WHERE NOT (src:DatasheetChunk OR src:GraphChunk)
+            WITH src, max(score) AS similarity_score
+            RETURN
+              elementId(src) AS elementId,
+              labels(src) AS labels,
+              properties(src) AS properties,
+              similarity_score
+            LIMIT $candidate_limit
+            """,
+            params={
+                "index_name": vector_index_name,
+                "candidate_limit": candidate_limit,
+                "embedding": query_embedding,
+            },
+        ) or []
+    except Exception as exc:
+        logger.info("Comparative similarity search unavailable, falling back to keyword search: %s", exc)
+        return []
+
+    ranked = []
+    for row in rows:
+        properties = dict(row.get("properties") or {})
+        raw_similarity = float(row.get("similarity_score") or 0.0)
+        node = {
+            "elementId": row.get("elementId"),
+            "labels": row.get("labels") or [],
+            "properties": {
+                **properties,
+                "similarity_score": round(raw_similarity * 100, 1),
+            },
+        }
+        rank_score = raw_similarity + _comparative_rank_boost(node, node_type, name, version)
+        ranked.append((rank_score, node))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+
+    deduped = []
+    seen = set()
+    for _score, node in ranked:
+        node_id = node.get("elementId")
+        if not node_id or node_id in seen:
+            continue
+        seen.add(node_id)
+        deduped.append({"n": node, "r": None, "m": None})
+        if len(deduped) >= limit:
+            break
+
+    return deduped
+
+
+def _comparative_keyword_results(node_type: str, name: str, version: str, limit: int):
     query = """
         MATCH (n)
         WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
@@ -1810,6 +3233,7 @@ def comparative_search(request: ComparativeSearchRequest):
             $name = ''
             OR toLower(coalesce(n.name, '')) CONTAINS toLower($name)
             OR toLower(coalesce(n.label, '')) CONTAINS toLower($name)
+            OR toLower(coalesce(n.title, '')) CONTAINS toLower($name)
             OR toLower(coalesce(n.FileName, '')) CONTAINS toLower($name)
             OR toLower(coalesce(n.id, '')) CONTAINS toLower($name)
           )
@@ -1818,59 +3242,86 @@ def comparative_search(request: ComparativeSearchRequest):
             OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($node_type))
             OR toLower(coalesce(n.type, '')) CONTAINS toLower($node_type)
             OR toLower(coalesce(n.node_type, '')) CONTAINS toLower($node_type)
+            OR toLower(coalesce(n.entity_type, '')) CONTAINS toLower($node_type)
           )
           AND (
             $version = ''
             OR toLower(coalesce(n.version, '')) CONTAINS toLower($version)
             OR toLower(coalesce(n.Version, '')) CONTAINS toLower($version)
             OR toLower(coalesce(n.revision, '')) CONTAINS toLower($version)
+            OR toLower(coalesce(n.external_version, '')) CONTAINS toLower($version)
           )
-        WITH collect(DISTINCT n)[..100] AS matchedNodes
-        UNWIND matchedNodes AS n
-        OPTIONAL MATCH (n)-[r]-(m)
-        WHERE m IN matchedNodes
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
-          CASE WHEN r IS NOT NULL THEN {
-            elementId: elementId(r),
-            type: type(r),
-            properties: properties(r),
-            start: elementId(startNode(r)),
-            end: elementId(endNode(r))
-          } ELSE null END AS r,
-          CASE WHEN m IS NOT NULL THEN {
-            elementId: elementId(m), labels: labels(m), properties: properties(m)
-          } ELSE null END AS m
+          null AS r,
+          null AS m
+        LIMIT $limit
     """
+    return graph.query(
+        query,
+        params={"node_type": node_type, "name": name, "version": version, "limit": limit},
+    )
+
+
+@app.post("/comparative-search")
+def comparative_search(request: ComparativeSearchRequest):
+    """Search nodes for comparison using semantic similarity with keyword fallback."""
+    node_type = (request.nodeType or "").strip()
+    name = (request.name or "").strip()
+    version = (request.version or "").strip()
+    limit = max(1, min(int(request.limit or 12), 25))
+
+    if not name and not node_type and not version:
+        return {"results": []}
+
     try:
-        results = graph.query(
-            query,
-            params={"node_type": node_type, "name": name, "version": version},
-        )
+        results = _comparative_similarity_results(node_type, name, version, limit)
+        if not results:
+            results = _comparative_keyword_results(node_type, name, version, limit)
         return {"results": results}
     except Exception as e:
         safe_error("/comparative-search", e)
 
 
 class MultiNameSearchRequest(BaseModel):
-    names: list[str]
+    names: list[str] | None = None
+    search: str | list[str] | None = None
 
 
 @app.post("/graphfilter-multi")
 def filter_graph_nodes_multi(request: MultiNameSearchRequest):
-    """Fetch a set of named nodes and any relationships between them.
-    Used by the 'View in Graph' feature to load recommendation result nodes."""
-    # Cap at 100 names to avoid overloading Neo4j
-    names = [n.strip() for n in request.names if n and n.strip()][:100]
+    """Fetch named/search result nodes and any relationships between them.
+    Accepts the legacy {names: [...]} payload and tolerant {search: ...} payloads for external callers."""
+    raw_terms: list[str] = []
+    if request.names:
+        raw_terms.extend(str(name) for name in request.names)
+    if isinstance(request.search, list):
+        raw_terms.extend(str(name) for name in request.search)
+    elif isinstance(request.search, str):
+        raw_terms.extend(part.strip() for part in re.split(r"[,;\n]+", request.search) if part.strip())
+
+    # Cap at 50 names to avoid overloading Neo4j
+    names = [_normalize_search_term(n) for n in raw_terms if n and str(n).strip()][:50]
+    names = [n for n in names if n]
     if not names:
         return {"results": []}
 
+    wildcard_prefix_search = any("*" in str(term or "") for term in raw_terms)
     query = """
 UNWIND $names AS searchName
 MATCH (n)
 WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
-  AND toLower(n.name) CONTAINS toLower(searchName)
-WITH collect(DISTINCT n) AS matchedNodes
+  AND (
+    toLower(elementId(n)) CONTAINS toLower(searchName)
+    OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower(searchName))
+    OR any(field IN $search_fields WHERE
+      CASE
+        WHEN $wildcard_prefix_search THEN toLower(toString(coalesce(n[field], ''))) STARTS WITH toLower(searchName)
+        ELSE toLower(toString(coalesce(n[field], ''))) CONTAINS toLower(searchName)
+      END
+    )
+  )
+WITH collect(DISTINCT n)[..250] AS matchedNodes
 UNWIND matchedNodes AS n
 OPTIONAL MATCH (n)-[r]-(m)
 WHERE m IN matchedNodes
@@ -1885,65 +3336,28 @@ RETURN
   } ELSE null END AS m
 """
     try:
-        results = graph.query(query, params={"names": names})
+        results = graph.query(query, params={
+            "names": names,
+            "search_fields": GRAPH_SEARCH_PROPERTY_KEYS,
+            "wildcard_prefix_search": wildcard_prefix_search,
+        })
         return {"results": results}
     except Exception as e:
         safe_error("/graphfilter-multi", e)
 
 
 @app.get("/graphtraverse/{node_id}")
-def traverse_node(node_id: str = Path(..., description="Neo4j internal node ID")):
+def traverse_node(
+    node_id: str = Path(..., description="Neo4j internal node ID"),
+    depth: int = 1,
+):
     try:
-        query = """ 
-            MATCH (n)
-WHERE elementId(n) = $node_id
+        try:
+            from backend.Services.graph_view_service import GraphViewService
+        except Exception:
+            from Services.graph_view_service import GraphViewService
 
-OPTIONAL MATCH (n)-[r1]-(m1)
-WITH n, collect(DISTINCT {r: r1, m: m1})[..50] AS level1
-
-UNWIND level1 AS l1
-WITH n, level1, l1.m AS l1_node
-OPTIONAL MATCH (l1_node)-[r2]-(m2)
-WHERE elementId(m2) <> elementId(n)
-WITH n, level1, collect(DISTINCT {r: r2, m: m2})[..30] AS level2
-
-UNWIND level2 AS l2
-WITH n, level1, level2, l2.m AS l2_node
-OPTIONAL MATCH (l2_node)-[r3]-(m3)
-WHERE elementId(m3) <> elementId(n)
-WITH n, level1, level2, collect(DISTINCT {r: r3, m: m3})[..20] AS level3
-
-WITH n, level1 + level2 + level3 AS all_rels
-UNWIND all_rels AS rel_data
-WITH n, rel_data.r AS r, rel_data.m AS m
-WHERE r IS NOT NULL AND m IS NOT NULL
-
-RETURN 
-{
-  elementId: elementId(n),
-  labels: labels(n),
-  properties: properties(n)
-} AS n,
-
-{
-  elementId: elementId(r),
-  type: type(r),
-  properties: properties(r),
-  start: elementId(startNode(r)),
-  end: elementId(endNode(r))
-} AS r,
-
-{
-  elementId: elementId(m),
-  labels: labels(m),
-  properties: properties(m)
-} AS m
-
-LIMIT 500
-            """
-
-        results = graph.query(query, params={"node_id": node_id})
-        return {"results": results}
+        return GraphViewService.get_traversal_slice(node_id=node_id, limit=120, depth=depth)
     except Exception as e:
         safe_error("/graphtraverse", e)
 
@@ -2092,7 +3506,7 @@ def ap242_search(request: TextSearchRequest):
     WHERE val IS NOT NULL AND toLower(toString(val)) CONTAINS keyword
 
     WITH DISTINCT n
-    LIMIT 100
+          LIMIT 50
 
     // Get 1-hop neighbourhood
     OPTIONAL MATCH (n)-[r]-(m)
@@ -2609,11 +4023,162 @@ def build_graph_embeddings(force: bool = False):
         safe_error("/embeddings/build", e)
 
 
+
+@app.post("/reports")
+@app.post("/api/v1/reports")
+def get_reports(body: ReportBody):
+    """Compatibility report endpoint for customer deployments and external clients."""
+    try:
+        report_type = str((body or {}).get("type") or (body or {}).get("report_type") or "overview").strip().lower()
+        page = max(1, int((body or {}).get("page") or 1))
+        page_size = max(1, min(int((body or {}).get("page_size") or (body or {}).get("pageSize") or 25), 500))
+        include_documents = bool((body or {}).get("include_documents") or (body or {}).get("includeDocuments"))
+        skip = (page - 1) * page_size
+
+        if report_type in {"ontology", "ontologies", "governance"}:
+            try:
+                from Services.ontology_upload_manager import OntologyUploadManager
+            except Exception:
+                from backend.Services.ontology_upload_manager import OntologyUploadManager
+            registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+            rows = registry.get("ontologies", []) if isinstance(registry, dict) else []
+            return {
+                "status": "success",
+                "type": report_type,
+                "page": page,
+                "page_size": page_size,
+                "total": len(rows),
+                "results": rows[skip:skip + page_size],
+            }
+
+        if report_type in {"relationship", "relationships", "traceability", "lineage"}:
+            rows = graph.query(
+                """
+                MATCH (a)-[r]->(b)
+                WITH a, r, b,
+                     coalesce(a.name, a.label, a.id, '') AS from_name,
+                     coalesce(b.name, b.label, b.id, '') AS to_name
+                WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+                  AND from_name <> '' AND to_name <> ''
+                  AND NOT toLower(from_name) STARTS WITH 'id'
+                  AND NOT toLower(to_name) STARTS WITH 'id'
+                  AND ($include_documents OR coalesce(a.element_type, '') <> 'Document')
+                  AND ($include_documents OR coalesce(b.element_type, '') <> 'Document')
+                  AND ($include_documents OR coalesce(a.document_type, '') <> 'DataSet')
+                  AND ($include_documents OR coalesce(b.document_type, '') <> 'DataSet')
+                  AND NOT any(lbl IN labels(a) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                  AND NOT any(lbl IN labels(b) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                RETURN type(r) AS relationship_type,
+                       from_name AS from_name,
+                       labels(a) AS from_labels,
+                       to_name AS to_name,
+                       labels(b) AS to_labels,
+                       properties(r) AS relationship_properties
+                ORDER BY relationship_type, from_name, to_name
+                SKIP $skip LIMIT $limit
+                """,
+                params={"skip": skip, "limit": page_size, "include_documents": include_documents},
+            ) or []
+            total_rows = graph.query(
+                """
+                MATCH (a)-[r]->(b)
+                WITH a, r, b,
+                     coalesce(a.name, a.label, a.id, '') AS from_name,
+                     coalesce(b.name, b.label, b.id, '') AS to_name
+                WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+                  AND from_name <> '' AND to_name <> ''
+                  AND NOT toLower(from_name) STARTS WITH 'id'
+                  AND NOT toLower(to_name) STARTS WITH 'id'
+                  AND NOT any(lbl IN labels(a) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                  AND NOT any(lbl IN labels(b) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                RETURN count(r) AS total
+                """
+            , params={"include_documents": include_documents}) or []
+            total = int(total_rows[0].get("total") or 0) if total_rows else len(rows)
+            return {"status": "success", "type": report_type, "page": page, "page_size": page_size, "total": total, "results": rows}
+
+        rows = graph.query(
+            """
+            MATCH (n)
+            WITH n, coalesce(n.name, n.label, n.id, '') AS display_name
+            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              AND display_name <> ''
+              AND NOT toLower(display_name) STARTS WITH 'id'
+              AND ($include_documents OR coalesce(n.element_type, '') <> 'Document')
+              AND ($include_documents OR coalesce(n.document_type, '') <> 'DataSet')
+              AND NOT any(lbl IN labels(n) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+            RETURN elementId(n) AS elementId,
+                   labels(n) AS labels,
+                   properties(n) AS properties
+            ORDER BY display_name
+            SKIP $skip LIMIT $limit
+            """,
+            params={"skip": skip, "limit": page_size, "include_documents": include_documents},
+        ) or []
+        total_rows = graph.query(
+            """
+            MATCH (n)
+            WITH n, coalesce(n.name, n.label, n.id, '') AS display_name
+            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              AND display_name <> ''
+              AND NOT toLower(display_name) STARTS WITH 'id'
+              AND ($include_documents OR coalesce(n.element_type, '') <> 'Document')
+              AND ($include_documents OR coalesce(n.document_type, '') <> 'DataSet')
+              AND NOT any(lbl IN labels(n) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+            RETURN count(n) AS total
+            """,
+            params={"include_documents": include_documents},
+        ) or []
+        total = int(total_rows[0].get("total") or 0) if total_rows else len(rows)
+        normalized = []
+        for row in rows:
+            props = dict(row.get("properties") or {})
+            normalized.append({
+                "elementId": row.get("elementId"),
+                "type": ", ".join(row.get("labels") or []),
+                **props,
+                "name": props.get("name") or props.get("label") or props.get("id") or row.get("elementId"),
+            })
+        return {"status": "success", "type": report_type, "page": page, "page_size": page_size, "total": total, "results": normalized}
+    except Exception as e:
+        safe_error("/reports", e)
+
+
+@app.get("/api/v1/reports/xsd-relational")
+def get_xsd_relational_report(ontology_id: str = Query(..., min_length=1, max_length=200)):
+    """Return a read-only relational projection of a registered XSD."""
+    try:
+        try:
+            from Services.ontology_upload_manager import OntologyUploadManager
+            from Services.xsd_relational_report import build_xsd_relational_report
+        except ImportError:
+            from backend.Services.ontology_upload_manager import OntologyUploadManager
+            from backend.Services.xsd_relational_report import build_xsd_relational_report
+        result = OntologyUploadManager.get_ontology(ontology_id)
+        if result.get("status") != "success":
+            raise HTTPException(status_code=404, detail=result.get("error") or "Ontology not found")
+        metadata = result.get("metadata") or {}
+        file_path = _Path(metadata.get("file_path") or "")
+        if file_path.suffix.lower() != ".xsd" or not file_path.exists():
+            raise HTTPException(status_code=422, detail="The selected ontology does not have an accessible XSD source file")
+        return {"ontology_id": ontology_id, "prefix": metadata.get("prefix") or "", **build_xsd_relational_report(file_path)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"XSD relational report could not be generated: {exc}")
+
 # ======================== RECOMMENDATION ENDPOINTS ========================
 
-from Services.change_impact_recommender import ChangeImpactRecommender
-from Services.similar_parts_recommender import SimilarPartsRecommender
-from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
+try:
+    from .Services.change_impact_recommender import ChangeImpactRecommender
+    from .Services.similar_parts_recommender import SimilarPartsRecommender
+    from .Services.manufacturing_process_recommender import ManufacturingProcessRecommender
+except ImportError:
+    from Services.change_impact_recommender import ChangeImpactRecommender
+    from Services.similar_parts_recommender import SimilarPartsRecommender
+    from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
+
+from backend.depo_platform.decision_policy import assess_recommendation
 
 _change_impact = ChangeImpactRecommender(graph)
 _similar_parts = SimilarPartsRecommender(graph)
@@ -2621,39 +4186,51 @@ _mfg_process = ManufacturingProcessRecommender(graph)
 
 
 @app.post("/recommendations/change-impact")
-def recommend_change_impact(body: dict):
+def recommend_change_impact(body: ContextBody):
     """Analyse change impact given a change entity name or a part name."""
     change_name = body.get("change_name", "")
     part_name = body.get("part_name", "")
+    scope = body.get("scope") or {}
+    node_id = body.get("node_id") or body.get("element_id") or scope.get("node_id") or scope.get("element_id") or ""
+    if node_id and isinstance(scope, dict):
+        scope = {**scope, "node_id": node_id}
     if not change_name and not part_name:
         raise HTTPException(status_code=400, detail="Provide 'change_name' or 'part_name'")
     try:
-        return _change_impact.analyse(change_name=change_name, part_name=part_name)
+        return assess_recommendation(_change_impact.analyse(change_name=change_name, part_name=part_name, scope=scope), "change-impact", scope)
     except Exception as e:
         safe_error("/recommendations/change-impact", e)
 
 
 @app.post("/recommendations/similar-parts")
-def recommend_similar_parts(body: dict):
+def recommend_similar_parts(body: ContextBody):
     """Find similar parts given a part name."""
     part_name = body.get("part_name", "")
     top_n = body.get("top_n", 10)
+    scope = body.get("scope") or {}
+    node_id = body.get("node_id") or body.get("element_id") or scope.get("node_id") or scope.get("element_id") or ""
+    if node_id and isinstance(scope, dict):
+        scope = {**scope, "node_id": node_id}
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _similar_parts.recommend(part_name, top_n=int(top_n))
+        return assess_recommendation(_similar_parts.recommend(part_name, top_n=int(top_n), scope=scope, node_id=node_id), "similar-parts", scope)
     except Exception as e:
         safe_error("/recommendations/similar-parts", e)
 
 
 @app.post("/recommendations/manufacturing")
-def recommend_manufacturing(body: dict):
+def recommend_manufacturing(body: ContextBody):
     """Recommend manufacturing processes for a part."""
     part_name = body.get("part_name", "")
+    scope = body.get("scope") or {}
+    node_id = body.get("node_id") or body.get("element_id") or scope.get("node_id") or scope.get("element_id") or ""
+    if node_id and isinstance(scope, dict):
+        scope = {**scope, "node_id": node_id}
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _mfg_process.recommend(part_name)
+        return assess_recommendation(_mfg_process.recommend(part_name, scope=scope, node_id=node_id), "manufacturing", scope)
     except Exception as e:
         safe_error("/recommendations/manufacturing", e)
 
@@ -2662,17 +4239,107 @@ def recommend_manufacturing(body: dict):
 def recommendations_health():
     """Service health check with key Neo4j counts."""
     try:
+        from Services.ontology_upload_manager import OntologyUploadManager
+        try:
+            registered = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+        except Exception:
+            registered = OntologyUploadManager.list_ontologies()
+
         counts = graph.query("""
             MATCH (p:Individual)-[:INSTANCE_OF]->(c:OntologyClass)
-            WHERE c.name IN ['Part', 'Requirement', 'Process', 'GeneralRelation',
-                             'ProductInstance', 'Function', 'ProcessInstance']
+            WHERE c.name IS NOT NULL
             RETURN c.name AS class_name, count(p) AS cnt
             ORDER BY cnt DESC
+            LIMIT 20
         """)
+        model_counts = graph.query("""
+            OPTIONAL MATCH (i:Individual)
+            WITH count(i) AS individual_count
+            OPTIONAL MATCH (raw)
+            WHERE NOT raw:OntologyClass
+              AND NOT raw:ObjectProperty
+              AND NOT raw:DatatypeProperty
+            WITH individual_count, count(raw) AS raw_graph_count
+            OPTIONAL MATCH (biz)
+            WHERE NOT biz:OntologyClass
+              AND NOT biz:ObjectProperty
+              AND NOT biz:DatatypeProperty
+              AND coalesce(biz.name, biz.title, biz.code, biz.part_number, biz.requirement_id, '') <> ''
+              AND NOT toLower(coalesce(biz.name, '')) STARTS WITH 'id'
+            WITH individual_count, raw_graph_count, count(biz) AS business_object_count
+            OPTIONAL MATCH (proc)
+            WHERE NOT proc:OntologyClass
+              AND NOT proc:ObjectProperty
+              AND NOT proc:DatatypeProperty
+              AND NOT proc:GeneralRelation
+              AND NOT proc:ProductInstance
+              AND NOT proc:ProductView
+              AND NOT proc:UserData
+              AND NOT proc:Transform
+              AND NOT proc:AttributeContext
+              AND coalesce(proc.name, proc.title, proc.code, '') <> ''
+              AND NOT toLower(coalesce(proc.name, '')) STARTS WITH 'id'
+              AND (
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'process' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'operation' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'activity' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'service' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'validate' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'monitor' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'prepare'
+              )
+            RETURN individual_count,
+                   raw_graph_count,
+                   business_object_count,
+                   count(proc) AS process_context_count
+        """)
+        model_count_row = model_counts[0] if model_counts else {}
+        individual_count = int(model_count_row.get("individual_count") or 0)
+        raw_graph_count = int(model_count_row.get("raw_graph_count") or 0)
+        business_object_count = int(model_count_row.get("business_object_count") or 0)
+        process_context_count = int(model_count_row.get("process_context_count") or 0)
+        has_business_graph = individual_count > 0 or business_object_count > 0
+        service_readiness = {
+            "change-impact": {
+                "ready": has_business_graph,
+                "message": "Change impact can traverse the current business graph." if has_business_graph else "Load business objects or normalized instances first.",
+            },
+            "similar-parts": {
+                "ready": has_business_graph,
+                "message": "Similar-part recommendations can compare the current business graph." if has_business_graph else "Load business objects or normalized instances first.",
+            },
+            "manufacturing": {
+                "ready": has_business_graph and process_context_count > 0,
+                "message": (
+                    "Manufacturing guidance can use process-like business context from the current graph."
+                    if has_business_graph and process_context_count > 0
+                    else "Manufacturing guidance needs process-like business objects or operational traceability in the loaded graph."
+                ),
+            },
+        }
         return {
             "status": "ok",
             "services": ["change-impact", "similar-parts", "manufacturing"],
             "neo4j_counts": {r["class_name"]: r["cnt"] for r in counts},
+            "readiness": {
+                "scenario_ready": has_business_graph,
+                "individual_count": individual_count,
+                "raw_graph_count": raw_graph_count,
+                "business_object_count": business_object_count,
+                "process_context_count": process_context_count,
+                "service_readiness": service_readiness,
+                "required_model": "Individual nodes linked to OntologyClass with business names",
+                "message": (
+                    "Recommendation scenarios are ready on normalized instances."
+                    if individual_count > 0
+                    else (
+                        "Recommendation scenarios can run on current business objects, but the graph is not fully normalized into ontology-linked instances yet."
+                        if business_object_count > 0
+                        else "Recommendation scenarios need normalized instance data before they can return business results."
+                    )
+                ),
+            },
+            "ontology_scopes": (registered.get("ontologies", []) if isinstance(registered, dict) else []),
         }
     except Exception as e:
         return {"status": "degraded", "error": str(e)}
@@ -2680,13 +4347,26 @@ def recommendations_health():
 
 # ======================== ONTOLOGY MAPPER ENDPOINTS ========================
 
-from Services.ontology_mapper_service import OntologyMapperService
+try:
+    from .Services.ontology_mapper_service import OntologyMapperService
+except ImportError:
+    from Services.ontology_mapper_service import OntologyMapperService
+
+LEGACY_ONTOLOGY_MAPPER_NOTICE = {
+    "deprecated": True,
+    "mode": "legacy_seed_profile",
+    "replacement_workflow": "instance.link",
+    "replacement_endpoint": "/api/v1/workflows/execute",
+    "message": "Legacy seed profiles are compatibility templates. Use Semantic Bridge instance.link for instance-to-ontology alignment.",
+}
+
 
 @app.get("/ontology-mapper/options")
 def get_mapping_options():
     """Get available ontology mapping options."""
     try:
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "options": OntologyMapperService.get_mapping_options(),
             "mapping_types": OntologyMapperService.MAPPING_TYPES,
         }
@@ -2695,13 +4375,14 @@ def get_mapping_options():
 
 
 @app.get("/ontology-mapper/{mapping_type}/mappings")
-def get_ontology_mappings(mapping_type: str = Path(..., description="plmxml, step, or windchill")):
+def get_ontology_mapper_mappings(mapping_type: str = Path(..., description="plmxml, step, or windchill")):
     """Get all entity mappings for a specific mapping type (e.g., PLMXML→AP242)."""
     try:
         mappings = OntologyMapperService.get_mappings(mapping_type)
         if not mappings:
             raise HTTPException(status_code=404, detail=f"No mappings found for type: {mapping_type}")
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "mapping_type": mapping_type,
             "total": len(mappings),
             "mappings": mappings,
@@ -2720,6 +4401,7 @@ def get_data_dictionary(mapping_type: str = Path(..., description="plmxml, step,
         if not terms:
             raise HTTPException(status_code=404, detail=f"No data dictionary found for type: {mapping_type}")
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "mapping_type": mapping_type,
             "total_terms": len(terms),
             "terms": terms,
@@ -2738,6 +4420,7 @@ def get_vocabulary_mappings(mapping_type: str = Path(..., description="plmxml, s
         if not vocabulary:
             raise HTTPException(status_code=404, detail=f"No vocabulary found for type: {mapping_type}")
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "mapping_type": mapping_type,
             "total_mappings": len(vocabulary),
             "mappings": vocabulary,
@@ -2753,7 +4436,7 @@ def get_mapping_stats(mapping_type: str = Path(..., description="plmxml, step, o
     """Get statistics about a mapping type."""
     try:
         stats = OntologyMapperService.get_mapping_stats(mapping_type)
-        return stats
+        return {**LEGACY_ONTOLOGY_MAPPER_NOTICE, **stats}
     except Exception as e:
         safe_error("/ontology-mapper/{mapping_type}/stats", e)
 
@@ -2824,24 +4507,17 @@ def get_graph_metrics():
         }
     except Exception as e:
         logger.warning("graph-metrics error: %s", e)
-        return {
+        return JSONResponse(status_code=503, content={
+            "status": "error",
+            "error_code": "GRAPH_METRICS_UNAVAILABLE",
+            "detail": "Graph metrics are temporarily unavailable.",
             "total_nodes": 0,
             "total_relationships": 0,
             "node_labels": [],
             "relationship_types": [],
             "ontology_breakdown": [],
-            "ontology_kpis": {
-                "classes": 0,
-                "object_properties": 0,
-                "datatype_properties": 0,
-                "restrictions": 0,
-                "shacl_shapes": 0,
-                "individuals": 0,
-                "axiom_proxy_count": 0,
-                "class_to_property_ratio": 0,
-            },
-            "message": "Graph database temporarily unavailable.",
-        }
+            "ontology_kpis": {},
+        })
 
 
 @app.get("/ontologies/available")
@@ -2894,11 +4570,30 @@ def get_available_ontologies():
 
 from fastapi import UploadFile, File, Form
 from pathlib import Path as _Path
-from Services.data_import_service import DataImportService
-from Services.ollama_service import get_ollama_service
+try:
+    from .Services.data_import_service import DataImportService
+    from .Services.ollama_service import get_ollama_service
+except ImportError:
+    from Services.data_import_service import DataImportService
+    from Services.ollama_service import get_ollama_service
 
 # Directory containing ontology .ttl files served by the frontend
-ONTOLOGY_DIR = _Path(__file__).resolve().parent.parent.parent / "frontend" / "public" / "Ontology"
+ONTOLOGY_DIR = _Path(__file__).resolve().parent.parent / "frontend" / "public" / "Ontology"
+MAX_IMPORT_UPLOAD_BYTES = int(os.getenv("MAX_IMPORT_UPLOAD_BYTES", str(500 * 1024 * 1024)))
+
+
+async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload incrementally and reject it before unbounded buffering."""
+    if max_bytes <= 0:
+        raise RuntimeError("MAX_IMPORT_UPLOAD_BYTES must be positive")
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="Uploaded file exceeds the configured size limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class OllamaQueryRequest(BaseModel):
@@ -2945,7 +4640,7 @@ _STATIC_ONTOLOGY_MAPPINGS = [
 
 
 @app.get("/ontology-mappings")
-async def get_ontology_mappings(file_type: str = ""):
+async def list_legacy_ontology_mappings(file_type: str = ""):
     """List ontology mapping options sourced only from Neo4j OntologyMetadata."""
     normalized_file_type = (file_type or "").strip().lower()
 
@@ -3024,13 +4719,19 @@ async def get_ontology_mappings(file_type: str = ""):
 @app.post("/api/v1/import/upload")
 @app.post("/api/import/upload")
 @app.post("/data-import/upload")
-async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""), ontology_mapping: str = Form("")):
+async def upload_file(
+    file: UploadFile = File(...),
+    ontology_id: str = Form(""),
+    ontology_mapping: str = Form(""),
+    metadata_exclusion_tags: str = Form(""),
+):
     """Upload a file to the import pipeline with selected ontology.
     
     Parameters:
     - file: Data file (CSV, XLS, JSON, etc.)
     - ontology_id: ID of registered ontology (optional, overrides ontology_mapping)
     - ontology_mapping: Legacy ontology name/prefix (used if ontology_id not provided)
+    - metadata_exclusion_tags: Optional comma-separated PLMXML tags to suppress as metadata-only nodes
     
     Returns IMMEDIATELY with task_id (within 5 seconds) and processes file in background.
     Use /data-import/status/{task_id} to check processing progress.
@@ -3038,7 +4739,7 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
     try:
         # Read filename and content
         filename = file.filename or "unknown"
-        content = await file.read()
+        content = await _read_upload_with_limit(file, MAX_IMPORT_UPLOAD_BYTES)
         if not content:
             raise HTTPException(status_code=400, detail="File is empty")
 
@@ -3049,6 +4750,11 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
 
         # Resolve ontology prefix from ontology_id (if provided)
         resolved_ontology_mapping = ontology_mapping
+        parse_options = {}
+        if metadata_exclusion_tags.strip():
+            parse_options["metadata_exclusion_tags"] = [
+                tag.strip() for tag in metadata_exclusion_tags.split(",") if tag.strip()
+            ]
         if ontology_id:
             try:
                 OntologyUploadManager.initialize()
@@ -3059,7 +4765,12 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
                 logger.warning(f"Could not resolve ontology_id '{ontology_id}': {e}. Using ontology_mapping instead.")
         
         # Start import via unified service (schedules parsing in background and persists snapshot)
-        task_id = await UnifiedDataImportService.start_import(content, filename, resolved_ontology_mapping)
+        task_id = await UnifiedDataImportService.start_import(
+            content,
+            filename,
+            resolved_ontology_mapping,
+            parse_options=parse_options,
+        )
 
         return {
             "task_id": task_id,
@@ -3067,6 +4778,7 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
             "file_type": FileFormatDetector.detect(filename).value,
             "ontology_id": ontology_id,
             "ontology_mapping": resolved_ontology_mapping,
+            "metadata_exclusion_tags": parse_options.get("metadata_exclusion_tags", []),
             "message": f"File '{filename}' uploaded. Processing started in background. Check status with task_id: {task_id}",
         }
     except HTTPException:
@@ -3176,6 +4888,107 @@ def get_import_owl(task_id: str):
         safe_error("/api/v1/import/owl/{task_id}", e)
 
 
+
+@app.get("/api/v1/import/owl/{task_id}/export")
+def export_import_owl(task_id: str, format: str = Query("ttl", pattern="^(ttl|rdf|owl|jsonld)$")):
+    """Download generated ontology content as TTL, RDF/XML, OWL/XML, or JSON-LD."""
+    try:
+        from rdflib import Graph as RDFGraph
+        from backend.Services.unified_data_import import UnifiedDataImportService
+
+        status = UnifiedDataImportService.get_status(task_id)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+
+        owl_ttl = status.get("owl_ttl")
+        if not owl_ttl:
+            raise HTTPException(status_code=404, detail=f"No OWL content available for task: {task_id}")
+
+        export_format = (format or "ttl").lower()
+        filename_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(status.get("filename") or f"ontology_{task_id}"))
+        filename_base = re.sub(r"\.(ttl|rdf|owl|jsonld|json)$", "", filename_base, flags=re.IGNORECASE)
+        export_map = {
+            "ttl": {"rdflib": "turtle", "media": "text/turtle", "ext": "ttl"},
+            "rdf": {"rdflib": "xml", "media": "application/rdf+xml", "ext": "rdf"},
+            "owl": {"rdflib": "pretty-xml", "media": "application/rdf+xml", "ext": "owl"},
+            "jsonld": {"rdflib": "json-ld", "media": "application/ld+json", "ext": "jsonld"},
+        }
+        spec = export_map[export_format]
+
+        if export_format == "ttl":
+            content = owl_ttl
+        else:
+            graph = RDFGraph()
+            try:
+                graph.parse(data=owl_ttl, format="turtle")
+                content = graph.serialize(format=spec["rdflib"])
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Generated Turtle could not be serialized as {export_format}: {exc}")
+
+        body = content if isinstance(content, bytes) else str(content).encode("utf-8")
+        headers = {"Content-Disposition": f'attachment; filename="{filename_base}.{spec["ext"]}"'}
+        return Response(content=body, media_type=f'{spec["media"]}; charset=utf-8', headers=headers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/import/owl/{task_id}/export", e)
+
+
+@app.get("/api/v1/ontology/{ontology_id}/export")
+def export_registered_ontology(ontology_id: str, format: str = Query("ttl", pattern="^(ttl|rdf|owl|jsonld)$")):
+    """Download a registered/generated ontology as TTL, RDF/XML, OWL/XML, or JSON-LD."""
+    try:
+        from rdflib import Graph as RDFGraph
+        from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+        meta_result = OntologyUploadManager.get_ontology(ontology_id)
+        if meta_result.get("status") != "success":
+            raise HTTPException(status_code=404, detail=f"Ontology not found: {ontology_id}")
+        meta = meta_result.get("metadata") or {}
+        export_format = (format or "ttl").lower()
+        artifacts = meta.get("ontology_export_artifacts") or []
+        direct = next((item for item in artifacts if str(item.get("format") or "").lower() == export_format), None)
+        if direct:
+            direct_path = _Path(str(direct.get("path") or ""))
+            if direct_path.exists():
+                filename_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(meta.get("ontology_name") or meta.get("prefix") or ontology_id))
+                ext = "ttl" if export_format == "ttl" else export_format
+                return FileResponse(path=str(direct_path), filename=f"{filename_base}.{ext}")
+
+        source_path = _Path(str(meta.get("owl_file_path") or meta.get("file_path") or ""))
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail=f"Ontology semantic file is missing for: {ontology_id}")
+
+        export_map = {
+            "ttl": {"rdflib": "turtle", "media": "text/turtle", "ext": "ttl"},
+            "rdf": {"rdflib": "xml", "media": "application/rdf+xml", "ext": "rdf"},
+            "owl": {"rdflib": "pretty-xml", "media": "application/rdf+xml", "ext": "owl"},
+            "jsonld": {"rdflib": "json-ld", "media": "application/ld+json", "ext": "jsonld"},
+        }
+        spec = export_map[export_format]
+        graph_obj = RDFGraph()
+        parse_formats = ["turtle", "xml", "n3"] if source_path.suffix.lower() == ".ttl" else ["xml", "turtle", "n3"]
+        last_error = None
+        for parse_format in parse_formats:
+            try:
+                graph_obj.parse(str(source_path), format=parse_format)
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+        if last_error:
+            raise HTTPException(status_code=422, detail=f"Ontology could not be parsed for export: {last_error}")
+        content = graph_obj.serialize(format=spec["rdflib"])
+        body = content if isinstance(content, bytes) else str(content).encode("utf-8")
+        filename_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(meta.get("ontology_name") or meta.get("prefix") or ontology_id))
+        headers = {"Content-Disposition": f'attachment; filename="{filename_base}.{spec["ext"]}"'}
+        return Response(content=body, media_type=f'{spec["media"]}; charset=utf-8', headers=headers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/export", e)
+
+
 @app.get("/api/v1/import/artifacts/{task_id}")
 def get_import_artifacts(task_id: str):
     """Return retained workflow artifacts for an import task."""
@@ -3195,18 +5008,9 @@ def get_import_artifacts(task_id: str):
 @app.get("/api/v1/workflows/options")
 def get_workflow_options():
     """Return executable semantic workflow IDs."""
-    return {
-        "workflows": [
-            {"id": "instance.import", "status": "existing_import_pipeline"},
-            {"id": "ontology.create", "status": "existing_upload_pipeline"},
-            {"id": "instance.link", "status": "artifact_report"},
-            {"id": "ontology.merge", "status": "artifact_report"},
-            {"id": "ontology.validate", "status": "artifact_report"},
-            {"id": "dictionary.generate", "status": "artifact_report"},
-            {"id": "taxonomy.generate", "status": "artifact_report"},
-            {"id": "graph.chunk", "status": "artifact_report"},
-        ]
-    }
+    from backend.Services.workflow_registry import get_workflow_options as list_workflow_options
+
+    return {"workflows": list_workflow_options()}
 
 
 @app.post("/api/v1/workflows/execute")
@@ -3244,7 +5048,24 @@ def get_workflow_artifact_file(task_id: str, artifact_path: str):
 def list_import_tasks():
     """List all import tasks."""
     try:
-        tasks = DataImportService.list_tasks()
+        # Unified imports are persisted on disk and must remain selectable in
+        # Semantic Bridge after a backend restart. Keep legacy tasks visible
+        # too, while deduplicating task IDs shared by both stores.
+        from backend.Services.unified_data_import import UnifiedDataImportService
+
+        tasks_by_id = {
+            str(task.get('task_id')): task
+            for task in DataImportService.list_tasks()
+            if task.get('task_id')
+        }
+        for task in UnifiedDataImportService.list_tasks():
+            if task.get('task_id'):
+                tasks_by_id[str(task['task_id'])] = task
+        tasks = sorted(
+            tasks_by_id.values(),
+            key=lambda task: str(task.get('started_at') or ''),
+            reverse=True,
+        )
         return {
             "total_tasks": len(tasks),
             "tasks": tasks,
@@ -3258,6 +5079,10 @@ def ollama_health():
     """Check local Ollama availability for conversational endpoints."""
     try:
         service = get_ollama_service()
+        from backend.core.ollama_auth import ollama_discovery_enabled
+        if not ollama_discovery_enabled():
+            return {'healthy': None, 'status': 'generation_unverified', 'discovery_enabled': False,
+                    'base_url': service.base_url, 'model': service.model, 'available_models': []}
         healthy = service.health_check()
         models = service.list_models() if healthy else []
         return {
@@ -3279,11 +5104,14 @@ def ollama_query(payload: OllamaQueryRequest):
             raise HTTPException(status_code=400, detail="Query is required")
 
         service = get_ollama_service()
-        if not service.health_check():
+        from backend.core.ollama_auth import ollama_discovery_enabled
+        if ollama_discovery_enabled() and not service.health_check():
             raise HTTPException(status_code=503, detail="Ollama is not available")
 
-        response = service.answer_question(question)
-        return response
+        try:
+            return service.answer_question(question)
+        except RuntimeError:
+            raise HTTPException(status_code=502, detail='Ollama generation failed; check the server and configured model') from None
     except HTTPException:
         raise
     except Exception as e:
@@ -3437,6 +5265,15 @@ async def commit_import(task_id: str):
             try:
                 result = await UnifiedDataImportService.commit_import(task_id)
                 invalidate_graphvis_cache()
+                try:
+                    OSLCTRSService.publish_event(
+                        OSLCTRSService.import_resource_uri(task_id),
+                        "Modification",
+                        title=f"Import committed for {task_id}",
+                        metadata={"task_id": task_id, "path": "unified_commit", "result_summary": str(result)[:500]},
+                    )
+                except Exception as exc:
+                    logger.warning("OSLC TRS publish skipped for import commit %s: %s", task_id, exc)
                 return {"success": True, "task_id": task_id, "message": "Committed via unified service", "result": result}
             except ValueError as ve:
                 # Task not found or not ready
@@ -3480,23 +5317,45 @@ async def commit_import(task_id: str):
                 props = node.get("properties", {})
                 node_id = props.get("id", "")
                 if node_id:
-                    label = node.get("label", "Element")
-                    cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
-                    graph.query(cypher, {"id": node_id, "props": props}, timeout=30)
+                    label = _safe_cypher_identifier(node.get("label", "Element"), default="Element")
+                    cypher = f"MERGE (n:`{label}` {{id: $id, import_id: $import_id}}) SET n += $props"
+                    scoped_props = {**props, "import_id": task_id}
+                    graph.query(
+                        cypher,
+                        {"id": node_id, "import_id": task_id, "props": scoped_props},
+                        timeout=300,
+                    )
                     committed_count += 1
             for rel in relationships:
                 from_id = rel.get("from_props", {}).get("id", "")
                 to_id = rel.get("to_props", {}).get("id", "")
-                rel_type = rel.get("type", "RELATES_TO")
+                rel_type = _safe_cypher_identifier(rel.get("type", "RELATES_TO"), default="RELATES_TO")
                 if from_id and to_id:
-                    cypher = f"MATCH (a {{id: $from_id}}) MATCH (b {{id: $to_id}}) MERGE (a)-[:{rel_type}]->(b)"
-                    graph.query(cypher, {"from_id": from_id, "to_id": to_id}, timeout=30)
+                    cypher = (
+                        f"MATCH (a {{id: $from_id, import_id: $import_id}}) "
+                        f"MATCH (b {{id: $to_id, import_id: $import_id}}) "
+                        f"MERGE (a)-[:`{rel_type}`]->(b)"
+                    )
+                    graph.query(
+                        cypher,
+                        {"from_id": from_id, "to_id": to_id, "import_id": task_id},
+                        timeout=300,
+                    )
                     committed_count += 1
 
             task["status"] = "committed"
             task["committed_count"] = committed_count
             task["completed_at"] = time.time()
             invalidate_graphvis_cache()
+            try:
+                OSLCTRSService.publish_event(
+                    OSLCTRSService.import_resource_uri(task_id),
+                    "Modification",
+                    title=f"Import committed for {task_id}",
+                    metadata={"task_id": task_id, "path": "legacy_commit", "committed_count": committed_count},
+                )
+            except Exception as exc:
+                logger.warning("OSLC TRS publish skipped for import commit %s: %s", task_id, exc)
             return {
                 "success": True,
                 "task_id": task_id,
@@ -3518,7 +5377,10 @@ async def commit_import(task_id: str):
 # ============================================================================
 # Webhook Handlers with Signature Validation
 # ============================================================================
-from Services.webhook_validator import WebhookValidator, WEBHOOK_SECRETS
+try:
+    from .Services.webhook_validator import WebhookValidator, WEBHOOK_SECRETS
+except ImportError:
+    from Services.webhook_validator import WebhookValidator, WEBHOOK_SECRETS
 
 # Configure webhook secrets from environment variables
 # Set as: NEO4J_WEBHOOK_SECRET="your_secret_key" in .env
@@ -3590,6 +5452,129 @@ async def handle_neo4j_webhook(request: Request):
         logger.error(f"Webhook processing error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(500, "Error processing webhook")
 
+
+
+# ======================== ONTOLOGY MODELING WORKBENCH ENDPOINTS ========================
+
+
+def _agentic_modeling_service():
+    try:
+        from backend.Services import agentic_modeling_service
+    except Exception:
+        from Services import agentic_modeling_service
+    return agentic_modeling_service
+
+def _modeling_service():
+    try:
+        from backend.Services import modeling_service
+    except Exception:
+        from Services import modeling_service
+    return modeling_service
+
+
+@app.get("/api/v1/modeling/metamodel")
+async def modeling_metamodel():
+    return _modeling_service().metamodel()
+
+
+@app.post("/api/v1/modeling/indexes")
+async def modeling_indexes():
+    return _modeling_service().ensure_indexes()
+
+
+@app.get("/api/v1/modeling/graph")
+async def modeling_graph(project: str = "Digital Engineering Model", search: str = "", limit: int = Query(default=500, ge=1, le=2000)):
+    return _modeling_service().list_graph(project=project, search=search, limit=limit)
+
+
+@app.get("/api/v1/modeling/tree")
+async def modeling_tree(project: str = "Digital Engineering Model"):
+    return _modeling_service().tree(project=project)
+
+
+@app.get("/api/v1/modeling/search")
+async def modeling_search(q: str, project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
+    return _modeling_service().search(query=q, project=project, limit=limit)
+
+
+@app.get("/api/v1/modeling/context/{element_id}")
+async def modeling_context(element_id: str, depth: int = Query(default=1, ge=1, le=2), limit: int = Query(default=300, ge=1, le=1000)):
+    return _modeling_service().context(element_id=element_id, depth=depth, limit=limit)
+
+
+@app.post("/api/v1/modeling/nodes")
+async def modeling_create_node(payload: ModelNodeBody):
+    return _modeling_service().create_node(payload)
+
+
+@app.put("/api/v1/modeling/nodes/{element_id}")
+async def modeling_update_node(element_id: str, payload: ModelNodeBody):
+    return _modeling_service().update_node(element_id, payload)
+
+
+@app.delete("/api/v1/modeling/nodes/{element_id}")
+async def modeling_delete_node(element_id: str):
+    return _modeling_service().delete_node(element_id)
+
+
+@app.post("/api/v1/modeling/links")
+async def modeling_create_link(payload: ModelLinkBody):
+    return _modeling_service().create_link(payload)
+
+
+@app.put("/api/v1/modeling/links/{element_id}")
+async def modeling_update_link(element_id: str, payload: ModelLinkBody):
+    return _modeling_service().update_link(element_id, payload)
+
+
+@app.delete("/api/v1/modeling/links/{element_id}")
+async def modeling_delete_link(element_id: str):
+    return _modeling_service().delete_link(element_id)
+
+
+@app.get("/api/v1/modeling/validation")
+async def modeling_validation(project: str = "Digital Engineering Model"):
+    return _modeling_service().validate(project=project)
+
+
+
+@app.post("/api/v1/modeling/agent/proposals")
+async def modeling_agent_create_proposal(payload: ModelProposalBody):
+    try:
+        return _agentic_modeling_service().create_proposal(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/modeling/agent/proposals")
+async def modeling_agent_list_proposals(project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
+    return _agentic_modeling_service().list_proposals(project=project, limit=limit)
+
+
+@app.post("/api/v1/modeling/agent/proposals/{proposal_id}/approve")
+async def modeling_agent_approve_proposal(proposal_id: str, payload: ModelDecisionBody | None = None):
+    payload = payload or {}
+    result = _agentic_modeling_service().approve_proposal(proposal_id, approved_by=payload.get("approved_by") or "user", comment=payload.get("comment") or "")
+    if result.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail="Agent proposal not found")
+    if result.get("error") == "invalid_state":
+        raise HTTPException(status_code=409, detail=f"Agent proposal is already {result.get('current_status') or 'finalized'}")
+    return result
+
+
+@app.post("/api/v1/modeling/agent/proposals/{proposal_id}/reject")
+async def modeling_agent_reject_proposal(proposal_id: str, payload: ModelDecisionBody | None = None):
+    payload = payload or {}
+    result = _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=payload.get("rejected_by") or "user", comment=payload.get("comment") or "")
+    if result.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail="Agent proposal not found")
+    if result.get("error") == "invalid_state":
+        raise HTTPException(status_code=409, detail=f"Agent proposal is already {result.get('current_status') or 'finalized'}")
+    return result
+@app.post("/api/v1/modeling/seed")
+async def modeling_seed(payload: ModelSeedBody | None = None):
+    payload = payload or {}
+    return _modeling_service().seed_sample(project=payload.get("project") or "Digital Engineering Model")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,29 +1,30 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Database, Network, RefreshCw } from 'lucide-react';
+import { UI_COLORS as C } from '../styles/uiTokens';
 
-const C = {
-  primary: '#004B87',
-  primaryDark: '#003366',
-  primaryLight: '#E8F1FC',
-  green: '#28A745',
-  orange: '#FFC107',
-  red: '#D32F2F',
-  textPrimary: '#1A2B3C',
-  textMuted: '#6C757D',
-  border: '#E9ECEF',
-  borderDark: '#CED4DA',
-  bg: '#F8F9FA',
-  surface: '#FFFFFF',
-};
+export function prefixFromNamespace(root, namespace) {
+  if (!namespace) return '';
+  let local;
+  try {
+    const uri = new URL(namespace.trim().replace(/[#/]+$/, ''));
+    local = uri.hash.slice(1) || uri.pathname.replace(/\/+$/, '').split('/').at(-1) || uri.hostname;
+    if (uri.protocol === 'urn:') local = local.split(':').at(-1);
+  } catch (_) { local = namespace.trim().replace(/[#/]+$/, '').split(/[#/]/).at(-1); }
+  let prefix = (local || '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  if (prefix && !/^[a-z]/.test(prefix)) prefix = 'ns_' + prefix;
+  return prefix.slice(0, 50);
+}
 
 const getGenerationOptionsForFileType = (fileType) => {
   if (fileType === 'xsd') {
     return [
       { value: 'shacl', label: 'SHACL (RDF Shapes) - Recommended for XSD' },
       { value: 'owl', label: 'OWL (Web Ontology Language)' },
-      { value: 'both', label: 'Both SHACL and OWL' }
+      { value: 'both', label: 'Both SHACL and OWL' },
+      { value: 'as_is', label: 'Register source XSD - no conversion or graph publication' }
     ];
   }
+  if (fileType === 'exp' || fileType === 'express') return [{ value: 'owl', label: 'OWL (Web Ontology Language)' }];
   if (fileType === 'xmi' || fileType === 'mdxml') {
     return [
       { value: 'owl', label: 'OWL (Web Ontology Language) - Recommended for XMI/MagicDraw' },
@@ -55,9 +56,10 @@ export default function OntologyMetadataForm({
   selectedFile,
   isLoading = false,
   initialValues = null,
+  publicationMode = false,
   formTitle = 'Ontology Metadata',
   ontologyNamePlaceholder = 'e.g., Product Model',
-  prefixPlaceholder = 'e.g., myprefix'
+  prefixPlaceholder = 'Automatic from source namespace'
 }) {
   const [formData, setFormData] = useState({
     ontologyName: initialValues?.ontologyName || '',
@@ -68,6 +70,29 @@ export default function OntologyMetadataForm({
   });
 
   const [validationErrors, setValidationErrors] = useState({});
+  const [sourceNamespace, setSourceNamespace] = useState('');
+  const prefixEdited = useRef(Boolean(initialValues?.prefix));
+  useEffect(() => {
+    let active = true;
+    setSourceNamespace('');
+    if (!selectedFile || !selectedFile.name.toLowerCase().endsWith('.xsd')) return undefined;
+    const text = typeof selectedFile.text === 'function' ? selectedFile.text() : new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Cannot read source schema'));
+      reader.readAsText(selectedFile);
+    });
+    text.then(value => {
+      const document = new DOMParser().parseFromString(value, 'application/xml');
+      const root = document.documentElement;
+      if (active && !document.querySelector('parsererror') && root.namespaceURI === 'http://www.w3.org/2001/XMLSchema' && root.localName === 'schema') {
+        const namespace = root.getAttribute('targetNamespace') || '';
+        setSourceNamespace(namespace);
+        if (!prefixEdited.current) setFormData(previous => ({ ...previous, prefix: prefixFromNamespace(root, namespace) }));
+      }
+    }).catch(() => { if (active) setSourceNamespace(''); });
+    return () => { active = false; };
+  }, [selectedFile]);
 
   // Determine file type from selected file
   const getFileType = () => {
@@ -78,11 +103,14 @@ export default function OntologyMetadataForm({
 
   // Check if generation options are empty due to unrecognized file type
   const fileType = getFileType();
-  const generationOptions = useMemo(() => getGenerationOptionsForFileType(fileType), [fileType]);
+  const generationOptions = useMemo(() => {
+    const options = getGenerationOptionsForFileType(fileType);
+    return publicationMode ? options.filter(option => ['owl', 'as_is'].includes(option.value)) : options;
+  }, [fileType, publicationMode]);
   const showFileTypeError = fileType && generationOptions.length === 0;
 
   useEffect(() => {
-    if (!formData.generationType && generationOptions.length > 0) {
+    if (!generationOptions.some(option => option.value === formData.generationType) && generationOptions.length > 0) {
       setFormData(prev => ({
         ...prev,
         generationType: generationOptions[0].value,
@@ -97,13 +125,11 @@ export default function OntologyMetadataForm({
       errors.ontologyName = 'Ontology name is required';
     }
     
-    if (!formData.prefix.trim()) {
-      errors.prefix = 'Prefix is required';
-    } else if (!/^[a-z][a-z0-9_]*$/.test(formData.prefix)) {
+    if (formData.prefix.trim() && !/^[a-z][a-z0-9_]{0,49}$/.test(formData.prefix.trim())) {
       errors.prefix = 'Prefix must start with a lowercase letter and contain only lowercase letters, numbers, or underscores';
     }
     
-    if (!formData.generationType) {
+    if (!generationOptions.some(option => option.value === formData.generationType)) {
       errors.generationType = 'Please select generation type';
     }
     
@@ -123,6 +149,7 @@ export default function OntologyMetadataForm({
     
     onSubmit({
       ...formData,
+      prefix: formData.prefix.trim(),
       fileType: normalizedFileType,
       selectedFile: selectedFile,
       schemaType: formData.schemaType || 'schema'
@@ -185,16 +212,17 @@ export default function OntologyMetadataForm({
 
           {/* Ontology Name */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-name-input" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
               Ontology Name *
             </label>
             <input
+              id="ontology-name-input"
               type="text"
               placeholder={ontologyNamePlaceholder}
               value={formData.ontologyName}
@@ -224,20 +252,21 @@ export default function OntologyMetadataForm({
 
           {/* Prefix */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-prefix-input" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
-              Namespace Prefix *
+              Namespace Prefix (optional)
             </label>
             <input
+              id="ontology-prefix-input"
               type="text"
               placeholder={prefixPlaceholder}
               value={formData.prefix}
-              onChange={(e) => setFormData({ ...formData, prefix: e.target.value.toLowerCase() })}
+              onChange={(e) => { prefixEdited.current = true; setFormData({ ...formData, prefix: e.target.value.toLowerCase() }); }}
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -258,20 +287,26 @@ export default function OntologyMetadataForm({
               color: C.textMuted,
               marginTop: '4px'
             }}>
-              Used in URIs: {formData.prefix || 'prefix'}:Entity
+              {formData.prefix ? `Display alias: ${formData.prefix}:Entity. Source IRIs are preserved.` : 'Automatic: resolved from the source namespace during registration. You may leave this blank.'}
             </div>
           </div>
+          {fileType === 'xsd' && <div style={{ marginBottom: '20px' }}>
+            <label htmlFor="ontology-namespace-input">Source namespace (from XSD)</label>
+            <input id="ontology-namespace-input" type="text" readOnly value={sourceNamespace}
+              placeholder="No targetNamespace declared" style={{ width: '100%', padding: '10px 12px', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+            <p>The prefix is a display alias. Source namespace IRIs and imported extension namespaces are preserved.</p>
+          </div>}
 
           {/* Generation Type */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-generation-select" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
-              Generate As * {fileType === 'xsd' && <span style={{ fontSize: '11px', color: C.green }}>→ SHACL recommended</span>} {fileType === 'xmi' && <span style={{ fontSize: '11px', color: C.green }}>→ OWL recommended</span>}
+              Generate As * {fileType === 'xsd' && <span style={{ fontSize: '11px', color: C.green }}>{publicationMode ? 'OWL for ontology publication' : 'SHACL for shape validation; OWL for ontology generation'}</span>} {fileType === 'xmi' && <span style={{ fontSize: '11px', color: C.green }}>OWL recommended</span>}
             </label>
             {showFileTypeError && (
               <div style={{ color: C.red, fontSize: '11px', marginBottom: '8px', padding: '8px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '4px' }}>
@@ -280,6 +315,7 @@ export default function OntologyMetadataForm({
               </div>
             )}
             <select
+              id="ontology-generation-select"
               value={formData.generationType}
               onChange={(e) => setFormData({ ...formData, generationType: e.target.value })}
               disabled={showFileTypeError}
@@ -319,7 +355,7 @@ export default function OntologyMetadataForm({
               <legend style={{
                 fontSize: '13px',
                 fontWeight: 700,
-                color: C.primary,
+                color: C.primaryText,
                 marginLeft: '-6px',
                 paddingLeft: '6px'
               }}>
@@ -341,7 +377,7 @@ export default function OntologyMetadataForm({
                     style={{ marginRight: '8px', marginTop: '2px', cursor: 'pointer' }}
                   />
                   <div>
-                    <strong style={{ color: C.primary }}>Schema/Ontology</strong>
+                    <strong style={{ color: C.primaryText }}>Schema/Ontology</strong>
                     <br/>
                     <span style={{ fontSize: '11px', color: C.textMuted }}>
                       For metadata and standards files (e.g., OMG SysML profile, reference ontologies)
@@ -364,7 +400,7 @@ export default function OntologyMetadataForm({
                     style={{ marginRight: '8px', marginTop: '2px', cursor: 'pointer' }}
                   />
                   <div>
-                    <strong style={{ color: C.primary }}>Instance/Model Data</strong>
+                    <strong style={{ color: C.primaryText }}>Instance/Model Data</strong>
                     <br/>
                     <span style={{ fontSize: '11px', color: C.textMuted }}>
                       For concrete implementations (e.g., MBSE models, product data)
@@ -377,16 +413,17 @@ export default function OntologyMetadataForm({
 
           {/* Description */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-description-input" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
               Description
             </label>
             <textarea
+              id="ontology-description-input"
               placeholder="Optional description for this ontology..."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}

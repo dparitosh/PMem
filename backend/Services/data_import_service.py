@@ -1,8 +1,6 @@
 r"""
 Data Import Pipeline Service - Enhanced Integration with import_master Parsers
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-INTEGRATED FROM: C:\Users\895428\Depo\import_master\src\
-
 This service now uses production-ready parsers for:
   ✓ PLMXML (via plmxml_parser_v2.py)
   ✓ STEP/PART21 (via step_parser.py) - with full instance extraction
@@ -57,14 +55,17 @@ except (ImportError, ModuleNotFoundError) as xmi_err:
 
 # ✅ AP239 & Multi-Domain Pipeline Integration
 try:
-    from Services.ap239_mapper_service import AP239MapperService, AP239DomainPipeline  # noqa: F401
+    # Prefer package-relative imports.  The historical absolute imports only
+    # work when ``backend`` has been injected into sys.path, which made a
+    # normal ASGI/package launch incorrectly report these capabilities absent.
+    from .ap239_mapper_service import AP239MapperService, AP239DomainPipeline  # noqa: F401
     AP239_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as ap239_err:
     AP239_AVAILABLE = False
     logger.debug(f"AP239 Mapper unavailable: {ap239_err}")
 
 try:
-    from Services.multi_domain_pipeline_controller import MultiDomainPipelineController, IndustryDomain, DomainPipelineConfig  # noqa: F401
+    from .multi_domain_pipeline_controller import MultiDomainPipelineController, IndustryDomain, DomainPipelineConfig  # noqa: F401
     MULTI_DOMAIN_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as multi_err:
     MULTI_DOMAIN_AVAILABLE = False
@@ -233,7 +234,7 @@ class DataImportService:
 
     @classmethod
     def resolve_ontology_mapping(cls, file_type: str, ontology_mapping: str) -> str:
-        """Resolve/validate ontology alignment by file type."""
+        """Resolve legacy import profile by file type. Semantic Bridge linking is handled separately by instance.link."""
         resolved = (ontology_mapping or '').strip()
         ftype = (file_type or '').strip().lower()
 
@@ -249,8 +250,8 @@ class DataImportService:
 
         if ftype in cls.REQUIRED_ALIGNMENT_TYPES and not resolved:
             raise ValueError(
-                f"Ontology alignment is required for {ftype.upper()} imports. "
-                "Please select an ontology mapping."
+                f"A source profile is required for legacy {ftype.upper()} imports. "
+                "Use Data Import for structural loading, then Semantic Bridge for instance-to-ontology alignment."
             )
 
         if ftype in cls.OPTIONAL_AUTO_CONVERT_TYPES and not resolved:
@@ -260,7 +261,7 @@ class DataImportService:
             valid_ids = cls._get_valid_mapping_ids()
             if valid_ids and resolved not in valid_ids and resolved not in cls.STEP_ALLOWED_ALIGNMENTS:
                 raise ValueError(
-                    "Invalid ontology mapping. Please select a mapping from /ontology-mappings."
+                    "Invalid legacy source profile. Select a supported seed profile from /ontology-mappings or use Semantic Bridge after import."
                 )
 
         return resolved
@@ -271,7 +272,7 @@ class DataImportService:
         Process a file through the import pipeline.
         Returns task_id for tracking progress.
         task_id: Optional pre-generated task_id (if not provided, one will be generated)
-        ontology_mapping: ID of the selected ontology alignment (e.g., 'plmxml_ap242', 'step_ap242', or '' for auto-detect)
+        ontology_mapping: legacy seed profile id. Instance-to-ontology linking is performed later by Semantic Bridge.
         """
         # Validate file type
         file_type = cls.get_file_type(filename)
@@ -345,7 +346,7 @@ class DataImportService:
         # Stage 1: Convert (Parse & convert to OWL2/Turtle)
         result['parsed_data'] = await cls._parse_stage(task_id, file_type, file_path)
 
-        # Stage 2: Map (Ontology alignment - user-selected)
+        # Stage 2: Legacy profile normalization. Semantic Bridge linking is separate.
         result['mapped_data'] = await cls._map_stage(task_id, result['parsed_data'], ontology_mapping)
 
         # Stage 3: Validate (SHACL & quality check)
@@ -362,7 +363,6 @@ class DataImportService:
 
         return result
 
-    @classmethod
     @classmethod
     async def _parse_stage(cls, task_id: str, file_type: str, file_path: str) -> Dict[str, Any]:
         """Convert: Parse file and convert to ontology structure."""
@@ -453,11 +453,11 @@ class DataImportService:
 
     @classmethod
     async def _map_stage(cls, task_id: str, parsed_data: Dict[str, Any], ontology_mapping: str = '') -> Dict[str, Any]:
-        """Map: Ontology alignment using user-selected alignment/unification profile."""
+        """Map: legacy source-profile normalization; does not replace Semantic Bridge instance linking."""
         progress = import_tasks[task_id]
         progress['current_stage'] = 'map'
         progress['progress'] = 40
-        progress['message'] = f'Applying ontology alignment: {ontology_mapping or "auto-detect"}...'
+        progress['message'] = f'Applying legacy source profile: {ontology_mapping or "auto-detect"}...'
 
         mapped_entities = []
 
@@ -507,18 +507,25 @@ class DataImportService:
         progress['progress'] = 50
         progress['message'] = 'Running SHACL validation & quality check...'
 
-        # Simulate validation
-        validation_results = {
-            'is_valid': True,
-            'errors': [],
-            'warnings': [],
-        }
-
-        if parsed_data.get('entities'):
-            validation_results['entities_validated'] = len(parsed_data['entities'])
-
-        progress['stats']['validation_status'] = 'passed'
-        return validation_results
+        from .owl_generation_service import OWLGenerationService
+        import asyncio
+        if parsed_data.get('error'):
+            progress['stats']['validation_status'] = 'failed'
+            raise ValueError('Source parsing failed; ingestion is blocked')
+        ttl = parsed_data.get('rdf_ttl') or progress.get('owl_ttl')
+        if not ttl:
+            progress['stats']['validation_status'] = 'unavailable'
+            raise ValueError('No RDF validation artifact is available; ingestion is blocked. Use the governed import workflow.')
+        shapes = parsed_data.get('shacl_shapes')
+        report = await asyncio.to_thread(OWLGenerationService.validate_with_shacl, ttl, shacl_shapes=shapes)
+        report['validation_scope'] = 'instance' if parsed_data.get('rdf_ttl') and shapes else 'ontology'
+        progress['shacl_report'] = report
+        progress['stats']['validation_scope'] = report['validation_scope']
+        progress['stats']['validation_status'] = 'passed' if report.get('conforms') is True and not report.get('error') else 'failed'
+        if progress['stats']['validation_status'] != 'passed':
+            raise ValueError('SHACL validation failed or is unavailable; ingestion is blocked. Review the retained validation report.')
+        return {'is_valid': True, 'errors': [], 'warnings': [], 'shacl': report,
+                'validation_scope': report['validation_scope']}
 
     @classmethod
     async def _transform_stage(cls, task_id: str, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1765,6 +1772,7 @@ class DataImportService:
                 'relationships': relationships[:5000],
                 'format': 'ontology',
                 'triple_count': len(graph),
+                'rdf_ttl': graph.serialize(format='turtle'),
             }
         except Exception as e:
             logger.exception("RDF ontology parsing failed")
@@ -1775,7 +1783,14 @@ class DataImportService:
         """Parse generic XML file."""
         try:
             from lxml import etree
-            tree = etree.parse(file_path)
+            parser = etree.XMLParser(
+                resolve_entities=False,
+                no_network=True,
+                load_dtd=False,
+                huge_tree=False,
+                recover=False,
+            )
+            tree = etree.parse(file_path, parser)
             root = tree.getroot()
 
             entities = []
@@ -1785,6 +1800,8 @@ class DataImportService:
             for elem in root.iter():
                 if elem.tag:
                     elem_id = elem.get('id', f"elem_{id(elem)}")
+                    if elem.get('id') and elem_id in element_map:
+                        raise ValueError(f"XML document contains duplicate id: {elem_id}")
                     elem_type = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
                     
                     entities.append({

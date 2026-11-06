@@ -1,0 +1,43 @@
+"""Durable worker heartbeat visible to the pipeline control plane and UI."""
+from __future__ import annotations
+
+import os
+from backend.depo_platform.network import bounded_timeout_seconds
+from datetime import datetime, timezone
+from typing import Any
+
+from backend.mesh_store import PostgresRegistry
+
+store = PostgresRegistry("data_pipeline_workers")
+
+
+def put(worker_id: str, **values: Any) -> dict[str, Any]:
+    current = store.get(worker_id) or {}
+    return store.put(worker_id, {**current, "worker_id": worker_id, "heartbeat_at": datetime.now(timezone.utc).isoformat(), **values})
+
+
+def summary() -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    stale_after = int(bounded_timeout_seconds('DEPO_PIPELINE_WORKER_STALE_SECONDS', default=60, minimum=30))
+    workers = []
+    for stored in store.all().values():
+        item = dict(stored)
+        try:
+            age = (now - datetime.fromisoformat(str(item.get("heartbeat_at")))).total_seconds()
+        except (TypeError, ValueError):
+            age = float("inf")
+        item["heartbeat_age_seconds"] = round(max(0, age), 1) if age != float("inf") else None
+        item["available"] = item.get("status") != "stopped" and age <= stale_after
+        if not item["available"] and item.get("status") != "stopped":
+            item["status"] = "stale"
+        workers.append(item)
+    active = [item for item in workers if item["available"]]
+    return {"workers": workers, "worker_count": len(active), "registered_worker_count": len(workers),
+            "busy_workers": sum(1 for item in active if item.get("status") == "busy"), "worker_stale_after_seconds": stale_after}
+
+
+def execution_readiness() -> dict[str, Any]:
+    if os.getenv('DEPO_PIPELINE_EXECUTION_MODE', 'worker').strip().lower() != 'worker':
+        return {'status': 'ready', 'execution_mode': 'inline', 'worker_required': False}
+    evidence = summary()
+    return {'status': 'ready' if evidence['worker_count'] else 'not_ready', 'execution_mode': 'worker', 'worker_required': True, **evidence}

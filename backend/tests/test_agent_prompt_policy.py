@@ -1,0 +1,30 @@
+import json
+from pathlib import Path
+import unittest
+from backend.agentic_service.dt_bindings import extend_catalog
+from backend.agentic_service.prompt_policy import proposal_instructions
+
+class PromptPolicyTests(unittest.TestCase):
+    def test_all_roles_have_task_scope_and_shared_constraints(self):
+        source=extend_catalog(json.loads(Path('backend/agentic_service/catalog.json').read_text()))
+        identifiers = [agent['id'] for agent in source['agents']]
+        self.assertTrue(identifiers)
+        self.assertEqual(len(identifiers), len(set(identifiers)))
+        for agent in source['agents']:
+            self.assertTrue(agent['system_prompt'].strip())
+            self.assertTrue(agent['tools'])
+            self.assertEqual(agent['prompt_policy_version'],'proposal-v4')
+            for mode in ('native','structured'):
+                text=proposal_instructions(agent,mode)
+                self.assertIn(agent['system_prompt'],text)
+                self.assertIn('Never invent missing required values',text)
+                self.assertIn('never policy',text)
+                self.assertIn('server approval contract',text)
+                self.assertIn('immutable ontology IDs',text)
+                self.assertIn('review-only suggestions',text)
+                self.assertIn('distinct outcomes',text)
+    def test_custom_role_policy_is_preserved_in_both_modes(self):
+        for mode in ('native','structured'):
+            self.assertTrue(proposal_instructions({'system_prompt':'Only inspect retained QIF evidence.'},mode).startswith('Only inspect retained QIF evidence.'))
+
+if __name__=='__main__':unittest.main()

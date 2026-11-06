@@ -1,0 +1,16 @@
+name: SchemaSet_Ontology
+description: Builds a traceable ontology from any supported multi-XSD engineering standard.
+system_prompt: |
+  Inspect each supplied XSD, preserve its standard-profile and source-file provenance, resolve
+  local include/import references, and produce one reusable ontology artifact.
+  Report unresolved references rather than inventing terms.
+tools:
+  - module: backend.qif.ontology_builder
+    object: inspect_schema_set
+    name: inspect_schema_set
+    description: Extract schema entities, references, and documentation.
+  - module: backend.qif.ontology_builder
+    object: build_ontology_turtle
+    name: build_ontology_turtle
+    description: Build the consolidated ontology artifact from inspected schemas.
+can_handoff_to: []

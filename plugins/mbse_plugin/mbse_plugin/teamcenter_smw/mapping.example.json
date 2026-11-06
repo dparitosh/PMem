@@ -1,0 +1,10 @@
+{
+  "id": "teamcenter-smw-example", "version": "0.1.0", "status": "draft",
+  "connector_enabled": false, "endpoint": "", "credential_reference": "",
+  "source_namespace": "customer-model", "id_field": "uid", "type_field": "type", "revision_field": "revision",
+  "objects": {
+    "ExampleRequirement": {"target_type": "Requirement", "fields": {"name": "name", "text": "description"}, "required": ["name"]},
+    "ExampleComponent": {"target_type": "Resource", "fields": {"name": "name"}, "required": ["name"]}
+  },
+  "relationships": {"ExampleSatisfies": "SATISFIES", "ExampleContains": "HAS_PART"}
+}

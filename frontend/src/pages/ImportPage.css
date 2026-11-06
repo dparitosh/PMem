@@ -1,0 +1,4 @@
+.import-page-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid #d9e2ec; border-radius: 8px; background: #f5f8fb; }
+.import-page-tabs button { min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #334e68; font: inherit; font-size: 13px; font-weight: 750; cursor: pointer; }
+.import-page-tabs button[aria-selected="true"] { border-color: #005a9c; background: #fff; color: #005a9c; box-shadow: 0 1px 2px rgba(8, 26, 47, 0.08); }
+.import-page-tabs button:focus-visible { outline: 2px solid #005a9c; outline-offset: 2px; }

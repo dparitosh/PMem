@@ -1,0 +1,31 @@
+{
+  "id": "unstructured-evidence-core",
+  "version": "1.0.0",
+  "ceim_version": "0.1.0",
+  "entities": {
+    "Document": {
+      "ceim_type": "Document",
+      "properties": {
+        "$source_id": "external_id",
+        "document_id": "document_id",
+        "artifact_id": "artifact_id",
+        "media_type": "media_type"
+      }
+    },
+    "DocumentChunk": {
+      "ceim_type": "Resource",
+      "properties": {
+        "$source_id": "external_id",
+        "document_id": "document_id",
+        "chunk_id": "chunk_id",
+        "ordinal": "ordinal",
+        "content_digest": "content_digest"
+      }
+    }
+  },
+  "relationships": {
+    "HAS_CHUNK": {
+      "relationship": "HAS_PART"
+    }
+  }
+}

@@ -8,7 +8,7 @@ import requests
 import os
 from typing import Optional, Dict, Any
 from datetime import datetime
-from urllib.parse import urlparse, urlunparse
+from backend.core.ollama_auth import ollama_base_url, ollama_generation_route, ollama_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -16,129 +16,84 @@ logger = logging.getLogger(__name__)
 class OllamaService:
     """Service for Ollama local LLM"""
     
-    DEFAULT_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    DEFAULT_MODEL = os.getenv("LLM_MODEL_NAME", "mistral")
+    DEFAULT_BASE_URL = "http://127.0.0.1:11434"
+    DEFAULT_MODEL = os.getenv("LLM_MODEL_NAME") or os.getenv('OLLAMA_MODEL') or 'llama3:latest'
     DEFAULT_API_KEY = os.getenv("OLLAMA_API_KEY", "")
     
     def __init__(self, base_url: str = DEFAULT_BASE_URL, model: str = DEFAULT_MODEL, api_key: str = DEFAULT_API_KEY):
         """Initialize Ollama service"""
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.model = model or self.DEFAULT_MODEL
-        self.api_key = api_key or self.DEFAULT_API_KEY
+        self.api_key = api_key if api_key is not None else self.DEFAULT_API_KEY
         self._available_models = None
+        self._session = requests.Session()
+        self._session.trust_env = False
 
     def _headers(self) -> Dict[str, str]:
-        headers: Dict[str, str] = {}
-        if self.api_key:
-            headers["api-key"] = self.api_key
-        return headers
+        from backend.core.ollama_auth import ollama_headers
+        return ollama_headers(self.base_url, self.api_key)
 
     def _native_base_url(self) -> str:
-        """Normalize configured endpoint to Ollama-native base URL.
-
-        If the configured base URL points to a chat path (e.g. /api/chat),
-        trim it so native /api/tags and /api/generate can be appended.
-        """
-        parsed = urlparse(self.base_url)
-        path = parsed.path.rstrip("/")
-        for suffix in ("/api/chat", "/chat", "/api/generate"):
-            if path.endswith(suffix):
-                path = path[: -len(suffix)]
-                break
-        if not path:
-            path = ""
-        return urlunparse((parsed.scheme, parsed.netloc, path, "", "", "")).rstrip("/")
+        """Use the shared, validated native API-root resolver."""
+        return ollama_base_url(self.base_url)
 
     def _chat_style_query(self, full_prompt: str, temperature: float) -> Optional[str]:
-        """Fallback for APIM/chat-style Ollama gateways."""
-        try:
-            response = requests.post(
-                self.base_url,
-                json={
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": full_prompt}],
-                    "stream": False,
-                    "temperature": temperature,
-                },
-                headers=self._headers(),
-                timeout=150,
-            )
-            if response.status_code != 200:
-                logger.error(f"Ollama chat-style query failed: {response.status_code}")
-                return None
-            result = response.json()
-            choices = result.get("choices")
-            if isinstance(choices, list) and choices:
-                msg = choices[0].get("message") or {}
-                content = msg.get("content")
-                if content:
-                    return str(content).strip()
-            if result.get("response"):
-                return str(result.get("response")).strip()
-            return None
-        except Exception as e:
-            logger.error(f"Ollama chat-style query error: {e}")
-            return None
-    
+        return self._request_query(full_prompt, temperature, 'chat')
+
+    def _request_query(self, full_prompt: str, temperature: float, operation: str) -> Optional[str]:
+        from backend.core.sync_async import call_async
+        return call_async(lambda: self._async_request_query(full_prompt, temperature, operation))
+
+    async def _async_request_query(self, full_prompt: str, temperature: float, operation: str) -> Optional[str]:
+        body = {'model': self.model, 'stream': False, 'options': {'temperature': temperature}}
+        if operation == 'generate':
+            body['prompt'] = full_prompt
+        else:
+            body['messages'] = [{'role': 'user', 'content': full_prompt}]
+        import httpx
+        from backend.core.ollama_limits import request_slot
+        endpoint = self._native_base_url() + '/api/' + operation
+        async with request_slot(endpoint), httpx.AsyncClient(timeout=ollama_timeout(), trust_env=False) as client:
+            async with client.stream('POST', endpoint, json=body, headers=self._headers()) as response:
+                response.raise_for_status()
+                from backend.agentic_service.response_limits import read_bounded_response
+                import json
+                result = json.loads(await read_bounded_response(response))
+            if not isinstance(result, dict) or result.get('error') or result.get('done') is not True:
+                raise ValueError('Ollama returned an invalid or incomplete answer')
+            content = result.get('response') if operation == 'generate' else (result.get('message') or {}).get('content')
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError('Ollama returned no answer')
+            return content.strip()
+
+
     def health_check(self) -> bool:
-        """Check if Ollama is running and accessible
-        
-        Note: Azure APIM only exposes /api/generate endpoint, not /api/tags.
-        We test by attempting a minimal generate request instead.
-        Azure endpoints can be slow, so we use extended timeouts.
-        """
-        try:
-            native_base = self._native_base_url()
-            
-            # Try /api/tags first (standard Ollama) with short timeout
-            try:
-                response = requests.get(
-                    f"{native_base}/api/tags",
-                    headers=self._headers(),
-                    timeout=3,
-                )
-                if response.status_code == 200:
-                    return True
-            except (requests.Timeout, requests.ConnectionError):
-                pass  # Azure doesn't support /api/tags, fall through
-            except Exception:
-                pass
-            
-            # Fallback: Test /api/generate (works for Azure APIM)
-            # Azure can be very slow, use extended timeout (200s)
-            try:
-                response = requests.post(
-                    f"{native_base}/api/generate",
-                    json={
-                        "model": self.model,
-                        "prompt": "test",
-                        "stream": False,
-                    },
-                    headers=self._headers(),
-                    timeout=200,  # Azure APIM can be very slow (200s max)
-                )
-                return response.status_code == 200
-            except requests.Timeout:
-                # Timeout on Azure is often transient, log it but don't fail
-                logger.warning("Ollama health check timed out (Azure endpoint may be slow)")
-                return False
-            
-        except Exception as e:
-            logger.warning(f"Ollama health check failed: {e}")
-            return False
-    
+        """Check that the configured model appears in a valid model list."""
+        models = self.list_models()
+        return self.model in models or (':' not in self.model and self.model + ':latest' in models)
+
     def list_models(self) -> list:
         """Get list of available models"""
         try:
             native_base = self._native_base_url()
-            response = requests.get(
+            response = self._session.get(
                 f"{native_base}/api/tags",
                 headers=self._headers(),
-                timeout=5,
+                timeout=5, stream=True,
             )
-            if response.status_code == 200:
-                data = response.json()
-                self._available_models = [m['name'] for m in data.get('models', [])]
+            try:
+                if response.status_code != 200:
+                    return []
+                from backend.agentic_service.response_limits import read_bounded_response_sync
+                import json
+                data = json.loads(read_bounded_response_sync(response))
+            finally:
+                response.close()
+            if isinstance(data, dict):
+                models = data.get('models')
+                if not isinstance(models, list) or any(not isinstance(m, dict) or not isinstance(m.get('name') or m.get('model'), str) for m in models):
+                    raise ValueError('Invalid Ollama model list')
+                self._available_models = [m.get('name') or m.get('model') for m in models]
                 return self._available_models
             return []
         except Exception as e:
@@ -172,34 +127,9 @@ Provide a helpful, structured response based on the context."""
             else:
                 full_prompt = prompt
             
-            native_base = self._native_base_url()
+            _, operation = ollama_generation_route(self.base_url)
+            return self._request_query(full_prompt, temperature, operation)
 
-            # Call Ollama native generate API first
-            response = requests.post(
-                f"{native_base}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": full_prompt,
-                    "stream": False,
-                    "temperature": temperature,
-                },
-                headers=self._headers(),
-                timeout=120,  # Azure APIM can be very slow; allow up to 2 minutes
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result.get('response', '').strip()
-
-            # Fallback to chat-style endpoint if URL points to a chat path
-            if self.base_url.endswith("/api/chat") or self.base_url.endswith("/chat"):
-                fallback_response = self._chat_style_query(full_prompt, temperature)
-                if fallback_response:
-                    return fallback_response
-
-            logger.error(f"Ollama query failed: HTTP {response.status_code} — {response.text[:200]}")
-            return None
-                
         except requests.exceptions.Timeout:
             logger.error("Ollama request timed out")
             return None
@@ -279,23 +209,21 @@ Keep it friendly and actionable."""
             # Get response
             response = self.query(question, context=context, temperature=0.7)
             
+            if not response:
+                raise RuntimeError('Ollama generation failed')
             return {
-                'answer': response or "Unable to answer question",
+                'answer': response,
                 'reasoning': f"Based on {', '.join(sources) if sources else 'general knowledge'}",
-                'confidence': 0.8 if response else 0.3,
+                'confidence': None,
+                'confidence_status': 'not_calibrated',
                 'sources': sources,
                 'timestamp': datetime.now().isoformat()
             }
             
         except Exception as e:
             logger.error(f"Failed to answer question: {e}")
-            return {
-                'answer': f"Error: {str(e)}",
-                'reasoning': "error",
-                'confidence': 0.0,
-                'sources': [],
-                'timestamp': datetime.now().isoformat()
-            }
+            raise RuntimeError('Ollama generation failed') from e
+
 
 
 # Singleton instance
@@ -308,9 +236,10 @@ def get_ollama_service(base_url: str = OllamaService.DEFAULT_BASE_URL,
     """Get or create Ollama service singleton"""
     global _ollama_service
     # Read model from environment at call time to respect runtime .env changes
-    env_model = os.getenv('LLM_MODEL_NAME', model)
+    env_model = os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or model
     env_api_key = os.getenv('OLLAMA_API_KEY', api_key)
-    env_base = os.getenv('OLLAMA_BASE_URL', base_url)
+    env_base = (os.getenv('OLLAMA_API_URL', '').strip() or os.getenv('OLLAMA_BASE_URL', '').strip() or base_url)
+    ollama_base_url() if os.getenv('OLLAMA_API_URL') or os.getenv('OLLAMA_BASE_URL') else ollama_base_url(env_base)
 
     if _ollama_service is None or _ollama_service.model != env_model or _ollama_service.base_url != env_base or _ollama_service.api_key != env_api_key:
         _ollama_service = OllamaService(env_base, env_model, env_api_key)

@@ -1,0 +1,65 @@
+"""Run with: python -m uvicorn backend.data_pipeline_service.app:app --port 8019."""
+from contextlib import asynccontextmanager
+from fastapi.concurrency import run_in_threadpool
+
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
+
+from .router import router, runner, execute_configured_job
+from .speed_router import router as speed_router
+from .rest_router import router as rest_router
+from .connector_router import router as connector_router
+from .semantic_catalog import router as semantic_router
+from .analytics_catalog import router as analytics_router
+from .scheduler import ScheduledJobSupervisor
+
+
+supervisor = ScheduledJobSupervisor(execute_configured_job)
+
+
+@asynccontextmanager
+async def lifespan():
+    supervisor.start()
+    try:
+        yield
+    finally:
+        # Do not release Spark underneath a scheduler that failed to drain.
+        await run_in_threadpool(supervisor.stop)
+        await run_in_threadpool(runner.shutdown)
+
+
+app = create_service_app(
+    title="DEPO Data Pipeline Service",
+    version="0.1.0",
+    lifespan_hook=lambda: lifespan(),
+    dependencies=("postgres",),
+)
+app.include_router(create_odata_catalog_router(
+    service_name="DEPODataPipeline",
+    capabilities=[
+        ServiceCapability("Pipeline health", "/api/v1/pipeline/health", description="Read Spark job readiness"),
+        ServiceCapability("Pipeline telemetry", "/api/v1/pipeline/telemetry", description="Read ECharts-ready job telemetry"),
+        ServiceCapability("Spark transform", "/api/v1/pipeline/jobs/transform", "POST", "Run a bounded Spark quality transformation and return JSON"),
+        ServiceCapability("Data quality assessment", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Run the source-neutral completeness, validity, uniqueness and provenance quality gate"),
+        ServiceCapability("Schema analytics data product", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Build a governed schema analytics data-product draft from a retained schema artifact"),
+        ServiceCapability("Data-job definitions", "/api/v1/pipeline/jobs/definitions", description="Create and govern versioned Spark data-job definitions"),
+        ServiceCapability("Document evidence workflow", "/api/v1/pipeline/workflows/document-evidence/run", "POST", "Run approved document validation, enrichment and CEIM normalization stages"),
+        ServiceCapability("Unstructured evidence validation", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Validate content-addressed document evidence before CEIM normalization"),
+        ServiceCapability("Distributed RDF statistics", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Run read-only Spark RDF quality statistics over an immutable N-Triples artifact"),
+        ServiceCapability("Canonical RDF serialization", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Deduplicate and deterministically serialize an immutable N-Triples artifact with quality evidence"),
+        ServiceCapability("Validated XML analytics load", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Validate retained XSD/XML and transactionally load a batched PostgreSQL ODS with original bytes and explicitly defined dimension/fact views"),
+        ServiceCapability("Analytics evidence recovery", "/api/v1/pipeline/jobs/runs/{run_id}/reconcile-analytics", "POST", "Rebuild missing evidence for a committed ODS load without reloading XML"),
+        ServiceCapability("Data-job run manifests", "/api/v1/pipeline/jobs/runs", description="Read durable input/output manifests and checkpoints for configured job runs"),
+        ServiceCapability("Canonical run publication", "/api/v1/pipeline/jobs/runs/{run_id}/publish", "POST", "Publish an accepted semantic partition through CEIM and advance its checkpoint only after success"),
+        ServiceCapability("Speed-path sources", "/api/v1/pipeline/speed/sources", description="Register and approve bounded low-latency event sources"),
+        ServiceCapability("Speed-path events", "/api/v1/pipeline/speed/events", "POST", "Capture immutable idempotent semantic event envelopes"),
+        ServiceCapability("Speed reconciliation", "/api/v1/pipeline/speed/reconciliations", "POST", "Normalize and validate event records with CEIM without graph writes"),
+        ServiceCapability("Speed-path publication", "/api/v1/pipeline/speed/reconciliations/{reconciliation_id}/publish", "POST", "Publish only a validated speed partition through the canonical CEIM API"),
+    ],
+))
+app.include_router(router, prefix="/api/v1")
+app.include_router(speed_router, prefix="/api/v1")
+app.include_router(rest_router, prefix="/api/v1")
+app.include_router(connector_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(semantic_router, prefix="/api/v1")

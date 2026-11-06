@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict
 
 from rdflib import Graph, RDF, RDFS
-from rdflib.namespace import OWL
+from rdflib.namespace import OWL, XSD
 
 
 @dataclass
@@ -42,8 +44,22 @@ def assess_ontology_quality(ontology_path: str) -> OntologyQualityReport:
         raise FileNotFoundError(f"Ontology file not found: {ontology_path}")
 
     g = Graph()
-    fmt = "xml" if path.suffix.lower() in {".owl", ".rdf", ".xml"} else "turtle"
-    g.parse(str(path), format=fmt)
+    formats = (
+        ("turtle", "xml", "n3", "nt")
+        if path.suffix.lower() in {".ttl", ".owl"}
+        else ("xml", "turtle", "n3", "nt")
+    )
+    last_error: Exception | None = None
+    for fmt in formats:
+        try:
+            g = Graph()
+            g.parse(str(path), format=fmt)
+            last_error = None
+            break
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise ValueError(f"Ontology cannot be parsed as RDF: {path}: {last_error}") from last_error
 
     obj_props = set(g.subjects(RDF.type, OWL.ObjectProperty))
     data_props = set(g.subjects(RDF.type, OWL.DatatypeProperty))
@@ -55,7 +71,7 @@ def assess_ontology_quality(ontology_path: str) -> OntologyQualityReport:
     for p in obj_props:
         for r in g.objects(p, RDFS.range):
             rs = str(r)
-            if "xsd_" in rs:
+            if rs.startswith(str(XSD)) or "xsd_" in rs:
                 object_property_xsd_like_range += 1
 
     class_labels_leading_dot = 0
@@ -92,7 +108,16 @@ def maybe_enforce_quality(ontology_path: str) -> None:
     do_report = os.getenv("ONTO_QUALITY_REPORT", "true").lower() in {"1", "true", "yes"}
     if do_report:
         report_path = Path(ontology_path).with_suffix(".quality.json")
-        report_path.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
+        temp_path = report_path.with_name(f".{report_path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        try:
+            with open(temp_path, "w", encoding="utf-8") as handle:
+                json.dump(report.to_dict(), handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, report_path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
 
     strict = os.getenv("ONTO_QUALITY_STRICT", "false").lower() in {"1", "true", "yes"}
     if strict and report.issue_count > 0:

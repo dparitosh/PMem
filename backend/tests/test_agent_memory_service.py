@@ -1,0 +1,208 @@
+from backend.Services.agent_memory_service import AgentMemoryService
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def memory_scope(monkeypatch):
+    monkeypatch.setenv('AGENT_MEMORY_SCOPE', 'fixture:project')
+
+
+def test_agent_memory_disabled_is_noop(monkeypatch):
+    calls = []
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "false")
+    monkeypatch.setattr(AgentMemoryService, "_query", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    AgentMemoryService.record_chat_turn(
+        session_id="s1",
+        user_message="hello",
+        assistant_response="world",
+        graph_context={"nodes": [{"elementId": "4:abc:1", "label": "Part"}]},
+    )
+
+    assert calls == []
+    assert AgentMemoryService.status()["enabled"] is False
+
+
+def test_record_chat_turn_writes_messages_and_touched_nodes(monkeypatch):
+    calls = []
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setattr(AgentMemoryService, "ensure_schema", lambda **_: {"enabled": True, "ensured": True})
+    monkeypatch.setattr(AgentMemoryService, "_query", lambda cypher, params=None: calls.append((cypher, params or {})) or [])
+
+    AgentMemoryService.record_chat_turn(
+        session_id="s1",
+        user_message="impact?",
+        assistant_response="REQ-001 touches Part A",
+        graph_context={
+            "selectedNode": {"elementId": "4:abc:1", "label": "REQ-001"},
+            "nodes": [{"elementId": "4:abc:2", "label": "Part A"}],
+        },
+    )
+
+    assert len(calls) == 1
+    params = calls[0][1]
+    assert params["session_id"] == "s1"
+    assert params["user_message"] == "impact?"
+    assert len(params["touched_nodes"]) == 2
+
+
+def test_record_semantic_bridge_mappings_stores_approved_only(monkeypatch):
+    calls = []
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setattr(AgentMemoryService, "ensure_schema", lambda **_: {"enabled": True, "ensured": True})
+    monkeypatch.setattr(AgentMemoryService, "_query", lambda cypher, params=None, **_: calls.append((cypher, params or {})) or [])
+
+    AgentMemoryService.record_semantic_bridge_mappings(
+        ontology_id="ap242",
+        import_task_id="import-1",
+        task_id="link-task",
+        mappings=[
+            {"source_term": "PartA", "ontology_term": "Part", "target_ontology_type": "Class", "selected_for_apply": True, "confidence": 0.9},
+            {"source_term": "Noise", "ontology_term": "Thing", "target_ontology_type": "Class", "selected_for_apply": False},
+        ],
+    )
+
+    assert len(calls) == 1
+    rows = calls[0][1]["rows"]
+    assert len(rows) == 1
+    assert rows[0]["source"] == "PartA"
+    assert rows[0]["target"] == "Part"
+
+
+def test_query_uses_agent_memory_database_override(monkeypatch):
+    class FakeResult:
+        def data(self):
+            return [{"ok": 1}]
+
+    class FakeSession:
+        def __init__(self):
+            self.database = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def run(self, _query, _params):
+            return FakeResult()
+
+    class FakeDriver:
+        def __init__(self):
+            self.session_database = None
+
+        def session(self, database=None):
+            self.session_database = database
+            return FakeSession()
+
+    fake_driver = FakeDriver()
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setenv("AGENT_MEMORY_NEO4J_DATABASE", "memory")
+    monkeypatch.setattr("backend.core.db_config.get_driver", lambda: fake_driver)
+
+    rows = AgentMemoryService._query("RETURN 1 AS ok", {})
+
+    assert rows == [{"ok": 1}]
+    assert fake_driver.session_database == "memory"
+
+
+def test_semantic_bridge_facts_queries_mapping_memory(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+
+    def fake_query(cypher, params=None, **kwargs):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return [{"source": "REQ-001", "target": "Requirement"}]
+
+    monkeypatch.setattr(AgentMemoryService, "_query", fake_query)
+
+    rows = AgentMemoryService.semantic_bridge_facts("mbse", limit=25)
+
+    assert rows == [{"source": "REQ-001", "target": "Requirement"}]
+    assert captured["params"]["ontology_id"] == "mbse"
+    assert captured["params"]["limit"] == 25
+    assert captured["params"]["scope"] == AgentMemoryService.scope()
+
+
+def test_memory_scope_is_part_of_session_and_fact_identity(monkeypatch):
+    monkeypatch.setenv("AGENT_MEMORY_SCOPE", "customer-a:program-1")
+    first_session = AgentMemoryService._memory_key("session-1")
+    first_fact = AgentMemoryService._mapping_fact_row(
+        "ap242", "import-1", {"source_term": "A", "ontology_term": "B"}, "task-1"
+    )
+
+    monkeypatch.setenv("AGENT_MEMORY_SCOPE", "customer-b:program-1")
+    second_session = AgentMemoryService._memory_key("session-1")
+    second_fact = AgentMemoryService._mapping_fact_row(
+        "ap242", "import-1", {"source_term": "A", "ontology_term": "B"}, "task-1"
+    )
+
+    assert first_session != second_session
+    assert first_fact["fact_id"] != second_fact["fact_id"]
+    assert second_fact["scope"] == "customer-b:program-1"
+
+
+def test_ensure_schema_is_attempted_once(monkeypatch):
+    calls = []
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setattr(AgentMemoryService, "_schema_attempted", False)
+    def query(cypher, params=None):
+        calls.append(cypher)
+        return [{'name':name, 'type':'UNIQUENESS', 'entityType':'NODE', 'labelsOrTypes':[label], 'properties':[prop]}
+                for name, (label, prop) in AgentMemoryService.SCHEMA_CONSTRAINTS.items()] if cypher.startswith('SHOW CONSTRAINTS') else []
+    monkeypatch.setattr(AgentMemoryService, "_query", query)
+
+    first = AgentMemoryService.ensure_schema()
+    second = AgentMemoryService.ensure_schema()
+
+    assert first["ensured"] is True
+    assert second["cached"] is True
+    assert len(calls) == 8
+
+
+def test_ensure_schema_does_not_cache_failed_initialization(monkeypatch):
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setattr(AgentMemoryService, "_schema_attempted", False)
+    monkeypatch.setattr(AgentMemoryService, "_query", lambda *_args, **_kwargs: None)
+
+    result = AgentMemoryService.ensure_schema()
+
+    assert result["ensured"] is False
+    assert AgentMemoryService._schema_attempted is False
+
+
+def test_delete_session_is_scope_bounded(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setenv("AGENT_MEMORY_SCOPE", "customer-a:program-1")
+
+    def fake_query(cypher, params=None):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return [{"deleted": 1}]
+
+    monkeypatch.setattr(AgentMemoryService, "_query", fake_query)
+
+    assert AgentMemoryService.delete_session("session-1") is True
+    assert captured["params"]["scope"] == "customer-a:program-1"
+    assert "scope: $scope" in captured["cypher"]
+
+
+def test_extract_touched_nodes_reads_nested_frontend_graph_snapshot():
+    nodes = AgentMemoryService._extract_touched_nodes({
+        "selectedNode": {"elementId": "selected", "name": "Selected"},
+        "visibleGraph": {
+            "nodes": [
+                {"elementId": "visible", "name": "Visible"},
+                {"elementId": "selected", "name": "Duplicate"},
+            ]
+        },
+        "searchResults": {"nodes": [{"elementId": "search", "label": "Search"}]},
+    })
+
+    assert nodes == [
+        {"element_id": "selected", "label": "Selected"},
+        {"element_id": "visible", "label": "Visible"},
+        {"element_id": "search", "label": "Search"},
+    ]

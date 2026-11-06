@@ -1,3 +1,7 @@
+import {recommendationIdentity} from './recommendationScope';
+import {prepareSessionRequest,trackSessionRequest,releaseRequest,staleRequest} from './requestSession';
+import { applyRequestDeadline, abortableDelay, retryFitsDeadline } from './requestPolicy';
+import { apiRequestId, apiErrorMessage } from '../utils/apiErrorMessage';
 /**
  * Centralized API Client
  * Uses axios with configuration from environment variables
@@ -5,25 +9,100 @@
  */
 
 import axios from 'axios';
-import { config, API, buildUrl, replaceParams } from '../config';
+import { config, API, buildSemanticServiceUrl, buildUrl, replaceParams } from '../config';
+import logger from '../utils/logger';
+import agenticAPI from './agenticApi';
+import { reportRunRecovery } from './runRecovery';
+import { notifyOntologyChange } from '../utils/ontologyEvents';
+import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, handleSessionRejection, requireServiceReadAccess, publicationRecoveryScope } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
  */
 const apiClient = axios.create({
   baseURL: config.backendUrl,
-  timeout: config.requestTimeout || 30000,
+  timeout: config.requestTimeout || 60000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+export function prepareMultipartHeaders(requestConfig) {
+    // Axios may serialize FormData as JSON when the instance default is JSON.
+    // Let the browser supply multipart/form-data with its generated boundary.
+    if (typeof FormData !== 'undefined' && requestConfig.data instanceof FormData) {
+      if (typeof requestConfig.headers?.delete === 'function') requestConfig.headers.delete('Content-Type');
+      else if (requestConfig.headers) {
+        Object.keys(requestConfig.headers).forEach(key => {
+          if (key.toLowerCase() === 'content-type') delete requestConfig.headers[key];
+        });
+      }
+    }
+    return requestConfig;
+}
+
 const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
+const SESSION_SCOPE_KEY = 'depo.sessionScope.v1';
+if (typeof window !== 'undefined') {
+  window.addEventListener('depo:credentials-cleared', () => {
+    clearClientSessionId();
+  });
 }
+
+// Administrative credentials are deliberately memory-only. They must never
+// be placed in Vite environment variables, local storage, or server logs.
+export function setAdminApiKey(value) {
+  setCredentialProfile('ADMIN_API_KEY', value);
+}
+
+export function getClientSessionId() {
+  if (typeof window === 'undefined') return null;
+  try {
+    if (window.sessionStorage.getItem(SESSION_SCOPE_KEY) !== publicationRecoveryScope()) {
+      clearClientSessionId();
+      return null;
+    }
+    const value = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (value && (value.length > 128 || /[\x00-\x1f]/.test(value))) { clearClientSessionId(); return null; }
+    return value || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+export function clearClientSessionId() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    window.sessionStorage.removeItem(SESSION_SCOPE_KEY);
+  } catch (_error) {
+    // Restricted browser storage should not break conversation reset.
+  }
+}
+
+export function setClientSessionId(sessionId) {
+  if (!sessionId || typeof window === 'undefined') return;
+  if (String(sessionId).length > 128 || /[\x00-\x1f]/.test(String(sessionId))) return;
+  try {
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, String(sessionId));
+    window.sessionStorage.setItem(SESSION_SCOPE_KEY, publicationRecoveryScope());
+  } catch (_error) {
+    // Restricted browser storage should not break API requests.
+  }
+}
+
+function adoptServerSession(response) {
+  const serverSessionId = response?.headers?.['x-session-id'];
+  if (!serverSessionId || typeof window === 'undefined') return;
+  try {
+    setClientSessionId(serverSessionId);
+  } catch (_error) {
+    // Restricted browser storage should not break API requests.
+  }
+}
+
 
 function isTransientNetworkError(error) {
   const code = String(error?.code || '').toUpperCase();
@@ -39,24 +118,69 @@ function isTransientNetworkError(error) {
   );
 }
 
+function isStandaloneServiceRequest(url) {
+  if (!url || typeof url !== 'string') return false;
+  return Object.values(config.semanticServiceUrls || {}).some((serviceUrl) =>
+    serviceUrl && (url === serviceUrl || url.startsWith(`${serviceUrl}/`))
+  );
+}
+
 /**
  * Request interceptor - Log requests in debug mode
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    try {
+    prepareSessionRequest(requestConfig);
+    applyRequestDeadline(requestConfig);
+    prepareMultipartHeaders(requestConfig);
+    // Older feature modules pass a relative path directly to Axios.  Resolve
+    // it here as well as in buildUrl() so every caller reaches its owning
+    // microservice during the monolith-to-services transition.
+    if (typeof requestConfig.url === 'string' && requestConfig.url.startsWith('/')) {
+      requestConfig.url = buildUrl(requestConfig.url, requestConfig.method);
+      requestConfig.baseURL = undefined;
+    }
+    const sessionId = getClientSessionId();
+    // X-Session-ID belongs to the legacy chat/aggregate service.  Sending it
+    // to independent OpenAPI services creates an unnecessary CORS preflight
+    // and violates their intentionally narrow request-header contract.
+    if (sessionId && !isStandaloneServiceRequest(requestConfig.url)) {
+      requestConfig.headers = requestConfig.headers || {};
+      requestConfig.headers['X-Session-ID'] = sessionId;
+    }
+    // Standalone services enforce graph/read or service identity in token
+    // mode. The token is supplied at runtime by the authenticated UI flow and
+    // is kept in memory only; never read it from Vite build-time variables.
+    if (isStandaloneServiceRequest(requestConfig.url)) {
+      requestConfig.headers = requestConfig.headers || {};
+      const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
+      const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
+      if (explicit || requestConfig.headers.get?.('X-API-Key') || Object.entries(requestConfig.headers).some(([name, value]) => name.toLowerCase() === 'x-api-key' && value)) { delete credentials.Authorization; delete credentials['X-API-Key']; }
+      Object.assign(requestConfig.headers, credentials);
+      requireServiceReadAccess(requestConfig);
+    }
+    if (getCredentialProfile('ADMIN_API_KEY') && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
+      requestConfig.headers = requestConfig.headers || {};
+      const explicitKey = requestConfig.headers.get?.('X-API-Key') || Object.entries(requestConfig.headers).find(([name]) => name.toLowerCase() === 'x-api-key')?.[1];
+      if (!explicitKey) requestConfig.headers['X-API-Key'] = getCredentialProfile('ADMIN_API_KEY');
+    }
     if (config.debug) {
       // eslint-disable-next-line no-console
       console.debug('[API] Request:', {
         method: requestConfig.method.toUpperCase(),
         url: requestConfig.url,
-        data: requestConfig.data,
       });
     }
+    trackSessionRequest(requestConfig);
     return requestConfig;
+    } catch (failure) {
+      releaseRequest(requestConfig);
+      throw failure;
+    }
   },
   (error) => {
-    // eslint-disable-next-line no-console
-    console.error('[API] Request Error:', error);
+    logger.error('[API] Request could not be prepared');
     return Promise.reject(error);
   }
 );
@@ -66,61 +190,89 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response) => {
+    releaseRequest(response.config);
+    if (staleRequest(response.config)) return Promise.reject(new axios.CanceledError('Discarded response from previous credentials'));
+    adoptServerSession(response);
+    notifyOntologyChange(response);
     if (config.debug) {
       // eslint-disable-next-line no-console
       console.debug('[API] Response:', {
         status: response.status,
         url: response.config.url,
-        data: response.data,
       });
     }
     return response;
   },
   async (error) => {
     const requestConfig = error?.config || {};
+    releaseRequest(requestConfig, true);
+    if (staleRequest(requestConfig)) {
+      releaseRequest(requestConfig);
+      throw new axios.CanceledError('Credentials changed; previous request discarded');
+    }
+    if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|pipeline|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
     const method = String(requestConfig.method || 'get').toLowerCase();
     const retryCount = requestConfig.__retryCount || 0;
-    const canRetry = method === 'get' && !error?.response && isTransientNetworkError(error) && retryCount < MAX_GET_RETRIES;
+    const canRetry = method === 'get' && !error?.response && isTransientNetworkError(error) && retryCount < MAX_GET_RETRIES && retryFitsDeadline(requestConfig, RETRY_BASE_DELAY_MS * (retryCount + 1));
 
     if (canRetry) {
       requestConfig.__retryCount = retryCount + 1;
       const backoff = RETRY_BASE_DELAY_MS * requestConfig.__retryCount;
       if (config.debug) {
-        // eslint-disable-next-line no-console
-        console.warn(`[API] transient network error, retry ${requestConfig.__retryCount}/${MAX_GET_RETRIES}:`, {
+        logger.warn(`[API] transient network error, retry ${requestConfig.__retryCount}/${MAX_GET_RETRIES}:`, {
           url: requestConfig.url,
           method,
           backoff,
           message: error.message,
         });
       }
-      await wait(backoff);
+      try { await abortableDelay(backoff, requestConfig.signal); }
+      catch (failure) { releaseRequest(requestConfig); throw failure; }
       return apiClient(requestConfig);
     }
+
+    releaseRequest(requestConfig);
 
     const errorInfo = {
       status: error.response?.status,
       message: error.message,
+      errorCode: error.response?.data?.error_code,
+      detail: error.response?.data?.detail || error.response?.data?.message,
       url: error.config?.url,
-      data: error.response?.data,
+    };
+
+    // Keep the backend's standardized error contract available to all callers.
+    error.apiError = {
+      status: errorInfo.status,
+      code: errorInfo.errorCode,
+      message: apiErrorMessage(error),
+      path: error.response?.data?.path,
+      requestId: apiRequestId(error),
     };
 
     if (config.debug) {
-      // eslint-disable-next-line no-console
-      console.error('[API] Response Error:', errorInfo);
+      logger.error('[API] Response Error:', {
+        status: errorInfo.status,
+        errorCode: errorInfo.errorCode,
+        url: errorInfo.url,
+      });
     }
 
     // Handle specific status codes
+    const authorization = requestConfig.headers?.get?.('Authorization') || requestConfig.headers?.Authorization || requestConfig.headers?.authorization || '';
+    const adminAuthorization = requestConfig.headers?.get?.('X-API-Key') || requestConfig.headers?.['X-API-Key'] || '';
+    handleSessionRejection(error.response?.status, String(adminAuthorization).startsWith('depo_session_') ? adminAuthorization : authorization, errorInfo.detail);
     if (error.response?.status === 401) {
-      // Unauthorized - could trigger logout
-      // dispatch(logout());
     } else if (error.response?.status === 403) {
-      // Forbidden
-      console.warn('[API] Access forbidden');
+      logger.warn('[API] Access forbidden');
     } else if (error.response?.status === 404) {
-      console.warn('[API] Resource not found');
+      logger.warn('[API] Resource not found');
     } else if (error.response?.status === 500) {
-      console.error('[API] Server error');
+      logger.error('[API] Server error');
+    } else if (error.response?.status === 503) {
+      logger.warn('[API] Service unavailable:', errorInfo.errorCode || errorInfo.status);
+    } else if (error.response?.status === 504) {
+      logger.warn('[API] Service timeout:', errorInfo.errorCode || errorInfo.status);
     }
 
     return Promise.reject(error);
@@ -131,51 +283,31 @@ apiClient.interceptors.response.use(
  * API Methods organized by category
  */
 
-// ========== HEALTH & STATUS ==========
-export const healthAPI = {
-  check: () => apiClient.get(buildUrl(API.health.health)),
-  ready: () => apiClient.get(buildUrl(API.health.ready)),
-  graphMetrics: () => apiClient.get(buildUrl(API.health.graphMetrics)),
-  ontologiesAvailable: () => apiClient.get(buildUrl(API.health.ontologiesAvailable)),
-};
-
-// ========== GRAPH ENDPOINTS ==========
-export const graphAPI = {
-  getGraph: () => apiClient.get(buildUrl(API.graph.graphvis)),
-  filterGraph: (searchTerm) => 
-    apiClient.post(buildUrl(API.graph.graphfilter), { search: searchTerm }),
-  filterMulti: (filters) => 
-    apiClient.post(buildUrl(API.graph.graphfilterMulti), filters),
-  traverse: (nodeId) => 
-    apiClient.get(buildUrl(replaceParams(API.graph.graphtraverse, { node_id: nodeId }))),
-  getSchemaGraph: () => apiClient.get(buildUrl(API.graph.schemaGraph)),
-  getInstanceGraph: () => apiClient.get(buildUrl(API.graph.instanceGraph)),
-  getOntologyInstances: (ontologyId, params = {}) =>
-    apiClient.get(buildUrl(replaceParams(API.graph.ontologyInstances, { ontology: ontologyId })), { params }),
-};
-
 // ========== SCHEMA ENDPOINTS ==========
 export const schemaAPI = {
   getSchema: () => apiClient.get(buildUrl(API.schema.schema)),
-  getAP242RotorPmi: () => apiClient.get(buildUrl(API.schema.ap242RotorPmi)),
-  searchAP242: (query) => 
-    apiClient.post(buildUrl(API.schema.ap242Search), { query }),
-  getReports: (type, page = 1, pageSize = 10) =>
-    apiClient.post(buildUrl(API.schema.reports), { type, page, page_size: pageSize }),
 };
 
 // ========== CHAT ENDPOINTS ==========
 export const chatAPI = {
-  sendMessage: (message, sessionId = null) => 
-    apiClient.post(buildUrl(API.chat.chat), { message, session_id: sessionId }),
-  streamChat: (message, sessionId = null) => 
-    apiClient.post(buildUrl(API.chat.chatStream), { message, session_id: sessionId }),
+  sendMessage: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.chat), { message, session_id: sessionId, graph_context: graphContext }),
+  streamChat: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.chatStream), { message, session_id: sessionId, graph_context: graphContext }),
+  validate: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.validate), { message, session_id: sessionId, graph_context: graphContext }),
+  submitJob: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.jobs), { message, session_id: sessionId, graph_context: graphContext }),
+  getJob: (jobId) => apiClient.get(buildUrl(replaceParams(API.chat.jobStatus, { job_id: jobId }))),
+  health: () => apiClient.get(buildUrl(API.chat.health)),
+  status: () => apiClient.get(buildUrl(API.chat.status)),
+  capabilities: () => apiClient.get(buildUrl(API.chat.capabilities)),
   sampleQueries: () => apiClient.get(buildUrl(API.chat.sampleQueries)),
 };
 
 // ========== ONTOLOGY ENDPOINTS ==========
 export const ontologyAPI = {
-  upload: (file, metadata) => {
+  upload: (file, metadata, writeToken = '', options = {}) => {
     const formData = new FormData();
     formData.append('file', file);
     
@@ -190,36 +322,231 @@ export const ontologyAPI = {
       const backendKey = keyMap[key] || key;
       formData.append(backendKey, value);
     });
+    if (options.dependencies?.length) {
+      options.dependencies.forEach(source => formData.append('dependencies', source));
+      formData.append('dependency_paths', JSON.stringify(options.dependencyPaths));
+    }
     
     return apiClient.post(buildUrl(API.ontology.upload), formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 300000, // 5 minutes for ontology uploads
+      headers: { ...(writeToken ? { Authorization: `Bearer ${writeToken.trim()}` } : {}) },
+      timeout: 3660000,
+      signal: options.signal,
     });
   },
-  listRegistered: () => 
-    apiClient.get(buildUrl(API.ontology.registered)),
+  listRegistered: (options = {}) =>
+    apiClient.get(buildUrl(API.ontology.registered), options),
   get: (ontologyId) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.get, { ontology: ontologyId }))),
-  getDataDictionary: (ontologyId) => 
-    apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId }))),
-  getMappings: (ontologyId, mappingType) => 
+  getDataDictionary: (ontologyId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId })), options),
+  getTaxonomy: (ontologyId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId })), options),
+  getReasoning: (ontologyId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId })), options),
+  previewInference: (ontologyId, payload = {}, options = {}) =>
+    apiClient.post(buildUrl(replaceParams(API.ontology.inferencePreview, { ontology: ontologyId })), payload, options),
+  validateSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosValidate), payload),
+  searchSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosSearch), payload),
+  traverseSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosTraverse), payload),
+  skosStoragePlan: (payload) => apiClient.post(buildUrl(API.ontology.skosStoragePlan), payload),
+  validateRule: (payload, options = {}) => apiClient.post(buildUrl(API.ontology.ruleValidate), payload, options),
+  executeRulePreview: (payload) => apiClient.post(buildUrl(API.ontology.ruleExecutePreview), payload),
+  ruleMaterializationPlan: (payload) => apiClient.post(buildUrl(API.ontology.ruleMaterializationPlan), payload),
+  getMappings: (ontologyId, mappingType, options = {}) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.mappings, { 
       ontology: ontologyId, 
       type: mappingType 
-    }))),
+    })), options),
   mapEntity: (ontologyId, mappingData) => 
     apiClient.post(buildUrl(replaceParams(API.ontology.mapEntity, { ontology: ontologyId })), mappingData),
-  getAlignmentOptions: (fileType = '') => {
-    const suffix = fileType ? `?file_type=${encodeURIComponent(fileType)}` : '';
-    return apiClient.get(buildUrl(`${API.ontology.alignmentOptions}${suffix}`));
-  },
-  merge: (fromOntologyId, toOntologyId, options = {}) =>
+  merge: (fromOntologyId, toOntologyId, options = {}, requestOptions = {}) =>
     apiClient.post(buildUrl(API.ontology.merge), {
       from_ontology_id: fromOntologyId,
       to_ontology_id: toOntologyId,
       ...(options || {}),
+    }, { signal: requestOptions.signal }),
+  governedMergePreview: (sourceOntologyIds, options = {}) =>
+    apiClient.post(buildUrl(API.ontology.governedMergePreview), {
+      source_ontology_ids: sourceOntologyIds,
+      ...(options || {}),
     }),
-  cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),
+  governedMergeStatus: (previewId, options = {}) =>
+    apiClient.get(buildUrl(`${API.ontology.governedMergePreview.replace(/\/preview$/, '')}/${encodeURIComponent(previewId)}/status`), options),
+  registeredPublication: (ontologyId, options = {}) =>
+    apiClient.get(buildSemanticServiceUrl('ontology', `/api/v1/ontologies/${encodeURIComponent(ontologyId)}/publication`), options),
+  governedMergeApply: (previewId, approvedBy, approvalToken = '') =>
+    apiClient.post(buildUrl(replaceParams(API.ontology.governedMergeApply, { preview_id: previewId })), {
+      approved_by: approvedBy,
+      approval_token: approvalToken,
+    }),
+  cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body, {
+    headers: { Authorization: `Bearer ${getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000,
+  }),
+  exportUrl: (ontologyId, format = 'ttl') => `${buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId }))}?format=${encodeURIComponent(format)}`,
+  exportRegistered: (ontologyId, format = 'ttl', options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId })), { ...options, params: { format }, responseType: 'blob' }),
+  extract3dxml: (file, metadata = {}) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    Object.entries(metadata).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+    return apiClient.post(buildUrl(API.ontology.extract3dxml), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    });
+  },
+  get3dxmlStatus: (taskId) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.threeDxmlStatus, { task_id: taskId }))),
+  get3dxmlFormats: () => apiClient.get(buildUrl(API.ontology.threeDxmlFormats)),
+};
+
+// Health checks use the published contracts of the independently deployable
+// services.  They intentionally do not rely on the retired port-8000
+// aggregate API, so the shell can accurately report a direct or APIM-backed
+// deployment.
+const SERVICE_HEALTH_ENDPOINTS = Object.freeze({
+  qif: '/api/v1/qif/health',
+  ontology: '/api/v1/ontologies/health',
+  agentic: '/healthz',
+  graph: '/api/v1/graph/health',
+  ingestion: '/api/v1/ingestion/health',
+  oslc: '/api/v1/oslc/health',
+  catalog: '/healthz',
+  dataProducts: '/healthz',
+  ceim: '/healthz',
+  // The pipeline capability endpoint reports optional Spark state. The shell
+  // checks service/database readiness, while Data Flow shows Spark separately.
+  dataPipeline: '/readyz',
+});
+
+function isUsableHealthResponse(response) {
+  const status = String(response?.data?.status || '').toLowerCase();
+  return ['ok', 'healthy', 'ready', 'online', 'available', 'up', 'running', 'enabled'].includes(status);
+}
+
+export const platformAPI = {
+  health: (service, options = {}) => {
+    const path = SERVICE_HEALTH_ENDPOINTS[service];
+    if (!path) throw new Error(`Unknown Nexus service '${service}'`);
+    return apiClient.get(buildSemanticServiceUrl(service, path), options);
+  },
+  coreHealth: async (options = {}) => {
+    const services = ['qif', 'ontology', 'agentic', 'graph', 'ingestion', 'oslc', 'catalog', 'dataProducts', 'ceim', 'dataPipeline'];
+    const checks = await Promise.allSettled(services.map((service) => platformAPI.health(service, options)));
+    return services.reduce((result, service, index) => {
+      result[service] = checks[index].status === 'fulfilled' && isUsableHealthResponse(checks[index].value);
+      return result;
+    }, {});
+  },
+};
+
+export const qifAPI = {
+  catalog: () => apiClient.get(buildUrl(API.qif.catalog)),
+  health: () => apiClient.get(buildUrl(API.qif.health)),
+  agents: () => apiClient.get(buildUrl(API.qif.agents)),
+  startReferenceTask: (metadata = {}, options = {}) => {
+    const formData = new FormData();
+    Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
+    return apiClient.post(buildUrl(API.qif.startReferenceTask), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });
+  },
+  startUploadTask: (files, metadata = {}, options = {}) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append('files', file));
+    Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
+    return apiClient.post(buildUrl(API.qif.startUploadTask), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });
+  },
+  listTasks: () => apiClient.get(buildUrl(API.qif.tasks)),
+  getTask: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.task, { task_id: taskId }))),
+  getPreview: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.preview, { task_id: taskId }))),
+  artifactUrl: (taskId, artifactPath) =>
+    buildUrl(replaceParams(API.qif.artifact, {
+      task_id: taskId,
+      artifact_path: artifactPath,
+    }, { pathParams: ['artifact_path'] })),
+  commit: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.commit, { task_id: taskId })), {}, options),
+  cancel: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.cancel, { task_id: taskId })), {}, options),
+  retryGraph: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.retryGraph, { task_id: taskId })), {}, options),
+};
+
+// ========== DATA-PIPELINE MONITORING ENDPOINTS ==========
+// The Data Flow page uses only read operations plus an explicit replay action.
+// Telemetry describes processing-job execution; it is not application usage
+// telemetry and does not grant graph write authority.
+export const dataPipelineAPI = {
+  semanticChangeAssessment: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/change-assessment`),options),
+  graphSnapshotSources: (options={}) => apiClient.get(buildUrl('/api/v1/graph/analytics/sources'),options),
+  analyticsModels: (dataset_id,options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/models'),{...options,params:{dataset_id}}),
+  saveAnalyticsModel: (payload,approval) => apiClient.post(buildUrl('/api/v1/pipeline/semantic/models'),{...payload,...approval}),
+  approveAnalyticsModel: (id,approval) => apiClient.post(buildUrl(`/api/v1/pipeline/semantic/models/${encodeURIComponent(id)}/approve`),approval),
+  analyticsMembers: (id,class_iri,search='',options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/members`),{...options,params:{class_iri,search}}),
+  analyticsValues: (id,class_iri,property_iri,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/values`),{...options,params:{class_iri,property_iri}}),
+  martRows: (id,table,offset=0,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/marts/${encodeURIComponent(id)}/rows`),{...options,params:{table,offset}}),
+  semanticSources: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/sources'),{...options,params:{offset}}),
+  semanticDatasets: (offset=0, options={}) => apiClient.get(buildUrl('/api/v1/pipeline/semantic/datasets'),{...options,params:{offset}}),
+  semanticSchema: (id, options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}`),options),
+  semanticResult: (id,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/runs/${encodeURIComponent(id)}/result`),options),
+  semanticFields: (id,classIri,options={}) => apiClient.get(buildUrl(`/api/v1/pipeline/semantic/datasets/${encodeURIComponent(id)}/fields`),{...options,params:{class_iri:classIri}}),
+  executionIdentity: (token, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/execution-identity'), {...options, ...(token ? {headers:{...options.headers,Authorization:`Bearer ${token}`}} : {})}),
+  analytics: (params = {}, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/analytics'), {...options, params}),
+  analyticsDetail: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}`), options),
+  analyticsData: (runId, relation, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}/data`), {...options, params:{relation, limit:25}}),
+  restSources: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources'), options),
+  ingestorCapabilities: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources/capabilities'), options),
+  speedReviews: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/speed/reconciliations'), options),
+  speedReview: (id,options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/speed/reconciliations/${encodeURIComponent(id)}`),options),
+  connectorProfiles: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/connector-sources/profiles'), options),
+  connectorSources: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/connector-sources'), options),
+  registerConnector: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/connector-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),
+  connectorSubmission: (key, token) => apiClient.get(buildUrl(`/api/v1/pipeline/connector-sources/submissions/${encodeURIComponent(key)}`), { headers: { Authorization: `Bearer ${token}` } }),
+  restSubmission: (submissionId, token) => apiClient.get(buildUrl(`/api/v1/pipeline/rest-sources/submissions/${encodeURIComponent(submissionId)}`), { headers: { Authorization: `Bearer ${token}` } }),
+  registerRestSource: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/rest-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),
+  previewRestSource: (sourceId, token) => apiClient.post(buildUrl(`/api/v1/pipeline/rest-sources/${encodeURIComponent(sourceId)}/preview`), {}, { headers: { Authorization: `Bearer ${token}` } }),
+  createDefinition: (definition, token) => apiClient.post(buildUrl('/api/v1/pipeline/jobs/definitions'), definition, { headers: { Authorization: `Bearer ${token}` } }),
+  health: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/health'), options),
+  telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
+  definitions: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions'), options),
+  runs: (limit = 100, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { ...options, params: { ...options.params, limit } }),
+  getRun: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}`), options),
+  approveDefinition: (jobId, version, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/approve`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  disableDefinition: (jobId, version, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/disable`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  scheduleDefinition: (jobId, version, schedule, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/schedule`),
+    { ...schedule, ...approval },
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  disableSchedule: (jobId, version, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/schedule/disable`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  replay: (runId, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/replay`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  runDefinition: (jobId, version, payload = {}, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/run`),
+    { ...payload, ...approval },
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  reconcileAnalytics: (runId, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/reconcile-analytics`), approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  publishRun: (runId, payload = {}, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/publish`),
+    { ...payload, ...approval },
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
 };
 
 // ========== DATA IMPORT ENDPOINTS ==========
@@ -235,52 +562,44 @@ export const importAPI = {
       timeout: 300000, // 5 minutes for file uploads
     });
   },
-  getStatus: (taskId) => 
-    apiClient.get(buildUrl(replaceParams(API.import.status, { task_id: taskId }))),
-  getPreview: (taskId) => 
-    apiClient.get(buildUrl(replaceParams(API.import.preview, { task_id: taskId }))),
+  getStatus: (taskId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.import.status, { task_id: taskId })), options),
+  getPreview: (taskId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.import.preview, { task_id: taskId })), options),
+  getTasks: (options = {}) =>
+    apiClient.get(buildUrl(API.import.tasks), options),
   commit: (taskId, options = {}) => 
     apiClient.post(buildUrl(replaceParams(API.import.commit, { task_id: taskId })), options, {
-      timeout: 300000, // 5 minutes — Neo4j batch commit to AuraDB can take 2-3 min
+      timeout: 300000, // 5 minutes â€” knowledge graph batch commit to AuraDB can take 2-3 min
     }),
   preCommitCheck: (taskId) =>
-    apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 15000 }),
+    apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 300000 }),
   cancel: (taskId) => 
     apiClient.post(buildUrl(replaceParams(API.import.cancel, { task_id: taskId }))),
   getOWL: (taskId) => 
     apiClient.get(buildUrl(replaceParams(API.import.owl, { task_id: taskId }))),
-  convertSchema: (schemaData) => 
-    apiClient.post(buildUrl(API.import.convertSchema), schemaData),
-  parseSchema: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return apiClient.post(buildUrl(API.import.parseSchema), formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-  processStages: (stageData) => 
-    apiClient.post(buildUrl(API.import.processStages), stageData),
+  exportOWL: (taskId, format = 'ttl') =>
+    apiClient.get(buildUrl(replaceParams(API.import.owlExport, { task_id: taskId })), { params: { format }, responseType: 'blob' }),
   getFormats: () => apiClient.get(buildUrl(API.import.formats)),
-  queryOllama: (query) => 
-    apiClient.post(buildUrl(API.import.ollamaQuery), { query }),
-  checkOllamaHealth: () => apiClient.get(buildUrl(API.import.ollamaHealth)),
+
 };
 
 // ========== WORKFLOW ENDPOINTS ==========
 export const workflowAPI = {
   getOptions: () => apiClient.get(buildUrl(API.workflow.options)),
-  execute: (workflowId, payload = {}) =>
+  execute: (workflowId, payload = {}, options = {}) =>
     apiClient.post(buildUrl(API.workflow.execute), {
       workflow_id: workflowId,
       payload,
     }, {
       timeout: 300000,
+      signal: options.signal,
     }),
   artifactUrl: (taskId, artifactPath) =>
     buildUrl(replaceParams(API.workflow.artifactFile, {
       task_id: taskId,
       artifact_path: artifactPath,
-    })),
+    }, { pathParams: ['artifact_path'] })),
 };
 
 // ========== INGESTION ENDPOINTS ==========
@@ -316,46 +635,138 @@ export const documentAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  submitJob: (files, metadata = {}, writeToken = '', options = {}) => {
+    const formData = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((file) => formData.append('files', file));
+    Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
+    return apiClient.post(buildUrl(API.document.jobs), formData, {
+      ...options,
+      headers: { ...(writeToken ? { Authorization: `Bearer ${writeToken.trim()}` } : {}) },
+    });
+  },
+  getJob: (taskId, options = {}) => apiClient.get(buildUrl(replaceParams(API.document.job, { task_id: taskId })), options),
+  cancelJob: (taskId, writeToken = '') => apiClient.post(buildUrl(replaceParams(API.document.cancelJob, { task_id: taskId })), undefined,
+    writeToken ? { headers: { Authorization: `Bearer ${writeToken.trim()}` } } : undefined),
+  getJobArtifacts: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.jobArtifacts, { task_id: taskId }))),
   checkHealth: () => apiClient.get(buildUrl(API.document.health)),
 };
 
 // ========== ADMIN ENDPOINTS ==========
 export const adminAPI = {
-  health: () => apiClient.get(buildUrl(API.admin.health)),
-  registry: () => apiClient.get(buildUrl(API.admin.registry)),
+  previewVanillaReset: () => apiClient.get(buildUrl(API.admin.vanillaReset) + '/preview', { headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  resetVanilla: (previewDigest) => apiClient.post(buildUrl(API.admin.vanillaReset), { confirm: 'RESET DEPO TO VANILLA', preview_digest: previewDigest }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  health: (options = {}) => apiClient.get(buildUrl(API.admin.health), options),
+  registry: (options = {}) => apiClient.get(buildUrl(API.admin.registry), options),
   cleanSchema: () =>
-    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
-  schemaStats: () => apiClient.get(buildUrl(API.admin.schemaStats)),
+    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  clearCache: () => apiClient.post(buildUrl(API.admin.clearCache), undefined, { headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  clearImportWorkflows: () => apiClient.post(buildUrl(API.admin.clearImportWorkflows), { confirm: 'CLEAR_IMPORT_WORKFLOWS' }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  deleteData: ({ label, prefix, property, value, batchSize = 10000, dryRun = false }) =>
+    apiClient.post(buildUrl(API.admin.deleteData), {
+      label: label || null,
+      prefix: prefix || null,
+      property: property || null,
+      value: property ? value : null,
+      batch_size: batchSize,
+      dry_run: dryRun,
+      confirm: 'DELETE_NEO4J_DATA',
+    }, {
+      timeout: 300000,
+      headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') },
+    }),
+  schemaStats: (options = {}) => apiClient.get(buildUrl(API.admin.schemaStats), options),
   resetDatabase: (recreateIndexes = true) =>
-    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),
+    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes }, timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+};
+
+export const metadataRegistryAPI = {
+  registerRdfSource: (file, name, token) => { const data=new FormData();data.append('file',file);data.append('name',name);return apiClient.post(buildUrl('/api/v1/metadata-registry/rdf-sources'),data,{timeout:90000,headers:{Authorization:`Bearer ${token}`}}); },
+  list: (params = {}, options = {}) => apiClient.get(buildUrl(API.metadataRegistry.assets), { ...options, params }),
+  get: (assetId) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId }))),
+  create: (payload, options = {}) => apiClient.post(buildUrl(API.metadataRegistry.assets), payload, options),
+  update: (assetId, payload) => apiClient.patch(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId })), payload),
+  transition: (assetId, payload, options = {}) => apiClient.post(buildUrl(replaceParams(API.metadataRegistry.transition, { asset_id: assetId })), payload, options),
+  history: (assetId, params = {}) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.history, { asset_id: assetId })), { params }),
+};
+
+
+// ========== REQUIREMENTS ENDPOINTS ==========
+export const requirementsAPI = {
+  list: (params = {}) => apiClient.get(buildUrl(API.requirements.list), { params }),
+};
+
+
+// ========== MODELING WORKBENCH ENDPOINTS ==========
+export const modelingAPI = {
+  xmiContext: (ontologyId, sourceId, signal) => apiClient.get(buildUrl(`/api/v1/modeling/xmi-context/${encodeURIComponent(ontologyId)}`), { params: { source_id: sourceId }, signal, timeout: 15000 }),
+  diagrams: (ontologyId, signal) => apiClient.get(buildUrl(`/api/v1/modeling/xmi-diagrams/${encodeURIComponent(ontologyId)}`), { signal, timeout: 30000 }),
+  metamodel: () => apiClient.get(buildUrl(API.modeling.metamodel)),
+  ensureIndexes: () => apiClient.post(buildUrl(API.modeling.indexes)),
+  graph: (params = {}, signal) => apiClient.get(buildUrl(API.modeling.graph), { params, signal }),
+  tree: (params = {}) => apiClient.get(buildUrl(API.modeling.tree), { params }),
+  search: (params = {}) => apiClient.get(buildUrl(API.modeling.search), { params }),
+  context: (elementId, params = {}) => apiClient.get(buildUrl(replaceParams(API.modeling.context, { element_id: elementId })), { params }),
+  createNode: (payload) => apiClient.post(buildUrl(API.modeling.nodes), payload),
+  updateNode: (elementId, payload) => apiClient.put(buildUrl(replaceParams(API.modeling.node, { element_id: elementId })), payload),
+  deleteNode: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.node, { element_id: elementId }))),
+  createLink: (payload) => apiClient.post(buildUrl(API.modeling.links), payload),
+  updateLink: (elementId, payload) => apiClient.put(buildUrl(replaceParams(API.modeling.link, { element_id: elementId })), payload),
+  deleteLink: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.link, { element_id: elementId }))),
+  validation: (params = {}) => apiClient.get(buildUrl(API.modeling.validation), { params }),
+  seed: (payload = {}) => apiClient.post(buildUrl(API.modeling.seed), payload),
+  createAgentProposal: (payload) => apiClient.post(buildUrl(API.modeling.agentProposals), payload),
+  listAgentProposals: (params = {}) => apiClient.get(buildUrl(API.modeling.agentProposals), { params }),
+  approveAgentProposal: (proposalId, payload = {}) => apiClient.post(buildUrl(replaceParams(API.modeling.agentProposalApprove, { proposal_id: proposalId })), payload),
+  rejectAgentProposal: (proposalId, payload = {}) => apiClient.post(buildUrl(replaceParams(API.modeling.agentProposalReject, { proposal_id: proposalId })), payload),
 };
 
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
-  changeImpact: (changeName) =>
-    apiClient.post(buildUrl(API.recommendations.changeImpact), { change_name: changeName }),
-  similarParts: (partName, topN = 10) =>
-    apiClient.post(buildUrl(API.recommendations.similarParts), { part_name: partName, top_n: topN }),
-  manufacturing: (partName) =>
-    apiClient.post(buildUrl(API.recommendations.manufacturing), { part_name: partName }),
-  health: () => apiClient.get(buildUrl(API.recommendations.health)),
+  resolve: (name, scope = {}, options = {}) => {
+    const { analysis, ...transport } = options;
+    if (analysis && !['change-impact','similar-parts','manufacturing'].includes(analysis)) throw new Error('Invalid recommendation analysis');
+    return apiClient.post(buildUrl(API.recommendations.resolve), {
+      part_name: name, ...recommendationIdentity(scope), ...(analysis ? {analysis} : {}),
+    }, transport);
+  },
+  changeImpact: (changeName, scope = {}, options = {}) =>
+    apiClient.post(buildUrl(API.recommendations.changeImpact), {
+      change_name: changeName,
+      ...recommendationIdentity(scope),
+    }, options),
+  similarParts: (partName, topN = 10, scope = {}, options = {}) =>
+    apiClient.post(buildUrl(API.recommendations.similarParts), {
+      part_name: partName,
+      top_n: topN,
+      ...recommendationIdentity(scope),
+    }, options),
+  manufacturing: (partName, scope = {}, options = {}) =>
+    apiClient.post(buildUrl(API.recommendations.manufacturing), {
+      part_name: partName,
+      ...recommendationIdentity(scope),
+    }, options),
+  health: (options = {}) => apiClient.get(buildUrl(API.recommendations.health), options),
 };
 
 /**
  * Export unified API object for convenience
  */
 export const API_METHODS = {
-  health: healthAPI,
-  graph: graphAPI,
   schema: schemaAPI,
   chat: chatAPI,
   ontology: ontologyAPI,
+  qif: qifAPI,
+  dataPipeline: dataPipelineAPI,
   import: importAPI,
   workflow: workflowAPI,
   ingestion: ingestionAPI,
   document: documentAPI,
   admin: adminAPI,
+  metadataRegistry: metadataRegistryAPI,
   recommendations: recommendationsAPI,
+  requirements: requirementsAPI,
+  modeling: modelingAPI,
+  agentic: agenticAPI,
 };
 
 /**

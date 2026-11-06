@@ -1,0 +1,134 @@
+DEPO service, session, network and persistence audit — 6 October 2026
+
+Scope: the reported Admin UI and Ollama problems, the preceding session-access
+patch, browser credentials, service discovery, product collections, PostgreSQL
+registry pagination/worker claims, catalog delivery and revocation.
+
+Fifteen defects identified and corrected:
+
+01. P2 / Services UI: Integration card content was clipped.
+    Source: frontend/src/app/AppShell.css:92 and Components/ServiceIntegrationPanel.js:62.
+    Percentage-height IX cards/content and hidden overflow clipped lower rows and
+    buttons. Replaced the summary cards with content-driven semantic articles.
+    Checked child bounds in real Chromium at 1440px and 390px widths.
+
+02. P2 / Services UI: Workflow controls had no body padding.
+    Source: frontend/src/Components/AgentControlPanel.js:44.
+    Added the existing padded panel-body wrapper. Browser check confirms padding.
+
+03. P2 / Services: Summary counts reported the first page as a total.
+    Source: frontend/src/Components/ServiceIntegrationPanel.js:73 and :80.
+    Both APIs cap a default page at 100 records. The cards now use API total,
+    falling back only for older response formats. Product labels now describe
+    retained packages: the endpoint also returns pending/revoked records.
+    Regression uses 100 returned entries and total=250.
+
+04. P2 / Network: Ollama diagnostic collapsed unrelated failures.
+    Source: backend/agentic_service/local_llm.py:25-61.
+    Connection failure, timeout, transport failure and invalid JSON/model data
+    now return distinct statuses, the configured endpoint and probe deadline.
+    A successful HTTP response missing models no longer becomes model_missing.
+    Tests exercise malformed payloads and actual local HTTP responses.
+
+05. P2 / Network: Ambient machine proxies could redirect private Ollama calls.
+    Source: backend/agentic_service/local_llm.py:32 and :85.
+    HTTPX previously inherited HTTP_PROXY/ALL_PROXY. Direct health and companion
+    calls now use trust_env=False, as the existing private DT gateway client does.
+    Real HTTP test sets an unreachable proxy and empty NO_PROXY; the local Ollama
+    model-list probe still succeeds. This reproduces a code path, not the VM's
+    actual proxy settings. Catalog delivery follows the same private routing rule.
+
+06. P1 / Session/network: Read credentials could be returned for foreign URLs.
+    Source: frontend/src/services/serviceAuth.js:149 and :170.
+    Fallback routing supplied the read token even when no configured service owned
+    the destination. All automatic credentials now require a configured origin
+    and path boundary; userinfo and encoded traversal are rejected.
+    Regression checks a foreign host, embedded userinfo and encoded traversal.
+
+07. P2 / Sessions: Replacing the read credential left old delegated writes active.
+    Source: frontend/src/services/serviceAuth.js:10 and setServiceAuthToken.
+    Changing a delegated read token now clears the former session's write scopes
+    and timer before applying the replacement. Independent raw profiles remain.
+
+08. P2 / Sessions: Installation accepted expiries that restoration rejected.
+    Source: frontend/src/services/serviceAuth.js:77 and CredentialSettings.js:81.
+    A session lasting over fifteen minutes previously worked in memory but failed
+    after refresh. The connection flow could also clear previous credentials
+    before discovering invalid expiry. Both paths now validate the same maximum
+    before changing browser state.
+
+09. P2 / Network: Contract discovery discarded HTTP rejection status.
+    Source: frontend/src/services/serviceDiscovery.js:50.
+    HTTP 401/403/404 used to become generic connectivity advice. Discovery now
+    retains the numeric status, with safe routing/authorization guidance.
+
+10. P2 / Services: Duplicate product pages could appear complete.
+    Source: frontend/src/services/productCollection.js:7-19.
+    Equal total counts across changing offset pages could hide duplicate versions
+    and omitted records. Duplicate identities now produce a completeness warning;
+    null/non-object entries are rejected rather than crashing page rendering.
+
+11. P2 / Persistence: Identifier totals and page rows used separate snapshots.
+    Source: backend/mesh_store.py:98-104.
+    Concurrent insert/delete could make page_keys return a count and key list
+    from different database states. Both queries now share a REPEATABLE READ
+    transaction, matching the existing JSON-value pagination method.
+
+12. P1 / Persistence: Worker claim deadlines were compared lexicographically.
+    Source: backend/mesh_store.py:158-159.
+    Equal instants with differing UTC offsets can sort incorrectly as strings.
+    SQL now casts lease/availability deadlines to timestamptz and handles absent
+    or blank deadlines. Regression demonstrates opposite text/time ordering and
+    checks the claim query. Actual multi-worker database stress remains untested.
+
+13. P1 / Persistence: Revocation could be lost while catalog delivery was active.
+    Source: backend/data_product_service/router.py:205-210.
+    The service persisted the revocation only after awaiting a remote request.
+    Cancellation/process loss could leave a published local record. The local
+    revoked lifecycle and pending delivery are now persisted before networking.
+    An interrupted-delivery regression confirms the durable local record remains.
+
+14. P2 / Persistence/network: Missing catalog configuration skipped retry backoff.
+    Source: backend/data_product_service/router.py:100-107.
+    Missing URL/token produced a pending record without scheduling its next
+    attempt, making it eligible on every worker poll. These failures now use the
+    same bounded exponential retry metadata as HTTP failures. Successful delivery
+    clears the old next-attempt timestamp.
+
+15. P2 / Network: Ollama CLI diagnostics used different configuration than runtime.
+    Source: tools/diagnostics/ollama_diagnostics.py:22-46.
+    It ignored OLLAMA_API_URL and OLLAMA_API_KEY_HEADER, and defaulted to llama2.
+    The tool now shares runtime URL/header normalization and llama3 model defaults,
+    including API operation URL suffixes and Authorization/APIM header selection.
+
+Validation:
+- 30 backend unit/regression checks passed, including an actual local HTTP probe.
+- 18 targeted frontend unit checks passed.
+- Four Node regression scripts passed: session refresh, session rejection,
+  contract discovery and product collections.
+- Production Vite build passed.
+- Real installed Chromium layout check passed at 1440px and 390px.
+- git diff --check passed.
+- Build artifacts are packaged with their matching frontend input files.
+
+Limits:
+The application VM, customer PostgreSQL instance and actual Ollama listener were
+not accessed. The changes fix code defects and make failures diagnosable; they
+cannot start Ollama on a remote VM. Deploy both backend and frontend changes to
+receive the new health statuses. Feature enablement does not establish availability.
+Fixed fifteen-minute session expiry remains the deliberate authorization policy.
+No API keys, passwords, root .env.local, models or database records are in the ZIP.
+
+Navigation follow-up:
+- All 17 menu entries passed actual desktop navigation and narrow-width hash
+  navigation in real Chromium with controlled service responses. Browser
+  back/forward navigation was exercised. The browser document did not reload,
+  protected requests retained the delegated read session, and no JavaScript
+  crashes remained. Results are in all-pages-navigation-results.json.
+- Fixed GraphHEB referencing showNodeLabels before its declaration, which caused
+  Graph Explorer to enter the error boundary on navigation. The browser check
+  now also waits for a populated graph node to render.
+- Fixed graph/search/chat results and schema-cache retention across credential
+  changes. Same-session navigation retains useful state; changing/clearing access
+  resets graph results and remounts the schema provider for fresh authorization.
+- Seven App/AppShell tests and eight graph tests passed for this follow-up.

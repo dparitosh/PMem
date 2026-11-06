@@ -3,7 +3,11 @@ import uuid
 from backend.Services.unified_data_import import UnifiedDataImportService, import_tasks
 
 
-def test_shacl_integration():
+def test_shacl_integration(tmp_path, monkeypatch):
+    monkeypatch.setattr(UnifiedDataImportService, 'UPLOAD_DIR', tmp_path)
+    monkeypatch.setattr(UnifiedDataImportService, 'TASK_STORE_DIR', tmp_path / 'tasks')
+    monkeypatch.setattr(UnifiedDataImportService, '_write_artifact', lambda *a, **k: None)
+    monkeypatch.setattr(UnifiedDataImportService, '_refresh_artifact_manifest', lambda *a: None)
     UnifiedDataImportService.initialize()
     task_id = str(uuid.uuid4())
     # prepare a task that would trigger OWL generation from file_content
@@ -13,7 +17,7 @@ def test_shacl_integration():
         'file_content': b'<xsd/>',
         'filename': 'schema.xsd',
     }
-    import_tasks[task_id] = task
+    monkeypatch.setitem(import_tasks, task_id, task)
 
     # Monkeypatch OWLGenerationService used by unified_data_import by inserting
     # a dummy module into sys.modules so the function's local import resolves
@@ -26,7 +30,7 @@ def test_shacl_integration():
             return ('<ttl>dummy</ttl>', {'ttl_lines': 1, 'validation': {}, 'format': 'XSD'})
 
         @staticmethod
-        def validate_with_shacl(ttl_content, shacl_shapes=None):
+        def validate_with_shacl(ttl_content, shacl_shapes=None, **kwargs):
             return {'conforms': True, 'report_text': 'ok', 'report_graph': ''}
 
         @staticmethod
@@ -35,7 +39,7 @@ def test_shacl_integration():
 
     fake_mod = ModuleType('backend.Services.owl_generation_service')
     fake_mod.OWLGenerationService = DummyOWL
-    sys.modules['backend.Services.owl_generation_service'] = fake_mod
+    monkeypatch.setitem(sys.modules, 'backend.Services.owl_generation_service', fake_mod)
 
     # Run the background generator synchronously
     UnifiedDataImportService._generate_owl_background(task_id, task)

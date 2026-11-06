@@ -1,0 +1,110 @@
+[
+  {
+    "action": "move",
+    "source": ".env.postgres.example",
+    "destination": "config/deployment.env.example",
+    "sha256": "9FCFB91209F8AD5B84901A6066C4DBA270E61AA76860BB8F23715A5AC489920B"
+  },
+  {
+    "action": "move",
+    "source": ".env.spark.example",
+    "destination": "config/spark.env.example",
+    "sha256": "7FBC406586F9A3B788AC41CAD9AAF3703C6E84BDCB91B7FFBD3D503D3281E75C"
+  },
+  {
+    "action": "move",
+    "source": "DEPO_Component_Interaction_Architecture.pptx",
+    "destination": "deliverables/DEPO_Component_Interaction_Architecture.pptx",
+    "sha256": "0291AC9670494F3327DE726C1F7BF60A159E77DA18C93C076D2430AF0A3FD3FC"
+  },
+  {
+    "action": "move",
+    "source": "Semantic_Integration_Lambda_Architecture.pptx",
+    "destination": "deliverables/Semantic_Integration_Lambda_Architecture.pptx",
+    "sha256": "F044BE787F9E16CBCE3CD661192F293FD11D96069FF9388371403BBB9F007041"
+  },
+  {
+    "action": "move",
+    "source": "graph-explorer-current.png",
+    "destination": "docs/assets/graph-explorer-current.png",
+    "sha256": "9BB7C27C54C0AABA53432C8B85F829DCC305FF33327D42326FBCB8AEC5829602"
+  },
+  {
+    "action": "delete",
+    "source": "backend/package-lock.json",
+    "destination": null,
+    "sha256": "0E774495309E92B9D97BC79F71314135DBB1DD93C0A1A45E47CD1A6AB3D4950D"
+  },
+  {
+    "action": "delete",
+    "source": "start_frontend.js",
+    "destination": null,
+    "sha256": "18D2AE5C27EC6EBCEF1AE7D9EB331C785C4D53843F9D9FB401CAD4A8C3CFA5E5"
+  },
+  {
+    "action": "delete",
+    "source": "service-boundaries.env.example",
+    "destination": null,
+    "sha256": "CD40CD47165BEFE102EF97BA8514EEBF12A24BC8AFB045A325225908EFCD0587"
+  },
+  {
+    "action": "delete",
+    "source": "backend/.env.example",
+    "destination": null,
+    "sha256": "AC5F7FDCA8B305312E0FBA61FF70BADC6CDD82500847178AF57347AE59247309"
+  },
+  {
+    "action": "delete",
+    "source": "backend/.env.on-premises.example",
+    "destination": null,
+    "sha256": "4C71354E4E710A3E31DA9C79E678BDB139AC2EEAB829EAE32BE33705C2ED7D44"
+  },
+  {
+    "action": "delete",
+    "source": "scripts/_cleanup_neo4j.py",
+    "destination": null,
+    "sha256": "6049A99E855A81E91B973AA2F949F793B61220BDD7E081569F44A410FF849DCE"
+  },
+  {
+    "action": "delete",
+    "source": "frontend/VERIFICATION_REPORT.html",
+    "destination": null,
+    "sha256": "428B40432C800606EC70AB8286D2D5F09B9751D4F1F39566243273D9BCEEAAA4"
+  },
+  {
+    "action": "delete",
+    "source": "frontend/test-results/.last-run.json",
+    "destination": null,
+    "sha256": "91D1C43004802CD49950D78EB11C8FA7D05DA8FFFFE219A8B13B2F561BC00903"
+  },
+  {
+    "action": "delete",
+    "source": "backend/test_data/integration_test_results.json",
+    "destination": null,
+    "sha256": "E6F8E677E5F8E28671E27615ECAEE9DCA5FFD161CA8CFC3ED033B047D4E73AAF"
+  },
+  {
+    "action": "delete",
+    "source": "backend\\tests\\cat_test_results\\cat_report_2026-05-23T07-50-52.837133.json",
+    "destination": null,
+    "sha256": "4D37D7F2F77E13CA946483B7B3E1959EDD8FABB536836E01A78E2E80F125AAB6"
+  },
+  {
+    "action": "delete",
+    "source": "backend\\tests\\cat_test_results\\cat_report_2026-05-23T07-51-36.050868.json",
+    "destination": null,
+    "sha256": "0DCC2077E96D88B5CD17E8D26830711CB09369B82AFE49241B154F4B21FB395A"
+  },
+  {
+    "action": "delete",
+    "source": "backend\\tests\\cat_test_results\\cat_report_2026-05-23T07-52-10.465829.json",
+    "destination": null,
+    "sha256": "92C5DE9FE6484E196ADD396EB86D9BCE7B3B13858A0A34A1AB8FE946AEC2EADA"
+  },
+  {
+    "action": "delete",
+    "source": "backend\\tests\\cat_test_results\\cat_report_2026-05-23T08-14-02.717014.json",
+    "destination": null,
+    "sha256": "1F9E3FF610FEA1A921D291F5662313E87C86801BBEF679CB103A34BC9C0CB679"
+  }
+]

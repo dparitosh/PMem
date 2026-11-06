@@ -1,0 +1,4 @@
+# Complete optional OCR overlay, installed only in ingestion runtime.
+easyocr
+PyMuPDF
+pytesseract

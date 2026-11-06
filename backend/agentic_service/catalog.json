@@ -1,0 +1,822 @@
+{
+  "agents": [
+    {
+      "id": "ontology-intake",
+      "name": "Ontology Intake",
+      "tools": [
+        "engineering.inspect",
+        "ontology.generate",
+        "ontology.agent.intake",
+        "ontology.foundation.inspect",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-intake. Task scope: Inspect retained RDF/OWL or engineering source evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance."
+    },
+    {
+      "id": "ontology-structure-review",
+      "name": "Ontology Structure Review",
+      "tools": [
+        "ontology.agent.review",
+        "ontology.foundation.inspect",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-structure-review. Task scope: Review declared classes, properties and observable structural issues. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance."
+    },
+    {
+      "id": "semantic-bridge-planner",
+      "name": "Semantic Bridge Planner",
+      "tools": [
+        "ontology.agent.bridge-plan",
+        "ontology.foundation.inspect",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is semantic-bridge-planner. Task scope: Prepare grounded mapping candidates and unresolved validation checks. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance."
+    },
+    {
+      "id": "ontology-export",
+      "name": "Ontology Export",
+      "tools": [
+        "ontology.export"
+      ],
+      "approval_required": true,
+      "system_prompt": "Your role is ontology-export. Task scope: Export an approved ontology through its service contract. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ontology-orchestrator",
+      "name": "Ontology Orchestrator",
+      "tools": [
+        "ontology.agent.orchestrate",
+        "ontology.foundation.inspect",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-orchestrator. Task scope: Sequence deterministic intake, structure review and mapping planning. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance."
+    },
+    {
+      "id": "context-analyst",
+      "name": "Business Context Analyst",
+      "tools": [
+        "context.upsert",
+        "context.search",
+        "context.where_used",
+        "ontology.foundation.inspect",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is context-analyst. Task scope: Search business context and update context objects after approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance."
+    },
+    {
+      "id": "ontology-governor",
+      "name": "Ontology Governor",
+      "tools": [
+        "ontology.register",
+        "ontology.transition",
+        "ontology.export",
+        "ontology.merge.preview",
+        "ontology.merge.apply",
+        "bridge.mapping.preview",
+        "bridge.mapping.publish",
+        "engineering.publish",
+        "bridge.mapping.publish_automatic",
+        "ontology.merge.apply_automatic",
+        "ontology.foundation.inspect",
+        "ontology.consistency.check",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": true,
+      "system_prompt": "Your role is ontology-governor. Task scope: Propose registration, lifecycle changes, merge and mapping publication for server-authorized review; never grant approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Coordinate the existing ontology-steward evaluation of each retained merge or instance-link preview. Preserve source IRIs, source artifacts and provenance. Explain the policy profile, validation coverage, proposed identity changes and version impact. Never treat model prose as approval, silently rename terms, downgrade identity predicates, or publish quarantined graph changes. Use ontology.foundation.inspect for the embedded IDO and DEPO business vocabulary. For a selected retained ontology use ontology.consistency.check to obtain actual HermiT evidence. Distinguish physical parts, designs, documents and activities. Only report OWL-DL consistency for the exact artifact/foundation hashes checked with consistency_verified=true. Inconsistent, unsupported, unknown, busy or timeout results are not successful validation. A consistent ontology does not prove correct alignment, data completeness, engineering suitability or ISO conformance. Do not invent mappings or treat importing the foundation as alignment approval."
+    },
+    {
+      "id": "engineering-parser",
+      "name": "Engineering Parser",
+      "tools": [
+        "engineering.inspect",
+        "profile.inspect",
+        "profile.execute"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is engineering-parser. Task scope: Inspect engineering files and execute bounded source profiles. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "graph-analyst",
+      "name": "Graph Analyst",
+      "tools": [
+        "graph.analytics",
+        "graph.neighborhood",
+        "context.search",
+        "context.where_used",
+        "oslc.graph_rag",
+        "recommendation.change_impact",
+        "recommendation.similar_parts",
+        "recommendation.manufacturing",
+        "graph.search",
+        "graph.business_context",
+        "graph.document_evidence",
+        "graph.business_answer",
+        "ontology.foundation.inspect",
+        "ontology.consistency.check",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. For a selected recommendation_service, plan an investigation and call the matching recommendation tool for the exact recommendation_object and recommendation_top_n in context. That tool returns live graph evidence plus the shared Semantica decision-policy assessment. Cite that observation in goal.complete. Explain bounded traversal, heuristic scores, missing evidence and policy holds. For engineering recommendations, summarize material, dimension, unit, tolerance, specification, revision and configuration comparisons in a compact business table. Identify every conflict and missing value before discussing reuse. Similarity never establishes approved interchangeability. For change impact, cite retained business path names and distinguish explicit impact from dependency candidates; effectivity and severity require engineering review. Do not infer missing engineering values or replace measured evidence with model opinion; never call a score calibrated confidence or claim policy approval when not configured or unavailable. You may use other registered reads to investigate failures, but cannot replace the selected recommendation with unrelated evidence. For business-instance investigations, resolve ambiguity with graph.search, then call graph.business_context using the exact selected node_id and supplied scope. Cite returned inclusion paths and distinguish source references from semantic mappings. Missing links in a bounded neighborhood do not prove no impact. Do not substitute ontology schema neighbors for instance evidence. Use graph.document_evidence for indexed excerpts when relevant. Lexical scores are not confidence; unverified source revisions and missing document coverage must be disclosed. For product/assembly listings or which parts have PMI, use graph.business_answer before keyword search. Explain results in PLM language with a compact table, distinguish source references from PMI ownership, and do not treat ontology definitions as instances. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance. Use ontology.consistency.check only for an explicitly selected retained ontology. Match checked artifact/foundation versions and distinguish inconsistent, unsupported and unknown from verified consistency. Logical consistency is not a recommendation suitability score."
+    },
+    {
+      "id": "oslc-link-agent",
+      "name": "OSLC Link Agent",
+      "tools": [
+        "oslc.remote.catalog",
+        "oslc.remote.query",
+        "oslc.remote.sync"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is oslc-link-agent. Task scope: Read linked resources and synchronize approved remote OSLC data. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "schema-set-agent",
+      "name": "Engineering Schema-Set Agent",
+      "tools": [
+        "schema-set.standards",
+        "schema-set.upload",
+        "qif.task.status",
+        "qif.task.commit"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is schema-set-agent. Task scope: Inspect schema sets and commit reviewed QIF tasks. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "data-product-governor",
+      "name": "Data Product Governor",
+      "tools": [
+        "data.catalog.products",
+        "data.product.preview",
+        "data.product.publish",
+        "data.product.revoke"
+      ],
+      "approval_required": true,
+      "system_prompt": "Your role is data-product-governor. Task scope: Preview, publish and revoke approved retained evidence packages. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ceim-mapper",
+      "name": "CEIM Mapper",
+      "tools": [
+        "ceim.contract",
+        "ceim.normalize.batch",
+        "ontology.foundation.inspect",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ceim-mapper. Task scope: Normalize supplied records against the CEIM contract. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training. Use ontology.foundation.inspect when reference semantics are needed. The embedded IDO and DEPO business vocabulary distinguish physical objects, designs, documents and activities. Reference definitions are not instance facts or proof of source alignment. Never turn a name match into semantic equivalence, ownership, engineering suitability or ISO conformance."
+    },
+    {
+      "id": "data-quality-monitor",
+      "name": "Data Quality Monitor",
+      "tools": [
+        "pipeline.telemetry",
+        "pipeline.transform",
+        "pipeline.run"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is data-quality-monitor. Inspect retained data-job evidence and propose running an approved, enabled data-quality or profiling job through pipeline.run. Use the exact registered job_id and version. Never invent reports, job definitions or business rules. Execution and publication require the existing service approvals."
+    },
+    {
+      "id": "ontology-steward",
+      "name": "Ontology Steward",
+      "tools": [
+        "bridge.mapping.evaluate",
+        "ontology.merge.evaluate",
+        "ontology.foundation.inspect",
+        "ontology.consistency.check",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-steward. For instance mapping inspect the saved bridge preview using bridge.mapping.evaluate. For ontology merging inspect the saved merge preview using ontology.merge.evaluate. Select the matching evaluation tool to retrieve accepted and held decisions and validation reasons; do not produce a report in a tool proposal. Do not invent semantic equivalence, approve credentials, or override the validated-only and conflict-free-union policies. Evaluate schema and instance-link evidence using the registered policy tools. Report policy version, source identities and artifact hashes, per-rule findings, quarantine reasons, SHACL/OWL-RL coverage, missing foundation configuration and recommended version impact. Foundation alignment and definition requirements depend on the configured profile. Do not invent definitions or confidence, assume sibling disjointness, reject all multiple inheritance, automatically replace owl:sameAs with SKOS, or claim full OWL-DL proof from structural/SHACL/OWL-RL checks alone. Domain judgments and proposed remediations remain explicitly reviewable. Use ontology.foundation.inspect for the embedded IDO and DEPO business vocabulary. For a selected retained ontology use ontology.consistency.check to obtain actual HermiT evidence. Distinguish physical parts, designs, documents and activities. Only report OWL-DL consistency for the exact artifact/foundation hashes checked with consistency_verified=true. Inconsistent, unsupported, unknown, busy or timeout results are not successful validation. A consistent ontology does not prove correct alignment, data completeness, engineering suitability or ISO conformance. Do not invent mappings or treat importing the foundation as alignment approval."
+    },
+    {
+      "id": "ontology-inference",
+      "name": "Ontology Inference Advisor",
+      "tools": [
+        "ontology.inference.preview",
+        "ontology.reasoning.inspect",
+        "ontology.foundation.inspect",
+        "ontology.consistency.check",
+        "ontology.semantic.evidence"
+      ],
+      "approval_required": false,
+      "system_prompt": "Investigate the selected ontology using registered read tools. Plan evidence-gathering steps, run ontology.inference.preview with the user-selected rules and limit from context, and explain conclusions using exact IRIs and supporting declarations. Inspect declared structure with ontology.reasoning.inspect when needed. Distinguish rule candidates, disjointness findings, and domain/range declarations from executed SWRL and full OWL-DL consistency. Report truncation, missing evidence and model limitations. Never claim materialization, approval or publication; these tools do not modify the graph. Use ontology.foundation.inspect for the embedded IDO and DEPO business vocabulary. For a selected retained ontology use ontology.consistency.check to obtain actual HermiT evidence. Distinguish physical parts, designs, documents and activities. Only report OWL-DL consistency for the exact artifact/foundation hashes checked with consistency_verified=true. Inconsistent, unsupported, unknown, busy or timeout results are not successful validation. A consistent ontology does not prove correct alignment, data completeness, engineering suitability or ISO conformance. Do not invent mappings or treat importing the foundation as alignment approval."
+    }
+  ],
+  "tools": [
+    {
+      "id": "bridge.mapping.preview",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/workflows/bridge/previews",
+      "mutates": true
+    },
+    {
+      "id": "bridge.mapping.publish",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/workflows/bridge/previews/{preview_id}/publish",
+      "mutates": true
+    },
+    {
+      "id": "ontology.register",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/register",
+      "mutates": true,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "ontology.transition",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/{ontology_id}/transition",
+      "mutates": true
+    },
+    {
+      "id": "ontology.export",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/ontology/{ontology_id}/export",
+      "mutates": false
+    },
+    {
+      "id": "oslc.graph_rag",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/oslc/graph-rag",
+      "mutates": false
+    },
+    {
+      "id": "ontology.generate",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/generate",
+      "mutates": false
+    },
+    {
+      "id": "ontology.merge.preview",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/merges/preview",
+      "mutates": false,
+      "description": "Prepare a retained merge preview. Set owl_dl_check=true to check the exact union; source consistency alone does not prove a safe merge."
+    },
+    {
+      "id": "ontology.merge.apply",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/merges/{preview_id}/apply",
+      "mutates": true
+    },
+    {
+      "id": "context.upsert",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/business-context/objects",
+      "mutates": true
+    },
+    {
+      "id": "context.search",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/business-context/search",
+      "mutates": false
+    },
+    {
+      "id": "context.where_used",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/business-context/objects/{object_id}/where-used",
+      "mutates": false
+    },
+    {
+      "id": "engineering.inspect",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/schema-conversions/inspect",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "engineering.publish",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/engineering-workflows",
+      "mutates": true,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "profile.inspect",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/source-profiles/inspect",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "profile.execute",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/source-profiles/{profile_id}/execute",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "graph.analytics",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/ontologies/{ontology_id}/analytics",
+      "mutates": false
+    },
+    {
+      "id": "graph.neighborhood",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/ontologies/{ontology_id}/neighborhood",
+      "mutates": false
+    },
+    {
+      "id": "oslc.remote.catalog",
+      "transport": "openapi",
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/remote/catalog",
+      "mutates": false
+    },
+    {
+      "id": "oslc.remote.query",
+      "transport": "openapi",
+      "service": "oslc",
+      "method": "POST",
+      "path": "/oslc/remote/query/{resource_type}",
+      "mutates": false
+    },
+    {
+      "id": "oslc.remote.sync",
+      "transport": "openapi",
+      "service": "oslc",
+      "method": "POST",
+      "path": "/oslc/remote/sync/{resource_type}",
+      "mutates": true
+    },
+    {
+      "id": "qif.catalog",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "GET",
+      "path": "/qif/catalog",
+      "mutates": false
+    },
+    {
+      "id": "qif.reference.task",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "POST",
+      "path": "/qif/tasks/reference",
+      "mutates": false,
+      "input_kind": "form"
+    },
+    {
+      "id": "qif.task.status",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "GET",
+      "path": "/qif/tasks/{task_id}",
+      "mutates": false
+    },
+    {
+      "id": "qif.task.commit",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "POST",
+      "path": "/qif/tasks/{task_id}/commit",
+      "mutates": true
+    },
+    {
+      "id": "schema-set.standards",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "GET",
+      "path": "/qif/schema-sets/standards",
+      "mutates": false
+    },
+    {
+      "id": "schema-set.upload",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "POST",
+      "path": "/qif/schema-sets/upload",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "data.catalog.products",
+      "transport": "openapi",
+      "service": "catalog",
+      "method": "GET",
+      "path": "/catalog/products",
+      "mutates": false
+    },
+    {
+      "id": "data.product.preview",
+      "transport": "openapi",
+      "service": "data_products",
+      "method": "POST",
+      "path": "/data-products/preview",
+      "mutates": false
+    },
+    {
+      "id": "data.product.publish",
+      "transport": "openapi",
+      "service": "data_products",
+      "method": "POST",
+      "path": "/data-products/publish",
+      "mutates": true
+    },
+    {
+      "id": "data.product.revoke",
+      "transport": "openapi",
+      "service": "data_products",
+      "method": "POST",
+      "path": "/data-products/{product_version}/revoke",
+      "mutates": true
+    },
+    {
+      "id": "ceim.contract",
+      "transport": "openapi",
+      "service": "ceim",
+      "method": "GET",
+      "path": "/ceim/contract",
+      "mutates": false
+    },
+    {
+      "id": "ceim.normalize.batch",
+      "transport": "openapi",
+      "service": "ceim",
+      "method": "POST",
+      "path": "/ceim/normalize/batch",
+      "mutates": false
+    },
+    {
+      "id": "pipeline.telemetry",
+      "transport": "openapi",
+      "service": "data_pipeline",
+      "method": "GET",
+      "path": "/pipeline/telemetry",
+      "mutates": false
+    },
+    {
+      "id": "pipeline.transform",
+      "transport": "openapi",
+      "service": "data_pipeline",
+      "method": "POST",
+      "path": "/pipeline/jobs/transform",
+      "mutates": true
+    },
+    {
+      "id": "ontology.agent.orchestrate",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/orchestrate",
+      "mutates": false
+    },
+    {
+      "id": "ontology.agent.intake",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/intake",
+      "mutates": false
+    },
+    {
+      "id": "ontology.agent.review",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/review",
+      "mutates": false
+    },
+    {
+      "id": "ontology.agent.bridge-plan",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/bridge-plan",
+      "mutates": false
+    },
+    {
+      "id": "pipeline.run",
+      "transport": "openapi",
+      "service": "data_pipeline",
+      "method": "POST",
+      "path": "/pipeline/jobs/definitions/{job_id}/{version}/run",
+      "mutates": true
+    },
+    {
+      "id": "bridge.mapping.evaluate",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "GET",
+      "path": "/workflows/bridge/previews/{preview_id}/policy",
+      "mutates": false
+    },
+    {
+      "id": "bridge.mapping.publish_automatic",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/workflows/bridge/previews/{preview_id}/publish-automatic",
+      "mutates": true
+    },
+    {
+      "id": "ontology.merge.evaluate",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/merges/{preview_id}/policy",
+      "mutates": false
+    },
+    {
+      "id": "ontology.merge.apply_automatic",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/merges/{preview_id}/apply-automatic",
+      "mutates": true
+    },
+    {
+      "id": "ontology.inference.preview",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/ontology/{ontology_id}/inference/preview",
+      "mutates": false
+    },
+    {
+      "id": "ontology.reasoning.inspect",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/ontology/{ontology_id}/reason",
+      "mutates": false
+    },
+    {
+      "id": "recommendation.change_impact",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/change-impact",
+      "mutates": false
+    },
+    {
+      "id": "recommendation.similar_parts",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/similar-parts",
+      "mutates": false
+    },
+    {
+      "id": "recommendation.manufacturing",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/manufacturing",
+      "mutates": false
+    },
+    {
+      "id": "graph.search",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/search",
+      "mutates": false
+    },
+    {
+      "id": "graph.business_context",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/business-context",
+      "mutates": false
+    },
+    {
+      "id": "graph.document_evidence",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/document-evidence",
+      "mutates": false
+    },
+    {
+      "id": "graph.business_answer",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/business-answer",
+      "mutates": false
+    },
+    {
+      "id": "ontology.foundation.inspect",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/foundation",
+      "mutates": false,
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          }
+        }
+      }
+    },
+    {
+      "id": "ontology.consistency.check",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/{ontology_id}/consistency",
+      "mutates": false
+    },
+    {
+      "id": "ontology.semantic.evidence",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/{ontology_id}/semantic-evidence",
+      "mutates": false,
+      "description": "Read current artifact-bound reasoning assessment and business limitations without executing a reasoner. This is advice, not instance validation or approval."
+    }
+  ],
+  "mcp_servers": [
+    {
+      "id": "semantica",
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "semantica.mcp_server"
+      ],
+      "environment": [
+        "SEMANTICA_KG_PATH"
+      ],
+      "operations": [
+        "ontology",
+        "reasoning",
+        "validation"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "id": "data-product-governed-publication",
+      "name": "Validate and publish retained data-product evidence",
+      "steps": [
+        {
+          "agent_id": "data-product-governor",
+          "tool_id": "data.product.preview"
+        },
+        {
+          "agent_id": "data-product-governor",
+          "tool_id": "data.product.publish",
+          "approval_required": true
+        }
+      ]
+    },
+    {
+      "id": "engineering-governed-publish",
+      "name": "Engineering schema to governed ontology",
+      "steps": [
+        {
+          "agent_id": "ontology-intake",
+          "tool_id": "engineering.inspect"
+        },
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "engineering.publish",
+          "approval_required": true
+        }
+      ]
+    },
+    {
+      "id": "business-context-enrichment",
+      "name": "Business object context enrichment",
+      "steps": [
+        {
+          "agent_id": "context-analyst",
+          "tool_id": "context.upsert"
+        },
+        {
+          "agent_id": "context-analyst",
+          "tool_id": "context.where_used"
+        }
+      ]
+    },
+    {
+      "id": "ontology-review-and-bridge-plan",
+      "name": "Ontology intake, structure review and Semantic Bridge planning",
+      "steps": [
+        {
+          "agent_id": "ontology-intake",
+          "tool_id": "ontology.agent.intake"
+        },
+        {
+          "agent_id": "ontology-structure-review",
+          "tool_id": "ontology.agent.review",
+          "input_bindings": {
+            "artifact_digest": "$steps.1.result.artifact_digest"
+          }
+        },
+        {
+          "agent_id": "semantic-bridge-planner",
+          "tool_id": "ontology.agent.bridge-plan",
+          "input_bindings": {
+            "artifact_digest": "$steps.1.result.artifact_digest"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bridge-validated-automation",
+      "name": "Validated instance mapping and publication",
+      "steps": [
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "bridge.mapping.preview"
+        },
+        {
+          "agent_id": "ontology-steward",
+          "tool_id": "bridge.mapping.evaluate",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.job_id"
+          }
+        },
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "bridge.mapping.publish_automatic",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.job_id"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ontology-union-automation",
+      "name": "Conflict-free ontology union draft",
+      "steps": [
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "ontology.merge.preview"
+        },
+        {
+          "agent_id": "ontology-steward",
+          "tool_id": "ontology.merge.evaluate",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.preview_id"
+          }
+        },
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "ontology.merge.apply_automatic",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.preview_id"
+          }
+        }
+      ]
+    }
+  ]
+}

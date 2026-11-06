@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { publicationFromDraft } from '../src/services/analyticsProductDraft.js';
+const draft={product_kind:'schema-design-evidence',name:'Example',artifacts:['sha256:one',{artifact_id:'sha256:two'}],analytics_readiness:'requires_review'};
+const fields={product_id:'quality',name:'Quality',version:'1.0.0',owner:'owner',steward:'steward',classification:'internal',approved_by:'reviewer',asset_id:'schema',release_version:'1.0.0'};
+const payload=publicationFromDraft(draft,fields,'same-request');
+assert.deepEqual(payload.artifacts,[{artifact_id:'sha256:one'},{artifact_id:'sha256:two'}]);
+assert.equal(payload.lifecycle_state,'published');
+assert.equal(payload.semantic_releases[0].lifecycle_status,'approved');
+assert.equal(payload.analytics_readiness,'requires_review');
+assert.equal(payload.idempotency_key,'same-request');
+assert.ok(!('approval_token' in payload));
+assert.throws(()=>publicationFromDraft(draft,{...fields,owner:''},'same-request'),/owner/);
+assert.throws(()=>publicationFromDraft(draft,{...fields,product_id:'..\/escape'},'same-request'),/Product ID/);
+assert.throws(()=>publicationFromDraft({...draft,artifacts:[]},fields,'same-request'),/artifact/);
+console.log('PASS: analytics draft publication adapter');
+
+const { isDefinitivePublicationRejection } = await import('../src/services/analyticsProductDraft.js');
+for (const status of [400, 401, 403, 404, 405, 422]) assert.equal(isDefinitivePublicationRejection({response:{status}}), true);
+for (const status of [409, 500, 502, 503]) assert.equal(isDefinitivePublicationRejection({response:{status}}), false);
+assert.equal(isDefinitivePublicationRejection(new Error('timeout')), false);

@@ -7,10 +7,16 @@ the constructs that occur in local schemas and sample payloads.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
+import logging
+import re
+import time
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 def _local_name(tag: str) -> str:
@@ -23,7 +29,19 @@ def _normalize_ref(value: str) -> str:
     raw = (value or "").strip()
     if not raw:
         return ""
-    return raw.lstrip("#")
+    raw = raw.lstrip("#")
+    plmxml_match = re.search(r"(id[0-9A-Za-z_-]+)(?:\.plmxml)?$", raw, flags=re.IGNORECASE)
+    if plmxml_match and raw.lower().endswith(".plmxml"):
+        return plmxml_match.group(1)
+    return raw
+
+
+def _is_external_locator_ref(ref_key: str, ref_value: str) -> bool:
+    key = (ref_key or "").strip()
+    value = (ref_value or "").strip().lower()
+    if key not in {"locationRef", "location", "fileRef", "fileRefs"}:
+        return False
+    return value.endswith((".html", ".htm", ".txt", ".zip", ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".cgr", ".jt"))
 
 
 @dataclass
@@ -219,6 +237,8 @@ class PlmxmlForm:
     description: str = ""
     attributes: Dict[str, str] = field(default_factory=dict)
     properties: Dict[str, str] = field(default_factory=dict)
+    semantic_role: str = "metadata"
+    is_structural: bool = True
 
 
 @dataclass
@@ -228,6 +248,18 @@ class PlmxmlRelationship:
     target_id: str
     relationship_type: str
     properties: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class PlmxmlGenericEntity:
+    id: str
+    tag: str
+    name: str = ""
+    description: str = ""
+    subtype: str = ""
+    properties: Dict[str, str] = field(default_factory=dict)
+    semantic_role: str = "entity"
+    is_structural: bool = False
 
 
 @dataclass
@@ -252,7 +284,11 @@ class PlmxmlDocument:
     requirements: Dict[str, PlmxmlRequirement] = field(default_factory=dict)
     general_relations: List[PlmxmlGeneralRelation] = field(default_factory=list)
     forms: Dict[str, PlmxmlForm] = field(default_factory=dict)
+    generic_entities: Dict[str, PlmxmlGenericEntity] = field(default_factory=dict)
     relationships: List[PlmxmlRelationship] = field(default_factory=list)
+    parse_stats: Dict[str, Any] = field(default_factory=dict)
+    unresolved_references: List[Dict[str, str]] = field(default_factory=list)
+    duplicate_ids: List[str] = field(default_factory=list)
 
 
 def _parse_refs(value: str) -> List[str]:
@@ -269,6 +305,133 @@ def _attrs(element: ET.Element) -> Dict[str, str]:
     for key, value in element.attrib.items():
         out[_local_name(key)] = value
     return out
+
+
+def _iterparse(path: Path):
+    try:
+        from lxml import etree as _lxml_etree  # type: ignore
+        return _lxml_etree.iterparse(str(path), events=("start", "end"), recover=True, huge_tree=True), True
+    except Exception:
+        import defusedxml.ElementTree as _safe_et
+        return _safe_et.iterparse(str(path), events=("start", "end")), False
+
+
+def _clear_element(elem: Any, using_lxml: bool) -> None:
+    elem.clear()
+    if using_lxml:
+        parent = elem.getparent()
+        while parent is not None and elem.getprevious() is not None:
+            del parent[0]
+
+
+def _primary_id(attrs: Dict[str, str]) -> str:
+    return (
+        attrs.get("id")
+        or attrs.get("uid")
+        or attrs.get("ID")
+        or ""
+    ).strip()
+
+
+def _reference_values(attrs: Dict[str, str]) -> List[Tuple[str, str]]:
+    refs: List[Tuple[str, str]] = []
+    explicit_keys = {
+        "href", "idref", "idrefs", "instanceRefs", "relatedRefs", "parentRef",
+        "partRef", "productRef", "processRef", "transformRef", "masterRef",
+        "baseRef", "rootRefs", "resourceRefs", "externalFileRefs", "fileRefs",
+        "memberRefs", "dataSetRef", "changeNoticeRefs", "changeRef", "affectedRefs",
+        "affectedItems", "occurrenceRefs", "childRefs", "applicationRefs",
+        "representationRefs", "predecessorRef", "predecessorRefs", "productInstanceRefs",
+        "productRefs", "partRefs", "processRefs", "ownerId", "sourceRef", "targetRef",
+        "source", "target",
+    }
+    for key, raw_value in attrs.items():
+        if not raw_value:
+            continue
+        normalized_key = _local_name(key)
+        key_lower = normalized_key.lower()
+        if normalized_key in explicit_keys or key_lower in {"href", "idref", "idrefs"} or key_lower.endswith("ref") or key_lower.endswith("refs"):
+            for ref in _parse_refs(str(raw_value)):
+                refs.append((normalized_key, ref))
+    return refs
+
+
+_PLMXML_METADATA_KEYS = {
+    "id",
+    "uid",
+    "name",
+    "label",
+    "description",
+    "subtype",
+    "subclass",
+    "type",
+    "value",
+    "text",
+    "title",
+    "namespace",
+    "ontology_prefix",
+    "source_ontology",
+    "import_id",
+}
+
+
+_PLMXML_STRUCTURAL_TAGS = {
+    "AccessIntent",
+    "AssociatedAttachment",
+    "ApplicationRef",
+    "Description",
+    "PlainText",
+    "Form",
+    "UserValue",
+}
+
+
+_DEFAULT_METADATA_EXCLUSION_TAGS = frozenset({
+    *(_PLMXML_STRUCTURAL_TAGS),
+    "UserData",
+})
+
+# XPDMXML/3DEXPERIENCE exports encode important ProductInst values as child
+# elements rather than attributes.  Retain these small leaf elements until the
+# owning entity has been processed; all other unneeded elements remain cleared
+# during streaming parse for bounded memory use.
+_PARENT_PAYLOAD_TAGS = frozenset({
+    "ID", "Name", "Description", "RevisionName", "RevisionIndex", "Instancing",
+    "Owned", "ChildOrder", "RelativeTransformation3D", "Rotation3D", "Translation3D",
+})
+
+
+def _resolve_metadata_exclusion_tags(metadata_exclusion_tags: List[str] | None = None) -> set[str]:
+    configured = set(_DEFAULT_METADATA_EXCLUSION_TAGS)
+    raw_env = os.getenv("PLMXML_METADATA_EXCLUSION_TAGS", "")
+    if raw_env.strip():
+        configured.update(tag.strip() for tag in raw_env.split(",") if tag.strip())
+    if metadata_exclusion_tags:
+        configured.update(str(tag).strip() for tag in metadata_exclusion_tags if str(tag).strip())
+    return configured
+
+
+def _is_metadata_only_tag(tag: str, metadata_exclusion_tags: set[str]) -> bool:
+    return tag in metadata_exclusion_tags
+
+
+def _plmxml_has_meaningful_payload(tag: str, attrs: Dict[str, str], text: str = "") -> bool:
+    meaningful = 0
+    for key, value in attrs.items():
+        if not value:
+            continue
+        key_norm = _local_name(key).lower()
+        if key_norm in _PLMXML_METADATA_KEYS:
+            continue
+        if key_norm.endswith("ref") or key_norm.endswith("refs"):
+            continue
+        meaningful += 1
+    if meaningful:
+        return True
+    text = (text or "").strip()
+    if text and tag not in _PLMXML_STRUCTURAL_TAGS:
+        return True
+    return False
 
 
 def _parse_quantity(attrs: Dict[str, str]) -> int:
@@ -289,30 +452,57 @@ def _parse_time_required(attrs: Dict[str, str]) -> float | None:
         return None
 
 
-def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
-    # ✅ SECURITY: use defusedxml to prevent XXE when parsing PLMXML
-    import defusedxml.ElementTree as _safe_ET
-    tree = _safe_ET.parse(str(file_path))
-    root = tree.getroot()
+def _direct_child_texts(element: ET.Element) -> Dict[str, str]:
+    """Expose attribute-less vendor export values on their owning entity."""
+    values: Dict[str, str] = {}
+    for child in list(element):
+        text = " ".join(part.strip() for part in child.itertext() if part and part.strip())
+        if text:
+            values.setdefault(_local_name(child.tag), text)
+    return values
 
-    root_attrs = _attrs(root)
-    doc = PlmxmlDocument(
-        file_path=file_path,
-        schema_version=root_attrs.get("schemaVersion", "") or root_attrs.get("version", ""),
-        author=root_attrs.get("author", ""),
-        date=root_attrs.get("date", ""),
-    )
 
+def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None = None) -> PlmxmlDocument:
+    start_time = time.perf_counter()
+    context, using_lxml = _iterparse(file_path)
+    doc = PlmxmlDocument(file_path=file_path)
+    resolved_metadata_exclusion_tags = _resolve_metadata_exclusion_tags(metadata_exclusion_tags)
     anon_counts: Dict[str, int] = {}
+    duplicate_ids: List[str] = []
+    known_ids: Dict[str, str] = {}
+    alias_to_primary: Dict[str, str] = {}
+    reference_candidates: List[Tuple[str, str, str, str]] = []
+    relationship_keys = set()
+    elements_parsed = 0
+    skipped_elements = 0
+    malformed_elements = 0
+    root_seen = False
+    root_attrs: Dict[str, str] = {}
+    root_namespace = ""
 
-    for elem in root.iter():
+    for event, elem in context:
+        tag = _local_name(elem.tag)
+        if event == "start" and not root_seen:
+            root_seen = True
+            root_attrs = _attrs(elem)
+            root_namespace = elem.tag[1:elem.tag.index("}")] if isinstance(elem.tag, str) and elem.tag.startswith("{") and "}" in elem.tag else ""
+            doc.schema_version = root_attrs.get("schemaVersion", "") or root_attrs.get("version", "")
+            doc.author = root_attrs.get("author", "")
+            doc.date = root_attrs.get("date", "")
+            if "rootRefs" in root_attrs:
+                doc.root_refs = _parse_refs(root_attrs.get("rootRefs", ""))
+            continue
+        if event != "end":
+            continue
+
+        elements_parsed += 1
         tag = _local_name(elem.tag)
         attrs = _attrs(elem)
-        elem_id = attrs.get("id", "")
+        elem_id = _primary_id(attrs)
 
         if not elem_id:
             if tag in {
-                "ProductInstance", "Occurrence", "ProductOccurrence",
+                "ProductInstance", "ProductInst", "Occurrence", "ProductOccurrence",
                 "ProcessInstance", "ProcessOccurrence",
                 "Relationship", "Rel",
                 "GeneralRelation", "TraceabilityRelation",
@@ -322,15 +512,38 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 elem_id = f"__anon_{tag}_{anon_counts[tag]}"
                 attrs["id"] = elem_id
             else:
+                skipped_elements += 1
+                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData", *_PARENT_PAYLOAD_TAGS}:
+                    logger.debug("PLMXML skipped element without identifier: tag=%s file=%s", tag, file_path.name)
+                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData", *_PARENT_PAYLOAD_TAGS}:
+                    _clear_element(elem, using_lxml)
                 continue
+
+        if elem_id in known_ids:
+            duplicate_ids.append(elem_id)
+            logger.warning("PLMXML duplicate identifier detected: id=%s tag=%s file=%s", elem_id, tag, file_path.name)
+        else:
+            known_ids[elem_id] = tag
+        if attrs.get("uid"):
+            alias_to_primary[attrs["uid"]] = elem_id
+        alias_to_primary[elem_id] = elem_id
+        # Attribute-first exports remain untouched; child texts fill only
+        # absent fields for XPDMXML-style Product and ProductInst records.
+        for key, value in _direct_child_texts(elem).items():
+            attrs.setdefault(key, value)
+
+        if tag not in {"Relationship", "Rel"}:
+            for ref_key, ref_value in _reference_values(attrs):
+                if ref_value and ref_value != elem_id:
+                    reference_candidates.append((elem_id, ref_key, ref_value, tag))
 
         if tag in {"Part", "PartRevision", "PartMaster", "Product", "ProductRevision"}:
             doc.parts[elem_id] = PlmxmlPart(
                 id=elem_id,
-                name=attrs.get("name", ""),
-                part_number=attrs.get("partNumber", attrs.get("number", attrs.get("itemId", ""))),
-                revision=attrs.get("revision", attrs.get("revisionId", "")),
-                description=attrs.get("description", ""),
+                name=attrs.get("name", attrs.get("Name", "")),
+                part_number=attrs.get("partNumber", attrs.get("number", attrs.get("itemId", attrs.get("ID", "")))),
+                revision=attrs.get("revision", attrs.get("revisionId", attrs.get("RevisionIndex", ""))),
+                description=attrs.get("description", attrs.get("Description", "")),
                 part_type=attrs.get("partType", attrs.get("subType", tag)),
                 master_ref=attrs.get("masterRef", attrs.get("baseRef", attrs.get("productRef", ""))),
                 user_data_refs=_parse_refs(attrs.get("userDataRefs", "")),
@@ -346,14 +559,14 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 structure_type=attrs.get("structureType", attrs.get("type", "")),
                 properties=attrs,
             )
-        elif tag in {"ProductInstance", "Occurrence", "ProductOccurrence"}:
+        elif tag in {"ProductInstance", "ProductInst", "Occurrence", "ProductOccurrence"}:
             doc.product_instances.append(
                 PlmxmlProductInstance(
                     id=elem_id,
-                    name=attrs.get("name", ""),
-                    part_ref=attrs.get("partRef", attrs.get("instancedRef", attrs.get("productRef", ""))),
+                    name=attrs.get("name", attrs.get("Name", "")),
+                    part_ref=attrs.get("partRef", attrs.get("instancedRef", attrs.get("productRef", attrs.get("Instancing", "")))),
                     transform_ref=attrs.get("transformRef", ""),
-                    parent_ref=attrs.get("parentRef", ""),
+                    parent_ref=attrs.get("parentRef", attrs.get("Owned", "")),
                     quantity=_parse_quantity(attrs),
                     occurrence_refs=_parse_refs(attrs.get("occurrenceRefs", attrs.get("childRefs", ""))),
                     user_data_refs=_parse_refs(attrs.get("userDataRefs", "")),
@@ -460,14 +673,25 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
             target_id = _normalize_ref(attrs.get("target", attrs.get("targetRef", "")))
             rel_type = attrs.get("type", attrs.get("relationshipType", tag))
             if source_id and target_id:
-                doc.relationships.append(
-                    PlmxmlRelationship(
-                        id=elem_id,
-                        source_id=source_id,
-                        target_id=target_id,
-                        relationship_type=rel_type,
-                        properties=attrs,
+                rel_key = (elem_id, source_id, target_id, rel_type)
+                if rel_key in relationship_keys:
+                    logger.debug("PLMXML duplicate relationship skipped: %s", rel_key)
+                else:
+                    relationship_keys.add(rel_key)
+                    doc.relationships.append(
+                        PlmxmlRelationship(
+                            id=elem_id,
+                            source_id=source_id,
+                            target_id=target_id,
+                            relationship_type=rel_type,
+                            properties=attrs,
+                        )
                     )
+            else:
+                malformed_elements += 1
+                logger.warning(
+                    "PLMXML malformed relationship skipped: id=%s tag=%s source=%s target=%s file=%s",
+                    elem_id, tag, source_id, target_id, file_path.name
                 )
         elif tag in {"Requirement"}:
             doc.requirements[elem_id] = PlmxmlRequirement(
@@ -559,9 +783,115 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 description=description,
                 attributes=form_attrs,
                 properties=attrs,
+                semantic_role="metadata",
+                is_structural=_is_metadata_only_tag(tag, resolved_metadata_exclusion_tags),
             )
+        else:
+            is_structural = (
+                _is_metadata_only_tag(tag, resolved_metadata_exclusion_tags)
+                or not _plmxml_has_meaningful_payload(tag, attrs)
+            )
+            doc.generic_entities[elem_id] = PlmxmlGenericEntity(
+                id=elem_id,
+                tag=tag,
+                name=attrs.get("name", ""),
+                description=attrs.get("description", ""),
+                subtype=attrs.get("subType", attrs.get("type", "")),
+                properties=attrs,
+                semantic_role="structural" if is_structural else "entity",
+                is_structural=is_structural,
+            )
+        _clear_element(elem, using_lxml)
 
-    if "rootRefs" in root_attrs:
-        doc.root_refs = _parse_refs(root_attrs.get("rootRefs", ""))
+    unresolved_references: List[Dict[str, str]] = []
+    for source_id, ref_key, raw_target, source_tag in reference_candidates:
+        if _is_external_locator_ref(ref_key, raw_target):
+            logger.debug(
+                "PLMXML external locator skipped from graph reference resolution: source=%s key=%s target=%s file=%s",
+                source_id, ref_key, raw_target, file_path.name
+            )
+            continue
+        target_id = alias_to_primary.get(raw_target, raw_target)
+        if target_id not in known_ids:
+            unresolved_references.append({
+                "source_id": source_id,
+                "reference_key": ref_key,
+                "target_id": raw_target,
+                "source_tag": source_tag,
+            })
+            logger.warning(
+                "PLMXML unresolved reference: source=%s tag=%s key=%s target=%s file=%s",
+                source_id, source_tag, ref_key, raw_target, file_path.name
+            )
+            continue
+        rel_type = ref_key.upper()
+        rel_key = (source_id, target_id, rel_type)
+        if rel_key in relationship_keys or source_id == target_id:
+            continue
+        relationship_keys.add(rel_key)
+        doc.relationships.append(
+            PlmxmlRelationship(
+                id=f"{source_id}:{rel_type}:{target_id}",
+                source_id=source_id,
+                target_id=target_id,
+                relationship_type=rel_type,
+                properties={"source_tag": source_tag, "reference_key": ref_key},
+            )
+        )
+
+    parse_seconds = time.perf_counter() - start_time
+    total_entities = (
+        len(doc.parts)
+        + len(doc.product_views)
+        + len(doc.product_instances)
+        + len(doc.processes)
+        + len(doc.process_views)
+        + len(doc.process_instances)
+        + len(doc.change_notices)
+        + len(doc.revisions)
+        + len(doc.transforms)
+        + len(doc.user_data)
+        + len(doc.documents)
+        + len(doc.external_files)
+        + len(doc.requirements)
+        + len(doc.general_relations)
+        + len(doc.forms)
+        + len(doc.generic_entities)
+    )
+    structural_entities = sum(1 for form in doc.forms.values() if getattr(form, "is_structural", False)) + sum(
+        1 for entity in doc.generic_entities.values() if getattr(entity, "is_structural", False)
+    )
+    doc.unresolved_references = unresolved_references
+    doc.duplicate_ids = duplicate_ids
+    doc.parse_stats = {
+        "namespace": root_namespace,
+        "elements_parsed": elements_parsed,
+        "classes_created": len({
+            "Part" if doc.parts else None,
+            "ProductView" if doc.product_views else None,
+            "ProductInstance" if doc.product_instances else None,
+            "Process" if doc.processes else None,
+            "ProcessView" if doc.process_views else None,
+            "ProcessInstance" if doc.process_instances else None,
+            "ChangeNotice" if doc.change_notices else None,
+            "Revision" if doc.revisions else None,
+            "Transform" if doc.transforms else None,
+            "UserData" if doc.user_data else None,
+            "Document" if doc.documents else None,
+            "ExternalFile" if doc.external_files else None,
+            "Requirement" if doc.requirements else None,
+            "GeneralRelation" if doc.general_relations else None,
+            "Form" if doc.forms else None,
+        } - {None}),
+        "individuals_created": total_entities,
+        "relationships_created": len(doc.relationships),
+        "unresolved_references": len(unresolved_references),
+        "duplicate_ids": len(duplicate_ids),
+        "skipped_elements": skipped_elements,
+        "malformed_elements": malformed_elements,
+        "structural_entities": structural_entities,
+        "metadata_exclusion_tags": sorted(resolved_metadata_exclusion_tags),
+        "ingestion_time": round(parse_seconds, 6),
+    }
 
     return doc

@@ -1,0 +1,23 @@
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ceim:Ontology a owl:Ontology ; rdfs:label "Canonical Engineering Information Model v0.1" .
+
+ceim:Product a owl:Class . ceim:ProductRevision a owl:Class .
+ceim:Part a owl:Class . ceim:Assembly a owl:Class . ceim:Requirement a owl:Class .
+ceim:QualityMeasurement a owl:Class . ceim:Document a owl:Class . ceim:Change a owl:Class .
+ceim:Configuration a owl:Class . ceim:Test a owl:Class . ceim:Process a owl:Class .
+ceim:Resource a owl:Class .
+ceim:Feature a owl:Class . ceim:Characteristic a owl:Class .
+ceim:Datum a owl:Class . ceim:DatumReferenceFrame a owl:Class .
+ceim:PMIAnnotation a owl:Class . ceim:GeometryBody a owl:Class .
+
+ceim:hasPart a owl:ObjectProperty . ceim:hasGeometry a owl:ObjectProperty . ceim:satisfies a owl:ObjectProperty .
+ceim:traceTo a owl:ObjectProperty . ceim:derivedFrom a owl:ObjectProperty .
+ceim:verifiedBy a owl:ObjectProperty . ceim:validatedBy a owl:ObjectProperty .
+ceim:impacts a owl:ObjectProperty . ceim:produces a owl:ObjectProperty .
+ceim:consumes a owl:ObjectProperty .
+ceim:hasFeature a owl:ObjectProperty . ceim:hasCharacteristic a owl:ObjectProperty .
+ceim:usesDatum a owl:ObjectProperty . ceim:usesReferenceFrame a owl:ObjectProperty .
+ceim:realizes a owl:ObjectProperty .

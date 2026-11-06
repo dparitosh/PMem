@@ -1,0 +1,71 @@
+<# .SYNOPSIS Runs supported DEPO package, installation and runtime diagnostics. #>
+[CmdletBinding()]
+param(
+  [ValidateSet('Package','Prerequisites','Configuration','Runtime','All')][string]$Phase = 'All',
+  [string]$EnvFile = '.env.local',
+  [ValidateSet('Bootstrap','Production')][string]$Profile = 'Production',
+  [string]$Python = 'py',
+  [switch]$SkipFrontend,
+  [switch]$LocalInsecureDemo
+)
+$ErrorActionPreference = 'Stop'
+if ((Get-ExecutionPolicy) -ne 'Bypass') {
+  try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop }
+  catch { throw 'PowerShell policy blocked diagnostics. Use Setup-DEPO.cmd or an approved signed release; machine policy was not changed.' }
+  if ((Get-ExecutionPolicy) -ne 'Bypass') { throw 'Process bypass is overridden by organization policy. Use an approved signed release.' }
+}
+. (Join-Path $PSScriptRoot 'infra/windows/native-install-command.ps1')
+Invoke-DepoLoggedAction -Root $PSScriptRoot -Name ('diagnose-'+$Phase) -AuditEnvFile $EnvFile -Action {
+$root = $PSScriptRoot
+$envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+
+function Invoke-Diagnostic([string]$Name, [scriptblock]$Action) {
+  Write-Host "`n=== DEPO diagnostic: $Name ===" -ForegroundColor Cyan
+  $global:LASTEXITCODE = 0
+  & $Action
+  if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "$Name failed with exit code $LASTEXITCODE." }
+  Write-Host "PASS: $Name" -ForegroundColor Green
+}
+
+if ($Phase -in @('Package','Prerequisites','All')) {
+  Invoke-Diagnostic 'release package integrity' {
+    & (Join-Path $root 'infra\deployment\test-installation-package.ps1')
+  }
+}
+if ($Phase -in @('Prerequisites','All')) {
+  Invoke-Diagnostic 'software prerequisites' {
+    & (Join-Path $root 'infra\windows\install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -CheckPrerequisites -EnvFile $envPath
+  }
+}
+if ($Phase -in @('Configuration','Runtime','All')) {
+  if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw "Missing configuration: $envPath. Run .\configure-depo.ps1 first." }
+  Invoke-Diagnostic 'deployment configuration' {
+    & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
+  }
+  if (-not $SkipFrontend) {
+    Invoke-Diagnostic 'frontend configuration' {
+      & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1') -RootEnvFile $envPath
+    }
+  }
+}
+if ($Phase -in @('Runtime','All')) {
+  if (-not (Test-Path -LiteralPath (Join-Path $root 'backend\.dt_venv\Scripts\python.exe'))) { throw 'Backend runtime is absent. Run .\install-depo.ps1 before Runtime diagnostics.' }
+  Invoke-Diagnostic 'database, graph and optional Spark release preflight' {
+    $parameters = @{ EnvFile = $envPath }
+    if ($Profile -eq 'Production') { $parameters.Production = $true } else { $parameters.Bootstrap = $true }
+    if ($LocalInsecureDemo) { $parameters.LocalInsecureDemo = $true }
+    & (Join-Path $root 'infra\windows\test-depo-release.ps1') @parameters
+  }
+  Invoke-Diagnostic 'running service endpoints' {
+    & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile
+  }
+  . (Join-Path $root 'infra/windows/runtime-config.ps1')
+  $gatewaySettings = Read-DepoEnvironment $root $envPath
+  if ($gatewaySettings['DEPO_ROUTING_MODE'] -eq 'gateway' -and $gatewaySettings['AUTH_MODE'] -eq 'token') {
+    Invoke-Diagnostic 'API gateway service routes' {
+      & (Join-Path $root 'infra/deployment/test-depo-gateway.ps1') -EnvFile $envPath
+    }
+  }
+}
+Write-Host "`nDEPO diagnostics completed successfully for phase: $Phase" -ForegroundColor Green
+}

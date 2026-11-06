@@ -1,14 +1,12 @@
+from __future__ import annotations
 import os
 import logging
-from urllib.parse import urlparse, urlunparse
 from pathlib import Path
-# from langchain_openai import AzureOpenAI
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings, OllamaLLM
 
 
-from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
+from backend.core.ollama_auth import ollama_headers, ollama_timeout, ollama_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +19,13 @@ def _first_env(*keys: str) -> str | None:
 
 
 env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(env_path)
+managed_environment = os.getenv('DEPO_ENV_INJECTED', '').lower() == 'true'
+production_environment = any(os.getenv(key, '').lower() in {'prod', 'production'}
+                             for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV'))
+if not managed_environment and not production_environment:
+    load_dotenv(env_path, override=False)
 
-# --- Configuration ---
+# Deployment-injected configuration takes precedence over developer defaults.
 AZURE_OPENAI_ENDPOINT = _first_env("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY = _first_env("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = _first_env("AZURE_OPENAI_DEPLOYMENT")
@@ -49,30 +51,24 @@ UNSTRUCTURED_AZURE_OPENAI_DEPLOYMENT = _first_env("UNSTRUCTURED_AZURE_OPENAI_DEP
 UNSTRUCTURED_AZURE_OPENAI_API_VERSION = _first_env("UNSTRUCTURED_AZURE_OPENAI_API_VERSION") or "2024-02-15-preview"
 
 # Ollama config for unstructured
-UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL") or "http://localhost:11434"
-UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY") or ""
+UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL", "OLLAMA_API_URL", "OLLAMA_BASE_URL") or "http://127.0.0.1:11434"
+UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY", "OLLAMA_API_KEY") or ""
 UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llava:7b"
 
 
 # ========== LLM CONFIGURATION ==========
-# Set to "azure" or "ollama"
+# Select ollama (offline), azure, openai, or mistral.
 USE_LLM = (_first_env("USE_LLM") or "ollama").lower()
 USE_EMBEDDER = (_first_env("USE_EMBEDDER") or USE_LLM).lower()
 
-OLLAMA_BASE_URL = _first_env("OLLAMA_BASE_URL") or "http://localhost:11434"
+OLLAMA_BASE_URL = _first_env("OLLAMA_API_URL", "OLLAMA_BASE_URL") or "http://127.0.0.1:11434"
 OLLAMA_API_KEY = _first_env("OLLAMA_API_KEY") or ""
-LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME") or "llama3:latest"
-EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME", "LLM_MODEL_NAME") or "nomic-embed-text:latest"
+LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME", "OLLAMA_MODEL") or "llama3:latest"
+EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME") or "nomic-embed-text:latest"
 
 
 def _normalize_ollama_base_url(base_url: str) -> str:
-    parsed = urlparse(base_url.rstrip("/"))
-    path = parsed.path.rstrip("/")
-    for suffix in ("/api/generate", "/api/chat", "/chat"):
-        if path.endswith(suffix):
-            path = path[: -len(suffix)]
-            break
-    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", "")).rstrip("/")
+    return ollama_base_url(base_url)
 
 
 class UnavailableLLM:
@@ -111,12 +107,15 @@ def _init_azure_llm() -> AzureChatOpenAI:
     if missing:
         raise ValueError(f"Missing Azure OpenAI settings: {', '.join(missing)}")
 
+    from langchain_openai import AzureChatOpenAI
     return AzureChatOpenAI(
         azure_endpoint=AZURE_OPENAI_ENDPOINT,
         api_key=AZURE_OPENAI_API_KEY,
         api_version=AZURE_OPENAI_API_VERSION,
         azure_deployment=AZURE_OPENAI_DEPLOYMENT,
         temperature=0,
+        timeout=ollama_timeout(),
+        max_retries=0,
         model_kwargs={
             "user": "user-1234",
         },
@@ -137,6 +136,7 @@ def _init_azure_embeddings() -> AzureOpenAIEmbeddings:
     if missing:
         raise ValueError(f"Missing Azure embeddings settings: {', '.join(missing)}")
 
+    from langchain_openai import AzureOpenAIEmbeddings
     return AzureOpenAIEmbeddings(
         model=AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT,
         api_version=AZURE_OPENAI_EMBEDDINGS_VERSION,
@@ -145,21 +145,25 @@ def _init_azure_embeddings() -> AzureOpenAIEmbeddings:
     )
 
 
-def _init_ollama_llm() -> ChatOllama:
+def _init_ollama_llm() -> ChatOllama | OllamaLLM:
     if not OLLAMA_BASE_URL or not LLM_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or LLM_MODEL_NAME")
-    kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL))
+    ollama_base_url()  # Validate inside the guarded factory.
+    kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL),
+                  client_kwargs={'timeout': ollama_timeout(), 'trust_env': False})
     if OLLAMA_API_KEY:
-        kwargs["client_kwargs"] = {"headers": {"api-key": OLLAMA_API_KEY}}
-    return ChatOllama(**kwargs)
+        kwargs['client_kwargs']['headers'] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
+    from backend.core.ollama_auth import ollama_generation_route
+    _, operation = ollama_generation_route()
+    return OllamaLLM(**kwargs) if operation == 'generate' else ChatOllama(**kwargs)
 
 
 def _init_ollama_embeddings() -> OllamaEmbeddings:
     if not OLLAMA_BASE_URL or not EMBED_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or EMBED_MODEL_NAME")
-    kwargs = dict(model=EMBED_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL))
+    kwargs = dict(model=EMBED_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout(), "trust_env": False})
     if OLLAMA_API_KEY:
-        kwargs["client_kwargs"] = {"headers": {"api-key": OLLAMA_API_KEY}}
+        kwargs["client_kwargs"]["headers"] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
     return OllamaEmbeddings(**kwargs)
 
 
@@ -177,6 +181,7 @@ def _init_unstructured_apim_llm() -> AzureChatOpenAI:
     if missing:
         raise ValueError(f"Missing APIM settings for unstructured LLM: {', '.join(missing)}")
 
+    from langchain_openai import AzureChatOpenAI
     return AzureChatOpenAI(
         azure_endpoint=UNSTRUCTURED_APIM_ENDPOINT,
         api_key=UNSTRUCTURED_APIM_SUBSCRIPTION_KEY,
@@ -202,6 +207,7 @@ def _init_unstructured_azure_llm() -> AzureChatOpenAI:
     if missing:
         raise ValueError(f"Missing unstructured Azure OpenAI settings: {', '.join(missing)}")
 
+    from langchain_openai import AzureChatOpenAI
     return AzureChatOpenAI(
         azure_endpoint=UNSTRUCTURED_AZURE_OPENAI_ENDPOINT,
         api_key=UNSTRUCTURED_AZURE_OPENAI_API_KEY,
@@ -212,14 +218,23 @@ def _init_unstructured_azure_llm() -> AzureChatOpenAI:
     )
 
 
-def _init_unstructured_ollama_llm() -> ChatOllama:
+def _init_unstructured_ollama_llm() -> ChatOllama | OllamaLLM:
     """Initialize Ollama LLM for unstructured document processing (vision-capable like llava)"""
     if not UNSTRUCTURED_OLLAMA_BASE_URL or not UNSTRUCTURED_LLM_MODEL_NAME:
         raise ValueError("Missing UNSTRUCTURED_OLLAMA_BASE_URL or UNSTRUCTURED_LLM_MODEL_NAME")
-    kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=UNSTRUCTURED_OLLAMA_BASE_URL)
+    kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(UNSTRUCTURED_OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout(), "trust_env": False})
     if UNSTRUCTURED_OLLAMA_API_KEY:
-        kwargs["client_kwargs"] = {"headers": {"api-key": UNSTRUCTURED_OLLAMA_API_KEY}}
-    return ChatOllama(**kwargs)
+        kwargs["client_kwargs"]["headers"] = ollama_headers(UNSTRUCTURED_OLLAMA_BASE_URL, UNSTRUCTURED_OLLAMA_API_KEY)
+    from backend.core.ollama_auth import ollama_generation_route
+    _, operation = ollama_generation_route(UNSTRUCTURED_OLLAMA_BASE_URL)
+    return OllamaLLM(**kwargs) if operation == 'generate' else ChatOllama(**kwargs)
+
+
+def _init_ollama_tool_llm() -> ChatOllama:
+    from backend.core.ollama_auth import ollama_tool_chat_root
+    base = ollama_tool_chat_root()
+    return ChatOllama(model=LLM_MODEL_NAME, base_url=base,
+        client_kwargs={'timeout': ollama_timeout(), 'trust_env': False, 'headers': ollama_headers(base, OLLAMA_API_KEY)})
 
 
 # --- Initialize models with safe fallbacks ---
@@ -256,19 +271,29 @@ except Exception as exc:
 # --- Initialize unstructured LLM (document processing with vision) ---
 unstructured_llm_error = None
 unstructured_llm = None
+unstructured_provider = None
 
 if USE_UNSTRUCTURED_LLM:
     try:
         # Try APIM first if available
-        if UNSTRUCTURED_APIM_ENDPOINT and UNSTRUCTURED_APIM_SUBSCRIPTION_KEY:
+        if UNSTRUCTURED_LLM_TYPE == "azure" and UNSTRUCTURED_APIM_ENDPOINT and UNSTRUCTURED_APIM_SUBSCRIPTION_KEY:
             unstructured_llm = _init_unstructured_apim_llm()
+            unstructured_provider = "azure"
         elif UNSTRUCTURED_LLM_TYPE == "azure":
             unstructured_llm = _init_unstructured_azure_llm()
+            unstructured_provider = "azure"
+        elif UNSTRUCTURED_LLM_TYPE in {"openai", "mistral", "aoi"}:
+            from backend.core.llm_providers import cloud_chat
+            unstructured_llm = cloud_chat(UNSTRUCTURED_LLM_TYPE, unstructured=True)
+            unstructured_provider = UNSTRUCTURED_LLM_TYPE
         elif UNSTRUCTURED_LLM_TYPE == "ollama":
             unstructured_llm = _init_unstructured_ollama_llm()
+            unstructured_provider = "ollama"
         else:
             raise ValueError(f"Unknown UNSTRUCTURED_LLM_TYPE: {UNSTRUCTURED_LLM_TYPE}")
     except Exception as exc:
+        if UNSTRUCTURED_LLM_TYPE in {'openai', 'mistral', 'aoi'}:
+            exc = ValueError('Check unstructured cloud model, key, and HTTPS base URL')
         unstructured_llm_error = exc
         unstructured_llm = UnavailableLLM(f"Unstructured LLM unavailable: {exc}")
 else:
@@ -292,10 +317,32 @@ elif USE_LLM == "ollama":
     if llm_ollama_error:
         LLM_AVAILABLE = False
         llm_error = llm_ollama_error
+elif USE_LLM in {"openai", "mistral", "aoi"}:
+    try:
+        from backend.core.llm_providers import cloud_chat
+        llm = cloud_chat(USE_LLM)
+    except Exception:
+        LLM_AVAILABLE = False
+        llm_error = ValueError('Check selected cloud provider model, key, and HTTPS base URL')
+        llm = UnavailableLLM(str(llm_error))
 else:
     LLM_AVAILABLE = False
-    llm_error = ValueError("USE_LLM must be 'azure' or 'ollama'")
+    llm_error = ValueError("USE_LLM must be ollama, azure, openai, mistral, or aoi")
     llm = UnavailableLLM(str(llm_error))
+
+# Never bind tools to the text-generation client. A generate-only deployment
+# remains usable for summaries while tool workflows report their missing route.
+tool_llm = llm
+TOOL_LLM_AVAILABLE = LLM_AVAILABLE
+if USE_LLM == 'aoi':
+    TOOL_LLM_AVAILABLE = False
+    tool_llm = UnavailableLLM('AOI gateway uses structured proposals; native tool calling is unsupported')
+if USE_LLM == 'ollama':
+    try:
+        tool_llm = _init_ollama_tool_llm()
+    except Exception as exc:
+        TOOL_LLM_AVAILABLE = False
+        tool_llm = UnavailableLLM(f'Ollama tool chat unavailable: {exc}')
 
 # Now set unstructured_llm fallback after llm is defined
 if not USE_UNSTRUCTURED_LLM and unstructured_llm is None:
@@ -312,9 +359,17 @@ elif USE_EMBEDDER == "ollama":
     if embeddings_ollama_error:
         EMBEDDER_AVAILABLE = False
         embeddings_error = embeddings_ollama_error
+elif USE_EMBEDDER in {"openai", "mistral", "aoi"}:
+    try:
+        from backend.core.llm_providers import cloud_embeddings
+        embeddings = cloud_embeddings(USE_EMBEDDER)
+    except Exception:
+        EMBEDDER_AVAILABLE = False
+        embeddings_error = ValueError('Check selected embedding provider model, key, and HTTPS base URL')
+        embeddings = UnavailableEmbeddings(str(embeddings_error))
 else:
     EMBEDDER_AVAILABLE = False
-    embeddings_error = ValueError("USE_EMBEDDER must be 'azure' or 'ollama'")
+    embeddings_error = ValueError("USE_EMBEDDER must be ollama, azure, openai, mistral, or aoi")
     embeddings = UnavailableEmbeddings(str(embeddings_error))
 
 if not LLM_AVAILABLE or not EMBEDDER_AVAILABLE:
@@ -330,14 +385,29 @@ if USE_UNSTRUCTURED_LLM:
     if unstructured_llm_error:
         logger.error(f"⚠️ Unstructured LLM error: {unstructured_llm_error}")
     else:
-        if UNSTRUCTURED_APIM_ENDPOINT:
+        if unstructured_provider == "azure" and UNSTRUCTURED_APIM_ENDPOINT:
             logger.info(f"Using APIM gateway for document processing (unstructured)")
         else:
             logger.info(f"Using {UNSTRUCTURED_LLM_TYPE.upper()} for document processing (unstructured)")
 
 
 
-# print(llm.invoke("What is ollama?"))
-# print("__")
-# embedding = embeddings.embed_query("What is my name?")
-# print(len(embedding))
+
+
+# Export guarded Ollama clients; Azure adapters keep their provider policies.
+if USE_LLM == 'ollama':
+    from backend.core.guarded_ollama import GuardedOllama
+    from backend.core.ollama_auth import ollama_generation_route, ollama_tool_chat_root
+    if LLM_AVAILABLE:
+        llm = GuardedOllama(llm, ollama_generation_route()[0])
+    if TOOL_LLM_AVAILABLE:
+        tool_llm = GuardedOllama(tool_llm, ollama_tool_chat_root() + '/api/chat')
+    if not USE_UNSTRUCTURED_LLM:
+        unstructured_llm = llm
+if USE_UNSTRUCTURED_LLM and unstructured_provider == 'ollama' and not unstructured_llm_error:
+    from backend.core.guarded_ollama import GuardedOllama
+    from backend.core.ollama_auth import ollama_generation_route
+    unstructured_llm = GuardedOllama(unstructured_llm, ollama_generation_route(UNSTRUCTURED_OLLAMA_BASE_URL)[0])
+if USE_EMBEDDER == 'ollama' and EMBEDDER_AVAILABLE:
+    from backend.core.guarded_ollama import GuardedEmbeddings
+    embeddings = GuardedEmbeddings(embeddings, ollama_base_url(OLLAMA_BASE_URL) + '/api/embed')

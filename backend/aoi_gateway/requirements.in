@@ -1,0 +1,10 @@
+# Separate CPython 3.12 runtime; never install this into PMem or IIF runtimes.
+fastapi==0.141.1
+uvicorn==0.54.0
+python-dotenv==1.2.3
+requests==2.34.2
+pycryptodome==3.23.0
+openai==1.109.1
+llama-index-core==0.14.12
+llama-index-llms-azure-openai==0.4.2
+llama-index-embeddings-azure-openai==0.4.1

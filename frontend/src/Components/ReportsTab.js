@@ -1,591 +1,1408 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { API_METHODS } from '../services/apiClient';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
+import React, { useEffect, useMemo, useState } from 'react';
+import { API, buildUrl } from '../config';
+import { apiClient, dataPipelineAPI } from '../services/apiClient';
+import { graphApi } from '../services/graphApi';
+import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
+import { useOntologies } from '../contexts/OntologyContext';
+import KpiStrip from '../widgets/KpiStrip';
+import ReportsAnalytics from './ReportsAnalytics';
+import OntologyOslcReport from './OntologyOslcReport';
+import './ReportsAnalytics.css';
 
-// Simplified clean ReportsTab component with Search + backend report types.
-// Generic version - works with any node types
-const ReportsTab = ({ searchResults, graphData }) => {
-    const [activeReport, setActiveReport] = useState('search'); // 'search', 'relationships', or dynamically discovered types
-    const [loading, setLoading] = useState(false);
-    const [reportData, setReportData] = useState([]); // raw data (search raw or backend fetched)
-    const [filteredData, setFilteredData] = useState([]); // filtered & sorted
-    const [filters, setFilters] = useState({});
-    const [sortColumn, setSortColumn] = useState('');
-    const [sortDirection, setSortDirection] = useState('asc');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
-    const [totalItems, setTotalItems] = useState(0);
-    const [visibleColumns, setVisibleColumns] = useState({});
-    const [showColumnSelector, setShowColumnSelector] = useState(false);
-    const [availableTypes, setAvailableTypes] = useState([]); // Dynamically discovered node types
+const NOISY_COLUMNS = new Set([
+  'args',
+  'ref_ids',
+  'import_row_key',
+  'source_line',
+  'raw_line',
+  'properties',
+  'x',
+  'y',
+  'vx',
+  'vy',
+  'index',
+  'elementId',
+  'elementID',
+  'X',
+  'Y',
+  'VX',
+  'VY',
+]);
 
-    // ---------- Helpers ----------
-    const unwanted = ['x','y','vx','vy','elementId','index','X','Y','VX','VY','elementID'];
-    const stripUnwanted = (data) => data.map(r => { const c={...r}; unwanted.forEach(k=>delete c[k]); return c; });
+const PRIORITY_COLUMNS = [
+  'entity_type',
+  'name',
+  'title',
+  'type',
+  'id',
+  'part_name',
+  'partnumber',
+  'source',
+  'target',
+  'relationship_type',
+  'import_id',
+  'source_tag',
+  'ref_type',
+];
 
-    const processSearchResults = (results) => {
-        if (!Array.isArray(results)) return [];
-        return stripUnwanted(results.map(item => {
-            if (item.n) {
-                const node = item.n; const labels=node.labels||[]; const props=node.properties||{};
-                return { elementId: node.elementId, type: labels.join(', '), ...props };
-            }
-            if (item.node) {
-                const node=item.node; const labels=item.node_labels||[]; const props=node.properties||node;
-                return { elementId: node.elementId, type: labels.join(', '), ...props };
-            }
-            return item;
-        }));
-    };
-
-    const formatCellValue = (val) => {
-        if (val === null || val === undefined) return '';
-        if (typeof val === 'object') return JSON.stringify(val);
-        return String(val);
-    };
-
-    const getDistinctValues = (data,key) => {
-        const s=new Set(); data.forEach(r=>{ if(r[key]!==undefined) s.add(String(r[key])); });
-        return Array.from(s).sort();
-    };
-
-    const getHeaders = (data) => {
-        if (!data.length) return [];
-        const set=new Set(); data.forEach(r=>Object.keys(r).forEach(k=>set.add(k)));
-        return Array.from(set).filter(h=>h!=='elementId');
-    };
-
-    const initColumns = (headers) => {
-        const init={}; headers.forEach(h=>init[h]=true); setVisibleColumns(init);
-    };
-    const visibleHeaders = (headers) => headers.filter(h => visibleColumns[h] !== false);
-    const toggleColumn = (h) => setVisibleColumns(p => ({ ...p, [h]: p[h] === false ? true : false }));
-    const showAllColumns = (headers) => { const o={}; headers.forEach(h=>o[h]=true); setVisibleColumns(o); };
-    const hideAllColumns = (headers) => { const o={}; headers.forEach(h=>o[h]=false); setVisibleColumns(o); };
-
-    const applyFilters = (data) => {
-        if (activeReport !== 'search' || !Object.keys(filters).length) return data;
-        return data.filter(row => Object.entries(filters).every(([k,v]) => !v || String(row[k]) === v));
-    };
-    const handleFilterChange = (h,val) => { setFilters(p => { const n={...p}; if(!val) delete n[h]; else n[h]=val; return n; }); setCurrentPage(1); };
-    const clearFilters = () => setFilters({});
-
-    const handleSort = (h) => {
-        setSortDirection(prev => (sortColumn === h && prev === 'asc') ? 'desc' : 'asc');
-        setSortColumn(h);
-    };
-    const sortData = (data) => {
-        if (activeReport !== 'search' || !sortColumn) return data;
-        const dir = sortDirection === 'asc' ? 1 : -1;
-        return [...data].sort((a,b)=>{
-            const av=a[sortColumn]; const bv=b[sortColumn];
-            if(av===bv) return 0; return av>bv?dir:-dir;
-        });
-    };
-
-    const pageSlice = (data) => {
-        const start=(currentPage-1)*itemsPerPage;
-        return data.slice(start,start+itemsPerPage);
-    };
-    const totalPagesCalc = (len) => Math.ceil((len||0)/itemsPerPage);
-
-    const handlePageChange = (p) => setCurrentPage(p);
-    const handleItemsPerPageChange = (n) => { setItemsPerPage(n); setCurrentPage(1); };
-
-    // Backend report fetch
-    // Legacy backend report fetch retained for potential future use (currently unused for classification subtabs)
-    // eslint-disable-next-line no-unused-vars
-    const fetchReport = async (type,page=1) => {
-        setLoading(true);
-        try {
-            const res = await API_METHODS.schema.getReports(type, page, itemsPerPage);
-            const rows = res.data?.data || [];
-            setReportData(stripUnwanted(rows));
-            setTotalItems(res.data?.total_items || rows.length);
-        } catch(e){ console.error('Report fetch error', e); setReportData([]); setTotalItems(0);} finally { setLoading(false); }
-    };
-
-    // Classification helper - Generic version
-    const classifyData = (processed, typeFilter) => {
-        if (!Array.isArray(processed)) return [];
-        if (typeFilter === 'search') return processed; // Show all
-        
-        const firstLabel = (row) => {
-            if (row.type) return row.type.split(',')[0].trim();
-            if (row.labels && row.labels.length) return row.labels[0];
-            return row.label || '';
-        };
-        
-        // Filter by the selected type
-        return processed.filter(r => firstLabel(r) === typeFilter);
-    };
-    
-    // Discover unique node types from search results
-    const discoverTypes = (processed) => {
-        const types = new Set();
-        processed.forEach(row => {
-            let type = '';
-            if (row.type) type = row.type.split(',')[0].trim();
-            else if (row.labels && row.labels.length) type = row.labels[0];
-            else if (row.label) type = row.label;
-            if (type) types.add(type);
-        });
-        return Array.from(types).sort();
-    };
-
-    // Effect: data pipeline
-    useEffect(()=>{
-        const processed = processSearchResults(searchResults);
-        
-        // Discover available types for tabs
-        const types = discoverTypes(processed);
-        setAvailableTypes(types);
-        
-        // Apply classification filter
-        let base = classifyData(processed, activeReport);
-        
-        // Apply additional filters and sorting only for search tab
-        if (activeReport === 'search') {
-            base = applyFilters(base);
-            base = sortData(base);
-        }
-        
-        setReportData(processed); // keep full processed for column value sets
-        setFilteredData(base);
-        setTotalItems(base.length);
-        
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchResults, activeReport, filters, sortColumn, sortDirection, currentPage, itemsPerPage]);
-
-    // Effect: initialize columns when data shape available
-    useEffect(()=>{
-        const headers = getHeaders(activeReport==='search' ? filteredData : reportData);
-        if (headers.length && Object.keys(visibleColumns).length === 0){ initColumns(headers); }
-    }, [reportData, filteredData, activeReport, visibleColumns]);
-
-    // Derived values
-    const displayData = pageSlice(filteredData);
-    const headersAll = getHeaders(filteredData);
-    const headersVis = visibleHeaders(headersAll);
-    const totalPages = totalPagesCalc(filteredData.length);
-    const startIndex = (currentPage-1)*itemsPerPage;
-    const endIndex = Math.min(startIndex+displayData.length, filteredData.length);
-    const isSearchDerived = activeReport !== 'search'; // true when viewing a specific type tab
-
-    // ── Relationships tab data ─────────────────────────────────────────────
-    const relationshipRows = useMemo(() => {
-        const links = graphData?.links || graphData?.edges || [];
-        const nodes = graphData?.nodes || [];
-        if (!links.length) return [];
-
-        // Build elementId → name map for label resolution
-        const nodeMap = new Map();
-        nodes.forEach(n => {
-            const id = n.elementId || n.id;
-            if (id) nodeMap.set(String(id), n.name || n.label || n.uri || id);
-        });
-
-        const resolve = (ref) => {
-            if (!ref) return '';
-            if (typeof ref === 'object') {
-                const id = ref.elementId || ref.id;
-                return nodeMap.get(String(id)) || ref.name || ref.label || String(id);
-            }
-            return nodeMap.get(String(ref)) || String(ref);
-        };
-
-        // Collect distinct rows: type + source_name + target_name (de-duped by key)
-        const seen = new Map();
-        links.forEach(link => {
-            const type = link.type || link.label || 'RELATED';
-            const srcName = resolve(link.source);
-            const tgtName = resolve(link.target);
-            const key = `${type}||${srcName}||${tgtName}`;
-            if (!seen.has(key)) {
-                seen.set(key, { relationship_type: type, source: srcName, target: tgtName, count: 1 });
-            } else {
-                seen.get(key).count += 1;
-            }
-        });
-
-        return Array.from(seen.values()).sort((a, b) =>
-            a.relationship_type.localeCompare(b.relationship_type) || a.source.localeCompare(b.source)
-        );
-    }, [graphData]);
-
-    const relTypesSummary = useMemo(() => {
-        const counter = new Map();
-        relationshipRows.forEach(r => {
-            counter.set(r.relationship_type, (counter.get(r.relationship_type) || 0) + r.count);
-        });
-        return Array.from(counter.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(([type, count]) => ({ type, count }));
-    }, [relationshipRows]);
-
-    const [relTypeFilter, setRelTypeFilter] = useState('');
-    const [relSearchTerm, setRelSearchTerm]   = useState('');
-    const [relPage, setRelPage]               = useState(1);
-    const REL_PAGE_SIZE = 25;
-
-    const filteredRelRows = useMemo(() => {
-        let rows = relationshipRows;
-        if (relTypeFilter) rows = rows.filter(r => r.relationship_type === relTypeFilter);
-        if (relSearchTerm) {
-            const q = relSearchTerm.toLowerCase();
-            rows = rows.filter(r =>
-                r.source.toLowerCase().includes(q) ||
-                r.target.toLowerCase().includes(q) ||
-                r.relationship_type.toLowerCase().includes(q)
-            );
-        }
-        return rows;
-    }, [relationshipRows, relTypeFilter, relSearchTerm]);
-
-    const relTotalPages = Math.ceil(filteredRelRows.length / REL_PAGE_SIZE);
-    const relPageRows   = filteredRelRows.slice((relPage - 1) * REL_PAGE_SIZE, relPage * REL_PAGE_SIZE);
-
-    // Reset rel page on filter change
-    useEffect(() => { setRelPage(1); }, [relTypeFilter, relSearchTerm]);
-
-    return (
-        <div style={{ minHeight:'100%', padding:'20px' }}>
-            {/* Report Selector - Dynamic tabs based on discovered node types */}
-            <div className="mb-3">
-                <div className="btn-group" role="group" style={{ flexWrap: 'wrap' }}>
-                    {/* Always show "All Results" first */}
-                    <button
-                        key="search"
-                        className="btn btn-sm"
-                        onClick={()=>{ setActiveReport('search'); setCurrentPage(1); }}
-                        style={{ color: activeReport==='search' ? '#fff' : '#004B87', backgroundColor: activeReport==='search'? '#004B87':'#f0f4f8', borderColor:'#004B87', fontWeight:600, fontSize:13 }}
-                    >All Results</button>
-
-                    {/* Relationships tab */}
-                    <button
-                        key="relationships"
-                        className="btn btn-sm"
-                        onClick={()=>{ setActiveReport('relationships'); setCurrentPage(1); }}
-                        style={{ color: activeReport==='relationships' ? '#fff' : '#0a8276', backgroundColor: activeReport==='relationships' ? '#0a8276' : '#e8f4f3', borderColor:'#0a8276', fontWeight:600, fontSize:13 }}
-                    >⟷ Relationships {relationshipRows.length > 0 && <span style={{marginLeft:4,background:'rgba(255,255,255,0.25)',borderRadius:10,padding:'1px 6px',fontSize:11}}>{relationshipRows.length}</span>}</button>
-                    
-                    {/* Dynamic type filters */}
-                    {availableTypes.map(type => (
-                        <button
-                            key={type}
-                            className="btn btn-sm"
-                            onClick={()=>{ setActiveReport(type); setCurrentPage(1); }}
-                            style={{ color: activeReport===type ? '#fff' : '#004B87', backgroundColor: activeReport===type? '#004B87':'#f0f4f8', borderColor:'#004B87', fontWeight:600, fontSize:13 }}
-                        >{type}</button>
-                    ))}
-                </div>
-            </div>
-
-            {loading && (
-                <div className="text-center mb-3"><div className="spinner-border" role="status"><span className="sr-only">Loading...</span></div></div>
-            )}
-
-            {/* Column Selector */}
-            {headersAll.length>0 && (
-                <div className="mb-3">
-                    <div className="dropdown" style={{ position:'relative' }}>
-                        <button
-                            className="btn btn-sm dropdown-toggle"
-                            type="button"
-                            onClick={()=>setShowColumnSelector(s=>!s)}
-                            style={{
-                                backgroundColor:'#0a8276',
-                                color:'#fff',
-                                fontWeight:600,
-                                border:'1px solid #0a8276',
-                                padding:'6px 12px',
-                                boxShadow:'0 2px 4px rgba(0,0,0,0.15)'
-                            }}
-                        >
-                            <i className="fas fa-cog me-1"></i> Columns ({headersVis.length}/{headersAll.length})
-                        </button>
-                        {showColumnSelector && (
-                            <div className="dropdown-menu show p-3" style={{ minWidth:300, maxHeight:400, overflowY:'auto', background:'#0a8276', color:'#fff', border:'1px solid #0a8276', position:'absolute', top:'100%', left:0, zIndex:2000, boxShadow:'0 4px 12px rgba(0,0,0,0.25)' }}>
-                                <div className="d-flex justify-content-between mb-2">
-                                    <button 
-                                      className="btn btn-sm"
-                                      onClick={()=>showAllColumns(headersAll)}
-                                      style={{
-                                        background:'#0a8276',
-                                        color:'#fff',
-                                        fontSize:12,
-                                        padding:'4px 10px',
-                                        border:'1px solid #fff',
-                                        fontWeight:600
-                                      }}
-                                    >Show All</button>
-                                    <button 
-                                      className="btn btn-sm"
-                                      onClick={()=>hideAllColumns(headersAll)}
-                                      style={{
-                                        background:'#0a8276',
-                                        color:'#fff',
-                                        fontSize:12,
-                                        padding:'4px 10px',
-                                        border:'1px solid #fff',
-                                        fontWeight:600
-                                      }}
-                                    >Hide All</button>
-                                </div>
-                                <hr className="my-2" />
-                                {headersAll.map(h => (
-                                    <div key={h} className="form-check" style={{marginBottom:4}}>
-                                        <input 
-                                          className="form-check-input" 
-                                          type="checkbox" 
-                                          id={`col-${h}`} 
-                                          checked={visibleColumns[h] !== false} 
-                                          onChange={()=>toggleColumn(h)} 
-                                          style={{cursor:'pointer'}}
-                                        />
-                                        <label 
-                                          className="form-check-label" 
-                                          htmlFor={`col-${h}`}
-                                          style={{color:'#fff', fontSize:12}}
-                                        >{h.replace(/_/g,' ').toUpperCase()}</label>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Filters (search only) */}
-            {activeReport==='search' && headersVis.length>0 && (
-                <div className="mb-3 p-3" style={{ background:'#F5F5F5', borderRadius:6 }}>
-                    <div className="row g-2 align-items-center">
-                        <div className="col-auto"><strong>Filters:</strong></div>
-                        {headersVis.slice(0,4).map(h => (
-                            <div key={h} className="col-auto">
-                                <select
-                                    className="form-select form-select-sm"
-                                    value={filters[h]||''}
-                                    onChange={e=>handleFilterChange(h,e.target.value)}
-                                    style={{ minWidth:150 }}
-                                >
-                                    <option value="">Filter {h.replace(/_/g,' ')}</option>
-                                    {getDistinctValues(reportData,h).map(v => <option key={v} value={v}>{v.length>30? v.slice(0,30)+'…': v}</option>)}
-                                </select>
-                            </div>
-                        ))}
-                        <div className="col-auto">
-                            <button
-                                className="btn btn-outline-secondary btn-sm"
-                                onClick={clearFilters}
-                                disabled={!Object.keys(filters).length}
-                                style={{ color:'#333', background:'#f0f4f8', borderColor:'#6C757D', fontWeight:600, opacity:!Object.keys(filters).length?0.6:1 }}
-                            >Clear Filters</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Data Table */}
-            {activeReport === 'relationships' ? (
-                /* ─── Relationships Panel ─────────────────────────── */
-                <div style={{ border:'1px solid #ddd', borderRadius:6, overflow:'auto', height:'calc(100% - 100px)', minHeight:400, background:'#fff' }}>
-                    {/* Summary strip */}
-                    {relTypesSummary.length > 0 && (
-                        <div style={{ display:'flex', flexWrap:'wrap', gap:6, padding:'8px 12px', background:'#e8f4f3', borderBottom:'1px solid #cde6e3' }}>
-                            {relTypesSummary.map(({ type, count }) => (
-                                <button
-                                    key={type}
-                                    onClick={() => setRelTypeFilter(relTypeFilter === type ? '' : type)}
-                                    style={{
-                                        padding:'2px 10px', borderRadius:12, fontSize:12, fontWeight:600, cursor:'pointer',
-                                        background: relTypeFilter === type ? '#0a8276' : '#fff',
-                                        color:       relTypeFilter === type ? '#fff'    : '#0a8276',
-                                        border:'1.5px solid #0a8276'
-                                    }}
-                                >{type} <span style={{ fontWeight:400, opacity:0.85 }}>({count})</span></button>
-                            ))}
-                            {relTypeFilter && (
-                                <button onClick={() => setRelTypeFilter('')}
-                                    style={{ padding:'2px 8px', borderRadius:12, fontSize:12, background:'#fff3cd', color:'#856404', border:'1.5px solid #ffc107', fontWeight:600, cursor:'pointer' }}>
-                                    ✕ Clear filter
-                                </button>
-                            )}
-                        </div>
-                    )}
-                    {/* Search bar */}
-                    <div style={{ padding:'6px 12px', borderBottom:'1px solid #e5e5e5', display:'flex', gap:8, alignItems:'center' }}>
-                        <input
-                            type="text"
-                            placeholder="Search source, target, or relationship type…"
-                            value={relSearchTerm}
-                            onChange={e => setRelSearchTerm(e.target.value)}
-                            style={{ flex:1, padding:'4px 10px', border:'1px solid #ccc', borderRadius:4, fontSize:13 }}
-                        />
-                        {relSearchTerm && (
-                            <button onClick={() => setRelSearchTerm('')}
-                                style={{ padding:'4px 8px', borderRadius:4, fontSize:12, background:'#f0f4f8', border:'1px solid #ccc', cursor:'pointer' }}>✕</button>
-                        )}
-                        <span style={{ color:'#666', fontSize:12, whiteSpace:'nowrap' }}>
-                            {filteredRelRows.length} row{filteredRelRows.length !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-                    {/* Table */}
-                    {relPageRows.length === 0 ? (
-                        <div className="text-center p-4">
-                            <p className="text-muted">{relationshipRows.length === 0 ? 'No graph data loaded yet. Perform a search or load a graph first.' : 'No relationships match the current filter.'}</p>
-                        </div>
-                    ) : (
-                        <table className="table table-striped table-hover mb-0">
-                            <thead className="sticky-top bg-light">
-                                <tr>
-                                    <th style={{ fontWeight:'bold', borderBottom:'2px solid #0a8276', minWidth:160 }}>RELATIONSHIP TYPE</th>
-                                    <th style={{ fontWeight:'bold', borderBottom:'2px solid #0a8276', minWidth:180 }}>SOURCE</th>
-                                    <th style={{ fontWeight:'bold', borderBottom:'2px solid #0a8276', minWidth:180 }}>TARGET</th>
-                                    <th style={{ fontWeight:'bold', borderBottom:'2px solid #0a8276', minWidth:60, textAlign:'right' }}>COUNT</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {relPageRows.map((r, i) => (
-                                    <tr key={i}>
-                                        <td><span style={{ background:'#e8f4f3', color:'#0a5952', padding:'2px 8px', borderRadius:10, fontSize:12, fontWeight:600 }}>{r.relationship_type}</span></td>
-                                        <td style={{ maxWidth:220 }}><div title={r.source} style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.source}</div></td>
-                                        <td style={{ maxWidth:220 }}><div title={r.target} style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.target}</div></td>
-                                        <td style={{ textAlign:'right', color:'#555' }}>{r.count}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                    {/* Rel pagination */}
-                    {relTotalPages > 1 && (
-                        <div style={{ padding:'8px 12px', borderTop:'1px solid #e5e5e5', display:'flex', alignItems:'center', justifyContent:'space-between', background:'#fafafa' }}>
-                            <span style={{ fontSize:12, color:'#666' }}>
-                                Page {relPage} of {relTotalPages} ({filteredRelRows.length} rows)
-                            </span>
-                            <nav><ul className="pagination pagination-sm mb-0">
-                                <li className={`page-item ${relPage===1?'disabled':''}`}><button className="page-link" onClick={()=>setRelPage(1)} disabled={relPage===1}>First</button></li>
-                                <li className={`page-item ${relPage===1?'disabled':''}`}><button className="page-link" onClick={()=>setRelPage(p=>p-1)} disabled={relPage===1}>Prev</button></li>
-                                <li className={`page-item ${relPage===relTotalPages?'disabled':''}`}><button className="page-link" onClick={()=>setRelPage(p=>p+1)} disabled={relPage===relTotalPages}>Next</button></li>
-                                <li className={`page-item ${relPage===relTotalPages?'disabled':''}`}><button className="page-link" onClick={()=>setRelPage(relTotalPages)} disabled={relPage===relTotalPages}>Last</button></li>
-                            </ul></nav>
-                            {/* CSV export for relationships */}
-                            <button
-                                className="btn btn-sm"
-                                style={{ color:'#0a8276', background:'#e8f4f3', border:'1px solid #0a8276', fontWeight:600, fontSize:12 }}
-                                onClick={() => {
-                                    const csv = ['RELATIONSHIP_TYPE,SOURCE,TARGET,COUNT', ...filteredRelRows.map(r => `${JSON.stringify(r.relationship_type)},${JSON.stringify(r.source)},${JSON.stringify(r.target)},${r.count}`)].join('\n');
-                                    const blob = new Blob([csv], { type:'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `relationships_${new Date().toISOString().split('T')[0]}.csv`; a.click();
-                                }}
-                            >Export CSV</button>
-                        </div>
-                    )}
-                </div>
-            ) : (
-            /* ─── Nodes Table (existing) ───────────────────────── */
-            <div style={{ border:'1px solid #ddd', borderRadius:6, overflow:'auto', height:'calc(100% - 140px)', minHeight:400, background:'#fff' }}>
-                {displayData.length===0 ? (
-                    <div className="text-center p-4">
-                        <p className="text-muted">
-                            {activeReport==='search' 
-                                ? (Object.keys(filters).length? 'No data matches current filters.' : 'No search results to display.')
-                                : `No ${activeReport} found.`
-                            }
-                        </p>
-                    </div>
-                ) : (
-                    <table className="table table-striped table-hover mb-0">
-                        <thead className="sticky-top bg-light">
-                            <tr>
-                                {headersVis.map(h => (
-                                    <th
-                                        key={h}
-                                        style={{ minWidth:120, fontWeight:'bold', borderBottom:'2px solid #0066B3', cursor: activeReport==='search' ? 'pointer':'default', userSelect:'none' }}
-                                        onClick={() => { if(activeReport==='search') handleSort(h); }}
-                                    >
-                                        <div className="d-flex align-items-center justify-content-between">
-                                            <span>{h.replace(/_/g,' ').toUpperCase()}</span>
-                                            {activeReport==='search' && (
-                                                <span style={{ marginLeft:5, fontSize:12 }}>{sortColumn===h ? (sortDirection==='asc' ? '↑':'↓') : '↕'}</span>
-                                            )}
-                                        </div>
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {displayData.map((row,i) => (
-                                <tr key={i}>
-                                    {headersVis.map(h => (
-                                        <td key={h} style={{ maxWidth:200 }}>
-                                            <div title={row[h] == null ? undefined : String(row[h])} style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{formatCellValue(row[h])}</div>
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
-            </div>
-            )} {/* end ternary: relationships vs nodes table */}
-
-            {/* Pagination & Export — only for node tabs */}
-            {activeReport !== 'relationships' && (
-            <div className="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div className="d-flex align-items-center">
-                    {activeReport==='search' && filteredData.length>0 && (
-                        <span className="me-3">Showing {Math.min(startIndex+1, filteredData.length)} to {endIndex} of {filteredData.length} entries</span>
-                    )}
-                    {activeReport!=='search' && isSearchDerived && totalItems>0 && (
-                        <span className="me-3">Showing {Math.min(startIndex+1,totalItems)} to {endIndex} of {totalItems} entries</span>
-                    )}
-                    {activeReport==='search' && (
-                        <div className="d-flex align-items-center">
-                            <label className="me-2">Items per page:</label>
-                            <select className="form-select form-select-sm" style={{ width:'auto' }} value={itemsPerPage} onChange={e=>handleItemsPerPageChange(parseInt(e.target.value))}>
-                                {[10,25,50,100].map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                        </div>
-                    )}
-                </div>
-                {activeReport==='search' && totalPages>1 && (
-                    <nav>
-                        <ul className="pagination pagination-sm mb-0">
-                            <li className={`page-item ${currentPage===1?'disabled':''}`}><button className="page-link" onClick={()=>handlePageChange(1)} disabled={currentPage===1}>First</button></li>
-                            <li className={`page-item ${currentPage===1?'disabled':''}`}><button className="page-link" onClick={()=>handlePageChange(currentPage-1)} disabled={currentPage===1}>Prev</button></li>
-                            {(() => { const pages=[]; const start=Math.max(1,currentPage-2); const end=Math.min(totalPages,currentPage+2); for(let p=start;p<=end;p++){ pages.push(<li key={p} className={`page-item ${currentPage===p?'active':''}`}><button className="page-link" onClick={()=>handlePageChange(p)}>{p}</button></li>);} return pages; })()}
-                            <li className={`page-item ${currentPage===totalPages?'disabled':''}`}><button className="page-link" onClick={()=>handlePageChange(currentPage+1)} disabled={currentPage===totalPages}>Next</button></li>
-                            <li className={`page-item ${currentPage===totalPages?'disabled':''}`}><button className="page-link" onClick={()=>handlePageChange(totalPages)} disabled={currentPage===totalPages}>Last</button></li>
-                        </ul>
-                    </nav>
-                )}
-                {displayData.length>0 && (
-                    <div className="d-flex gap-2">
-                        <button
-                            className="btn btn-sm"
-                            style={{color:'#333', background:'#f0f4f8', border:'1px solid #6C757D', fontWeight:600}}
-                            onClick={()=>{
-                                const exportData = isSearchDerived ? filteredData : reportData;
-                                const csv = [visibleHeaders(getHeaders(isSearchDerived?filteredData:reportData)).join(','), ...exportData.map(r => visibleHeaders(getHeaders(isSearchDerived?filteredData:reportData)).map(h=>JSON.stringify(r[h]||'')).join(','))].join('\n');
-                                const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${activeReport}_all_${new Date().toISOString().split('T')[0]}.csv`; a.click();
-                            }}
-                        >Export CSV (All)</button>
-                        {activeReport==='search' && (
-                            <button
-                                className="btn btn-sm"
-                                style={{color:'#004B87', background:'#e8f4fd', border:'1px solid #004B87', fontWeight:600}}
-                                onClick={()=>{
-                                    const csv=[headersVis.join(','), ...displayData.map(r => headersVis.map(h=>JSON.stringify(r[h]||'')).join(','))].join('\n');
-                                    const blob=new Blob([csv],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`${activeReport}_page_${currentPage}_${new Date().toISOString().split('T')[0]}.csv`; a.click();
-                                }}
-                            >Export Current Page</button>
-                        )}
-                    </div>
-                )}
-            </div>
-            )} {/* end activeReport !== 'relationships' */}
-        </div>
-    );
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const RELATIONSHIP_PAGE_SIZE = 25;
+const RELATIONSHIP_EXPORT_HEADERS = ['relationship_type', 'source', 'target', 'count'];
+const DEFAULT_VISIBLE_COLUMNS = [
+  'entity_type',
+  'name',
+  'title',
+  'type',
+  'id',
+  'part_name',
+  'source_tag',
+  'ref_type',
+];
+const REPORT_PRESETS = {
+  overview: ['entity_type', 'name', 'title', 'type', 'id', 'source_tag'],
+  governance: ['entity_type', 'name', 'type', 'source_tag', 'ref_type', 'id'],
+  lineage: ['name', 'id', 'import_id', 'source_tag', 'ref_type', 'title'],
 };
 
-export default ReportsTab;
+const REPORT_COLORS = {
+  primary: '#005a9c',
+  primarySoft: '#e8f1fc',
+  accent: '#1f6f8b',
+  accentSoft: '#e8f4f3',
+  warn: '#6b4e00',
+  warnSoft: '#fff8e1',
+  warnBorder: '#c49a00',
+  neutral: '#33506b',
+};
 
+const stripUnwanted = (rows) =>
+  rows.map((row) => {
+    const next = { ...row };
+    NOISY_COLUMNS.forEach((key) => delete next[key]);
+    return next;
+  });
+
+const formatCellValue = (value) => {
+  if (value == null) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+const formatHeaderLabel = (header) => {
+  const labels = {
+    entity_type: 'Entity',
+    source_tag: 'Source',
+    ref_type: 'Reference Type',
+    partnumber: 'Part Number',
+    relationship_type: 'Relationship Type',
+  };
+  return labels[header] || header.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const buildPresetVisibility = (headers, presetId) => {
+  const preferred = REPORT_PRESETS[presetId] || DEFAULT_VISIBLE_COLUMNS;
+  const preferredSet = new Set(preferred);
+  const visible = {};
+  headers.forEach((header) => {
+    visible[header] = preferredSet.has(header);
+  });
+  if (!Object.values(visible).some(Boolean)) {
+    headers.slice(0, 6).forEach((header) => {
+      visible[header] = true;
+    });
+  }
+  return visible;
+};
+
+export const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+const downloadCsv = (filename, headers, rows) => {
+  const csv = [
+    headers.map(escapeCsv).join(','),
+    ...rows.map((row) => headers.map((header) => escapeCsv(row[header])).join(',')),
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+const normalizeReportNode = (item = {}) => {
+  const node = item?.n || item?.node || item;
+  const props = node?.properties || item?.properties || {};
+  const labels = node?.labels || item?.node_labels || item?.labels || [];
+  const type = Array.isArray(labels) ? labels.join(', ') : String(labels || item?.type || node?.label || '');
+  return {
+    elementId: node?.elementId || node?.element_id || node?.id || item?.elementId || item?.element_id,
+    type,
+    ...props,
+    ...Object.fromEntries(Object.entries(item || {}).filter(([key]) => !['n', 'node', 'properties', 'labels', 'node_labels'].includes(key))),
+    name: props.name || node?.name || item?.name || props.label || node?.label || item?.label,
+    label: props.label || node?.label || item?.label,
+  };
+};
+
+const processSearchResults = (results) => {
+  if (!Array.isArray(results)) return [];
+  return stripUnwanted(results.map(normalizeReportNode));
+};
+
+const getHeaders = (rows) => {
+  if (!rows.length) return [];
+
+  const headerSet = new Set();
+  rows.forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      if (!NOISY_COLUMNS.has(key)) {
+        headerSet.add(key);
+      }
+    });
+  });
+
+  const headers = Array.from(headerSet);
+  headers.sort((left, right) => {
+    const leftPriority = PRIORITY_COLUMNS.indexOf(left);
+    const rightPriority = PRIORITY_COLUMNS.indexOf(right);
+
+    if (leftPriority !== -1 || rightPriority !== -1) {
+      if (leftPriority === -1) return 1;
+      if (rightPriority === -1) return -1;
+      return leftPriority - rightPriority;
+    }
+
+    return left.localeCompare(right);
+  });
+
+  return headers;
+};
+
+const discoverTypes = (rows) => {
+  const types = new Map();
+  rows.forEach((row) => {
+    const firstType = getPrimaryType(row);
+    if (!firstType) return;
+    types.set(firstType, (types.get(firstType) || 0) + 1);
+  });
+  return Array.from(types.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([type, count]) => ({ type, count }));
+};
+
+const getPrimaryType = (row) => {
+  if (!row) return '';
+
+  const rawType = row.type;
+  if (Array.isArray(rawType)) {
+    const first = rawType.map((value) => String(value || '').trim()).find(Boolean);
+    if (first) return first;
+  }
+  if (typeof rawType === 'string') {
+    const first = rawType
+      .split(',')
+      .map((value) => value.trim())
+      .find(Boolean);
+    if (first) return first;
+  }
+  if (typeof rawType === 'number' || typeof rawType === 'boolean') {
+    return String(rawType);
+  }
+
+  const label = row.label;
+  if (Array.isArray(label)) {
+    const first = label.map((value) => String(value || '').trim()).find(Boolean);
+    if (first) return first;
+  }
+  if (typeof label === 'string' && label.trim()) return label.trim();
+
+  const fallback = row.entity_type || row.node_type || row.class_name || row.ontology_class || row.name;
+  return fallback == null ? '' : String(fallback).trim();
+};
+
+const buildRelationshipRows = (graphData) => {
+  const links = graphData?.links || graphData?.edges || [];
+  const nodes = graphData?.nodes || [];
+  if (!links.length) return [];
+
+  const nodeMap = new Map();
+  nodes.forEach((node) => {
+    const id = node.elementId || node.id;
+    if (id) {
+      nodeMap.set(String(id), node.name || node.label || node.uri || String(id));
+    }
+  });
+
+  const resolveNodeName = (ref) => {
+    if (!ref) return '';
+    if (typeof ref === 'object') {
+      const id = ref.elementId || ref.id;
+      return nodeMap.get(String(id)) || ref.name || ref.label || String(id);
+    }
+    return nodeMap.get(String(ref)) || String(ref);
+  };
+
+  const rows = new Map();
+  links.forEach((link) => {
+    const relationshipType = link.type || link.label || 'RELATED';
+    const source = resolveNodeName(link.source);
+    const target = resolveNodeName(link.target);
+    const key = `${relationshipType}||${source}||${target}`;
+
+    if (!rows.has(key)) {
+      rows.set(key, { relationship_type: relationshipType, source, target, count: 1 });
+    } else {
+      rows.get(key).count += 1;
+    }
+  });
+
+  return Array.from(rows.values()).sort(
+    (a, b) =>
+      a.relationship_type.localeCompare(b.relationship_type) ||
+      a.source.localeCompare(b.source) ||
+      a.target.localeCompare(b.target)
+  );
+};
+
+const getDistinctValues = (rows, key) => {
+  const values = new Set();
+  rows.forEach((row) => {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+      values.add(String(row[key]));
+    }
+  });
+  return Array.from(values).sort();
+};
+
+const pageSlice = (rows, page, pageSize) => {
+  const start = (page - 1) * pageSize;
+  return rows.slice(start, start + pageSize);
+};
+
+const buildNodeReportRows = (graphData, searchResults) => {
+  const fromSearch = processSearchResults(searchResults);
+  if (fromSearch.length > 0) return fromSearch;
+
+  const graphNodes = graphData?.nodes || [];
+  const rows = stripUnwanted(
+    graphNodes.map((node) => ({
+      elementId: node.elementId || node.id,
+      type: Array.isArray(node.labels) ? node.labels.join(', ') : (node.label || ''),
+      ...(node.properties || {}),
+      name: node.name || node.properties?.name || node.label || node.properties?.label,
+      label: node.label || node.properties?.label,
+    }))
+  );
+
+  const ontologyTypes = new Set(['OntologyClass', 'ObjectProperty', 'DatatypeProperty']);
+  const businessRows = rows.filter((row) => {
+    const primaryType = getPrimaryType(row);
+    const name = String(row.name || row.title || row.code || row.id || '').trim();
+    if (ontologyTypes.has(primaryType)) return false;
+    if (!name) return false;
+    return !/^id[\w:-]*$/i.test(name);
+  });
+
+  return businessRows.length > 0 ? businessRows : rows;
+};
+
+const ReportsTab = ({ searchResults, graphData }) => {
+  const { ontologies } = useOntologies();
+  const [activeReport, setActiveReport] = useState('search');
+  const [filters, setFilters] = useState({});
+  const [sortColumn, setSortColumn] = useState('');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [visibleColumns, setVisibleColumns] = useState({});
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [reportPreset, setReportPreset] = useState('overview');
+  const [relTypeFilter, setRelTypeFilter] = useState('');
+  const [relSearchTerm, setRelSearchTerm] = useState('');
+  const [relPage, setRelPage] = useState(1);
+  const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState('');
+  const [selectedXsdOntology, setSelectedXsdOntology] = useState('');
+  const [reportOntology, setReportOntology] = useState('');
+  const [fullMetrics, setFullMetrics] = useState(null);
+  const [fullMetricsError, setFullMetricsError] = useState('');
+  const [xsdReport, setXsdReport] = useState(null);
+  const [xsdReportLoading, setXsdReportLoading] = useState(false);
+  const [xsdReportError, setXsdReportError] = useState('');
+  const [pipelineTelemetry, setPipelineTelemetry] = useState(null);
+  const [pipelineTelemetryError, setPipelineTelemetryError] = useState('');
+  const [telemetryRevision, setTelemetryRevision] = useState(0);
+  const [contentRevision, setContentRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => { setFallbackGraphData({ nodes: [], links: [] }); setXsdReport(null); setPipelineTelemetry(null); setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); };
+    const timer = window.setInterval(() => { if (!document.hidden) setTelemetryRevision(value => value + 1); }, 15000);
+    window.addEventListener('depo:credentials-changed', refresh);
+    window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:ontologies-changed', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('depo:credentials-changed', refresh);
+      window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:ontologies-changed', refresh);
+    };
+  }, []);
+
+  const reportPrefix = ontologies.find(row => (row.ontology_id || row.id) === reportOntology)?.prefix || '';
+  useEffect(() => {
+    const controller = new AbortController();
+    setFullMetrics(null); setFullMetricsError('');
+    (async () => {
+      try {
+        const response = await graphApi.getMetrics(reportOntology, controller.signal, reportPrefix);
+        const value = response?.data?.data || response?.data;
+        if (controller.signal.aborted) return;
+        if (value?.scope?.sampled !== false || value?.scope?.type !== 'published_rdf_projection' ||
+            (value.scope.ontology_id || '') !== reportOntology) throw new Error('Graph service returned an incompatible metrics scope.');
+        setFullMetrics(value);
+      } catch (error) {
+        if (!controller.signal.aborted) setFullMetricsError(apiErrorMessage(error, 'Full graph totals are unavailable.'));
+      }
+    })();
+    return () => controller.abort();
+  }, [reportOntology, reportPrefix, contentRevision]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    dataPipelineAPI.telemetry({ signal: controller.signal })
+      .then((response) => { if (!cancelled) { setPipelineTelemetry(response?.data || null); setPipelineTelemetryError(''); } })
+      .catch((error) => {
+        if (!cancelled && !controller.signal.aborted) {
+          setPipelineTelemetry(null);
+          setPipelineTelemetryError(apiErrorMessage(error, 'Pipeline telemetry is unavailable.'));
+        }
+      });
+    return () => { cancelled = true; controller.abort(); };
+  }, [telemetryRevision]);
+
+  useEffect(() => {
+    if (!selectedXsdOntology && ontologies?.length) {
+      const preferred = ontologies.find(ontology => ontology.engineering_artifacts?.structural_model || ontology.type === 'xsd') || ontologies[0];
+      setSelectedXsdOntology(preferred.ontology_id || preferred.value || preferred.prefix || '');
+    }
+  }, [ontologies, selectedXsdOntology]);
+
+  useEffect(() => {
+    if (activeReport !== 'xsd-relational' || !selectedXsdOntology) return undefined;
+    let cancelled = false;
+    const controller = new AbortController();
+    setXsdReport(null);
+    setXsdReportLoading(true);
+    setXsdReportError('');
+    apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology }, signal: controller.signal })
+      .then((response) => { if (!cancelled) setXsdReport(response.data || null); })
+      .catch((error) => { if (!cancelled && !controller.signal.aborted) setXsdReportError(apiErrorMessage(error, 'XSD relational report failed.')); })
+      .finally(() => { if (!cancelled) setXsdReportLoading(false); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [activeReport, selectedXsdOntology, contentRevision]);
+
+  const effectiveGraphData = useMemo(() => {
+    return fallbackGraphData;
+  }, [fallbackGraphData]);
+
+  useEffect(() => {
+    const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
+    // Fetch the selected scope independently of the current graph canvas.
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const loadGraph = async () => {
+      setGraphLoading(true);
+      setGraphError('');
+      setFallbackGraphData({ nodes: [], links: [] });
+      try {
+        const response = reportOntology
+          ? await graphApi.getOntologyGraph(reportOntology, 1200, controller.signal)
+          : await graphApi.getOverview(1200, controller.signal);
+        const normalized = normalizeGraphDatasetShared(response.data);
+        if (!cancelled) setFallbackGraphData(normalized);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (!cancelled) setGraphError(apiErrorMessage(error, 'Failed to load graph data for reports.'));
+      } finally {
+        if (!cancelled) setGraphLoading(false);
+      }
+    };
+
+    loadGraph();
+    return () => { cancelled = true; controller.abort(); };
+  }, [reportOntology, contentRevision]);
+
+  const ontologyRows = useMemo(() => (ontologies || []).map((ontology) => ({
+    ontology: ontology.label || ontology.ontology_id || ontology.prefix,
+    prefix: ontology.prefix || ontology.ontology_prefix || '',
+    ontology_id: ontology.ontology_id || ontology.value || '',
+    status: ontology.status || '',
+    availability: ontology.graph_available === false ? 'registered only' : (ontology.availability || 'available'),
+    type: ontology.type || '',
+    namespace: ontology.namespace || ontology.target_namespace || ontology.source_namespace || '',
+    nodes: ontology.node_count ?? '—',
+    relationships: ontology.relationship_count ?? '—',
+  })), [ontologies]);
+
+  const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, []), [effectiveGraphData, searchResults, reportOntology]);
+  const baseNodeHeaders = useMemo(() => getHeaders(processedResults), [processedResults]);
+  const discoveredTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
+  const [stableAvailableTypes, setStableAvailableTypes] = useState([]);
+  useEffect(() => {
+    setStableAvailableTypes(discoveredTypes);
+  }, [discoveredTypes]);
+  const availableTypes = stableAvailableTypes.length > 0 ? stableAvailableTypes : discoveredTypes;
+  const relationshipRows = useMemo(() => buildRelationshipRows(effectiveGraphData), [effectiveGraphData]);
+
+  const relTypesSummary = useMemo(() => {
+    const counts = new Map();
+    relationshipRows.forEach((row) => {
+      counts.set(row.relationship_type, (counts.get(row.relationship_type) || 0) + row.count);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([type, count]) => ({ type, count }));
+  }, [relationshipRows]);
+
+  const nodeRows = useMemo(() => {
+    if (activeReport === 'ontologies') return reportOntology ? ontologyRows.filter(row => row.ontology_id === reportOntology) : ontologyRows;
+    if (activeReport === 'search') return processedResults;
+    return processedResults.filter((row) => getPrimaryType(row) === activeReport);
+  }, [activeReport, ontologyRows, processedResults, reportOntology]);
+
+  const relationshipScopeLabel = useMemo(() => {
+    const graphNodeCount = (effectiveGraphData?.nodes || []).length;
+    return graphNodeCount > 0
+      ? `Node and relationship rows use the selected bounded report projection (${graphNodeCount} visible nodes); search results do not filter this report.`
+      : 'No graph projection is available for this report scope.';
+  }, [effectiveGraphData]);
+
+  const filterableHeaders = useMemo(() => {
+    const headers = getHeaders(nodeRows);
+    return headers.filter((header) => {
+      if (NOISY_COLUMNS.has(header)) return false;
+      const values = getDistinctValues(nodeRows, header);
+      if (values.length <= 1 || values.length > 20) return false;
+      const avgLength =
+        values.reduce((sum, value) => sum + value.length, 0) / Math.max(values.length, 1);
+      return avgLength <= 40;
+    }).slice(0, 4);
+  }, [nodeRows]);
+
+  const filteredNodeRows = useMemo(() => {
+    const filtered = nodeRows.filter((row) =>
+      Object.entries(filters).every(([key, value]) => !value || String(row[key]) === value)
+    );
+
+    if (!sortColumn) return filtered;
+
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    return [...filtered].sort((left, right) => {
+      const leftValue = formatCellValue(left[sortColumn]).toLowerCase();
+      const rightValue = formatCellValue(right[sortColumn]).toLowerCase();
+      if (leftValue === rightValue) return 0;
+      return leftValue > rightValue ? direction : -direction;
+    });
+  }, [filters, nodeRows, sortColumn, sortDirection]);
+
+  const nodeHeaders = useMemo(() => getHeaders(filteredNodeRows), [filteredNodeRows]);
+  const visibleHeaders = useMemo(
+    () => nodeHeaders.filter((header) => visibleColumns[header] !== false),
+    [nodeHeaders, visibleColumns]
+  );
+
+  const pagedNodeRows = useMemo(
+    () => pageSlice(filteredNodeRows, currentPage, itemsPerPage),
+    [filteredNodeRows, currentPage, itemsPerPage]
+  );
+
+  const filteredRelationshipRows = useMemo(() => {
+    let rows = relationshipRows;
+
+    if (relTypeFilter) {
+      rows = rows.filter((row) => row.relationship_type === relTypeFilter);
+    }
+
+    if (relSearchTerm) {
+      const query = relSearchTerm.toLowerCase();
+      rows = rows.filter(
+        (row) =>
+          row.relationship_type.toLowerCase().includes(query) ||
+          row.source.toLowerCase().includes(query) ||
+          row.target.toLowerCase().includes(query)
+      );
+    }
+
+    return rows;
+  }, [relationshipRows, relSearchTerm, relTypeFilter]);
+
+  const pagedRelationshipRows = useMemo(
+    () => pageSlice(filteredRelationshipRows, relPage, RELATIONSHIP_PAGE_SIZE),
+    [filteredRelationshipRows, relPage]
+  );
+
+  const totalNodePages = Math.max(1, Math.ceil(filteredNodeRows.length / itemsPerPage));
+  const totalRelationshipPages = Math.max(
+    1,
+    Math.ceil(filteredRelationshipRows.length / RELATIONSHIP_PAGE_SIZE)
+  );
+
+  useEffect(() => {
+    if (activeReport !== 'search' && activeReport !== 'ontologies' && activeReport !== 'relationships') {
+      const hasType = availableTypes.some(({ type }) => type === activeReport);
+      if (!hasType) setActiveReport('search');
+    }
+  }, [activeReport, availableTypes]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeReport, itemsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(Math.max(page, 1), totalNodePages));
+  }, [totalNodePages]);
+
+  useEffect(() => {
+    setRelPage((page) => Math.min(Math.max(page, 1), totalRelationshipPages));
+  }, [totalRelationshipPages]);
+
+  useEffect(() => {
+    setVisibleColumns((previous) => {
+      const headers = baseNodeHeaders.length ? baseNodeHeaders : getHeaders(nodeRows);
+      if (!headers.length) return previous;
+
+      const next = { ...previous };
+      headers.forEach((header) => {
+        if (!Object.prototype.hasOwnProperty.call(next, header)) {
+          next[header] = DEFAULT_VISIBLE_COLUMNS.includes(header);
+        }
+      });
+      return next;
+    });
+  }, [baseNodeHeaders, nodeRows]);
+
+  const clearFilters = () => setFilters({});
+
+  const applyReportPreset = (presetId) => {
+    setReportPreset(presetId);
+    setFilters({});
+    setShowColumnSelector(false);
+    if (presetId === 'traceability') {
+      setActiveReport('relationships');
+      return;
+    }
+    if (presetId === 'governance') {
+      setActiveReport('ontologies');
+      setVisibleColumns({});
+      return;
+    }
+    setActiveReport('search');
+    setVisibleColumns(buildPresetVisibility(baseNodeHeaders, presetId));
+  };
+
+  const handleFilterChange = (header, value) => {
+    setFilters((previous) => {
+      const next = { ...previous };
+      if (!value) {
+        delete next[header];
+      } else {
+        next[header] = value;
+      }
+      return next;
+    });
+  };
+
+  const handleSort = (header) => {
+    if (activeReport !== 'search') return;
+    setSortDirection((previous) =>
+      sortColumn === header && previous === 'asc' ? 'desc' : 'asc'
+    );
+    setSortColumn(header);
+  };
+
+  const toggleColumn = (header) => {
+    setVisibleColumns((previous) => ({
+      ...previous,
+      [header]: previous[header] === false,
+    }));
+  };
+
+  const setAllColumnsVisible = (visible) => {
+    setVisibleColumns((previous) => {
+      const next = { ...previous };
+      nodeHeaders.forEach((header) => {
+        next[header] = visible;
+      });
+      return next;
+    });
+  };
+
+  const nodeSummaryLabel =
+    activeReport === 'search'
+      ? `${filteredNodeRows.length} rows`
+      : `${filteredNodeRows.length} items`;
+
+  const nodeStart = filteredNodeRows.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const nodeEnd = Math.min(currentPage * itemsPerPage, filteredNodeRows.length);
+
+  return (
+    <div style={{ minHeight: '100%', padding: '8px 0 0' }}>
+      <label>Report ontology <select aria-label="Report ontology" value={reportOntology} onChange={event => { setReportOntology(event.target.value); setCurrentPage(1); setFilters({}); }}>
+        <option value="">All ontologies</option>
+        {ontologies.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label || ontology.prefix}</option>)}
+      </select></label>
+      <button type="button" onClick={() => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); }}>Refresh reports</button>
+      <p>Graph reports use a bounded service projection (up to 1,200 nodes); they are not full warehouse totals. Pipeline/job telemetry remains system-wide.</p>
+      <OntologyOslcReport ontologyId={reportOntology} revision={contentRevision} />
+      <section aria-label="Full graph totals">
+        <h3>Full graph totals for selected ontology scope</h3>
+        {fullMetricsError && <p role="alert">{fullMetricsError}</p>}
+        <KpiStrip items={[
+          { label: 'Published RDF resources', value: fullMetrics?.resources },
+          { label: 'Published RDF relationships', value: fullMetrics?.relationships },
+          { label: 'Declared RDF classes', value: fullMetrics?.classes },
+          { label: 'Existing ontology records', value: fullMetrics?.existing_ontology?.resources },
+          { label: 'Existing record relationships', value: fullMetrics?.existing_ontology?.relationships },
+        ]} />
+        <p>These use the same full aggregation as Landing. Published RDF and existing ontology records are separate populations; the charts below use sampled rows.</p>
+      </section>
+      <div
+        style={{
+          display: 'grid',
+          gap: 16,
+          gridTemplateColumns: 'minmax(0, 1fr)',
+        }}
+      >
+        <section
+          style={{
+            background: '#ffffff',
+            border: '1px solid #d9e2ec',
+            borderRadius: 8,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 12,
+              marginBottom: 14,
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button
+                className="btn btn-sm"
+                style={{
+                  color: activeReport === 'search' ? '#fff' : REPORT_COLORS.primary,
+                  background: activeReport === 'search' ? REPORT_COLORS.primary : REPORT_COLORS.primarySoft,
+                  border: `1px solid ${REPORT_COLORS.primary}`,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  borderRadius: 999,
+                  padding: '6px 12px',
+                }}
+                onClick={() => {
+                  setReportPreset('custom');
+                  setActiveReport('search');
+                }}
+              >
+                Nodes
+              </button>
+              <button
+                className="btn btn-sm"
+                style={{
+                  color: activeReport === 'relationships' ? '#fff' : REPORT_COLORS.accent,
+                  background: activeReport === 'relationships' ? REPORT_COLORS.accent : REPORT_COLORS.accentSoft,
+                  border: `1px solid ${REPORT_COLORS.accent}`,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  borderRadius: 999,
+                  padding: '6px 12px',
+                }}
+                onClick={() => {
+                  setReportPreset('traceability');
+                  setActiveReport('relationships');
+                }}
+              >
+                Links
+                {relationshipRows.length > 0 && (
+                  <span
+                    style={{
+                      marginLeft: 6,
+                      background: 'rgba(255,255,255,0.24)',
+                      borderRadius: 999,
+                      padding: '1px 6px',
+                      fontSize: 11,
+                    }}
+                  >
+                    {relationshipRows.length}
+                  </span>
+                )}
+              </button>
+              <button
+                className="btn btn-sm"
+                style={{
+                  color: activeReport === 'ontologies' ? '#fff' : REPORT_COLORS.warn,
+                  background: activeReport === 'ontologies' ? REPORT_COLORS.warn : REPORT_COLORS.warnSoft,
+                  border: `1px solid ${REPORT_COLORS.warnBorder}`,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  borderRadius: 999,
+                  padding: '6px 12px',
+                }}
+                onClick={() => {
+                  setReportPreset('governance');
+                  setActiveReport('ontologies');
+                }}
+              >
+                Ontologies
+                <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 11 }}>{ontologyRows.length}</span>
+              </button>              {availableTypes.map(({ type, count }) => (
+                <button
+                  key={type}
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setReportPreset('custom');
+                    setActiveReport(type);
+                  }}
+                  style={{
+                    color: activeReport === type ? '#fff' : '#33506b',
+                    background: activeReport === type ? '#33506b' : '#f3f6f9',
+                    border: '1px solid #cbd5e1',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    borderRadius: 999,
+                    padding: '6px 12px',
+                  }}
+                >
+                  {type}
+                  <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 11 }}>{count}</span>
+                </button>
+              ))}
+              <button
+                className="btn btn-sm"
+                onClick={() => { setReportPreset('governance'); setActiveReport('xsd-relational'); }}
+                style={{ color: activeReport === 'xsd-relational' ? '#fff' : REPORT_COLORS.warn, background: activeReport === 'xsd-relational' ? REPORT_COLORS.warn : REPORT_COLORS.warnSoft, border: `1px solid ${REPORT_COLORS.warnBorder}`, fontWeight: 700, fontSize: 13, borderRadius: 999, padding: '6px 12px' }}
+              >
+                XSD Relational
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                {[
+                  { id: 'overview', label: 'Overview' },
+                  { id: 'governance', label: 'Governance' },
+                  { id: 'lineage', label: 'Lineage' },
+                  { id: 'traceability', label: 'Traceability' },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    className="btn btn-sm"
+                    onClick={() => applyReportPreset(preset.id)}
+                    style={{
+                      color: reportPreset === preset.id ? '#fff' : '#52606d',
+                      background: reportPreset === preset.id ? REPORT_COLORS.neutral : '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      borderRadius: 999,
+                      padding: '5px 10px',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              {activeReport !== 'relationships' && filteredNodeRows.length > 0 && (
+                <button
+                  className="btn btn-sm"
+                  onClick={() =>
+                    downloadCsv(
+                      `${activeReport}_all_${new Date().toISOString().split('T')[0]}.csv`,
+                      visibleHeaders,
+                      filteredNodeRows
+                    )
+                  }
+                  style={{
+                    color: REPORT_COLORS.primary,
+                    background: REPORT_COLORS.primarySoft,
+                    border: `1px solid ${REPORT_COLORS.primary}`,
+                    fontWeight: 700,
+                    fontSize: 12,
+                  }}
+                >
+                  Export CSV
+                </button>
+              )}
+              {activeReport === 'relationships' && filteredRelationshipRows.length > 0 && (
+                <button
+                  className="btn btn-sm"
+                  onClick={() =>
+                    downloadCsv(
+                      `relationships_${relTypeFilter || 'all'}_${new Date().toISOString().split('T')[0]}.csv`,
+                      RELATIONSHIP_EXPORT_HEADERS,
+                      filteredRelationshipRows.map((row) => ({
+                        relationship_type: row.relationship_type,
+                        source: row.source,
+                        target: row.target,
+                        count: row.count,
+                      }))
+                    )
+                  }
+                  style={{
+                    color: REPORT_COLORS.accent,
+                    background: REPORT_COLORS.accentSoft,
+                    border: `1px solid ${REPORT_COLORS.accent}`,
+                    fontWeight: 700,
+                    fontSize: 12,
+                  }}
+                >
+                  Export CSV
+                </button>
+              )}
+              <div style={{ fontSize: 12, color: '#52606d', fontWeight: 700 }}>
+                {activeReport === 'relationships'
+                  ? `${filteredRelationshipRows.length} relationship rows`
+                  : nodeSummaryLabel}
+              </div>
+            </div>
+          </div>
+
+          {(graphLoading || graphError) && (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: `1px solid ${graphError ? '#fecaca' : '#d9e2ec'}`,
+                background: graphError ? '#fef2f2' : '#f8fafc',
+                color: graphError ? '#991b1b' : '#52606d',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {graphLoading ? 'Loading graph data for reports...' : graphError}
+            </div>
+          )}
+
+          <ReportsAnalytics
+            entityTypes={availableTypes}
+            relationships={relTypesSummary}
+            ontologies={(fullMetrics?.ontology_breakdown || []).map(row => ({ ontology: row.ontology, nodes: row.node_count ?? row.count }))}
+            telemetry={pipelineTelemetry?.durable_job_telemetry || pipelineTelemetry?.totals || pipelineTelemetry}
+            telemetryError={pipelineTelemetryError}
+          />
+
+          {activeReport === 'xsd-relational' ? (
+            <div><label>XSD ontology <select aria-label="Select XSD ontology" value={selectedXsdOntology} onChange={event => setSelectedXsdOntology(event.target.value)}>
+              <option value="">Select an ontology</option>{ontologies.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label || ontology.prefix}</option>)}
+            </select></label><XsdRelationalReport report={xsdReport} loading={xsdReportLoading} error={xsdReportError} selectedOntology={selectedXsdOntology} ontologies={ontologies} onOntologyChange={setSelectedXsdOntology} /></div>
+          ) : activeReport === 'relationships' ? (
+            <>
+              <div style={{ fontSize: 12, color: '#52606d', marginBottom: 12 }}>
+                {relationshipScopeLabel}
+              </div>
+
+              {relTypesSummary.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {relTypesSummary.map(({ type, count }) => (
+                    <button
+                      key={type}
+                      onClick={() => setRelTypeFilter(relTypeFilter === type ? '' : type)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: relTypeFilter === type ? REPORT_COLORS.accent : '#ffffff',
+                        color: relTypeFilter === type ? '#ffffff' : REPORT_COLORS.accent,
+                        border: `1px solid ${REPORT_COLORS.accent}`,
+                      }}
+                    >
+                      {type} <span style={{ opacity: 0.8 }}>({count})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                  alignItems: 'center',
+                  marginBottom: 12,
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="Search relationship rows..."
+                  value={relSearchTerm}
+                  onChange={(event) => setRelSearchTerm(event.target.value)}
+                  style={{
+                    flex: '1 1 280px',
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    border: '1px solid #cbd5e1',
+                    fontSize: 13,
+                  }}
+                />
+                {relTypeFilter && (
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => setRelTypeFilter('')}
+                    style={{
+                      color: '#8a5a00',
+                      background: '#fff8e1',
+                      border: '1px solid #ffe082',
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                  >
+                    Clear Type Filter
+                  </button>
+                )}
+              </div>
+
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+                {pagedRelationshipRows.length === 0 ? (
+                  <div style={{ padding: 24, color: '#7b8794', textAlign: 'center' }}>
+                    {relationshipRows.length === 0
+                      ? 'No graph relationships are available yet.'
+                      : 'No relationships match the current filter.'}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table table-striped table-hover mb-0">
+                      <thead className="sticky-top bg-light">
+                        <tr>
+                          <th style={{ minWidth: 180, borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>
+                            RELATIONSHIP TYPE
+                          </th>
+                          <th style={{ minWidth: 220, borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>SOURCE</th>
+                          <th style={{ minWidth: 220, borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>TARGET</th>
+                          <th style={{ minWidth: 90, textAlign: 'right', borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>
+                            COUNT
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedRelationshipRows.map((row, index) => (
+                          <tr key={`${row.relationship_type}-${row.source}-${row.target}-${index}`}>
+                            <td>
+                              <span
+                                style={{
+                                  background: REPORT_COLORS.accentSoft,
+                                  color: REPORT_COLORS.accent,
+                                  padding: '3px 9px',
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {row.relationship_type}
+                              </span>
+                            </td>
+                            <td title={row.source}>{row.source}</td>
+                            <td title={row.target}>{row.target}</td>
+                            <td style={{ textAlign: 'right', color: '#52606d' }}>{row.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {filteredRelationshipRows.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 12,
+                    marginTop: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#52606d' }}>
+                    Showing {(relPage - 1) * RELATIONSHIP_PAGE_SIZE + 1} to{' '}
+                    {Math.min(relPage * RELATIONSHIP_PAGE_SIZE, filteredRelationshipRows.length)} of{' '}
+                    {filteredRelationshipRows.length}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setRelPage(1)}
+                      disabled={relPage === 1}
+                    >
+                      First
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setRelPage((page) => Math.max(1, page - 1))}
+                      disabled={relPage === 1}
+                    >
+                      Prev
+                    </button>
+                    <div style={{ alignSelf: 'center', fontSize: 12, color: '#52606d', padding: '0 6px' }}>
+                      Page {relPage} of {totalRelationshipPages}
+                    </div>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setRelPage((page) => Math.min(totalRelationshipPages, page + 1))}
+                      disabled={relPage === totalRelationshipPages}
+                    >
+                      Next
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setRelPage(totalRelationshipPages)}
+                      disabled={relPage === totalRelationshipPages}
+                    >
+                      Last
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 12,
+                  gridTemplateColumns: 'minmax(0, 1fr)',
+                  marginBottom: 12,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                    <button
+                      className="btn btn-sm dropdown-toggle"
+                      type="button"
+                      onClick={() => setShowColumnSelector((open) => !open)}
+                      style={{
+                        backgroundColor: REPORT_COLORS.accent,
+                        color: '#fff',
+                        fontWeight: 700,
+                        border: `1px solid ${REPORT_COLORS.accent}`,
+                        padding: '6px 12px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                      }}
+                    >
+                      View Columns ({visibleHeaders.length}/{nodeHeaders.length})
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: 12, color: '#52606d', fontWeight: 700 }}>Rows per page</label>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: 'auto' }}
+                      value={itemsPerPage}
+                      onChange={(event) => setItemsPerPage(parseInt(event.target.value, 10))}
+                    >
+                      {PAGE_SIZE_OPTIONS.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {showColumnSelector && (
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #d9e2ec',
+                      borderRadius: 8,
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 10,
+                        gap: 8,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#243b53' }}>Visible Columns</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-sm" onClick={() => setAllColumnsVisible(true)}>
+                          Show All
+                        </button>
+                        <button className="btn btn-sm" onClick={() => setAllColumnsVisible(false)}>
+                          Hide All
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                      {nodeHeaders.map((header) => (
+                        <label
+                          key={header}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 12,
+                            color: '#243b53',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visibleColumns[header] !== false}
+                            onChange={() => toggleColumn(header)}
+                          />
+                          <span>{formatHeaderLabel(header)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {filterableHeaders.length > 0 && (
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #d9e2ec',
+                      borderRadius: 8,
+                      padding: 12,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#243b53', marginBottom: 10 }}>
+                      Filters
+                    </div>
+                    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                      {filterableHeaders.map((header) => (
+                        <select
+                          key={header}
+                          className="form-select form-select-sm"
+                          value={filters[header] || ''}
+                          onChange={(event) => handleFilterChange(header, event.target.value)}
+                        >
+                          <option value="">All {formatHeaderLabel(header)}</option>
+                          {getDistinctValues(nodeRows, header).map((value) => (
+                            <option key={value} value={value}>
+                              {value.length > 42 ? `${value.slice(0, 42)}...` : value}
+                            </option>
+                          ))}
+                        </select>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        className="btn btn-sm"
+                        onClick={clearFilters}
+                        disabled={Object.keys(filters).length === 0}
+                      >
+                        Clear Filters
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+                {pagedNodeRows.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', color: '#7b8794' }}>
+                    {activeReport === 'search'
+                      ? Object.keys(filters).length > 0
+                        ? 'No rows match the current filters.'
+                        : graphLoading
+                          ? 'Loading report rows...'
+                          : graphError
+                            ? 'Report rows could not be loaded from the current graph.'
+                            : 'No report rows are available yet.'
+                      : `No ${activeReport} rows are available.`}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table table-striped table-hover mb-0">
+                      <thead className="sticky-top bg-light">
+                        <tr>
+                          {visibleHeaders.map((header) => (
+                            <th
+                              key={header}
+                              onClick={() => handleSort(header)}
+                              style={{
+                                minWidth: 140,
+                                borderBottom: '2px solid #0066B3',
+                                cursor: activeReport === 'search' ? 'pointer' : 'default',
+                                userSelect: 'none',
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                                <span>{formatHeaderLabel(header)}</span>
+                                {activeReport === 'search' && (
+                                  <span style={{ fontSize: 12, opacity: 0.7 }}>
+                                    {sortColumn === header ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+                                  </span>
+                                )}
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedNodeRows.map((row, rowIndex) => (
+                          <tr key={`${activeReport}-${rowIndex}`}>
+                            {visibleHeaders.map((header) => (
+                              <td key={header} style={{ maxWidth: 260 }}>
+                                <div
+                                  title={row[header] == null ? undefined : String(row[header])}
+                                  style={{
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {formatCellValue(row[header])}
+                                </div>
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {filteredNodeRows.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 12,
+                    marginTop: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#52606d' }}>
+                    Showing {nodeStart} to {nodeEnd} of {filteredNodeRows.length}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Prev
+                    </button>
+                    <div style={{ fontSize: 12, color: '#52606d', padding: '0 6px' }}>
+                      Page {currentPage} of {totalNodePages}
+                    </div>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setCurrentPage((page) => Math.min(totalNodePages, page + 1))}
+                      disabled={currentPage === totalNodePages}
+                    >
+                      Next
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setCurrentPage(totalNodePages)}
+                      disabled={currentPage === totalNodePages}
+                    >
+                      Last
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() =>
+                        downloadCsv(
+                          `${activeReport}_page_${currentPage}_${new Date().toISOString().split('T')[0]}.csv`,
+                          visibleHeaders,
+                          pagedNodeRows
+                        )
+                      }
+                      style={{
+                        color: REPORT_COLORS.primary,
+                        background: REPORT_COLORS.primarySoft,
+                        border: `1px solid ${REPORT_COLORS.primary}`,
+                        fontWeight: 700,
+                        fontSize: 12,
+                      }}
+                    >
+                      Export Page
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+};
+
+function XsdRelationalReport({ report, loading, error, selectedOntology, ontologies, onOntologyChange }) {
+  const [selectedTable, setSelectedTable] = useState('');
+  const tables = useMemo(() => report?.tables || [], [report]);
+  const activeTable = tables.find((table) => table.name === selectedTable) || tables[0];
+
+  useEffect(() => {
+    if (!selectedTable && tables.length) setSelectedTable(tables[0].name);
+    if (selectedTable && !tables.some((table) => table.name === selectedTable)) setSelectedTable(tables[0]?.name || '');
+  }, [selectedTable, tables]);
+
+  if (loading) return <div style={{ padding: 24, color: '#52606d' }}>Building XSD relational projection...</div>;
+  if (error) return <div style={{ padding: 12, border: '1px solid #f0c36d', background: '#fff8e1', color: '#8a5a00', borderRadius: 7 }}>{error}</div>;
+  if (!report) return <div style={{ padding: 24, color: '#52606d' }}>Select an XSD ontology to inspect its relational projection.</div>;
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={selectedOntology} onChange={(event) => onOntologyChange(event.target.value)} style={{ minWidth: 280, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6 }} aria-label="Change loaded XSD ontology">
+          {ontologies.map((ontology) => <option key={ontology.ontology_id || ontology.value || ontology.prefix} value={ontology.ontology_id || ontology.value || ontology.prefix}>{ontology.label || ontology.prefix}</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: '#52606d' }}>Source: {report.source_file}</span>
+      </div>
+      <KpiStrip
+        items={Object.entries(report.summary || {}).map(([key, value]) => ({
+          label: key.replace(/_/g, ' '),
+          value,
+        }))}
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, .3fr) minmax(0, .7fr)', gap: 12 }}>
+        <div style={{ border: '1px solid #d9e2ec', borderRadius: 7, overflow: 'auto', maxHeight: 520 }}>
+          {tables.map((table) => <button key={table.name} type="button" onClick={() => setSelectedTable(table.name)} style={{ display: 'block', width: '100%', padding: '9px 10px', textAlign: 'left', border: 0, borderBottom: '1px solid #eef2f6', background: activeTable?.name === table.name ? '#e8f1fc' : '#fff', color: '#102a43', cursor: 'pointer' }}><strong>{table.name}</strong><small style={{ display: 'block', color: '#697586' }}>{table.columns.length} columns · {table.foreign_key_candidates.length} FK candidates</small></button>)}
+        </div>
+        {activeTable ? <div style={{ border: '1px solid #d9e2ec', borderRadius: 7, overflow: 'auto' }}><table className="depo-table"><thead><tr><th>Column</th><th>Type</th><th>Kind</th><th>Occurrence</th><th>Key role</th></tr></thead><tbody>{activeTable.columns.map((column) => <tr key={`${activeTable.name}:${column.name}`}><td><strong>{column.name}</strong></td><td>{column.xsd_type}</td><td>{column.kind}</td><td>{column.min_occurs}..{column.max_occurs}</td><td>{column.is_primary_key_candidate ? 'PK candidate' : column.is_foreign_key_candidate ? `FK → ${column.foreign_key_target}` : '—'}</td></tr>)}</tbody></table></div> : <div style={{ padding: 24, color: '#52606d' }}>No complexType tables found.</div>}
+      </div>
+      <div style={{ fontSize: 11, color: '#52606d' }}>{report.semantics?.primary_key} {report.semantics?.foreign_key}</div>
+    </div>
+  );
+}
+
+export default ReportsTab;

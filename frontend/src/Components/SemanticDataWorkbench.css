@@ -1,0 +1,18 @@
+.semantic-workspace > header { display:flex; gap:24px; align-items:flex-start; }
+.semantic-workspace > header > div { flex:1; min-width:0; }
+.semantic-workspace > header > button { flex-shrink:0; white-space:nowrap; }
+.semantic-steps,.semantic-model-tabs { display:flex; gap:8px; margin:16px 0; flex-wrap:wrap; }
+.semantic-steps button { display:flex; align-items:center; gap:10px; flex:1; min-width:160px; text-align:left; }
+.semantic-steps button[aria-current=step],.semantic-model-tabs button[aria-pressed=true] { background:var(--ui-primary,#006c91); color:#fff; }
+.semantic-steps span { border:1px solid currentColor; width:24px; height:24px; display:grid; place-items:center; border-radius:50%; flex-shrink:0; }
+.semantic-step { min-height:280px; padding:12px 0; }
+.semantic-workspace [hidden] { display:none!important; }
+.semantic-workspace .analytics-form-row { grid-template-columns:repeat(2,minmax(0,1fr)); max-width:none; align-items:start; }
+.semantic-workspace .analytics-form-row > span { align-self:center; }
+.semantic-workspace select { text-overflow:ellipsis; min-height:44px; }
+.semantic-workspace .semantic-step > label { max-width:100%; }
+.semantic-workspace h4 { margin:8px 0 12px; }
+.semantic-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; border-top:1px solid var(--ui-border); padding:14px 0; }
+.semantic-actions > p { flex-basis:100%; margin:0; font-size:13px; }
+.semantic-workspace .semantic-technical { margin-top:8px; }
+@media(max-width:700px) { .semantic-workspace .analytics-form-row { grid-template-columns:1fr; } .semantic-workspace > header { flex-direction:column; } .semantic-steps button { min-width:120px; } }

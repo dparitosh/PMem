@@ -1,22 +1,36 @@
 """
 Unified Data Import Router
-Provides 5 endpoints for file import with progress tracking, preview, and commit capabilities.
+Compatibility ontology registration, browsing, read-only merge preview and cleanup.
+Tracked instance imports are served by ingestion_service.tracked_import.
 """
+from backend.depo_platform.request_bodies import LegacyCleanupBody, LegacyMergeBody
+
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Form
-from pydantic import BaseModel, Field
+from pathlib import Path
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
-# ✅ SECURITY: File size limits
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
-MAX_FILE_SIZE_DISPLAY = "500 MB"
+
+async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload incrementally and reject oversized content early."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"File too large. Maximum size: {max_bytes} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 from .unified_data_import import (
     UnifiedDataImportService,
     FileFormatDetector,
 )
 from .ontology_upload_manager import OntologyUploadManager
+from .owl_generation_service import _extract_xsd_target_namespace, _normalize_base_uri
 
 logger = logging.getLogger(__name__)
 
@@ -32,55 +46,6 @@ ontology_router = APIRouter(prefix="/ontology", tags=["ontology"])
 
 # ========== Request/Response Models ==========
 
-class ImportStatusResponse(BaseModel):
-    """Response for import status"""
-    task_id: str
-    filename: str
-    file_type: str
-    current_stage: str
-    progress: int
-    message: str
-    status: str
-    error: Optional[str] = None
-    stats: Optional[dict] = None
-    schema_metadata: Optional[dict] = None
-    started_at: str
-    completed_at: Optional[str] = None
-
-
-class PreviewResponse(BaseModel):
-    """Response for data preview"""
-    task_id: str
-    row_count: int
-    columns: list
-    sample_rows: list
-    auto_schema: dict
-
-
-class ImportConfigRequest(BaseModel):
-    """Request to configure import"""
-    nodes: Optional[list] = Field(None, description="Node definitions")
-    relationships: Optional[list] = Field(None, description="Relationship definitions")
-    indexes: Optional[list] = Field(None, description="Index definitions")
-    constraints: Optional[list] = Field(None, description="Constraint definitions")
-
-
-class CommitResponse(BaseModel):
-    """Response from commit"""
-    task_id: str
-    status: str
-    message: str
-    result: dict
-
-
-class OntologyMetadataRequest(BaseModel):
-    """Request with ontology metadata for upload"""
-    ontology_name: str = Field(..., description="User-friendly ontology name")
-    prefix: str = Field(..., description="Ontology namespace prefix")
-    generation_type: str = Field(..., description="What to generate: shacl, owl, both")
-    file_type: str = Field(..., description="File type: xsd, xmi")
-    description: Optional[str] = Field(None, description="Ontology description")
-
 
 class UploadResponse(BaseModel):
     """Response from upload endpoint"""
@@ -90,38 +55,12 @@ class UploadResponse(BaseModel):
     ontology_id: Optional[str] = None
     ontology_name: Optional[str] = None
     prefix: Optional[str] = None
+    source_namespace: Optional[str] = None
+    base_uri: Optional[str] = None
     message: str
     supported_formats: list
     storage_path: Optional[str] = None
 
-
-class OntologyMappingRequest(BaseModel):
-    """Request for ontology mapping"""
-    task_id: str
-    target_ontology: str = Field(..., description="Target ontology (windchill, ap242_product, pifrl)")
-    confidence_threshold: float = Field(0.6, ge=0.0, le=1.0, description="Minimum confidence for entity mappings")
-
-
-class OntologyMappingResponse(BaseModel):
-    """Response from ontology mapping"""
-    task_id: str
-    source_namespace: str
-    target_namespace: str
-    entity_mappings_count: int
-    unmapped_entities_count: int
-    overall_confidence: float
-    mapping_metadata: dict
-    aligned_owl_ttl: Optional[str] = None
-
-
-class OntologyMergeRequest(BaseModel):
-    """Request for ontology merge"""
-    from_ontology_id: str = Field(..., description="Source ontology ID to merge from")
-    to_ontology_id: str = Field(..., description="Target ontology ID to merge into")
-    dry_run: bool = Field(False, description="If true, preview impact without mutating data")
-
-
-# ========== Endpoints ==========
 
 # ========== Endpoints ==========
 
@@ -156,13 +95,14 @@ class OntologyMergeRequest(BaseModel):
     }
 )
 async def upload_ontology_file(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="XSD, XMI, OWL, RDF/XML, or TTL ontology file"),
+    file: UploadFile = File(..., description="XSD, XMI, EXPRESS, OWL, RDF/XML, or TTL ontology file"),
     ontology_name: str = Form(..., description="Human-readable name for the ontology"),
-    prefix: str = Form(..., description="Namespace prefix"),
-    generation_type: str = Form(..., description="Generation type: shacl, owl, or both"),
+    prefix: str = Form("", description="Optional namespace prefix; derived from the source namespace when omitted"),
+    generation_type: str = Form(..., description="Generation type: shacl, owl, both, or as_is"),
     description: str = Form("", description="Optional ontology description"),
-    schema_type: str = Form("schema", description="File classification: schema or instance")
+    schema_type: str = Form("schema", description="File classification: schema or instance"),
+    dependencies: list[UploadFile] | None = File(None, description="Original companion XSDs retained with a source-only schema registration"),
+    dependency_paths: str = Form("[]", description="JSON array of relative companion paths")
 ):
     """
     Upload and register an ontology file (XSD/XMI/OWL/RDF/TTL) with metadata.
@@ -170,10 +110,10 @@ async def upload_ontology_file(
     Captures ontology metadata and stores for future reuse.
     
     Parameters:
-    - file: XSD, XMI, OWL, RDF/XML, or TTL file
+    - file: XSD, XMI, EXPRESS, OWL, RDF/XML, or TTL file
     - ontology_name: Human-readable name (e.g., "AP239 Product Model")
     - prefix: Namespace prefix (e.g., "ap239")
-    - generation_type: What to generate - 'shacl', 'owl', or 'both'
+    - generation_type: What to generate - 'shacl', 'owl', 'both', or 'as_is'
     - description: Optional ontology description
     
     Returns: task_id + ontology_id for tracking and future reuse
@@ -191,9 +131,9 @@ async def upload_ontology_file(
             raise HTTPException(status_code=400, detail="ontology_name contains invalid characters. Use only letters, numbers, spaces, underscores, and dashes")
         
         # Validate prefix (1-50 chars, must start with letter, alphanumeric + underscore)
-        if not prefix or len(prefix) > 50:
-            raise HTTPException(status_code=400, detail="prefix must be 1-50 characters")
-        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', prefix):
+        if prefix and len(prefix) > 50:
+            raise HTTPException(status_code=400, detail="prefix must be at most 50 characters")
+        if prefix and not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', prefix):
             raise HTTPException(status_code=400, detail="prefix must start with a letter and contain only alphanumeric characters and underscores")
         
         # Validate generation_type
@@ -206,30 +146,49 @@ async def upload_ontology_file(
         
         # Validate file type
         file_type = FileFormatDetector.detect(file.filename)
-        if not file_type or file_type.value not in ['xsd', 'xmi', 'ontology']:
+        if not file_type or file_type.value not in ['xsd', 'xmi', 'express', 'ontology']:
             raise HTTPException(
                 status_code=400,
-                detail="Only XSD, XMI, OWL, RDF/XML, and TTL files are supported for ontology upload."
+                detail="Only XSD, XMI, EXPRESS, OWL, RDF/XML, and TTL files are supported for ontology upload."
             )
 
         # Ontology files are loaded as-is (no XSD/XMI generation semantics required).
         resolved_generation_type = generation_type
         if file_type.value == 'ontology' and generation_type == 'shacl':
             resolved_generation_type = 'as_is'
+
+        source_namespace = ""
+        base_uri = ""
         
         # Read file content
-        file_content = await file.read()
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        file_content = await _read_upload_with_limit(file, ontology_upload_limit())
         if not file_content:
             raise HTTPException(status_code=400, detail="File is empty")
+        schema_files = {}
+        if dependencies:
+            import json
+            if file_type.value != 'xsd' or generation_type != 'as_is':
+                raise HTTPException(422, 'Use the engineering workflow for schema-set conversion')
+            try:
+                paths = json.loads(dependency_paths)
+                if not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63 or any(not isinstance(path, str) for path in paths) or len(set(paths)) != len(paths):
+                    raise ValueError('Expected one distinct relative path per companion')
+                for path, companion in zip(paths, dependencies):
+                    remaining = min(25 * 1024 * 1024, ontology_upload_limit()) - len(file_content) - sum(len(data) for data in schema_files.values())
+                    if remaining <= 0: raise HTTPException(413, 'Schema set exceeds the ontology upload limit')
+                    schema_files[path] = await _read_upload_with_limit(companion, remaining)
+                from .schema_upload_paths import validate_schema_upload
+                validate_schema_upload(file.filename, file_content, schema_files, require_dependencies=False)
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(422, str(exc)) from exc
         
-        if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large. Maximum size: {MAX_FILE_SIZE_DISPLAY}"
-            )
+        if file_type.value == 'xsd':
+            source_namespace = _extract_xsd_target_namespace(file_content)
+            base_uri = _normalize_base_uri(source_namespace, f"http://depo-onto.local/xsd#{Path(file.filename).stem}/")
         
         # Save ontology file and metadata
-        save_result = OntologyUploadManager.save_ontology_file(
+        save_result = await run_in_threadpool(OntologyUploadManager.save_ontology_file,
             file_content=file_content,
             filename=file.filename,
             ontology_name=ontology_name,
@@ -237,7 +196,9 @@ async def upload_ontology_file(
             file_type=file_type.value,
             generation_type=resolved_generation_type,
             description=description or "",
-            schema_type=schema_type or "schema"
+            schema_type=schema_type or "schema",
+            source_namespace=source_namespace,
+            **({'schema_files': schema_files} if schema_files else {}),
         )
         
         if save_result['status'] != 'success':
@@ -248,20 +209,7 @@ async def upload_ontology_file(
         #  which blocks the event loop and causes client-side timeouts for large XSD/XMI files)
         task_id = save_result['ontology_id']
 
-        # Push entities to Neo4j in the background so the response is returned immediately
-        def _push_to_neo4j_background(ontology_id: str, schema_type_param: str = "schema") -> None:
-            try:
-                from ..core.graph import graph as _graph
-                push_result = OntologyUploadManager.push_to_neo4j(ontology_id, _graph, schema_type=schema_type_param)
-                if push_result['status'] == 'success':
-                    logger.info(f"Neo4j push (background): {push_result['nodes_merged']} nodes for {ontology_id}")
-                else:
-                    logger.warning(f"Neo4j push skipped (background): {push_result.get('error')}")
-            except Exception as e:
-                logger.warning(f"Neo4j push failed (background) for {ontology_id}: {e}")
-
-        background_tasks.add_task(_push_to_neo4j_background, save_result['ontology_id'], schema_type or "schema")
-        neo4j_info = " Neo4j indexing started in background."
+        neo4j_info = " Source retained. Graph publication requires the governed semantic approval workflow."
 
         version = save_result.get('version', 1)
         is_new_version = save_result.get('is_new_version', False)
@@ -273,7 +221,9 @@ async def upload_ontology_file(
             file_type=file_type.value,
             ontology_id=save_result['ontology_id'],
             ontology_name=ontology_name,
-            prefix=prefix,
+            prefix=save_result.get('metadata', {}).get('prefix') or prefix,
+            source_namespace=save_result.get('metadata', {}).get('namespace') or source_namespace or None,
+            base_uri=save_result.get('metadata', {}).get('ontology_uri') or base_uri or None,
             message=f"Ontology '{ontology_name}' uploaded and registered{version_msg}. Task ID: {task_id}.{neo4j_info}",
             supported_formats=FileFormatDetector.get_supported_formats(),
             storage_path=save_result['storage_path']
@@ -283,7 +233,7 @@ async def upload_ontology_file(
         raise
     except Exception as e:
         logger.error(f"Ontology upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Import service failed. Please try again later.") from e
 
 
 @ontology_router.get(
@@ -330,18 +280,66 @@ async def list_registered_ontologies():
         logger.warning(f"[registered] Neo4j unavailable for count enrichment: {e}")
         _g = None
 
-    return OntologyUploadManager.list_ontologies_with_neo4j_counts(_g)
+    return await run_in_threadpool(OntologyUploadManager.list_ontologies_with_neo4j_counts, _g)
+
+
+@ontology_router.get(
+    "/{ontology_id}",
+    summary="Get Registered Ontology",
+    description="Retrieve public metadata for one registered ontology by its stable identifier.",
+    tags=["ontology"],
+    responses={404: {"description": "Ontology not found"}},
+)
+async def get_registered_ontology(ontology_id: str):
+    """Return ontology metadata without exposing server-side storage paths."""
+    result = OntologyUploadManager.get_ontology(ontology_id)
+    if result.get("status") != "success":
+        error = result.get("error", "Ontology not found")
+        status_code = 404 if str(error).lower() == "ontology not found" else 500
+        raise HTTPException(status_code=status_code, detail=error)
+
+    metadata = result.get("metadata") or {}
+    public_fields = {
+        "ontology_id",
+        "ontology_name",
+        "prefix",
+        "file_type",
+        "generation_type",
+        "description",
+        "schema_type",
+        "version",
+        "status",
+        "uploaded_at",
+        "file_size",
+        "source_namespace",
+        "target_namespace",
+        "is_latest",
+        "replaces",
+        "superseded_by",
+        "merged_into",
+    }
+    public_metadata = {
+        key: value
+        for key, value in metadata.items()
+        if key in public_fields
+    }
+    public_metadata.setdefault("ontology_id", ontology_id)
+    return {
+        "status": "success",
+        "metadata": public_metadata,
+        "file_exists": bool(result.get("file_exists")),
+    }
 
 
 @ontology_router.post(
     "/merge",
-    summary="Merge two ontologies",
-    description="Merge all nodes/relationships from the source ontology into the target ontology in Neo4j. Sets ontology_prefix on source nodes to the target prefix.",
+    summary="Preview legacy ontology merge impact",
+    description="Read-only impact preview when dry_run=true. Direct writes return 409; use the governed merge preview and approval workflow to create a merged draft.",
     tags=["ontology"],
 )
-async def merge_ontologies(body: dict):
+async def merge_ontologies(body: LegacyMergeBody):
     """
-    Merge FROM ontology into TO ontology in Neo4j.
+    Read-only legacy impact preview; writes require the governed merge workflow.
     Body: { "from_ontology_id": "...", "to_ontology_id": "..." }
     """
     from_id = body.get("from_ontology_id", "").strip()
@@ -351,6 +349,9 @@ async def merge_ontologies(body: dict):
         dry_run = raw_dry_run.strip().lower() in {"1", "true", "yes", "y", "on"}
     else:
         dry_run = bool(raw_dry_run)
+
+    if not dry_run:
+        raise HTTPException(409, detail='Direct graph prefix mutation is retired. Create a governed merge preview in Ontology Junction, review it, and approve that exact preview.')
 
     if not from_id or not to_id:
         raise HTTPException(status_code=422, detail="Both from_ontology_id and to_ontology_id are required.")
@@ -370,82 +371,38 @@ async def merge_ontologies(body: dict):
     to_prefix = all_onts[to_id].get("prefix", to_id)
     to_name = all_onts[to_id].get("ontology_name", to_id)
 
-    # Neo4j: count candidates before mutation (used for dry-run and post-merge checks)
+    # Read-only candidate count; this endpoint performs no mutation.
     try:
         try:
             from core.graph import graph as _g
         except ModuleNotFoundError:
             from ..core.graph import graph as _g
 
+        ontology_labels = [
+            "Ontology", "OntologyClass", "OntologyProperty", "OntologyMetadata",
+            "OntologyResource", "OntologyRestriction", "OntologyIndividual",
+        ]
+        ontology_scope = """
+            any(label IN labels(n) WHERE label IN $ontology_labels)
+        """
         count_rows = _g.query(
-            "MATCH (n) WHERE coalesce(n.ontology_prefix, n.prefix) = $from_p RETURN count(n) AS total",
-            {"from_p": from_prefix},
+            f"MATCH (n) WHERE {ontology_scope} AND (coalesce(n.ontology_prefix, n.prefix) = $from_p OR n.ontology_id = $from_id) RETURN count(n) AS total",
+            {"from_p": from_prefix, "from_id": from_id, "ontology_labels": ontology_labels},
         )
         candidate_nodes = count_rows[0]["total"] if count_rows else 0
 
-        if dry_run:
-            return {
-                "status": "success",
-                "mode": "dry_run",
-                "message": (
-                    f"Dry run: would merge '{from_prefix}' into '{to_prefix}' ({to_name})"
-                ),
-                "candidate_nodes": candidate_nodes,
-                "from_ontology_id": from_id,
-                "to_ontology_id": to_id,
-            }
-
-        # Update ontology_prefix property
-        updated = _g.query(
-            "MATCH (n) WHERE coalesce(n.ontology_prefix, n.prefix) = $from_p "
-            "SET n.ontology_prefix = $to_p, n.prefix = $to_p "
-            "RETURN count(n) AS updated",
-            {"from_p": from_prefix, "to_p": to_prefix},
-        )
-        nodes_updated = updated[0]["updated"] if updated else 0
-
-        # Create a MERGED_INTO relationship between the two ontology root nodes (if any)
-        _g.query(
-            "MATCH (src) WHERE src.ontology_id = $fid "
-            "MATCH (tgt) WHERE tgt.ontology_id = $tid "
-            "MERGE (src)-[:MERGED_INTO]->(tgt)",
-            {"fid": from_id, "tid": to_id}
-        )
-
-        # Best-effort consistency check. Non-fatal because concurrent writes may alter counts.
-        consistency_warning = None
-        if nodes_updated != candidate_nodes:
-            consistency_warning = (
-                f"Updated {nodes_updated} nodes but pre-count was {candidate_nodes}. "
-                "Concurrent graph writes may have occurred during merge."
-            )
+        return {
+            "status": "success", "mode": "dry_run",
+            "message": f"Read-only impact preview for '{from_prefix}' and '{to_prefix}' ({to_name}); use the governed merge workflow to create a draft.",
+            "candidate_nodes": candidate_nodes,
+            "from_ontology_id": from_id, "to_ontology_id": to_id,
+        }
     except Exception as neo_err:
         logger.exception("Neo4j merge failed")
         raise HTTPException(
             status_code=500,
             detail=f"Merge failed in Neo4j: {type(neo_err).__name__}: {neo_err}",
         )
-
-    # Update metadata: mark source as merged (best-effort; Neo4j-discovered ontologies may not have metadata.json)
-    try:
-        OntologyUploadManager.update_metadata(from_id, {"merged_into": to_id, "is_latest": False})
-    except Exception:
-        # Non-fatal
-        pass
-
-    response = {
-        "status": "success",
-        "message": f"Merged '{from_prefix}' into '{to_prefix}' ({to_name})",
-        "nodes_updated": nodes_updated,
-        "candidate_nodes": candidate_nodes,
-        "from_ontology_id": from_id,
-        "to_ontology_id": to_id,
-    }
-
-    if consistency_warning:
-        response["warning"] = consistency_warning
-
-    return response
 
 
 @ontology_router.post(
@@ -457,7 +414,7 @@ async def merge_ontologies(body: dict):
     ),
     tags=["ontology"],
 )
-async def cleanup_old_xsd_schemas(body: dict):
+async def cleanup_old_xsd_schemas(body: LegacyCleanupBody):
     """
     Cleanup old XSD ontology uploads.
 
@@ -639,3 +596,19 @@ async def cleanup_old_xsd_schemas(body: dict):
             "neo4j_deleted_by_prefix": batch_neo4j_prefix,
         })
 
+    if deleted_ontology_ids:
+        try:
+            from backend.ontology_service.catalog import catalog
+            native_result = catalog.clear_registration_metadata(deleted_ontology_ids)
+            errors.extend({'ontology_id': identifier, 'error': 'Native catalog cleanup failed'} for identifier in native_result['failed'])
+            from backend.depo_platform.maintenance import invalidate_shared_caches
+            invalidate_shared_caches()
+        except Exception:
+            logger.exception('Native catalog reconciliation failed after old XSD cleanup')
+            errors.append({'error': 'Native catalog reconciliation failed; retry cleanup with administrator review'})
+    return {
+        'status': 'partial' if errors else 'success', 'mode': 'apply',
+        'deleted_count': len(deleted_ontology_ids), 'deleted_ontology_ids': deleted_ontology_ids,
+        'neo4j_deleted_nodes': neo4j_deleted_by_id_or_source + neo4j_deleted_by_prefix,
+        'batches': batches, 'errors': errors,
+    }

@@ -1,5 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { API_METHODS } from '../services/apiClient';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { apiClient } from '../services/apiClient';
+import { buildUrl } from '../config';
+import logger from '../utils/logger';
+import { normalizeOntologyRows as normalizeRegistryRows, mergeOntologyMetadata } from '../utils/ontologyRegistry';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 
 /**
  * Centralized Ontology Context
@@ -12,66 +16,217 @@ export const OntologyProvider = ({ children }) => {
   const [ontologies, setOntologies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [warning, setWarning] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
+  const mountedRef = useRef(false);
+  const requestRef = useRef(null);
+  const abortRef = useRef(null);
+  const registryFailureRef = useRef(false);
+  const sourceRowsRef = useRef([]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   /**
    * Fetch ontologies from backend
    */
-  const fetchOntologies = useCallback(async () => {
-    try {
-      setError(null);
-      const res = await API_METHODS.ontology.listRegistered();
-      const ontologyList = (res.data?.ontologies || []).map(o => ({
-        value: o.prefix || o.ontology_id || o.id || o.value || o.name,
-        label: o.ontology_name || o.name || o.label || o.ontology_id || o.id,
-        prefix: o.prefix,
-        ontology_id: o.ontology_id || o.id,
-        type: o.file_type || o.type,
-        source: o.source,
-        status: o.availability || o.status,
-        node_count: o.node_count || o.neo4j_nodes_merged || 0,
-        relationship_count: o.relationship_count || o.neo4j_relationships_merged || 0,
-        disabled: o.disabled || ((o.node_count || o.neo4j_nodes_merged || 0) === 0),
-        raw: o, // Keep full metadata
-      }));
-      setOntologies(ontologyList);
-      setLastUpdated(new Date());
-      return ontologyList;
-    } catch (err) {
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to load ontologies';
-      setError(errorMsg);
-      console.error('[OntologyContext] Failed to fetch ontologies:', err);
-      return [];
-    }
+  const normalizeOntologyRows = useCallback((rows = []) => {
+    return normalizeRegistryRows(rows);
   }, []);
+
+  const fetchOntologies = useCallback(async (force = false) => {
+    if (requestRef.current && !force) return requestRef.current;
+    if (force) abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const request = (async () => {
+      try {
+        if (mountedRef.current) setLoading(true);
+        if (mountedRef.current) setError(null);
+        if (mountedRef.current) setWarning('');
+        // Prefer the native ontology catalog, then retain the ingestion-owned
+        // registry as a read-only bridge for already-published ontologies.
+        // This prevents existing QIF/AP242 artifacts from disappearing while
+        // their catalog migration is completed.
+        const paths = ['/api/v1/ontologies', '/api/v1/ontology/registered'];
+        // Keep a source's last confirmed rows while that same identity refreshes.
+        // Otherwise a fast empty ingestion response briefly deletes native rows
+        // and consumers lose their selection before the catalog responds.
+        const availableSources = sourceRowsRef.current.slice();
+        const refreshedSources = new Array(paths.length);
+        const results = await Promise.allSettled(paths.map(async path => {
+          if (path !== '/api/v1/ontologies') return apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 });
+          const rows = [];
+          let offset = 0;
+          const deadline = Date.now() + 60000;
+          let pages = 0;
+          do {
+            const remaining = deadline - Date.now();
+            if (remaining <= 0 || pages++ >= 100 || rows.length >= 20000) throw new Error('Ontology catalog loading limit reached. Narrow the registry scope and retry.');
+            const response = await apiClient.get(buildUrl(`${path}?limit=200&offset=${offset}`), { signal: controller.signal, timeout: Math.min(15000, remaining) });
+            // Accept older servers without pagination metadata during upgrades.
+            if (!Array.isArray(response.data?.ontologies)) return response;
+            rows.push(...response.data.ontologies);
+            const next = response.data.next_offset;
+            if (next == null) return { data: { ...response.data, ontologies: rows } };
+            if (response.data.ontologies.length === 0) throw new Error('Invalid ontology catalog pagination: empty page has a next offset');
+            if (!Number.isSafeInteger(next) || next <= offset) throw new Error('Invalid ontology catalog pagination');
+            offset = next;
+          } while (!controller.signal.aborted);
+          throw new DOMException('Aborted', 'AbortError');
+        }).map((promise, index) => promise.then(response => {
+          if (controller.signal.aborted || abortRef.current !== controller || !mountedRef.current) return response;
+          const payload = response?.data || {};
+          const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
+          if (!Array.isArray(rows)) return response;
+          availableSources[index] = normalizeOntologyRows(rows);
+          refreshedSources[index] = availableSources[index];
+          const available = new Map();
+          // Merge in source order, regardless of response order: native wins.
+          availableSources.forEach(source => source?.forEach(row => {
+            if (row.value) available.set(row.value, available.has(row.value)
+              ? mergeOntologyMetadata(available.get(row.value), row) : row);
+          }));
+          setOntologies([...available.values()]);
+          setWarning('Registry refresh in progress. Available results are shown; completeness is not yet verified.');
+          return response;
+        })));
+        const merged = new Map();
+        let successes = 0;
+        const failedSources = [];
+        for (const [index, result] of results.entries()) {
+          if (controller.signal.aborted) return [];
+          if (result.status === 'rejected') { failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (${apiErrorMessage(result.reason, 'request failed')})`); continue; }
+          const payload = result.value?.data || {};
+          const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
+          if (!Array.isArray(rows)) { failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (invalid ontology list)`); continue; }
+          successes += 1;
+          for (const row of normalizeOntologyRows(rows)) {
+            if (!row.value) continue;
+            if (!merged.has(row.value)) merged.set(row.value, row);
+            else {
+              const existing = merged.get(row.value);
+              // Native identities remain authoritative; legacy metadata can fill gaps.
+              merged.set(row.value, mergeOntologyMetadata(existing, row));
+            }
+          }
+        }
+        if (!successes) throw new Error(failedSources.length
+          ? `Failed to load ontology registries: ${failedSources.join('; ')}`
+          : 'Failed to load ontologies');
+        if (controller.signal.aborted) return [];
+        const ontologyList = [...merged.values()];
+        if (mountedRef.current) {
+          sourceRowsRef.current = refreshedSources;
+          registryFailureRef.current = failedSources.length > 0;
+          setOntologies(ontologyList);
+          setWarning(failedSources.length ? `Partial ontology list: ${failedSources.join(', ')} could not be loaded. Other registry results are shown; retry to verify completeness.` : '');
+          setLastUpdated(new Date());
+        }
+        return ontologyList;
+      } catch (err) {
+        if (controller.signal.aborted || abortRef.current !== controller || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
+          return [];
+        }
+        const errorMsg = apiErrorMessage(err, 'Failed to load ontology registries.');
+        registryFailureRef.current = true;
+        if (mountedRef.current) setError(errorMsg);
+        logger.error('[OntologyContext] Failed to fetch ontologies:', err);
+        return [];
+      } finally {
+        if (mountedRef.current && abortRef.current === controller) setLoading(false);
+        if (abortRef.current === controller) {
+          requestRef.current = null;
+          abortRef.current = null;
+        }
+      }
+    })();
+    requestRef.current = request;
+    return request;
+  }, [normalizeOntologyRows]);
 
   /**
    * Initial fetch on mount
    */
   useEffect(() => {
-    setLoading(true);
-    fetchOntologies().finally(() => setLoading(false));
+    fetchOntologies();
+    const refresh = () => { sourceRowsRef.current = []; setOntologies([]); fetchOntologies(true); };
+    const changed = () => fetchOntologies(true);
+    window.addEventListener('depo:credentials-changed', refresh);
+    window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:session-expired', refresh);
+    window.addEventListener('depo:session-replaced', refresh);
+    // Rechecking the same access is a refresh, not a change of identity.
+    // Retain the last registry until the new read succeeds; expiry, replacement
+    // and cleanup still clear it immediately through their separate events.
+    window.addEventListener('depo:access-verified', changed);
+    window.addEventListener('depo:ontologies-changed', changed);
+    window.addEventListener('dt-schema-cleaned', refresh);
+    return () => {
+      window.removeEventListener('depo:credentials-changed', refresh);
+      window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:session-expired', refresh);
+      window.removeEventListener('depo:session-replaced', refresh);
+      window.removeEventListener('depo:access-verified', changed);
+      window.removeEventListener('depo:ontologies-changed', changed);
+      window.removeEventListener('dt-schema-cleaned', refresh);
+    };
   }, [fetchOntologies]);
 
   /**
    * Auto-refresh every 30 seconds (single polling, shared across all components)
    */
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchOntologies();
-    }, 30000); // 30 seconds
-    return () => clearInterval(interval);
+    let active = true;
+    let retryDelayMs = 30000;
+    let retryTimer = null;
+    const scheduleNextFetch = () => {
+      if (!active) return;
+      retryTimer = setTimeout(async () => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          scheduleNextFetch();
+          return;
+        }
+        try {
+          await fetchOntologies();
+          retryDelayMs = registryFailureRef.current ? Math.min(retryDelayMs * 2, 300000) : 30000;
+        } catch (_error) {
+          retryDelayMs = Math.min(retryDelayMs * 2, 300000);
+        } finally {
+          scheduleNextFetch();
+        }
+      }, retryDelayMs);
+    };
+    scheduleNextFetch();
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [fetchOntologies]);
 
-  const value = {
+  const getOntologyByPrefix = useCallback(
+    (prefix) => ontologies.find(o => o.prefix === prefix || o.ontology_prefix === prefix),
+    [ontologies],
+  );
+  const getOntologyById = useCallback(
+    (id) => ontologies.find(o => o.ontology_id === id || o.value === id),
+    [ontologies],
+  );
+  const value = useMemo(() => ({
     ontologies,
     loading,
     error,
+    warning,
     lastUpdated,
-    fetchOntologies, // Allow manual refresh from components
-    getOntologyByPrefix: (prefix) => ontologies.find(o => o.prefix === prefix),
-    getOntologyById: (id) => ontologies.find(o => o.ontology_id === id),
-  };
+    fetchOntologies,
+    getOntologyByPrefix,
+    getOntologyById,
+  }), [ontologies, loading, error, warning, lastUpdated, fetchOntologies, getOntologyByPrefix, getOntologyById]);
 
   return (
     <OntologyContext.Provider value={value}>

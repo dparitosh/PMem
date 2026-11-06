@@ -202,7 +202,7 @@ def load_ttl_files(driver, paths, prefix, ontology_name):
 
 
 def main():
-    # Script lives in Depo_onto/scripts/, TTL files are in Depo_onto/outputs/
+    # Script lives in scripts/, TTL files are resolved from the repository outputs folder.
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     paths = [os.path.join(base_dir, p) for p in TTL_FILES]
 

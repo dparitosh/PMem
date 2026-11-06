@@ -3,7 +3,9 @@ Admin Routes - Schema Management
 Provides endpoints for database cleaning and schema operations
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from backend.depo_platform.ontology_maintenance import ontology_cleanup
+from fastapi import APIRouter, Depends, HTTPException, Request
+import hmac
 from pydantic import BaseModel
 import logging
 import json
@@ -11,13 +13,82 @@ import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+from functools import wraps
+from starlette.concurrency import run_in_threadpool
+
+try:
+    from ..Services.oslc_trs_service import OSLCTRSService
+except ImportError:
+    from Services.oslc_trs_service import OSLCTRSService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 CLEAN_SCHEMA_CONFIRM_TOKEN = "CLEAN_NEO4J_SCHEMA"
 
 
+def _maintenance_worker(handler):
+    """Keep blocking graph/database/filesystem operations off the event loop."""
+    @wraps(handler)
+    async def run(*args, **kwargs):
+        return await run_in_threadpool(handler, *args, **kwargs)
+    return run
+
+
+def _reconcile_reset():
+    from backend.depo_platform.maintenance import reconcile_graph_reset, invalidate_shared_caches
+    try:
+        result = reconcile_graph_reset()
+        invalidate_shared_caches()
+        from backend.core.graphvis_cache import invalidate_graphvis_cache
+        invalidate_graphvis_cache('admin graph reset')
+        return result
+    except Exception:
+        logger.exception('Graph reset succeeded but registry reconciliation failed')
+        return {'status': 'partial', 'message': 'Graph data was deleted, but registry/cache reconciliation failed. Check PostgreSQL connectivity and retry reconciliation.'}
+
+
+def _is_production_environment() -> bool:
+    """Any production marker disables the explicit local-development bypass."""
+    return any(os.getenv(name, '').strip().lower() in {"prod", "production", "stage", "staging"}
+               for name in ('DEPO_ENV', 'APP_ENV', 'ENVIRONMENT', 'DEPLOYMENT_ENV'))
+
+
+async def require_admin_api_key(request: Request) -> None:
+    """Require an admin key except for explicitly enabled loopback development."""
+    from backend.depo_platform.credentials import uses_postgres, verify_key
+    if uses_postgres():
+        supplied = request.headers.get('X-API-Key', '')
+        if supplied.startswith('depo_session_'):
+            from backend.depo_platform.browser_credentials import verify_session
+            await run_in_threadpool(verify_session, 'ADMIN_API_KEY', supplied, None, maintenance=True)
+        else:
+            await run_in_threadpool(verify_key, 'ADMIN_API_KEY', supplied)
+        return
+    expected = os.getenv("ADMIN_API_KEY", "").strip()
+    if not _is_production_environment() and not expected:
+        if (os.getenv('DEPO_ALLOW_INSECURE_LOCAL_AUTH', '').lower() == 'true'
+                and request.client and request.client.host in {'127.0.0.1', '::1'}):
+            return
+    if not expected:
+        raise HTTPException(status_code=503, detail="Admin API key is not configured")
+    supplied = request.headers.get("X-API-Key", "")
+    from backend.depo_platform.authorization import require_active_token
+    require_active_token('ADMIN_API_KEY')
+    if not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing admin API key")
+
+
 class CleanSchemaRequest(BaseModel):
+    confirm: str | None = None
+
+
+class DeleteDataRequest(BaseModel):
+    label: str | None = None
+    prefix: str | None = None
+    property: str | None = None
+    value: str | int | float | bool | None = None
+    batch_size: int = 10000
+    dry_run: bool = False
     confirm: str | None = None
 
 
@@ -165,6 +236,7 @@ def _neo4j_datasource() -> dict:
             "mutable": False,
         }
     except Exception as exc:
+        logger.warning("Neo4j configuration is incomplete: %s", type(exc).__name__)
         return {
             "id": "neo4j",
             "name": "Neo4j Knowledge Graph",
@@ -177,7 +249,7 @@ def _neo4j_datasource() -> dict:
             "configured_database_source": "",
             "database_status": "degraded",
             "mutable": False,
-            "message": str(exc),
+            "message": "Neo4j configuration is incomplete; review the required connection settings.",
         }
 
 
@@ -257,20 +329,20 @@ def _configuration_registry(neo4j: dict, llm: dict) -> list[dict]:
         },
         {
             "component": "LLM",
-            "key": "OLLAMA_BASE_URL",
-            "configured_value": _mask_uri(ollama_base or llm.get("endpoint", "")),
+            "key": llm.get("endpoint_key", "OLLAMA_BASE_URL"),
+            "configured_value": _mask_uri(llm.get("endpoint", "")),
             "active_value": _mask_uri(llm.get("endpoint", "")),
-            "source": ollama_source,
-            "status": "configured" if ollama_base else "default",
+            "source": llm.get("endpoint_source", ollama_source),
+            "status": llm.get("status", "default"),
             "mutable": False,
         },
         {
             "component": "LLM",
-            "key": "LLM_MODEL_NAME",
-            "configured_value": llm_model or llm.get("model", ""),
+            "key": llm.get("model_key", "LLM_MODEL_NAME"),
+            "configured_value": llm.get("model", ""),
             "active_value": llm.get("model", ""),
-            "source": model_source,
-            "status": "configured" if llm_model else "default",
+            "source": llm.get("model_source", model_source),
+            "status": llm.get("status", "default"),
             "mutable": False,
         },
     ]
@@ -281,7 +353,19 @@ def _llm_settings() -> dict:
     provider, provider_source = _env_lookup("USE_LLM")
     model, model_source = _env_lookup("LLM_MODEL_NAME", "AZURE_OPENAI_DEPLOYMENT")
     endpoint, endpoint_source = _env_lookup("OLLAMA_BASE_URL", "AZURE_OPENAI_ENDPOINT")
-    provider = (provider or "ollama").lower()
+    provider = (os.getenv("USE_LLM") or provider or "ollama").strip().lower()
+    if provider in {'openai', 'mistral', 'aoi'}:
+        from backend.core.llm_providers import cloud_settings
+        try:
+            selected = cloud_settings(provider)
+            return {'provider': provider, 'model': selected.model, 'endpoint': selected.base_url,
+                    'status': 'configured', 'provider_source': provider_source,
+                    'model_key': provider.upper() + '_MODEL', 'endpoint_key': provider.upper() + '_BASE_URL',
+                    'model_source': 'process', 'endpoint_source': 'process' if os.getenv(provider.upper() + '_BASE_URL') else 'default'}
+        except ValueError:
+            return {'provider': provider, 'model': '', 'endpoint': '', 'status': 'degraded',
+                    'provider_source': provider_source, 'model_key': provider.upper() + '_MODEL',
+                    'endpoint_key': provider.upper() + '_BASE_URL', 'model_source': 'process', 'endpoint_source': 'process'}
     model = model or "llama3:latest"
     endpoint = endpoint or "http://localhost:11434"
     status = "configured" if endpoint and model else "degraded"
@@ -297,84 +381,25 @@ def _llm_settings() -> dict:
 
 
 def _workflow_registry() -> list[dict]:
-    return [
-        {
-            "id": "ontology.create",
-            "label": "Create Ontology",
-            "category": "Ontology",
-            "inputs": "EXPRESS, XSD, OWL, CSV, namespace metadata",
-            "outputs": "OWL/TTL ontology, prefix registry, retained artifact",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "instance.import",
-            "label": "Import Instance Graph",
-            "category": "Import",
-            "inputs": "STEP, STP, STPX, PLMXML, XMI, CSV",
-            "outputs": "Neo4j instance graph, parse report, retained artifact",
-            "writes_to_neo4j": True,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "instance.link",
-            "label": "Link Instances to Ontology",
-            "category": "Mapping",
-            "inputs": "Instance graph, ontology, mapping rules",
-            "outputs": "Semantic links, alignment report",
-            "writes_to_neo4j": True,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "ontology.validate",
-            "label": "Validate Ontology",
-            "category": "Quality",
-            "inputs": "Ontology, SHACL/rules profile",
-            "outputs": "Validation issues, quality score",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "ontology.merge",
-            "label": "Merge Ontologies",
-            "category": "Ontology",
-            "inputs": "Source ontology, target ontology, merge policy",
-            "outputs": "Merged ontology, conflict report",
-            "writes_to_neo4j": True,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "dictionary.generate",
-            "label": "Generate Data Dictionary",
-            "category": "Governance",
-            "inputs": "Ontology or namespace",
-            "outputs": "Data dictionary, taxonomy terms",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "artifact.export",
-            "label": "Export Artifacts",
-            "category": "Reports",
-            "inputs": "Ontology, graph, validation run",
-            "outputs": "TTL, JSON, CSV, report bundle",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-    ]
+    try:
+        from backend.Services.workflow_registry import get_workflow_registry
+    except ImportError:
+        from Services.workflow_registry import get_workflow_registry
+
+    return get_workflow_registry()
 
 
 def _package_registry() -> list[dict]:
     package_path = _project_root() / "frontend" / "package.json"
     keep = {
-        "@emotion/react",
-        "@emotion/styled",
-        "@mui/material",
-        "@mui/x-tree-view",
         "@testing-library/dom",
         "@testing-library/jest-dom",
         "@testing-library/react",
         "@testing-library/user-event",
+        "@siemens/ix",
+        "@siemens/ix-react",
+        "@xyflow/react",
+        "echarts",
         "ag-grid-community",
         "ag-grid-react",
         "axios",
@@ -385,7 +410,6 @@ def _package_registry() -> list[dict]:
         "react",
         "react-dom",
         "react-scripts",
-        "web-vitals",
     }
     remove_candidates = {
         "@neo4j-nvl/base",
@@ -422,10 +446,10 @@ def _package_registry() -> list[dict]:
             elif name in keep:
                 recommendation = "keep"
                 used = True
-                category = "active_runtime"
+                category = "maintained_runtime_or_test_dependency"
             else:
                 recommendation = "review"
-                used = False
+                used = None
                 category = "needs_import_audit"
             packages.append({
                 "name": name,
@@ -457,6 +481,21 @@ def _route_group_services(api_routes: list[dict]) -> list[dict]:
         if route.get("frontend_mapped"):
             item["frontend_mapped_count"] += 1
     return sorted(groups.values(), key=lambda row: row["name"])
+
+
+def _standalone_service_registry() -> list[dict]:
+    """Expose the deployed service topology in the Admin UI, not only route groups."""
+    manifest_path = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "services.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("Standalone service manifest unavailable: %s", exc)
+        return []
+    from backend.depo_platform.service_catalog import service_rows
+    try:
+        return service_rows(manifest)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(503, 'Service catalog configuration is invalid; verify central routing settings') from exc
 
 
 def _route_available(api_routes: list[dict], path: str) -> str:
@@ -499,7 +538,13 @@ async def get_admin_registry(request: Request):
     route_group_services = _route_group_services(api_routes)
     backend_health = _route_available(api_routes, "/health")
     llm_health = _route_available(api_routes, "/api/v1/import/ollama/health")
-    chat_health = _route_available(api_routes, "/chat/sample-queries")
+    chat_health = _route_available(api_routes, "/chat/health")
+    from backend.agentic_service.catalog_loader import load_catalog
+    from backend.agentic_service.agent_usage import describe
+    try:
+        registered_agents = describe(load_catalog())
+    except (ValueError, OSError, KeyError) as exc:
+        raise HTTPException(503, 'Agent catalog configuration is invalid; verify AGENTIC_CATALOG_PATH') from exc
 
     return {
         "services": [
@@ -509,9 +554,9 @@ async def get_admin_registry(request: Request):
                 "type": "frontend",
                 "status": "configured",
                 "owner": "Digital Engineering",
-                "endpoint": "http://localhost:3000",
+                "endpoint": next(iter(os.getenv('ALLOWED_ORIGINS', '').split(',')), '').strip(),
                 "health_endpoint": "",
-                "config_source": "frontend/.env",
+                "config_source": "root .env.local: ALLOWED_ORIGINS",
                 "route_count": 0,
                 "frontend_mapped_count": 0,
             },
@@ -523,7 +568,7 @@ async def get_admin_registry(request: Request):
                 "owner": "Digital Engineering",
                 "endpoint": backend_endpoint,
                 "health_endpoint": backend_health,
-                "config_source": "backend/.env",
+                "config_source": "root .env.local / process environment",
                 "route_count": len(api_routes),
                 "frontend_mapped_count": sum(1 for route in api_routes if route.get("frontend_mapped")),
             },
@@ -540,32 +585,13 @@ async def get_admin_registry(request: Request):
                 "frontend_mapped_count": 0,
                 "model": llm.get("model", ""),
             },
-        ] + route_group_services,
+        ] + _standalone_service_registry() + route_group_services,
         "api_routes": api_routes,
         "data_sources": [
             neo4j,
         ],
         "configuration": _configuration_registry(neo4j, llm),
-        "agents": [
-            {
-                "id": "semantic-chat",
-                "name": "Semantic Chat Agent",
-                "provider": llm["provider"],
-                "model": llm["model"],
-                "status": llm["status"],
-                "health_endpoint": chat_health,
-                "config_source": llm.get("model_source", ""),
-            },
-            {
-                "id": "workflow-advisor",
-                "name": "Workflow Advisor",
-                "provider": llm["provider"],
-                "model": llm["model"],
-                "status": llm["status"],
-                "health_endpoint": llm_health,
-                "config_source": llm.get("model_source", ""),
-            },
-        ],
+        "agents": [{**agent, 'status': agent['registration_status'], 'config_source': 'AGENTIC_CATALOG_PATH / backend/agentic_service/catalog.json'} for agent in registered_agents],
         "workflows": _workflow_registry(),
         "packages": _package_registry(),
     }
@@ -584,8 +610,10 @@ except Exception as e:
         Neo4jSchemaCleaner = None
 
 
-@router.post("/clean-schema")
-async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
+@router.post("/clean-schema", dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
     """
     Clean Neo4j database: delete all nodes, relationships, AND ontology metadata
     ✅ UPDATED: Also clears orphaned ontology metadata from filesystem
@@ -600,50 +628,203 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             detail=f"Confirmation token required: confirm='{CLEAN_SCHEMA_CONFIRM_TOKEN}'",
         )
     
+    receipt = None
     try:
+        from backend.depo_platform.import_cleanup import clear_import_workflows
+        # Reject active/uncertain imports before any graph data is removed.
+        try:
+            clear_import_workflows(dry_run=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         # 1. Clean database and schema. The UI action is a destructive full schema clean,
         # so leave indexes/constraints empty instead of recreating default indexes.
+        from backend.depo_platform.cleanup_receipts import CleanupReceipt
+        from backend.mesh_store import PostgresRegistry
+        receipt = CleanupReceipt(PostgresRegistry('admin_cleanup_runs_v1'))
+        receipt.phase('graph', 'running', required=True)
         cleaner = Neo4jSchemaCleaner()
         try:
             result = cleaner.reset_database(recreate_indexes=False)
         finally:
             cleaner.close()
 
-        if result.get("status") != "SUCCESS":
+        graph_complete = result.get("status") == "SUCCESS"
+        receipt.phase('graph', 'completed' if graph_complete else 'partial')
+        if not graph_complete and not result.get('data_deleted'):
             raise HTTPException(status_code=500, detail=result.get("message", "Schema cleanup failed"))
-        
-        # 2. ✅ FIXED: Also clear ontology metadata so names don't persist
+        # Once graph data has been deleted, complete metadata cleanup even when
+        # dropping constraints/indexes failed. Preserve that failure in the result.
+        reconciliation = _reconcile_reset()
+        receipt.phase('reconciliation', 'partial' if reconciliation['status'] == 'partial' else 'completed')
+        from backend.depo_platform.ontology_cleanup import clear_ontology_registrations
+        metadata_result = clear_ontology_registrations()
+        receipt.phase('ontology_metadata', 'completed' if metadata_result.get('status') == 'success' else 'partial')
         try:
-            # Import using absolute path to avoid relative-import failures in tests
-            try:
-                from backend.Services.ontology_upload_manager import OntologyUploadManager
-            except ImportError:
-                from Services.ontology_upload_manager import OntologyUploadManager
-            metadata_result = OntologyUploadManager.clear_all_metadata()
-            metadata_cleared = metadata_result.get('cleared', 0)
-        except Exception as e:
-            logger.warning(f"Could not clear metadata: {e}")
-            metadata_cleared = 0
+            import_result = clear_import_workflows()
+        except Exception as exc:
+            logger.exception('Graph reset completed but Import cleanup failed')
+            import_result = {'status': 'partial', 'error_type': type(exc).__name__}
+        receipt.phase('import_workflows', 'completed' if import_result.get('status') == 'success' else 'partial')
+        metadata_cleared = metadata_result['cleared']
+        # Publish again after file deletion so peers cannot retain a list cached
+        # between graph reset and the filesystem cleanup.
+        try:
+            from backend.depo_platform.maintenance import invalidate_shared_caches
+            invalidate_shared_caches()
+        except Exception:
+            reconciliation = {'status': 'partial', 'message': 'Files were processed, but shared cache invalidation failed; check PostgreSQL connectivity.'}
+            receipt.phase('reconciliation', 'partial')
         
+        try:
+            OSLCTRSService.publish_event(
+                OSLCTRSService.base_resource_uri(),
+                "Modification",
+                title="Neo4j schema cleaned",
+                metadata={"operation": "clean-schema", "metadata_cleared": metadata_cleared},
+            )
+        except Exception as exc:
+            logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
+
+        cleanup_receipt = receipt.finish()
+        complete = cleanup_receipt['status'] == 'completed'
         return {
-            "success": True,
-            "status": result.get("status"),
-            "message": result.get("message") + f" [Metadata files cleared: {metadata_cleared}]",
+            'cleanup_receipt': cleanup_receipt,
+            "success": complete,
+            "status": "SUCCESS" if complete else 'partial',
+            "registry_reconciliation": reconciliation,
+            "graph_cleanup_status": result.get("status"),
+            "graph_cleanup_message": result.get("message") if not graph_complete else None,
+            "registry_verification": metadata_result["verification"],
+            "message": result.get("message", "Graph cleanup processed") + f" [Metadata files cleared: {metadata_cleared}]",
             "before": result.get("before"),
             "after": result.get("after"),
-            "metadata_cleared": metadata_cleared
+            "metadata_cleared": metadata_cleared,
+            "import_cleanup": import_result,
+            "metadata_cleanup_status": metadata_result.get('status'),
+            "metadata_failed": metadata_result.get('failed', []),
+            "metadata_cleanup_message": 'Ontology registry cleanup is incomplete or unverified; inspect registry_verification and server logs.' if metadata_result.get('status') != 'success' else None,
         }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e),
+            headers={'X-DEPO-Cleanup-ID': receipt.record['run_id']} if receipt is not None else None)
+    except HTTPException as exc:
+        if receipt is not None:
+            exc.headers = {**(exc.headers or {}), 'X-DEPO-Cleanup-ID': receipt.record['run_id']}
+        raise
+    except Exception as e:
+        logger.exception("Failed to clean schema")
+        raise HTTPException(status_code=500, detail="Unable to clean the Neo4j schema",
+            headers={'X-DEPO-Cleanup-ID': receipt.record['run_id']} if receipt is not None else None) from e
+    finally:
+        if receipt is not None and receipt.record['status'] == 'running':
+            for phase, status in list(receipt.record['phases'].items()):
+                if status == 'running':
+                    receipt.record['phases'][phase] = 'outcome_unverified'
+            receipt.finish()
+
+
+@router.get('/cleanup-runs/{run_id}', dependencies=[Depends(require_admin_api_key)])
+def cleanup_run_status(run_id: str):
+    import re
+    from backend.mesh_store import PostgresRegistry
+    if not re.fullmatch(r'cleanup-[0-9a-f]{32}', run_id):
+        raise HTTPException(422, 'Invalid cleanup run identity')
+    record = PostgresRegistry('admin_cleanup_runs_v1').get(run_id)
+    if record is None:
+        raise HTTPException(404, 'Cleanup receipt not found')
+    return record
+
+
+@router.post("/delete-data", dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+def delete_data_by_label(body: DeleteDataRequest):
+    """
+    Delete large Neo4j node sets in batches.
+
+    Example Cypher shape:
+    MATCH (n:LabelName)
+    WHERE n.property = $value
+    CALL {
+        WITH n
+        DETACH DELETE n
+    } IN TRANSACTIONS OF 10000 ROWS
+    """
+    if not SCHEMA_CLEANER_AVAILABLE or not Neo4jSchemaCleaner:
+        raise HTTPException(status_code=503, detail="Schema cleaner not available")
+
+    if body.confirm != "DELETE_NEO4J_DATA":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation token required: confirm='DELETE_NEO4J_DATA'",
+        )
+    if not body.label and not body.prefix:
+        raise HTTPException(status_code=400, detail="Provide either label or prefix.")
+    if body.label and body.prefix:
+        raise HTTPException(status_code=400, detail="Use either label or prefix, not both.")
+    if body.property and body.value is None:
+        raise HTTPException(status_code=400, detail="Property value is required when property is provided.")
+    if not body.property and body.value is not None:
+        raise HTTPException(status_code=400, detail="Property name is required when value is provided.")
+
+    cleaner = None
+    try:
+        cleaner = Neo4jSchemaCleaner()
+        if body.dry_run and body.prefix:
+            kwargs = {"prefix": body.prefix}
+            if body.property:
+                kwargs["property_name"] = body.property
+                kwargs["property_value"] = body.value
+            result = cleaner.count_nodes_by_prefix(**kwargs)
+        elif body.dry_run:
+            result = cleaner.count_nodes_by_label_property(
+                label=body.label or "",
+                property_name=body.property,
+                property_value=body.value,
+            )
+        elif body.prefix:
+            kwargs = {
+                "prefix": body.prefix,
+                "batch_size": body.batch_size,
+            }
+            if body.property:
+                kwargs["property_name"] = body.property
+                kwargs["property_value"] = body.value
+            result = cleaner.delete_nodes_by_prefix(**kwargs)
+        else:
+            result = cleaner.delete_nodes_by_label_property(
+                label=body.label or "",
+                property_name=body.property,
+                property_value=body.value,
+                batch_size=body.batch_size,
+            )
+        if result.get("status") != "SUCCESS":
+            raise HTTPException(status_code=400, detail=result.get("message", "Delete failed"))
+        if not body.dry_run:
+            try:
+                OSLCTRSService.publish_event(
+                    OSLCTRSService.base_resource_uri(),
+                    "Modification",
+                    title="Neo4j data deleted",
+                    metadata={"operation": "delete-data", "label": body.label, "prefix": body.prefix, "property": body.property, "batch_size": body.batch_size},
+                )
+            except Exception as exc:
+                logger.warning("OSLC TRS publish skipped for delete-data: %s", exc)
+        return {"success": True, "dry_run": body.dry_run, **result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Failed to clean schema")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to delete Neo4j data")
+        raise HTTPException(status_code=500, detail="Unable to delete Neo4j data") from e
+    finally:
+        if cleaner is not None:
+            cleaner.close()
 
 
 @router.get("/schema-stats")
-async def get_schema_stats():
+@_maintenance_worker
+def get_schema_stats():
     """Get current Neo4j schema statistics"""
     if not SCHEMA_CLEANER_AVAILABLE or not Neo4jSchemaCleaner:
         raise HTTPException(status_code=503, detail="Schema cleaner not available")
@@ -683,22 +864,84 @@ async def get_schema_stats():
         if _is_missing_database_error(e):
             neo4j = _neo4j_datasource()
             database = neo4j.get("configured_database") or neo4j.get("active_database") or "configured database"
-            return {
-                "status": "degraded",
-                "stats": _empty_schema_stats(),
-                "database": database,
-                "database_status": "missing",
-                "message": (
+            raise HTTPException(
+                status_code=503,
+                detail=(
                     f"Neo4j is configured from {neo4j.get('configured_database_source') or 'backend/.env'} "
                     f"to use database '{database}', but that database does not exist in the running Neo4j instance."
                 ),
-            }
+            ) from e
         logger.exception("Failed to get schema stats")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to retrieve schema statistics") from e
 
 
-@router.post("/reset-database")
-async def reset_database(recreate_indexes: bool = True):
+@router.get("/ontology-duplicate-audit")
+@_maintenance_worker
+def ontology_duplicate_audit(limit: int = 100):
+    """Read-only audit for duplicate ontology schema nodes that block uniqueness constraints."""
+    try:
+        try:
+            from backend.core.db_config import get_config, get_driver
+        except ImportError:
+            from core.db_config import get_config, get_driver
+
+        config = get_config()
+        driver = get_driver()
+        query = """
+        CALL () {
+          MATCH (n:OntologyClass)
+          WHERE n.uri IS NOT NULL
+          WITH 'OntologyClass.uri' AS key, n.uri AS value, collect(elementId(n)) AS ids, count(*) AS count
+          WHERE count > 1
+          RETURN key, value, ids, count
+          UNION ALL
+          MATCH (n:OntologyProperty)
+          WHERE n.uri IS NOT NULL
+          WITH 'OntologyProperty.uri' AS key, n.uri AS value, collect(elementId(n)) AS ids, count(*) AS count
+          WHERE count > 1
+          RETURN key, value, ids, count
+          UNION ALL
+          MATCH (n:OntologyClass)
+          WITH 'OntologyClass.prefix_name' AS key,
+               coalesce(n.ontology_prefix, n.prefix, '') + '::' + coalesce(n.name, n.label, '') AS value,
+               collect(elementId(n)) AS ids,
+               count(*) AS count
+          WHERE value <> '::' AND count > 1
+          RETURN key, value, ids, count
+          UNION ALL
+          MATCH (n:OntologyProperty)
+          WITH 'OntologyProperty.prefix_name' AS key,
+               coalesce(n.ontology_prefix, n.prefix, '') + '::' + coalesce(n.name, n.label, '') AS value,
+               collect(elementId(n)) AS ids,
+               count(*) AS count
+          WHERE value <> '::' AND count > 1
+          RETURN key, value, ids, count
+        }
+        RETURN key, value, count, ids[0..5] AS sample_element_ids
+        ORDER BY count DESC, key, value
+        LIMIT toInteger($limit)
+        """
+        with driver.session(database=config.database) as session:
+            rows = [dict(record) for record in session.run(query, {"limit": max(1, min(int(limit or 100), 500))})]
+        return {
+            "status": "ok",
+            "duplicate_group_count": len(rows),
+            "duplicates": rows,
+            "destructive_cleanup_required": len(rows) > 0,
+            "recommendation": (
+                "Duplicates exist. Reprocess after clean-schema or run a targeted reviewed cleanup before creating uniqueness constraints."
+                if rows else
+                "No duplicate ontology schema keys found for the audited fields."
+            ),
+        }
+    except Exception as e:
+        logger.exception("Failed to audit ontology duplicates")
+        raise HTTPException(status_code=500, detail="Unable to audit ontology duplicates") from e
+
+
+@router.post("/reset-database", dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+def reset_database(recreate_indexes: bool = True):
     """
     Complete database reset with optional index recreation
     """
@@ -707,9 +950,29 @@ async def reset_database(recreate_indexes: bool = True):
     
     try:
         cleaner = Neo4jSchemaCleaner()
-        result = cleaner.reset_database(recreate_indexes=recreate_indexes)
-        cleaner.close()
+        try:
+            result = cleaner.reset_database(recreate_indexes=recreate_indexes)
+        finally:
+            cleaner.close()
+        if result.get('status') != 'SUCCESS':
+            if result.get('data_deleted'):
+                _reconcile_reset()
+            raise HTTPException(500, detail=result.get('message') or 'Graph reset failed; inspect server logs before retrying')
+        reconciliation = _reconcile_reset()
+        result['registry_reconciliation'] = reconciliation
+        if reconciliation['status'] == 'partial':
+            result['status'] = 'partial'
+            result['message'] = reconciliation['message']
         
+        try:
+            OSLCTRSService.publish_event(
+                OSLCTRSService.base_resource_uri(),
+                "Modification",
+                title="Neo4j database reset",
+                metadata={"operation": "reset-database", "recreate_indexes": recreate_indexes},
+            )
+        except Exception as exc:
+            logger.warning("OSLC TRS publish skipped for reset-database: %s", exc)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -717,4 +980,124 @@ async def reset_database(recreate_indexes: bool = True):
         raise
     except Exception as e:
         logger.exception("Failed to reset database")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to reset the Neo4j database") from e
+
+
+class ClearImportWorkflowsRequest(BaseModel):
+    confirm: str
+
+
+class VanillaResetRequest(BaseModel):
+    confirm: str
+    preview_digest: str
+
+
+@router.get('/reset-vanilla/preview', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def preview_vanilla_reset():
+    from backend.depo_platform.vanilla_reset import inventory, assert_isolated
+    from backend.mesh_store import PostgresRegistry
+    try:
+        with PostgresRegistry('maintenance_state')._connect() as db:
+            plan = inventory(db, _project_root())
+        try:
+            assert_isolated(_project_root())
+            plan['can_execute'] = True
+        except ValueError as exc:
+            plan.update(can_execute=False, maintenance_instruction=str(exc))
+        return plan
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post('/reset-vanilla', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def reset_vanilla(body: VanillaResetRequest):
+    if body.confirm != 'RESET DEPO TO VANILLA':
+        raise HTTPException(400, 'Typed reset confirmation is required')
+    from backend.depo_platform.vanilla_reset import reset
+    from backend.mesh_store import PostgresRegistry
+    try:
+        cleaner = Neo4jSchemaCleaner()
+        try:
+            with PostgresRegistry('maintenance_state')._connect() as db:
+                return reset(db, _project_root(), expected_digest=body.preview_digest,
+                             graph_reset=lambda: cleaner.reset_database(recreate_indexes=True))
+        finally:
+            cleaner.close()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Vanilla reset failed before completion')
+        raise HTTPException(500, 'Reset could not complete; inspect logs/vanilla-reset before recovery') from exc
+
+
+@router.post('/clear-import-workflows', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def clear_import_workflow_history(body: ClearImportWorkflowsRequest):
+    if body.confirm != 'CLEAR_IMPORT_WORKFLOWS':
+        raise HTTPException(400, 'Confirmation required: CLEAR_IMPORT_WORKFLOWS')
+    from backend.depo_platform.import_cleanup import clear_import_workflows
+    try:
+        return clear_import_workflows()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Import workflow cleanup failed')
+        raise HTTPException(500, 'Import workflow cleanup failed; inspect service logs') from exc
+
+
+@router.post("/clear-cache", dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+def clear_cache():
+    """
+    Clear non-destructive application caches used by admin and graph views.
+    This does not delete Neo4j data.
+    """
+    cleared = {
+        "graph_cache": False,
+        "ontology_list_cache": False,
+        "config_cache": False,
+        "shared_cache_generation": False,
+    }
+    try:
+        from backend.depo_platform.maintenance import invalidate_shared_caches
+        cleared['shared_cache_generation'] = invalidate_shared_caches()
+    except Exception:
+        logger.exception('Shared cache invalidation failed')
+    try:
+        try:
+            from backend.core.graphvis_cache import invalidate_graphvis_cache
+        except ImportError:
+            from core.graphvis_cache import invalidate_graphvis_cache
+        invalidate_graphvis_cache("admin clear-cache")
+        cleared["graph_cache"] = True
+    except Exception as exc:
+        logger.warning("Could not clear graph cache: %s", exc)
+
+    try:
+        from backend.Services.ontology_upload_manager import OntologyUploadManager
+        OntologyUploadManager._invalidate_list_cache()
+        cleared["ontology_list_cache"] = True
+    except Exception as exc:
+        logger.warning("Could not clear ontology list cache: %s", exc)
+
+    try:
+        try:
+            from backend.core.db_config import get_config
+        except ImportError:
+            from core.db_config import get_config
+        if hasattr(get_config, "cache_clear"):
+            get_config.cache_clear()
+            cleared["config_cache"] = True
+    except Exception as exc:
+        logger.warning("Could not clear config cache: %s", exc)
+
+    return {
+        "status": "success" if all(cleared.values()) else "partial",
+        "message": "Local caches cleared and shared cache invalidation published." if all(cleared.values()) else "Some caches could not be cleared; check server logs.",
+        "cleared": cleared,
+    }

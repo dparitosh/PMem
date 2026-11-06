@@ -1,0 +1,125 @@
+"""Standalone API boundary for the governed modeling workbench."""
+from __future__ import annotations
+
+from backend.depo_platform.request_bodies import ModelDecisionBody, ModelLinkBody, ModelNodeBody, ModelProposalBody, ModelSeedBody
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+from backend.Services import agentic_modeling_service, modeling_service
+from backend.depo_platform.authorization import graph_read_identity, service_write_identity
+
+
+def _modeling_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return graph_read_identity(request)
+    return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="ontology-modeler")
+
+
+def _modeling_graph_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return graph_read_identity(request)
+    return _modeling_identity(request)
+
+
+router = APIRouter(prefix="/modeling", tags=["modeling"], dependencies=[Depends(_modeling_graph_identity)])
+
+
+def _call(operation, *args, **kwargs):
+    try:
+        return operation(*args, **kwargs)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/metamodel")
+def metamodel() -> dict: return _call(modeling_service.metamodel)
+
+@router.post("/indexes")
+def ensure_indexes() -> dict: return _call(modeling_service.ensure_indexes)
+
+@router.get("/graph")
+def graph(project: str = "Digital Engineering Model", search: str = "", limit: int = Query(500, ge=1, le=2000)) -> dict:
+    return _call(modeling_service.list_graph, project=project, search=search, limit=limit)
+
+@router.get("/tree")
+def tree(project: str = "Digital Engineering Model") -> dict: return _call(modeling_service.tree, project=project)
+
+@router.get("/search")
+def search(q: str, project: str = "Digital Engineering Model", limit: int = Query(50, ge=1, le=200)) -> dict:
+    return _call(modeling_service.search, query=q, project=project, limit=limit)
+
+@router.get("/context/{element_id}")
+def context(element_id: str, depth: int = Query(1, ge=1, le=2), limit: int = Query(300, ge=1, le=1000)) -> dict:
+    return _call(modeling_service.context, element_id=element_id, depth=depth, limit=limit)
+
+@router.post("/nodes")
+def create_node(payload: ModelNodeBody) -> dict: return _call(modeling_service.create_node, payload)
+
+@router.put("/nodes/{element_id}")
+def update_node(element_id: str, payload: ModelNodeBody) -> dict: return _call(modeling_service.update_node, element_id, payload)
+
+@router.delete("/nodes/{element_id}")
+def delete_node(element_id: str) -> dict: return _call(modeling_service.delete_node, element_id)
+
+@router.post("/links")
+def create_link(payload: ModelLinkBody) -> dict: return _call(modeling_service.create_link, payload)
+
+@router.put("/links/{element_id}")
+def update_link(element_id: str, payload: ModelLinkBody) -> dict: return _call(modeling_service.update_link, element_id, payload)
+
+@router.delete("/links/{element_id}")
+def delete_link(element_id: str) -> dict: return _call(modeling_service.delete_link, element_id)
+
+@router.get("/validation")
+def validation(project: str = "Digital Engineering Model") -> dict: return _call(modeling_service.validate, project=project)
+
+@router.post("/seed")
+def seed(payload: ModelSeedBody | None = None) -> dict:
+    return _call(modeling_service.seed_sample, project=(payload or {}).get("project") or "Digital Engineering Model")
+
+@router.post("/agent/proposals")
+def create_proposal(payload: ModelProposalBody) -> dict: return _call(agentic_modeling_service.create_proposal, payload)
+
+@router.get("/agent/proposals")
+def list_proposals(project: str = "Digital Engineering Model", limit: int = Query(50, ge=1, le=200)) -> dict:
+    return _call(agentic_modeling_service.list_proposals, project=project, limit=limit)
+
+@router.post("/agent/proposals/{proposal_id}/approve")
+def approve_proposal(proposal_id: str, payload: ModelDecisionBody | None = None) -> dict:
+    data = payload or {}
+    return _call(agentic_modeling_service.approve_proposal, proposal_id, approved_by=data.get("approved_by") or "user", comment=data.get("comment") or "")
+
+@router.post("/agent/proposals/{proposal_id}/reject")
+def reject_proposal(proposal_id: str, payload: ModelDecisionBody | None = None) -> dict:
+    data = payload or {}
+    return _call(agentic_modeling_service.reject_proposal, proposal_id, rejected_by=data.get("rejected_by") or "user", comment=data.get("comment") or "")
+
+
+@router.get('/xmi-diagrams/{ontology_id}')
+def xmi_diagrams(ontology_id: str) -> dict:
+    from .xmi_diagrams import retained_diagrams
+    try:
+        return retained_diagrams(ontology_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(409, 'Retained model source is unavailable; restore or re-import the source') from exc
+
+
+@router.get('/xmi-context/{ontology_id}')
+def xmi_context(ontology_id: str, source_id: str = Query(..., min_length=1, max_length=512)) -> dict:
+    from .xmi_diagrams import model_context, ModelContextUnavailable
+    try:
+        return model_context(ontology_id, source_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(409, 'Retained model source is unavailable; restore or re-import the source') from exc
+    except ModelContextUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc

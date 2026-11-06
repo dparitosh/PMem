@@ -52,6 +52,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
+if __package__:
+    from .xsd_semantics import inspect_conversion_schemas, element_particles, expand_model_groups, consolidated_element_particles
+else:
+    from xsd_semantics import inspect_conversion_schemas, element_particles, expand_model_groups, consolidated_element_particles
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DC, DCTERMS, OWL, RDF, RDFS, SKOS, XSD
@@ -88,6 +92,19 @@ XSD_TYPE_MAP = {
     "base64Binary":     XSD.base64Binary,
     "language":         XSD.language,
     "token":            XSD.token,
+    "ID":              XSD.ID,
+    "IDREF":           XSD.IDREF,
+    "IDREFS":          XSD.IDREFS,
+    "QName":           XSD.QName,
+    "NCName":          XSD.NCName,
+    "positiveInteger": XSD.positiveInteger,
+    "nonNegativeInteger": XSD.nonNegativeInteger,
+    "negativeInteger": XSD.negativeInteger,
+    "nonPositiveInteger": XSD.nonPositiveInteger,
+    "unsignedInt":     XSD.unsignedInt,
+    "unsignedLong":    XSD.unsignedLong,
+    "unsignedShort":   XSD.unsignedShort,
+    "unsignedByte":    XSD.unsignedByte,
 }
 
 
@@ -109,6 +126,7 @@ class OntologyConfig:
 
     # ── Provenance (all optional) ─────────────────────────────────────────────
     creator:          str  = "IAE — Industrial Autonomy and Engineering"
+    class_iris:       dict = field(default_factory=dict)
     source_ns:        str  = ""   # Original schema namespace (info only)
     source_standard:  str  = ""   # e.g. "ANSI/ISA-95.00.02-2010"
     version_info:     str  = ""
@@ -139,7 +157,7 @@ class OntologyConfig:
 
     # ── Output ────────────────────────────────────────────────────────────────
     output_ttl:       str  = ""
-    output_owl:       str  = ""   # RDF/XML (.owl) — derived from output_ttl if empty
+    output_owl:       str  = ""   # RDF/XML (.owl) is emitted only when explicitly requested.
 
     # ── Derived helpers ───────────────────────────────────────────────────────
 
@@ -148,7 +166,7 @@ class OntologyConfig:
         return Namespace(self.base_uri)
 
     def class_uri(self, name: str) -> URIRef:
-        return self.ns[_safe_uri_name(name)]
+        return URIRef(self.class_iris[name]) if name in self.class_iris else self.ns[_safe_uri_name(name)]
 
     def prop_uri(self, domain: str, prop_name: str) -> URIRef:
         canonical = self.canonical_property_key(prop_name)
@@ -404,7 +422,7 @@ def _extract_annotation(element) -> "str | None":
     return None
 
 
-def _collect_simple_types(xsd_paths: list) -> dict:
+def _collect_simple_types(xsd_paths: list, schema_roots=None) -> dict:
     """
     Pass 1 — scan every XSD file and return a mapping:
         type_local_name  →  rdflib XSD datatype URIRef
@@ -419,7 +437,7 @@ def _collect_simple_types(xsd_paths: list) -> dict:
 
     for path in xsd_paths:
         try:
-            root = ET.parse(path).getroot()
+            root = schema_roots[path] if schema_roots is not None else ET.parse(path).getroot()
         except ET.ParseError:
             continue
 
@@ -518,6 +536,7 @@ def build_ontology_header(g: Graph, cfg: OntologyConfig) -> None:
         f"SKOS concept class representing controlled vocabulary terms in {cfg.title}")))
     g.add((SKOS.Concept, RDFS.isDefinedBy,
            URIRef("http://www.w3.org/2004/02/skos/core#Concept")))
+    g.add((SKOS.Concept, DC.source, URIRef(str(SKOS.Concept))))
     g.add((onto, OWL.imports, URIRef("http://open-services.net/ns/core")))
 
 
@@ -592,19 +611,152 @@ def _extract_inline_simple_base(element) -> str:
     return ""
 
 
+def _owned_declarations(node, tag):
+    """Yield declarations owned by a type, without flattening nested types."""
+    for child in list(node):
+        if child.tag == tag:
+            yield child
+        if child.tag != f"{XSD_PRE}complexType":
+            yield from _owned_declarations(child, tag)
+
+
+def _anonymous_type_name(parent_name: str, element_name: str) -> str:
+    """Stable class name for an inline complexType."""
+    return f"{parent_name}__{element_name}"
+
+
+def _add_shacl_property_shape(g: Graph, cfg: OntologyConfig, class_uri: URIRef,
+                              prop_uri: URIRef, min_occurs: str, max_occurs: str,
+                              datatype=None, value_class=None) -> None:
+    """Mirror property cardinality without rejecting inherited properties."""
+    shape = cfg.ns[f"shape_{_safe_uri_name(str(class_uri).split('#')[-1])}"]
+    g.add((shape, RDF.type, SH.NodeShape))
+    g.add((shape, SH.targetClass, class_uri))
+    g.add((shape, SH.closed, Literal(False, datatype=XSD.boolean)))
+    property_shape = BNode()
+    g.add((shape, SH.property, property_shape))
+    g.add((property_shape, SH.path, prop_uri))
+    if min_occurs != "0":
+        g.add((property_shape, SH.minCount, Literal(int(min_occurs), datatype=XSD.nonNegativeInteger)))
+    if max_occurs != "unbounded":
+        g.add((property_shape, SH.maxCount, Literal(int(max_occurs), datatype=XSD.nonNegativeInteger)))
+    if datatype is not None:
+        g.add((property_shape, SH.datatype, datatype))
+    if value_class is not None:
+        g.add((property_shape, SH["class"], value_class))
+
+
+def _rdf_list(g: Graph, values: list) -> BNode:
+    head = BNode()
+    current = head
+    for index, value in enumerate(values):
+        g.add((current, RDF.first, value))
+        if index == len(values) - 1:
+            g.add((current, RDF.rest, RDF.nil))
+        else:
+            nxt = BNode()
+            g.add((current, RDF.rest, nxt))
+            current = nxt
+    return head
+
+
+def _add_choice_constraints(g, cfg, type_node, class_uri, type_name):
+    """Enforce simple exclusive choices and disclose unsupported compositor constraints."""
+    identities = [element.get('name') or _local(element.get('ref', '')) for element, _, _ in element_particles(type_node)]
+    if len(identities) != len(set(identities)):
+        g.add((class_uri, RDFS.comment, Literal('Conversion limitation: repeated property paths require source XSD validation; exclusive SHACL choice constraints are omitted to avoid rejecting valid instances.')))
+        return
+    def visit(node, ancestors=()):
+        for child in node:
+            if child.tag == XSD_PRE + 'complexType':
+                continue
+            if child.tag == XSD_PRE + 'choice':
+                yield child, ancestors
+            yield from visit(child, (*ancestors, child))
+    for choice, ancestors in visit(type_node):
+        branches = [child for child in choice if child.tag != XSD_PRE + 'annotation']
+        if (choice.get('maxOccurs', '1') != '1' or choice.get('minOccurs', '1') not in {'0', '1'}
+                or not branches or any(child.tag != XSD_PRE + 'element' for child in branches)
+                or any(child.get('minOccurs', '1') != '1' for child in branches)
+                or any(parent.tag == XSD_PRE + 'choice' or parent.get('maxOccurs', '1') != '1' for parent in ancestors)):
+            # RDF has no ordered compositor instances. Preserve its properties
+            # and effective bounds, but never assert an incorrect exclusive shape.
+            g.add((class_uri, RDFS.comment, Literal('Conversion limitation: nested, optional-branch or repeating XSD choice requires source XSD validation; generated SHACL does not enforce its complete compositor semantics.')))
+            continue
+        names = [child.get('name') or _local(child.get('ref', '')) for child in branches]
+        if any(not name for name in names) or len(set(names)) != len(names):
+            raise ValueError('Choice branches require distinct property identities')
+        properties = [cfg.prop_uri(type_name, name) for name in names]
+        if len(set(properties)) != len(properties):
+            raise ValueError('Choice branches collapse to the same configured property identity')
+        optional = choice.get('minOccurs', '1') == '0' or any(parent.get('minOccurs') == '0' for parent in ancestors)
+        alternatives = []
+        for selected in [*range(len(properties)), *([None] if optional else [])]:
+            alternative = BNode()
+            alternatives.append(alternative)
+            for index, prop in enumerate(properties):
+                constraint = BNode()
+                g.add((alternative, SH.property, constraint))
+                g.add((constraint, SH.path, prop))
+                if index == selected:
+                    g.add((constraint, SH.minCount, Literal(1, datatype=XSD.nonNegativeInteger)))
+                else:
+                    g.add((constraint, SH.maxCount, Literal(0, datatype=XSD.nonNegativeInteger)))
+        shape = BNode()
+        g.add((shape, RDF.type, SH.NodeShape))
+        g.add((shape, SH.targetClass, class_uri))
+        g.add((shape, SH.xone, _rdf_list(g, alternatives)))
+        g.add((class_uri, RDFS.comment, Literal('Exclusive XSD choice is enforced by the generated SHACL xone shape.')))
+
+
 def _ensure_class_stub(g: Graph, cfg: OntologyConfig, type_local: str, source_tag: str) -> URIRef:
-    """Ensure a referenced type exists as an owl:Class in the generated graph."""
+    """Ensure a referenced type exists without inventing a business definition.
+
+    A referenced type may be declared in another XSD file or may be absent from
+    the uploaded schema. Its provenance belongs in dcterms:description/source;
+    rdfs:comment and skos:definition are reserved for functional semantics.
+    """
     class_uri = cfg.class_uri(type_local)
     if (class_uri, RDF.type, OWL.Class) not in g:
         g.add((class_uri, RDF.type, OWL.Class))
         g.add((class_uri, RDFS.label, Literal(type_local)))
         g.add((class_uri, RDFS.comment, Literal(
-            f"Auto-generated class stub for referenced type '{type_local}'."
+            f"{type_local} is a referenced schema type used as a parent class or property range."
+        )))
+        g.add((class_uri, SKOS.definition, Literal(
+            f"Referenced schema type {type_local}; detailed functional semantics were not supplied by the source schema."
+        )))
+        g.add((class_uri, DCTERMS.description, Literal(
+            f"Referenced XSD type '{type_local}'; no functional definition was supplied by the source schema."
         )))
         if cfg.categories:
             g.add((class_uri, DCTERMS.subject, cfg.ns[cfg.category_for(type_local)]))
         g.add((class_uri, DC.source, Literal(source_tag)))
     return class_uri
+
+
+def _schema_definition(type_name: str, ct_element, cfg: OntologyConfig) -> str:
+    """Create a transparent structural definition when XSD has no annotation."""
+    fields = []
+    for element in ct_element.iter(f"{XSD_PRE}element"):
+        name = element.get("name") or _local(element.get("ref", ""))
+        if name and name not in fields:
+            fields.append(name)
+    for attribute in ct_element.iter(f"{XSD_PRE}attribute"):
+        name = attribute.get("name") or _local(attribute.get("ref", ""))
+        if name and name not in fields:
+            fields.append(name)
+    standard = cfg.source_standard or cfg.prefix or "source schema"
+    if standard.startswith(("http://", "https://")):
+        standard = cfg.prefix or "source schema"
+    definition = f"{type_name} represents a structured type in the {standard} model."
+    if fields:
+        definition += f" It defines the following schema fields: {', '.join(fields[:24])}."
+        if len(fields) > 24:
+            definition += f" Additional fields: {len(fields) - 24}."
+    else:
+        definition += " No child fields were declared in the source schema."
+    return definition
 
 
 def _ensure_owl_thing_metadata(g: Graph, source_tag: str) -> None:
@@ -636,6 +788,11 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         return
     seen_classes.add(class_uri)
 
+    # A forward reference may have created a provisional class description.
+    # Replace only those descriptive triples when the full complexType arrives.
+    for predicate in (RDFS.comment, SKOS.definition, DCTERMS.description):
+        g.remove((class_uri, predicate, None))
+
     cat = cfg.category_for(type_name)
     source_tag = f"{cfg.source_standard or cfg.prefix} / {file_stem}"
 
@@ -649,13 +806,29 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((class_uri, RDFS.comment,    Literal(annotation_text)))
         g.add((class_uri, SKOS.definition, Literal(annotation_text)))
     else:
-        g.add((class_uri, RDFS.comment,  Literal(
-            f"Class from {file_stem}. Source complexType '{type_name}'."
+        generated_definition = _schema_definition(type_name, ct_element, cfg)
+        g.add((class_uri, RDFS.comment, Literal(generated_definition)))
+        g.add((class_uri, SKOS.definition, Literal(generated_definition)))
+        g.add((class_uri, DCTERMS.description, Literal(
+            f"Generated structural definition from complexType '{type_name}' in {file_stem}."
         )))
 
     if cfg.categories:
         g.add((class_uri, DCTERMS.subject, cfg.ns[cat]))
     g.add((class_uri, DC.source, Literal(source_tag)))
+
+    # Preserve XSD inheritance as OWL class hierarchy.  Restrictions below
+    # describe property/cardinality constraints; they are not replacements
+    # for the semantic parent class declared by complexContent extension.
+    complex_content = ct_element.find(f"{XSD_PRE}complexContent")
+    if complex_content is not None:
+        base_element = complex_content.find(f"{XSD_PRE}extension")
+        if base_element is None:
+            base_element = complex_content.find(f"{XSD_PRE}restriction")
+        base_local = _local(base_element.get("base", "")) if base_element is not None else ""
+        if base_local and base_local not in XSD_TYPE_MAP:
+            parent_uri = _ensure_class_stub(g, cfg, base_local, source_tag)
+            g.add((class_uri, RDFS.subClassOf, parent_uri))
 
     # simpleContent → enumeration or datatype alias
     simple_content = ct_element.find(f"{XSD_PRE}simpleContent")
@@ -680,11 +853,9 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         return
 
     # sequence / choice / all children → properties
-    for seq_elem in ct_element.iter(f"{XSD_PRE}element"):
+    for seq_elem, min_occurs, max_occurs in consolidated_element_particles(ct_element):
         elem_name  = seq_elem.get("name", "")
         elem_type  = seq_elem.get("type", "")
-        min_occurs = seq_elem.get("minOccurs", "1")
-        max_occurs = seq_elem.get("maxOccurs", "1")
         ref        = seq_elem.get("ref", "")
 
         prop_name = elem_name or _local(ref)
@@ -693,7 +864,43 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
 
         prop_uri    = cfg.prop_uri(type_name, prop_name)
         shared_property = cfg.is_shared_property(prop_name)
+        inline_complex = seq_elem.find(f"{XSD_PRE}complexType")
         range_local = _local(elem_type) if elem_type else _extract_inline_simple_base(seq_elem)
+
+        # Inline complexTypes are real schema types, not scalar columns. Give
+        # each one a deterministic class IRI and recurse through the same
+        # guarded parser. This also handles anonymous self-nesting safely.
+        if inline_complex is not None:
+            range_local = _anonymous_type_name(type_name, prop_name)
+            if not inline_complex.get("name"):
+                inline_complex.set("name", range_local)
+            parse_complex_type(g, inline_complex, file_stem, seen_classes, cfg,
+                               simple_types, prop_kinds, strict_semantics)
+
+        # A repeated named complex element is an association in the source
+        # model, not merely a multi-valued edge: its row may carry sequence,
+        # quantity, effectivity, or other relationship data. Represent the
+        # association explicitly while retaining a typed edge to the target.
+        if (max_occurs == "unbounded" and range_local and
+                range_local not in XSD_TYPE_MAP and range_local not in simple_types and
+                inline_complex is None):
+            target_uri = _ensure_class_stub(g, cfg, range_local, source_tag)
+            association_name = _anonymous_type_name(type_name, prop_name) + "__Association"
+            association_uri = cfg.class_uri(association_name)
+            g.add((association_uri, RDF.type, OWL.Class))
+            g.add((association_uri, RDFS.label, Literal(association_name)))
+            g.add((association_uri, RDFS.comment, Literal(
+                f"Generated projection construct for repeated XSD particle {type_name}.{prop_name}.")))
+            g.add((association_uri, DC.source, Literal(f"{file_stem}.xsd")))
+            target_prop = cfg.prop_uri(association_name, prop_name)
+            g.add((target_prop, RDF.type, OWL.ObjectProperty))
+            g.add((target_prop, RDFS.domain, association_uri))
+            g.add((target_prop, RDFS.range, target_uri))
+            g.add((target_prop, RDFS.label, Literal(f"target {prop_name}")))
+            g.add((target_prop, RDFS.comment, Literal(
+                f"Generated target edge for {type_name}.{prop_name} to XSD type {range_local}.")))
+            g.add((target_prop, DC.source, Literal(f"{file_stem}.xsd")))
+            range_local = association_name
 
         # Strict mode avoids asserting property semantics with no type evidence.
         if strict_semantics and not range_local and seq_elem.find(f"{XSD_PRE}complexType") is None:
@@ -703,6 +910,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         #  1. Direct XSD primitive (e.g. xs:string, xs:dateTime)
         #  2. simpleContent/simpleType wrapper resolving to an XSD primitive
         #  3. Reference to another complexType  →  ObjectProperty
+        range_class_uri = None
         if range_local in XSD_TYPE_MAP:
             if prop_kinds.get(prop_uri) not in (None, "datatype"):
                 continue
@@ -712,7 +920,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             g.add((prop_uri, RDFS.range, XSD_TYPE_MAP[range_local]))
             
             # Add functional property characteristic for single-valued primitives
-            if max_occurs == "1":
+            if max_occurs == "1" and not shared_property:
                 g.add((prop_uri, RDF.type, OWL.FunctionalProperty))
                 
         elif range_local in simple_types:
@@ -724,7 +932,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             g.add((prop_uri, RDFS.range, simple_types[range_local]))
             
             # Add functional property characteristic for single-valued types
-            if max_occurs == "1":
+            if max_occurs == "1" and not shared_property:
                 g.add((prop_uri, RDF.type, OWL.FunctionalProperty))
                 
         else:
@@ -738,7 +946,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
                 g.add((prop_uri, RDFS.range, range_class_uri))
                 
                 # Add functional property characteristic for single-valued objects
-                if max_occurs == "1":
+                if max_occurs == "1" and not shared_property:
                     g.add((prop_uri, RDF.type, OWL.FunctionalProperty))
                 
                 # Generate inverse property for bidirectional relationships
@@ -761,6 +969,11 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
 
         g.add((prop_uri, RDFS.domain,  class_uri))
         g.add((prop_uri, RDFS.label,   Literal(prop_name)))
+        _add_shacl_property_shape(
+            g, cfg, class_uri, prop_uri, min_occurs, max_occurs,
+            datatype=(XSD_TYPE_MAP.get(range_local) or simple_types.get(range_local)) if prop_kinds.get(prop_uri) == "datatype" else None,
+            value_class=range_class_uri if prop_kinds.get(prop_uri) == "object" else None,
+        )
 
         prop_annotation = _extract_annotation(seq_elem)
         if prop_annotation:
@@ -799,7 +1012,8 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((oslc_prop, OSLC.occurs, _get_oslc_occurs(min_occurs, max_occurs)))
 
     # xs:attribute elements → properties
-    for attr_elem in ct_element.iter(f"{XSD_PRE}attribute"):
+    _add_choice_constraints(g, cfg, ct_element, class_uri, type_name)
+    for attr_elem in _owned_declarations(ct_element, f"{XSD_PRE}attribute"):
         attr_name  = attr_elem.get("name", "")
         attr_type  = attr_elem.get("type", "")
         attr_use   = attr_elem.get("use", "optional")  # "required" or "optional" (default)
@@ -810,6 +1024,14 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             continue
 
         prop_uri    = cfg.prop_uri(type_name, prop_name)
+        if attr_use == 'prohibited':
+            _add_shacl_property_shape(g, cfg, class_uri, prop_uri, '0', '0')
+            restriction = BNode()
+            g.add((restriction, RDF.type, OWL.Restriction))
+            g.add((restriction, OWL.onProperty, prop_uri))
+            g.add((restriction, OWL.maxCardinality, Literal(0, datatype=XSD.nonNegativeInteger)))
+            g.add((class_uri, RDFS.subClassOf, restriction))
+            continue
         shared_property = cfg.is_shared_property(prop_name)
         range_local = _local(attr_type) if attr_type else _extract_inline_simple_base(attr_elem)
 
@@ -828,6 +1050,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         #  1. Direct XSD primitive (e.g. xs:string, xs:dateTime)
         #  2. simpleContent/simpleType wrapper resolving to an XSD primitive
         #  3. Reference to another complexType  →  ObjectProperty
+        range_class_uri = None
         if range_local in XSD_TYPE_MAP:
             if prop_kinds.get(prop_uri) not in (None, "datatype"):
                 continue
@@ -857,6 +1080,11 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
 
         g.add((prop_uri, RDFS.domain,  class_uri))
         g.add((prop_uri, RDFS.label,   Literal(prop_name)))
+        _add_shacl_property_shape(
+            g, cfg, class_uri, prop_uri, min_occurs, max_occurs,
+            datatype=(XSD_TYPE_MAP.get(range_local) or simple_types.get(range_local)) if prop_kinds.get(prop_uri) == "datatype" else None,
+            value_class=range_class_uri if prop_kinds.get(prop_uri) == "object" else None,
+        )
 
         attr_annotation = _extract_annotation(attr_elem)
         if attr_annotation:
@@ -921,16 +1149,23 @@ def _build_enum_list(g: Graph, class_uri: URIRef,
 def process_xsd_file(g: Graph, xsd_path: Path,
                      seen_classes: set, cfg: OntologyConfig,
                      simple_types: dict, prop_kinds: dict,
-                     strict_semantics: bool = True) -> None:
+                     strict_semantics: bool = True, schema_root=None) -> None:
     """Parse one XSD file and add its complexTypes / top-level elements to the graph."""
     try:
-        root = ET.parse(xsd_path).getroot()
+        root = schema_root if schema_root is not None else expand_model_groups(_discover_related_xsds([xsd_path]))[Path(xsd_path).resolve()]
     except ET.ParseError as e:
         logger.warning("parse error in %s: %s", xsd_path.name, e)
         return
 
     file_stem   = xsd_path.stem.split(" ")[0]  # strip timestamp suffix
     source_tag  = f"{cfg.source_standard or cfg.prefix} / {file_stem}"
+
+    redefines = root.findall(f"{XSD_PRE}redefine")
+    if redefines:
+        logger.warning(
+            "XSD redefine dependencies are loaded but redefine overrides are not applied in %s",
+            xsd_path.name,
+        )
 
     for ct in root.findall(f"{XSD_PRE}complexType"):
         parse_complex_type(
@@ -947,7 +1182,15 @@ def process_xsd_file(g: Graph, xsd_path: Path,
     for el in root.findall(f"{XSD_PRE}element"):
         el_name = el.get("name", "")
         el_type = el.get("type", "")
+        inline_complex = el.find(f"{XSD_PRE}complexType")
         el_type_local = _local(el_type) if el_type else _extract_inline_simple_base(el)
+
+        if inline_complex is not None:
+            el_type_local = el_name
+            if not inline_complex.get("name"):
+                inline_complex.set("name", el_type_local)
+            parse_complex_type(g, inline_complex, file_stem, seen_classes, cfg,
+                               simple_types, prop_kinds, strict_semantics)
 
         if not el_name:
             continue
@@ -972,13 +1215,35 @@ def process_xsd_file(g: Graph, xsd_path: Path,
             g.add((inst_uri, RDFS.comment,    Literal(elem_annotation)))
             g.add((inst_uri, SKOS.definition, Literal(elem_annotation)))
         else:
-            g.add((inst_uri, RDFS.comment,     Literal(
-                f"Top-level element '{el_name}' (type: {el_type_local}). Source: {file_stem}"
+            generated_definition = f"{el_name} is a top-level schema element typed as {el_type_local or 'an unresolved schema type'}."
+            g.add((inst_uri, RDFS.comment, Literal(generated_definition)))
+            g.add((inst_uri, SKOS.definition, Literal(generated_definition)))
+            g.add((inst_uri, DCTERMS.description, Literal(
+                f"Generated structural definition from top-level element '{el_name}' in {file_stem}."
             )))
 
         if cfg.categories:
             g.add((inst_uri, DCTERMS.subject, cfg.ns[cat]))
         g.add((inst_uri, DC.source, Literal(source_tag)))
+
+        # XSD identity constraints have no direct SQL/OWL equivalent, but an
+        # xs:key is faithfully expressible as owl:hasKey. Keep keyrefs as
+        # provenance annotations so they are available to the relational and
+        # SHACL layers instead of silently dropping them.
+        for constraint in list(el):
+            if constraint.tag not in {f"{XSD_PRE}key", f"{XSD_PRE}keyref"}:
+                continue
+            fields = [_local(field.get("xpath", ""))
+                      for field in constraint.findall(f"{XSD_PRE}field")]
+            if constraint.tag == f"{XSD_PRE}key" and fields:
+                key_props = [cfg.prop_uri(el_name, field) for field in fields]
+                g.add((inst_uri, OWL.hasKey, _rdf_list(g, key_props)))
+            if constraint.tag == f"{XSD_PRE}keyref":
+                keyref_uri = cfg.ns[f"keyref_{_safe_uri_name(el_name)}_{_safe_uri_name(constraint.get('name', ''))}"]
+                g.add((keyref_uri, RDF.type, OWL.Axiom))
+                g.add((keyref_uri, RDFS.comment, Literal(
+                    f"XSD keyref {constraint.get('name', '')} refers to {constraint.get('refer', '')}; fields: {', '.join(fields)}"
+                )))
 
     logger.info("XSD processed: %s", file_stem)
 
@@ -1015,6 +1280,51 @@ def find_xsd_file(schema_dir: Path, base_name: str,
     return candidates[-1] if candidates else None
 
 
+def _discover_related_xsds(paths: list[Path]) -> list[Path]:
+    """Follow bounded local dependencies inside the selected schema directory."""
+    if not paths:
+        return []
+    boundary = Path(os.path.commonpath([str(Path(path).resolve().parent) for path in paths]))
+    total_bytes = 0
+    byte_limit = int(os.getenv('ONTOLOGY_AGENT_MAX_BYTES', str(25 * 1024 * 1024)))
+    result: list[Path] = []
+    seen: set[Path] = set()
+    pending = list(paths)
+    while pending:
+        path = Path(pending.pop(0)).resolve()
+        if path in seen:
+            continue
+        if not path.is_relative_to(boundary):
+            raise ValueError('XSD dependency escapes the selected schema directory')
+        if not path.is_file():
+            raise ValueError(f'Missing XSD dependency: {path.name}')
+        seen.add(path)
+        if len(seen) > 64:
+            raise ValueError('XSD dependency closure exceeds 64 documents')
+        total_bytes += path.stat().st_size
+        if total_bytes > byte_limit:
+            raise ValueError('XSD dependency closure exceeds the configured byte limit')
+        result.append(path)
+        try:
+            content = path.read_bytes()
+            probe = content.replace(b'\x00', b'').upper()
+            if b'<!DOCTYPE' in probe or b'<!ENTITY' in probe:
+                raise ValueError('DOCTYPE/entities are not permitted in conversion schemas')
+            root = ET.fromstring(content)
+        except ET.ParseError as exc:
+            raise ValueError(f'Malformed XSD dependency: {path.name}') from exc
+        for link in list(root):
+            if link.tag in {f"{XSD_PRE}include", f"{XSD_PRE}import", f"{XSD_PRE}redefine"}:
+                location = link.get("schemaLocation")
+                if location:
+                    if ':' in location or '\\' in location or Path(location).is_absolute():
+                        raise ValueError('XSD dependencies require relative local schema locations')
+                    pending.append(path.parent / location)
+                elif link.get("namespace", "").startswith(("http://", "https://")):
+                    logger.warning("Remote XSD dependency is not fetched: %s", link.get("namespace"))
+    return result
+
+
 def build_bridge_pairs(g: Graph, cfg: OntologyConfig) -> None:
     """
     Create cross-standard bridge classes and mapsTo properties from cfg.bridge_pairs.
@@ -1033,7 +1343,7 @@ def build_bridge_pairs(g: Graph, cfg: OntologyConfig) -> None:
         if (src_uri, RDF.type, OWL.Class) not in g:
             g.add((src_uri, RDF.type,    OWL.Class))
             g.add((src_uri, RDFS.label,  Literal(src_type)))
-            g.add((src_uri, RDFS.comment, Literal(
+            g.add((src_uri, DCTERMS.description, Literal(
                 f"Class from the source schema; domain of mapsTo_{_safe_uri_name(bridge_name)}."
             )))
             if fallback_cat:
@@ -1110,17 +1420,26 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
         else:
             xsd_paths.append(xf)
 
-    # ── Pass 1: collect ALL simpleType/simpleContent wrappers across the entire
-    # schema directory (not just the target files).  Many standards keep shared
-    # primitive-wrapper types in a Common/CommonComponents file that is not
-    # itself a conversion target but whose type definitions ARE needed for
-    # correct DatatypeProperty vs ObjectProperty classification.
-    all_schema_xsd = sorted(schema_path.glob("*.xsd"))
+    xsd_paths = _discover_related_xsds(xsd_paths)
+    if missing or not xsd_paths:
+        raise ValueError('Missing conversion targets: ' + ', '.join(missing or ['no XSD files']))
+    conversion_diagnostics = inspect_conversion_schemas(xsd_paths, XSD_TYPE_MAP)
+    expanded_schemas = expand_model_groups(xsd_paths)
+    from .xsd_identity import class_iri_map
+    cfg.class_iris = class_iri_map(expanded_schemas)
+    for message in conversion_diagnostics:
+        g.add((URIRef(cfg.base_uri), DCTERMS.description, Literal('Conversion limitation: ' + message)))
+
+    # Pass 1: collect simpleType/simpleContent wrappers from selected targets
+    # and their dependencies for datatype versus object classification.
+    # Resolve wrappers from the selected dependency closure, not unrelated
+    # sibling schemas whose local names could overwrite selected definitions.
+    all_schema_xsd = list(xsd_paths)
     strict_semantics = os.getenv("XSD_STRICT_SEMANTICS", "true").strip().lower() in {
         "1", "true", "yes", "on"
     }
     logger.info("Pass 1: scanning %d schema XSD files for simple-type wrappers...", len(all_schema_xsd))
-    simple_types = _collect_simple_types(all_schema_xsd)
+    simple_types = _collect_simple_types(all_schema_xsd, expanded_schemas)
     logger.info("Found %d wrapper types resolving to XSD primitives", len(simple_types))
 
     ontology_uri = URIRef(cfg.base_uri)
@@ -1136,19 +1455,19 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
             simple_types,
             prop_kinds,
             strict_semantics=strict_semantics,
+            schema_root=expanded_schemas[xf],
         )
 
     build_bridge_pairs(g, cfg)
 
-    # Derive OWL (RDF/XML) path from TTL path if not explicitly configured
-    owl_path = (
-        Path(cfg.output_owl) if cfg.output_owl
-        else output_path.with_suffix(".owl")
-    )
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     g.serialize(destination=str(output_path), format="turtle")
-    g.serialize(destination=str(owl_path), format="xml")
+    # RDF/XML is expensive for large standards such as AP242.  The service
+    # contract publishes Turtle, so generate RDF/XML only for an explicit
+    # caller request instead of doubling routine conversion cost.
+    owl_path = Path(cfg.output_owl) if cfg.output_owl else None
+    if owl_path is not None:
+        g.serialize(destination=str(owl_path), format="xml")
 
     triple_count = len(g)
     class_count  = sum(1 for _ in g.triples((None, RDF.type, OWL.Class)))
@@ -1165,7 +1484,8 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
     if missing:
         logger.warning("Missing schema targets: %s", ', '.join(missing))
     logger.info("Output TTL: %s", output_path)
-    logger.info("Output OWL: %s", owl_path)
+    if owl_path is not None:
+        logger.info("Output OWL: %s", owl_path)
     logger.info("%s", '=' * 60)
     return output_path
 

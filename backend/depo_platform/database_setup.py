@@ -1,0 +1,332 @@
+"""Explicit PostgreSQL migration and read-only schema verification entry point."""
+import argparse
+import json
+import os
+import sys
+import re
+import ipaddress
+
+from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema, select_schema, statement_options
+from backend.depo_platform.schema_contract import verify_structure
+from backend.postgres_migrations import MIGRATIONS, apply_migrations, migration_checksum
+
+# Column/type contract for the current released migrations. JSON documents
+# remain in value; there is no separate relational table for each job namespace.
+EXPECTED_COLUMNS = {
+    'depo_api_credentials': {'profile': 'text', 'salt': 'text', 'digest': 'text', 'actor': 'text', 'expires_at': 'timestamp with time zone', 'revoked': 'boolean', 'updated_at': 'timestamp with time zone'},
+    'depo_api_credential_events': {'event_id': 'bigint', 'profile': 'text', 'action': 'text', 'actor': 'text', 'created_at': 'timestamp with time zone'},
+    'depo_schema_migrations': {'version': 'integer', 'name': 'text', 'checksum': 'text', 'applied_at': 'timestamp with time zone'},
+    'depo_registry': {'namespace': 'text', 'key': 'text', 'value': 'jsonb', 'updated_at': 'timestamp with time zone'},
+    'depo_runtime_state': {'kind': 'text', 'key': 'text', 'value': 'jsonb', 'updated_at': 'double precision'},
+    'depo_chat_messages': {'session_id': 'text', 'message_id': 'bigint', 'role': 'text', 'content': 'text', 'created_at': 'double precision'},
+    'depo_rate_limits': {'client_key': 'text', 'created_at': 'double precision'},
+    'depo_metadata_assets': {'asset_id': 'text', 'revision': 'integer', 'value': 'jsonb', 'updated_at': 'timestamp with time zone'},
+    'depo_metadata_events': {'event_id': 'text', 'asset_id': 'text', 'revision': 'integer', 'value': 'jsonb', 'created_at': 'timestamp with time zone'},
+    'depo_metadata_outbox': {'event_id': 'text', 'status': 'text', 'created_at': 'timestamp with time zone'},
+    'depo_ontology_analytics': {
+        **dict.fromkeys(('ontology_id', 'ontology_name', 'lifecycle_status', 'semantic_completeness', 'schema_set_digest', 'analytics_profile_artifact_id'), 'text'),
+        **dict.fromkeys(('triples', 'classes', 'object_properties', 'datatype_properties'), 'numeric'),
+    },
+}
+
+EXPECTED_COLUMNS.update({
+ 'depo_analytics_models': {**dict.fromkeys(('model_id','dataset_id','name','version','status','created_by','approved_by'),'text'),'definition':'jsonb','created_at':'timestamp with time zone','approved_at':'timestamp with time zone'},
+ 'depo_analytics_marts': {**dict.fromkeys(('mart_id','model_id','dataset_id'),'text'),'receipt':'jsonb','created_at':'timestamp with time zone'},
+ 'depo_analytics_dim_entity': dict.fromkeys(('mart_id','role','entity_iri','name','description','namespace_uri'),'text'),
+ 'depo_analytics_ods_value': {**dict.fromkeys(('mart_id','fact_id','entity_iri','property_iri','value_kind','value','datatype','language'),'text'),'numeric_value':'numeric'},
+ 'depo_analytics_fact_link': dict.fromkeys(('mart_id','source_role','source_iri','relation','target_role','target_iri'),'text'),
+ 'depo_analytics_fact_measure': {**dict.fromkeys(('mart_id','role','entity_iri','measure','unit'),'text'),'value':'numeric'},
+ 'depo_analytics_fact_kpi': {**dict.fromkeys(('mart_id','measure','unit','formula','status'),'text'),'value':'numeric','population':'bigint'},
+})
+
+EXPECTED_CONSTRAINTS = {
+    'depo_api_credentials_pkey', 'depo_api_credential_events_pkey',
+    'depo_schema_migrations_pkey', 'depo_registry_pkey', 'depo_runtime_state_pkey',
+    'depo_chat_messages_pkey', 'depo_metadata_assets_pkey', 'depo_metadata_events_pkey',
+    'depo_metadata_assets_revision_check', 'depo_metadata_assets_value_check',
+    'depo_metadata_events_value_check', 'depo_metadata_outbox_status_check',
+    'depo_metadata_events_asset_id_revision_key', 'depo_metadata_events_asset_id_fkey',
+    'depo_metadata_events_revision_positive', 'depo_metadata_outbox_pkey',
+    'depo_metadata_outbox_event_id_fkey', 'depo_registry_value_object', 'depo_runtime_state_value_object',
+}
+EXPECTED_INDEXES = {
+    'idx_depo_registry_status_recent', 'idx_depo_job_identity',
+    'idx_depo_chat_messages', 'idx_depo_rate_limits', 'idx_metadata_pending',
+    'idx_depo_pipeline_runnable', 'idx_depo_registry_recent',
+    'idx_depo_registry_source_lookup',
+    'idx_depo_ontology_catalog_created',
+    'idx_depo_product_published', 'idx_depo_job_started', 'idx_depo_catalog_updated',
+}
+EXPECTED_CONSTRAINTS.update(table+'_pkey' for table in EXPECTED_COLUMNS if table.startswith('depo_analytics_'))
+EXPECTED_INDEXES.update({'idx_analytics_models_dataset','idx_analytics_ods_entity','idx_analytics_links_target'})
+EXPECTED_CONSTRAINTS.update({'depo_api_credentials_actor_nonempty', 'depo_api_credentials_digest_lengths', 'depo_api_credential_events_action_valid'})
+
+
+def _connection_context() -> dict[str, str]:
+    """Expose only explicit non-secret connection fields, never the DSN."""
+    url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
+    if not url:
+        return {}
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+        values = conninfo_to_dict(url)
+        return {key: str(values[key]) for key in ('host', 'hostaddr', 'port', 'dbname', 'user', 'sslmode') if values.get(key)}
+    except Exception:
+        return {}  # Invalid DSNs must not be echoed even when parsing fails.
+
+
+def _failure_action(exc: Exception) -> dict:
+    """Return useful diagnostics without echoing a DSN or credentials."""
+    from backend.postgres_migrations import MigrationExecutionError
+    origin = exc.__cause__ if isinstance(exc, MigrationExecutionError) and exc.__cause__ is not None else exc
+    sqlstate = getattr(origin, 'sqlstate', None)
+    actions = {
+        '28P01': 'PostgreSQL rejected the user/password. Correct DEPO_DATABASE_URL and test the same credentials in pgAdmin.',
+        '28000': 'PostgreSQL rejected this login. Check the role, database access, and pg_hba.conf rule for the application VM.',
+        '3D000': 'The configured PostgreSQL database does not exist. Create it on the database VM or correct DEPO_DATABASE_URL.',
+        '42501': 'The migration role lacks privileges. Check CONNECT, schema USAGE/CREATE, and ownership of existing DEPO tables/views (or inherited membership in their owning role). Schema grants alone do not authorize ALTER TABLE. Have the DBA reconcile ownership; do not recreate the database.',
+        '23514': 'Existing data violates a new schema constraint. Correct the reported rows before rerunning the migration.',
+        '23503': 'Existing data violates a foreign-key constraint. Correct the referenced records before rerunning the migration.',
+        '23505': 'Existing data violates a uniqueness constraint. Review the reported database object and reconcile duplicate identities before rerunning; do not reset the database.',
+        '40P01': 'PostgreSQL reported a deadlock. Resolve concurrent maintenance and rerun the same schema update command.',
+        '55P03': 'A required database lock was unavailable. Check concurrent transactions and the migration lock budget before retrying.',
+        '57014': 'PostgreSQL cancelled the statement or its time budget expired. Check database activity, locks and configured migration timeouts before retrying.',
+        '42601': 'PostgreSQL rejected migration SQL syntax. Restore the matching reviewed SQL file; do not edit migration history to skip it.',
+        '42P07': 'An untracked relation already exists. Do not delete it; compare it with the versioned migration and reconcile migration history.',
+        '42710': 'An untracked constraint or index already exists. Do not delete it; reconcile it with the versioned migration.',
+    }
+    diagnostic = str(origin).lower()
+    if not sqlstate and type(origin).__name__ == 'ProgrammingError':
+        action = ('The PostgreSQL client rejected an application query before server execution. '
+                  'Deploy the matching backend release, including depo_platform/schema_contract.py. '
+                  'Parameterized psycopg queries must escape literal percent signs as %% '
+                  '(PostgreSQL format identifiers use %%I). This is not proof of a login failure.')
+    elif sqlstate and sqlstate.startswith('08'):
+        action = 'PostgreSQL is unreachable. Verify host, port 5432, Windows firewall, listen_addresses and pg_hba.conf from the application VM.'
+    elif 'no pg_hba.conf entry' in diagnostic:
+        action = 'PostgreSQL has no pg_hba.conf rule for this application VM, user, database and SSL mode. Add the matching rule on the database VM, reload PostgreSQL, and retry.'
+    elif not sqlstate and ('timeout' in diagnostic or 'timed out' in diagnostic or 'connection refused' in diagnostic):
+        action = 'PostgreSQL connection did not complete in time or was refused. Run infra/postgres/test-postgres-connectivity.ps1 -EnvFile .env.local -NetworkCheck to distinguish TCP reachability from PostgreSQL login/TLS negotiation; check the database server logs if TCP succeeds.'
+    elif not sqlstate and ('certificate verify failed' in diagnostic or 'root certificate' in diagnostic):
+        action = 'PostgreSQL TLS certificate validation failed. Check sslmode, the trusted CA and the hostname in DEPO_DATABASE_URL.'
+    else:
+        action = actions.get(sqlstate, 'Check PostgreSQL connectivity, schema privileges, migration history and existing object compatibility.')
+    result = {'status': 'failed', 'error_type': type(exc).__name__, 'action': action}
+    context = _connection_context()
+    if context:
+        result['connection'] = context
+    if 'no pg_hba.conf entry' in diagnostic:
+        # PostgreSQL reports the client address it actually sees (possibly NAT).
+        # Extract only a validated IP address; never include driver error text.
+        match = re.search(r'no pg_hba\.conf entry for host "([^"]+)"', str(origin), re.IGNORECASE)
+        if match:
+            try:
+                address = ipaddress.ip_address(match.group(1))
+                result['rejected_client_address'] = str(address)
+                user, database = context.get('user', ''), context.get('dbname', '')
+                if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', user) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', database):
+                    result['hba_rule_example'] = f'host    {database}    {user}    {address}/{address.max_prefixlen}    scram-sha-256'
+            except ValueError:
+                pass
+    if sqlstate:
+        result['sqlstate'] = sqlstate
+    migration = getattr(exc, 'migration_context', None)
+    if isinstance(migration, dict):
+        # Only MigrationExecutionError owns this structured contract. Driver
+        # messages, SQL contents, DETAIL and connection strings stay excluded.
+        if isinstance(exc, MigrationExecutionError):
+            result['migration'] = dict(migration)
+            result['database_error_type'] = exc.database_error_type
+            if exc.database_object:
+                result['database_object'] = dict(exc.database_object)
+    # RuntimeError text is authored by DEPO and cannot contain driver connection details.
+    if isinstance(exc, RuntimeError):
+        result['reason'] = str(exc)
+    return result
+
+
+def verify_migration_privileges(connection) -> None:
+    """Fail before DDL with a precise privilege error for customer-managed roles."""
+    schema = configured_schema()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'SELECT has_database_privilege(current_user, current_database(), %s), '
+            'has_schema_privilege(current_user, %s, %s), '
+            'has_schema_privilege(current_user, %s, %s)',
+            ('CONNECT', schema, 'USAGE', schema, 'CREATE'),
+        )
+        row = cursor.fetchone()
+        if not row or len(row) != 3 or not all(row):
+            raise RuntimeError(
+                f"PostgreSQL application role requires CONNECT and USAGE, CREATE privileges on schema '{schema}'"
+            )
+        cursor.execute(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname=%s AND c.relname=ANY(%s) AND c.relkind IN ('r','p') "
+            "AND NOT (pg_has_role(current_user, c.relowner, 'USAGE') "
+            "OR (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)) ORDER BY c.relname",
+            (schema, list(EXPECTED_COLUMNS)),
+        )
+        incompatible = [row[0] for row in cursor.fetchall()]
+        if incompatible:
+            raise RuntimeError(
+                'Migration role cannot alter existing DEPO relations: ' + ', '.join(incompatible) +
+                '. Use the owning migration role or ask the DBA to reconcile ownership or inherited role membership. '
+                'Schema CREATE grants alone are insufficient; do not delete or recreate these relations.'
+            )
+        # Migration 004 creates this view once. No current migration alters an
+        # existing view, so its owner need not be the application's DDL role.
+        # Require read access instead; ownership is not a substitute for access.
+        cursor.execute(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname=%s AND c.relname=ANY(%s) AND c.relkind IN ('v','m') "
+            "AND NOT has_table_privilege(current_user, c.oid, 'SELECT') ORDER BY c.relname",
+            (schema, list(EXPECTED_COLUMNS)),
+        )
+        unreadable = [row[0] for row in cursor.fetchall()]
+        if unreadable:
+            raise RuntimeError(
+                'Migration role requires SELECT on existing DEPO views: ' + ', '.join(unreadable) +
+                '. Ask the DBA to grant view read access; ownership transfer is not required. '
+                'Do not delete or recreate these views.'
+            )
+
+
+def verify_source_lookup_index(cursor, schema):
+    cursor.execute("""SELECT i.indisvalid, i.indisready, table_rel.relname,
+        pg_get_indexdef(i.indexrelid, 1, true), pg_get_indexdef(i.indexrelid, 2, true),
+        pg_get_indexdef(i.indexrelid, 3, true)
+        FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid
+        JOIN pg_namespace ns ON ns.oid=idx.relnamespace
+        JOIN pg_class table_rel ON table_rel.oid=i.indrelid
+        WHERE ns.nspname=%s AND idx.relname=%s""", (schema, 'idx_depo_registry_source_lookup'))
+    row = cursor.fetchone()
+    if not row or not row[0] or not row[1] or row[2] != 'depo_registry':
+        raise RuntimeError('Registry source lookup index is missing or invalid; run schema migration/verification')
+    expression = re.sub(r"[\s()]", '', row[4] or '')
+    if row[3] != 'namespace' or row[5] != 'key' or expression not in {"value->>'source'::text", "value->>'source'"}:
+        raise RuntimeError('Registry source lookup index has an incompatible definition')
+
+
+def verify_schema(connection):
+    schema = configured_schema()
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = %s', (schema,))
+        actual = {(table, column): datatype for table, column, datatype in cursor.fetchall()}
+        mismatches = [f'{table}.{column} (expected {datatype})'
+                      for table, columns in EXPECTED_COLUMNS.items() for column, datatype in columns.items()
+                      if actual.get((table, column)) != datatype]
+        if mismatches:
+            raise RuntimeError('Missing or incompatible database columns: ' + ', '.join(mismatches))
+        cursor.execute(
+            'SELECT constraint_name FROM information_schema.table_constraints WHERE constraint_schema = %s',
+            (schema,),
+        )
+        constraints = {row[0] for row in cursor.fetchall()}
+        missing_constraints = sorted(EXPECTED_CONSTRAINTS - constraints)
+        if missing_constraints:
+            raise RuntimeError('Missing PostgreSQL constraints: ' + ', '.join(missing_constraints))
+        cursor.execute('SELECT indexname FROM pg_indexes WHERE schemaname = %s', (schema,))
+        indexes = {row[0] for row in cursor.fetchall()}
+        missing_indexes = sorted(EXPECTED_INDEXES - indexes)
+        if missing_indexes:
+            raise RuntimeError('Missing PostgreSQL indexes: ' + ', '.join(missing_indexes))
+        verify_source_lookup_index(cursor, schema)
+        verify_structure(cursor, schema, EXPECTED_COLUMNS)
+        cursor.execute(f'SELECT version, name, checksum FROM "{schema}".depo_schema_migrations')
+        applied = {version: (name, checksum) for version, name, checksum in cursor.fetchall()}
+        expected_history = {version: (name, migration_checksum(statements)) for version, name, statements in MIGRATIONS}
+        if applied != expected_history:
+            raise RuntimeError('Database migration history does not match this release')
+    return {'status': 'ok', 'schema': schema, 'relations_checked': len(EXPECTED_COLUMNS),
+            'columns_checked': sum(map(len, EXPECTED_COLUMNS.values())),
+            'constraints_checked': len(EXPECTED_CONSTRAINTS),
+            'indexes_checked': len(EXPECTED_INDEXES),
+            'migration_versions': sorted(version for version, _, _ in MIGRATIONS)}
+
+
+def verify_upgrade_history(connection):
+    """Inspect recorded migrations without requiring the new schema or writing DDL."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass('depo_schema_migrations')")
+        if cursor.fetchone()[0] is None:
+            raise RuntimeError('Upgrade requires existing migration history; use the first-install command for a new database')
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_schema=%s AND table_name='depo_schema_migrations'", (configured_schema(),))
+        has_checksum = 'checksum' in {row[0] for row in cursor.fetchall()}
+        cursor.execute('SELECT version, name, ' + ('checksum' if has_checksum else 'NULL') + ' FROM depo_schema_migrations')
+        rows = cursor.fetchall()
+    known = {version: (name, migration_checksum(sql)) for version, name, sql in MIGRATIONS}
+    versions = sorted(int(row[0]) for row in rows)
+    if versions and versions != list(range(1, max(versions) + 1)):
+        raise RuntimeError('PostgreSQL migration history has missing earlier versions; reconcile history before upgrading')
+    for version, name, checksum in rows:
+        if version not in known or name != known[version][0]:
+            raise RuntimeError('PostgreSQL migration history does not match this release')
+        if checksum is None:
+            if os.getenv('DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS', 'false').lower() != 'true':
+                raise RuntimeError('Legacy migration checksums require explicit DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=true after DBA review')
+        elif checksum != known[version][1]:
+            raise RuntimeError('PostgreSQL migration checksum differs from this release')
+
+
+def setup_database(*, check_only=False, connection_only=False, upgrade_preflight=False):
+    import psycopg
+    url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
+    if not url:
+        raise RuntimeError('DEPO_DATABASE_URL is required')
+    with psycopg.connect(url, connect_timeout=connect_timeout_seconds(), autocommit=True, application_name='depo-database-setup', options=statement_options(migration=not check_only)) as connection:
+        if connection_only:
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT current_database(), current_user')
+                database, user = cursor.fetchone()
+            return {'status': 'ok', 'database': database, 'user': user, 'schema': configured_schema(), 'check': 'connectivity'}
+        if upgrade_preflight:
+            with connection.transaction():
+                with connection.cursor() as cursor:
+                    cursor.execute('SET TRANSACTION READ ONLY')
+                    initialise_schema(cursor)
+                verify_migration_privileges(connection)
+                verify_upgrade_history(connection)
+            return {'status': 'ok', 'check': 'read-only upgrade preflight'}
+        if not check_only:
+            with connection.transaction():
+                with connection.cursor() as cursor:
+                    initialise_schema(cursor)
+                verify_migration_privileges(connection)
+                apply_migrations(connection)
+                from .credentials import bootstrap_environment
+                bootstrap_environment(connection)
+                return verify_schema(connection)
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.execute('SET TRANSACTION READ ONLY')
+                select_schema(cursor)
+            return verify_schema(connection)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check-only', action='store_true', help='Verify existing columns and migration versions without DDL or data writes')
+    parser.add_argument('--connection-only', action='store_true', help='Verify PostgreSQL login without requiring or modifying the application schema')
+    parser.add_argument('--network-check', action='store_true', help='Check explicit PostgreSQL TCP endpoints without login or schema changes')
+    parser.add_argument('--upgrade-preflight', action='store_true', help='Check existing migration ownership/history without applying migrations')
+    args = parser.parse_args()
+    if sum((args.check_only, args.connection_only, args.network_check, args.upgrade_preflight)) > 1:
+        parser.error('Choose only one diagnostic mode')
+    try:
+        if args.network_check:
+            from .postgres_connectivity import network_check
+            result = network_check()
+            print(json.dumps(result))
+            if result['status'] != 'ok': raise SystemExit(1)
+        else:
+            print(json.dumps(setup_database(check_only=args.check_only, connection_only=args.connection_only, upgrade_preflight=args.upgrade_preflight)))
+    except Exception as exc:
+        # Driver exception strings can contain connection details. Emit only a
+        # SQLSTATE-based action and DEPO-authored RuntimeError messages.
+        print(json.dumps(_failure_action(exc)), file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+if __name__ == '__main__':
+    main()

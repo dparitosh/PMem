@@ -1,0 +1,71 @@
+param(
+  [string]$EnvFile = ".env.local",
+  [switch]$Production,
+  [switch]$Bootstrap,
+  [switch]$LocalInsecureDemo
+)
+
+$ErrorActionPreference = "Stop"
+if ($Production -and $Bootstrap) { throw 'Choose either -Production or -Bootstrap, not both.' }
+if (-not $Production -and -not $Bootstrap) { $Bootstrap = $true }
+if ($LocalInsecureDemo -and -not $Bootstrap) { throw 'Local insecure demo requires -Bootstrap.' }
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
+$values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+$required = @('DEPO_DATABASE_URL', 'DEPO_DATABASE_SCHEMA')
+if ($Production) {
+  $required += @('ALLOWED_ORIGINS', 'AUTH_MODE', 'OSLC_BASE_URL')
+  if ($values['AUTH_MODE'] -notin @('token','entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
+  if ($values['AUTH_MODE'] -eq 'entra' -and (-not $values['DEPO_TRUSTED_GATEWAY_IPS'] -or $values['DEPO_TRUSTED_GATEWAY_IPS'] -match '<.*>')) { throw 'Gateway identity mode requires DEPO_TRUSTED_GATEWAY_IPS.' }
+  & (Join-Path $root 'infra/deployment/test-depo-deployment.ps1') -EnvFile $EnvFile -Profile Production -SkipEndpointChecks
+}
+if ($Bootstrap) {
+  $required += @('AUTH_MODE', 'NEO4J_URI', 'NEO4J_DATABASE')
+  $neo4jAuthMode = if ($values['NEO4J_AUTH_MODE']) { $values['NEO4J_AUTH_MODE'] } else { 'token' }
+  if ($neo4jAuthMode -ne 'none') { $required += @('NEO4J_USER', 'NEO4J_PASS') }
+  if ($values['AUTH_MODE'] -notin @('token', 'entra', 'disabled')) { throw 'Bootstrap requires AUTH_MODE=token, AUTH_MODE=entra or a loopback-only disabled-auth demo.' }
+  if ($values['AUTH_MODE'] -eq 'disabled') {
+    if (-not $LocalInsecureDemo) { throw 'AUTH_MODE=disabled requires -LocalInsecureDemo.' }
+    if ($values['DEPO_ALLOW_INSECURE_LOCAL_AUTH'] -ne 'true' -or $values['DEPO_SERVICE_HOST'] -notin @('127.0.0.1', 'localhost', '::1')) { throw 'Disabled authentication requires DEPO_ALLOW_INSECURE_LOCAL_AUTH=true and DEPO_SERVICE_HOST=127.0.0.1, localhost or ::1.' }
+  } elseif ($LocalInsecureDemo) { throw '-LocalInsecureDemo requires AUTH_MODE=disabled.' }
+}
+foreach ($name in $required) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing customer value for required setting: $name" } }
+if ($Production -and $values['DEPO_DATABASE_URL'] -match '^postgres(?:ql)?://postgres(?::|@)') { throw 'Production cannot use the PostgreSQL postgres administrator. Configure a customer-managed least-privilege application role.' }
+$sparkFlags = @('DEPO_SPARK_ENABLED', 'DEPO_SPARK_NEO4J_ENABLED', 'DEPO_SPARK_POSTGRES_ENABLED', 'DEPO_PIPELINE_SCHEDULER_ENABLED')
+foreach ($name in $sparkFlags) {
+  if ($values[$name] -and $values[$name] -notin @('true', 'false')) { throw "Invalid boolean setting: $name" }
+}
+$sparkEnabled = $values['DEPO_SPARK_ENABLED'] -eq 'true'
+$neo4jSparkEnabled = $values['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
+$postgresSparkEnabled = $values['DEPO_SPARK_POSTGRES_ENABLED'] -eq 'true'
+$schedulerEnabled = $values['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'
+if (($neo4jSparkEnabled -or $postgresSparkEnabled) -and -not $sparkEnabled) {
+  throw 'Spark connectors require DEPO_SPARK_ENABLED=true.'
+}
+
+# Release preflight must prove the deployed schema is complete without changing
+# it. Migrations run explicitly during InitializeDatabase before services start.
+& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile -CheckOnly
+if ($Production) {
+  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile -Production
+  if ($LASTEXITCODE -ne 0) { throw 'Neo4j production preflight failed.' }
+}
+if ($Bootstrap) {
+  # Bootstrap provisioning is an explicit installer stage. Release diagnostics
+  # remain read-only and prove that the selected database can be queried.
+  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile
+  if ($LASTEXITCODE -ne 0) { throw 'Neo4j bootstrap preflight failed.' }
+}
+if ($sparkEnabled) {
+  & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $EnvFile
+  if ($LASTEXITCODE -ne 0) { throw 'Spark release preflight failed.' }
+  if ($neo4jSparkEnabled) {
+    & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $EnvFile -Neo4jConnector
+    if ($LASTEXITCODE -ne 0) { throw 'Spark Neo4j connector release preflight failed.' }
+  }
+  if ($postgresSparkEnabled) {
+    & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $EnvFile -PostgresConnector
+    if ($LASTEXITCODE -ne 0) { throw 'Spark PostgreSQL connector release preflight failed.' }
+  }
+}
+Write-Host 'DEPO release preflight passed.'

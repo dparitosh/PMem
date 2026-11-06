@@ -1,0 +1,239 @@
+import sys
+from unittest.mock import MagicMock
+
+import pytest
+
+from backend.depo_platform import database_setup as setup
+from backend.depo_platform import postgres_schema
+from backend import postgres_migrations
+from backend.tests.test_schema_audit_fixes import catalog_fixture
+
+
+def connection(rows=None, history=None, constraints=None, indexes=None):
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    structures, singles = catalog_fixture(__import__('os').getenv('DEPO_DATABASE_SCHEMA','semantic'))
+    cursor.fetchone.side_effect = [(True, True, 'depo_registry', 'namespace', "(value ->> 'source'::text)", 'key'), *singles]
+    cursor.fetchall.side_effect = [
+        rows if rows is not None else [(t, c, d) for t, cols in setup.EXPECTED_COLUMNS.items() for c, d in cols.items()],
+        [(value,) for value in (constraints if constraints is not None else setup.EXPECTED_CONSTRAINTS)],
+        [(value,) for value in (indexes if indexes is not None else setup.EXPECTED_INDEXES)],
+        *structures,
+        history if history is not None else [(v, n, postgres_migrations.migration_checksum(statements)) for v, n, statements in setup.MIGRATIONS],
+    ]
+    return conn
+
+
+def test_schema_contract(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
+    result = setup.verify_schema(connection())
+    assert result['schema'] == 'customer'
+    assert result['columns_checked'] == sum(len(columns) for columns in setup.EXPECTED_COLUMNS.values())
+    assert result['constraints_checked'] == len(setup.EXPECTED_CONSTRAINTS)
+    assert result['indexes_checked'] == len(setup.EXPECTED_INDEXES)
+    assert result['migration_versions'] == [version for version, _, _ in setup.MIGRATIONS]
+
+
+@pytest.mark.parametrize('rows', [[], [('depo_registry', 'value', 'text')]])
+def test_missing_or_incompatible_columns_rejected(rows):
+    with pytest.raises(RuntimeError, match='incompatible database columns'):
+        setup.verify_schema(connection(rows=rows))
+
+
+def test_incorrect_history_rejected():
+    with pytest.raises(RuntimeError, match='migration history'):
+        setup.verify_schema(connection(history=[(1, 'wrong', 'wrong')]))
+
+
+def test_database_newer_than_application_is_rejected():
+    history = [(v, n, postgres_migrations.migration_checksum(statements)) for v, n, statements in setup.MIGRATIONS] + [(999, 'future_release', 'unknown')]
+    with pytest.raises(RuntimeError, match='migration history'):
+        setup.verify_schema(connection(history=history))
+
+
+def test_missing_constraint_rejected():
+    with pytest.raises(RuntimeError, match='Missing PostgreSQL constraints'):
+        setup.verify_schema(connection(constraints=[]))
+
+
+def test_missing_index_rejected():
+    with pytest.raises(RuntimeError, match='Missing PostgreSQL indexes'):
+        setup.verify_schema(connection(indexes=[]))
+
+
+@pytest.mark.parametrize('check_only', [True, False])
+def test_check_only_never_migrates(monkeypatch, check_only):
+    conn = connection()
+    driver = MagicMock()
+    driver.connect.return_value.__enter__.return_value = conn
+    monkeypatch.setitem(sys.modules, 'psycopg', driver)
+    monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://fixture')
+    initialize, migrate = MagicMock(), MagicMock()
+    monkeypatch.setattr(setup, 'initialise_schema', initialize)
+    select = MagicMock()
+    monkeypatch.setattr(setup, 'select_schema', select)
+    privileges = MagicMock()
+    monkeypatch.setattr(setup, 'verify_migration_privileges', privileges)
+    monkeypatch.setattr(setup, 'apply_migrations', migrate)
+    assert setup.setup_database(check_only=check_only)['status'] == 'ok'
+    assert initialize.call_count == migrate.call_count == (0 if check_only else 1)
+    assert privileges.call_count == (0 if check_only else 1)
+    assert select.call_count == (1 if check_only else 0)
+    if check_only:
+        statements = [call.args[0] for call in conn.cursor.return_value.__enter__.return_value.execute.call_args_list]
+        assert statements[0] == 'SET TRANSACTION READ ONLY'
+
+
+def test_connection_only_does_not_touch_schema(monkeypatch):
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.side_effect = None
+    cursor.fetchone.return_value = ('depo', 'depo_app')
+    driver = MagicMock()
+    driver.connect.return_value.__enter__.return_value = conn
+    monkeypatch.setitem(sys.modules, 'psycopg', driver)
+    monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://fixture')
+    initialize, migrate = MagicMock(), MagicMock()
+    monkeypatch.setattr(setup, 'initialise_schema', initialize)
+    monkeypatch.setattr(setup, 'apply_migrations', migrate)
+    result = setup.setup_database(connection_only=True)
+    assert result['check'] == 'connectivity'
+    assert (result['database'], result['user']) == ('depo', 'depo_app')
+    initialize.assert_not_called()
+    migrate.assert_not_called()
+
+
+def test_failure_action_classifies_postgres_errors_without_exception_text():
+    class DatabaseError(Exception):
+        sqlstate = '28P01'
+
+    failure = setup._failure_action(DatabaseError('password=must-not-leak'))
+    assert failure['sqlstate'] == '28P01'
+    assert 'password' in failure['action'].lower()
+    assert 'reason' not in failure
+
+
+def test_failure_action_reports_safe_application_errors():
+    failure = setup._failure_action(RuntimeError('migration history mismatch'))
+    assert failure['reason'] == 'migration history mismatch'
+
+
+def test_failure_action_classifies_hba_error_without_connection_details():
+    failure = setup._failure_action(Exception('no pg_hba.conf entry for host 10.1.2.3 password=secret'))
+    assert 'pg_hba.conf' in failure['action']
+    assert '10.1.2.3' not in str(failure)
+    assert 'secret' not in str(failure)
+
+
+def test_migration_privileges_rejected_with_schema_name(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (True, False)
+    with pytest.raises(RuntimeError, match="schema 'semantic'"):
+        setup.verify_migration_privileges(conn)
+
+
+def test_invalid_schema_rejected(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'unsafe"schema')
+    with pytest.raises(RuntimeError, match='valid PostgreSQL identifier'):
+        setup.verify_schema(connection())
+
+
+def test_migration_versions_are_unique():
+    versions = [version for version, _name, _statements in postgres_migrations.MIGRATIONS]
+    assert len(versions) == len(set(versions))
+
+
+def test_newer_database_is_rejected_before_running_migration_ddl(monkeypatch):
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [(999, 'future_release', 'unknown')]
+    with pytest.raises(RuntimeError, match='newer than or unknown'):
+        postgres_migrations.apply_migrations(conn)
+    statements = [call.args[0] for call in cursor.execute.call_args_list]
+    assert not any('CREATE TABLE IF NOT EXISTS depo_registry' in sql for sql in statements)
+
+
+@pytest.mark.parametrize(('configured', 'expected'), [('1', 1), ('60', 60), ('10', 10)])
+def test_postgres_connect_timeout_is_bounded(monkeypatch, configured, expected):
+    monkeypatch.setenv('DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS', configured)
+    assert postgres_schema.connect_timeout_seconds() == expected
+
+
+@pytest.mark.parametrize('configured', ['0', '61', 'not-a-number'])
+def test_invalid_postgres_connect_timeout_rejected(monkeypatch, configured):
+    monkeypatch.setenv('DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS', configured)
+    with pytest.raises(RuntimeError, match='DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS'):
+        postgres_schema.connect_timeout_seconds()
+
+
+def test_runtime_schema_selection_rejects_missing_schema(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (False,)
+
+    with pytest.raises(RuntimeError, match='initialize-depo-schema.ps1'):
+        postgres_schema.select_schema(cursor)
+
+
+def test_migration_requires_dba_provisioned_schema(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (False,)
+    with pytest.raises(RuntimeError, match='Create it as the database administrator'):
+        postgres_schema.initialise_schema(cursor)
+    assert not any('CREATE SCHEMA' in call.args[0] for call in cursor.execute.call_args_list)
+
+
+@pytest.mark.parametrize('blocked', [[], [('depo_registry',)]])
+def test_migration_checks_existing_relation_ownership(monkeypatch, blocked):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (True, True, True)
+    cursor.fetchall.side_effect = [blocked, []]
+    if blocked:
+        with pytest.raises(RuntimeError, match='owning migration role') as failure:
+            setup.verify_migration_privileges(conn)
+        assert 'depo_registry' in str(failure.value)
+    else:
+        setup.verify_migration_privileges(conn)
+    sql, params = cursor.execute.call_args_list[1].args
+    assert 'pg_has_role' in sql and 'rolsuper' in sql
+    assert "c.relkind IN ('r','p')" in sql
+    assert params == ('customer', list(setup.EXPECTED_COLUMNS))
+
+
+@pytest.mark.parametrize('unreadable', [[], [('depo_ontology_analytics',)]])
+def test_existing_view_requires_select_not_ownership(monkeypatch, unreadable):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (True, True, True)
+    cursor.fetchall.side_effect = [[], unreadable]
+    if unreadable:
+        with pytest.raises(RuntimeError, match='requires SELECT on existing DEPO views'):
+            setup.verify_migration_privileges(conn)
+    else:
+        setup.verify_migration_privileges(conn)
+    sql, params = cursor.execute.call_args_list[-1].args
+    assert 'has_table_privilege' in sql and "'SELECT'" in sql
+    assert 'pg_has_role' not in sql
+    assert params == ('customer', list(setup.EXPECTED_COLUMNS))
+
+
+def test_privilege_failure_guidance_includes_ownership():
+    class PrivilegeFailure(Exception):
+        sqlstate = '42501'
+    result = setup._failure_action(PrivilegeFailure('private connection details'))
+    assert 'ownership' in result['action']
+    assert 'private connection details' not in str(result)
+
+
+def test_migration_selects_existing_schema_without_database_create(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (True,)
+    assert postgres_schema.initialise_schema(cursor) == 'semantic'
+    assert cursor.execute.call_args_list[-1].args[0] == 'SET search_path TO "semantic"'

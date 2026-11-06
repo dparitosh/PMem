@@ -1,0 +1,520 @@
+"""Standalone ingestion service retaining the existing SPA contract."""
+from __future__ import annotations
+
+from backend.depo_platform.request_bodies import SourceProfileBody, SourceRecordBody, BridgeSourceBody
+
+from backend.depo_platform.request_bodies import SysmlCommitBody
+
+from pathlib import Path
+import os
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response
+
+from .profiles import profiles
+from .workflow import workflow
+from .neo4j_writer import writer
+from .schema_conversion import converter
+from backend.depo_platform.upload_limits import ontology_upload_limit
+from .engineering_workflow import workflow as engineering_workflow, EngineeringDependencyFailure
+from .ap242_mbd import ap242_mbd
+from .ap242_reference import AP242ReferenceValidator
+from .governed_import import governed_import, profile_for_filename
+from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
+import json
+import httpx
+from starlette.concurrency import run_in_threadpool
+from defusedxml import ElementTree as ET
+from backend.depo_platform.authorization import service_write_identity
+
+
+async def _read_bounded_upload(file: UploadFile, limit: int = MAX_UPLOAD_BYTES) -> bytes:
+    content = await file.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(413, f"Upload exceeds the configured ingestion limit ({limit} bytes)")
+    return content
+
+
+def _policy_exceptions(raw: str) -> list[str]:
+    value = json.loads(raw)
+    if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+        raise ValueError("policy_exception_ids must be a JSON array of non-empty strings")
+    return value
+
+
+def _ingestion_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return "public-read"
+    token_env = "DATA_JOB_EXECUTION_TOKEN" if request.url.path.endswith(("/governed-import", "/sysml-v2/import-commit")) else "INGESTION_WRITE_TOKEN"
+    return service_write_identity(request, token_env=token_env, default_actor="ingestion-service")
+
+
+router = APIRouter(tags=["ingestion"], dependencies=[Depends(_ingestion_identity)])
+
+
+@router.post('/bridge/source', summary='Private peer access to retained instance mapping sources')
+def bridge_source(payload: BridgeSourceBody) -> dict:
+    from .bridge_source import LocalBridgeSource
+    from backend.depo_platform.bridge_contract import BridgeConflict
+    if any(len(payload[key]) > 200 for key in ('ontology_id','import_task_id')) or len(payload.get('mappings',[])) > 2000:
+        raise HTTPException(422, 'Bridge source identifiers or mapping count exceed limits')
+    source = LocalBridgeSource()
+    try:
+        arguments = (payload['ontology_id'],payload['import_task_id'])
+        if payload['operation'] == 'snapshot':
+            return {'snapshot':source.snapshot(*arguments)}
+        if payload['operation'] == 'preview':
+            snapshot, candidates, partition = source.preview_partition(*arguments, payload.get('mappings', []), payload.get('candidate_offset', 0))
+            return {'snapshot':snapshot,'candidates':candidates,'partition':partition}
+        return {'candidates':source.manual_candidates(*arguments,payload.get('mappings',[]))}
+    except BridgeConflict as exc:
+        raise HTTPException(409,'Source changed while reading mapping evidence') from exc
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(422,'Mapping source or ontology target is unavailable or invalid') from exc
+
+
+@router.get("/reports/xsd-relational", summary="Build a read-only relational projection of a registered XSD")
+def xsd_relational_report(request: Request, ontology_id: str = Query(..., min_length=1, max_length=200)) -> dict:
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
+    from backend.depo_platform.authorization import graph_read_identity
+    graph_read_identity(request)
+    from backend.Services.xsd_analytics_plan import build_analytics_schema_plan
+    from backend.Services.xsd_relational_report import build_xsd_relational_report
+
+    result = OntologyUploadManager.get_ontology(ontology_id)
+    if result.get('status') == 'success':
+        metadata = result.get('metadata') or {}
+        file_path = Path(metadata.get('file_path') or '')
+    else:
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        try:
+            metadata = OntologyTaxonomyService._resolve_metadata(ontology_id)
+            references = metadata.get('engineering_artifacts') or {}
+            structural_id = references.get('structural_model')
+            from backend.artifact_store import ArtifactStore
+            if structural_id:
+                import json
+                _, structural_path = ArtifactStore().resolve(structural_id)
+                model = json.loads(structural_path.read_text(encoding='utf-8'))
+                if not isinstance(model, dict) or not isinstance(model.get('tables'), list):
+                    raise ValueError('Retained XSD structural model has an invalid contract')
+                model['source_file'] = metadata.get('source_filename') or model.get('source_file')
+                return {'ontology_id': metadata['ontology_id'], 'prefix': metadata.get('prefix') or '',
+                        **model, 'analytics_schema_plan': build_analytics_schema_plan(model),
+                        'schema_artifact_id': references.get('source')}
+            source_id = references.get('source')
+            if not source_id:
+                file_path = Path(metadata.get('file_path') or '')
+                if not file_path.is_file():
+                    raise ValueError('No retained XSD source reference exists for this ontology; reimport the source with this release')
+            else:
+                source_metadata, file_path = ArtifactStore().resolve(source_id)
+                if Path(source_metadata.get('filename') or '').suffix.lower() != '.xsd':
+                    raise ValueError('The retained engineering source is not an XSD')
+        except ValueError as exc:
+            raise HTTPException(404, detail=str(exc)) from exc
+    if (not (metadata.get('engineering_artifacts') or {}).get('source') and file_path.suffix.lower() != ".xsd") or not file_path.is_file():
+        raise HTTPException(status_code=422, detail="The selected ontology does not have an accessible XSD source file")
+    try:
+        model = build_xsd_relational_report(file_path)
+        return {
+            "analytics_schema_plan": build_analytics_schema_plan(model),
+            "ontology_id": ontology_id,
+            "prefix": metadata.get("prefix") or "",
+            **model,
+            "schema_artifact_id": (metadata.get("engineering_artifacts") or {}).get("source"),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"XSD relational report could not be generated: {exc}") from exc
+
+
+@router.post("/sysml-v2/import-commit", summary="Import the configured SysML v2 commit into an approved data job")
+async def import_sysml_commit(request: Request, payload: SysmlCommitBody) -> dict:
+    from backend.depo_platform.authorization import approval_identity
+    from .sysml_repository import read_snapshot
+    approval_identity(request, payload, token_env="DATA_JOB_EXECUTION_TOKEN")
+    try:
+        snapshot = await read_snapshot()
+        content = json.dumps(snapshot).encode("utf-8")
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, "Repository snapshot exceeds ingestion upload limit")
+        result = await governed_import.run_job(
+            filename="sysml-v2-snapshot.json", content=content, profile="sysml-v2",
+            job_id=str(payload.get("job_id") or "semantic-source-validation"),
+            job_version=str(payload.get("job_version") or "1.0.0"),
+            source_system=f"sysml-v2:{snapshot['project_id']}:{snapshot['commit_id']}",
+            request_id=getattr(request.state, "request_id", ""),
+        )
+        return {**result, "project_id": snapshot["project_id"], "commit_id": snapshot["commit_id"]}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
+        raise HTTPException(503, "Repository or data pipeline unavailable") from exc
+
+
+@router.get("/ingestion/health")
+def health() -> dict:
+    return {"status": "ok", "service": "ingestion", "contract": "v1", "graph_store": writer.status()}
+
+
+@router.get("/ingestion/graph-store", summary="Read semantic graph-store capability and configuration requirements")
+def graph_store_status() -> dict:
+    return writer.status()
+
+
+@router.get("/import/formats", summary="List tracked import formats supported by the ingestion boundary")
+def import_formats() -> dict:
+    return {
+        "formats": [
+            "csv", "json", "jsonld", "xml", "xsd", "xmi", "reqif", "step", "stp", "stpx",
+            "ttl", "owl", "rdf", "plmxml", "3dxml",
+        ],
+        "service": "ingestion",
+    }
+
+
+@router.get("/governed-import/profiles", summary="Resolve the governed instance-import profile for a filename")
+def governed_import_profile(filename: str) -> dict:
+    try:
+        return {"filename": filename, "profile": profile_for_filename(filename)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/governed-import", summary="Retain, normalize, and run an approved semantic data job for an engineering instance")
+async def run_governed_import(
+    request: Request, file: UploadFile = File(...), profile: str = Form("auto"),
+    job_id: str = Form("semantic-source-validation"), job_version: str = Form("1.0.0"),
+    source_system: str = Form(""),
+) -> dict:
+    """Route STEP/AP242, ReqIF, QIF, and PLMXML imports into Data Flow.
+
+    The selected job must already be approved.  Importing never publishes to
+    Neo4j; publication remains an explicit canonical approval action.
+    """
+    content = await _read_bounded_upload(file)
+    try:
+        return await governed_import.run_job(
+            filename=file.filename or "source", content=content, profile=profile,
+            job_id=job_id, job_version=job_version, source_system=source_system,
+            request_id=getattr(request.state, "request_id", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Data pipeline service is unavailable") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/import/tasks", summary="List retained import tasks")
+def import_tasks(request: Request = None) -> dict:
+    """Expose persisted task history used by Import and Ontology Junction."""
+    try:
+        from backend.Services.unified_data_import import UnifiedDataImportService
+        tasks = UnifiedDataImportService.list_tasks()
+        return {"total_tasks": len(tasks), "tasks": tasks}
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception('Import task registry listing failed; request_id=%s', getattr(getattr(request,'state',None),'request_id',''))
+        raise HTTPException(status_code=503, detail="Imported instance history could not be loaded. Check the ingestion service log using the request ID, then refresh.") from exc
+
+
+@router.post("/schema-conversions/inspect", summary="Convert EXPRESS, STEP/STP/STPX, XMI, or XSD to a normalized Turtle contract")
+async def inspect_engineering_schema(file: UploadFile = File(...),
+    dependencies: list[UploadFile] = File(default=[]),
+    dependency_paths: str = Form('[]', description='JSON relative XSD paths, in the same order as dependency files')) -> dict:
+    content = await _read_bounded_upload(file, ontology_upload_limit())
+    try:
+        paths = json.loads(dependency_paths)
+        if not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63:
+            raise ValueError('dependency_paths must match at most 63 dependency uploads')
+        if any(not isinstance(path, str) or not path.strip() for path in paths) or len(set(paths)) != len(paths):
+            raise ValueError('Dependency paths must be distinct non-empty relative XSD paths')
+        if dependencies and Path(file.filename or '').suffix.lower() != '.xsd':
+            raise ValueError('Dependency files are supported only for XSD conversion')
+        schema_files = {}
+        total = len(content)
+        for path, dependency in zip(paths, dependencies):
+            data = await dependency.read(max(0, min(25 * 1024 * 1024, ontology_upload_limit()) - total) + 1)
+            total += len(data)
+            if total > min(25 * 1024 * 1024, ontology_upload_limit()):
+                raise HTTPException(413, 'Schema dependency closure exceeds configured ontology/schema-set limit')
+            schema_files[path] = data
+        return await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content,
+            **({'schema_files': schema_files} if schema_files else {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/ap242/inspect", summary="Inspect AP242 XSD schemas, EXPRESS schemas, or STEP instance files")
+async def inspect_ap242(file: UploadFile = File(...)) -> dict:
+    """Use explicit AP242 adapters; schema publication remains governed and opt-in."""
+    content = await _read_bounded_upload(file)
+    try:
+        result = await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result.get("standard") != "ap242":
+        raise HTTPException(status_code=422, detail="The uploaded file is not identifiable as an AP242 XSD, EXPRESS, or STEP representation")
+    return result
+
+
+@router.get("/ap242/reference/validation", summary="Validate the configured AP242 reference model and its semantic conversion")
+def validate_ap242_reference() -> dict:
+    """Validate the configured AP242 source without publishing or changing graph data.
+
+    The reference location is controlled exclusively through
+    ``AP242_REFERENCE_ROOT``.  This prevents the API from becoming an arbitrary
+    local-path reader while making the standard-source evidence repeatable for
+    deployment verification.
+    """
+    try:
+        return AP242ReferenceValidator().validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/ap242/mbd/extract", summary="Extract AP242 MBD product, geometry, PMI, and presentation mappings")
+async def extract_ap242_mbd(file: UploadFile = File(...)) -> dict:
+    content = await _read_bounded_upload(file)
+    try:
+        return await run_in_threadpool(ap242_mbd.extract, filename=file.filename or "source.stp", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/ap242/mbd/export-part28", summary="Losslessly export an AP242 Part-28 XML source")
+async def export_ap242_part28(file: UploadFile = File(...)) -> Response:
+    content = await _read_bounded_upload(file)
+    try:
+        exported = await run_in_threadpool(ap242_mbd.export_part28, filename=file.filename or "source.stpx", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    name = Path(file.filename or "ap242_exchange.stpx").stem + ".stpx"
+    return Response(content=exported, media_type="application/xml", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.post("/engineering-workflows", summary="Convert and register an engineering ontology through service boundaries")
+async def run_engineering_workflow(
+    request: Request,
+    file: UploadFile = File(...),
+    ontology_name: str = Form(""),
+    prefix: str = Form(""),
+    description: str = Form(""),
+    register_ontology: bool = Form(True),
+    publish: bool = Form(False),
+    enforce_quality: bool = Form(True),
+    policy_exception_ids: list[str] = Form([]),
+    dependencies: list[UploadFile] = File(default=[]),
+    dependency_paths: str = Form('[]'),
+    include_conversion: bool = Form(True),
+) -> dict:
+    content = await _read_bounded_upload(file, ontology_upload_limit())
+    try:
+        paths = json.loads(dependency_paths)
+        if (not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63
+                or any(not isinstance(path, str) or not path.strip() for path in paths)
+                or len(set(paths)) != len(paths)):
+            raise ValueError('dependency_paths must match at most 63 distinct relative XSD uploads')
+        if dependencies and Path(file.filename or '').suffix.lower() != '.xsd':
+            raise ValueError('Dependency uploads are supported only for XSD workflows')
+        schema_files = {}
+        total = len(content)
+        for path, dependency in zip(paths, dependencies):
+            data = await dependency.read(max(0, min(25 * 1024 * 1024, ontology_upload_limit()) - total) + 1)
+            total += len(data)
+            if total > min(25 * 1024 * 1024, ontology_upload_limit()):
+                raise HTTPException(413, 'Schema dependency closure exceeds configured ontology/schema-set limit')
+            schema_files[path] = data
+        result = await engineering_workflow.run(
+            filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
+            description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
+            publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
+            **({'schema_files': schema_files} if schema_files else {}),
+        )
+        if not include_conversion:
+            conversion = result.get('conversion') or {}
+            result = {**result, 'conversion_summary': {
+                'format': conversion.get('format'), 'statistics': conversion.get('statistics'),
+                'artifacts': conversion.get('artifacts'),
+            }}
+            result.pop('conversion', None)
+        return result
+    except EngineeringDependencyFailure as exc:
+        raise HTTPException(status_code=503, detail={
+            'code': 'engineering_dependency_failure', 'stage': exc.stage,
+            'failure_kind': exc.failure_kind, 'upstream_status': exc.upstream_status,
+            'message': 'A workflow dependency failed. Check ingestion logs and retained registration state before retrying.',
+        }) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail='Engineering workflow deadline exceeded. Publication outcome may be uncertain; retry the same source and metadata to reconcile it.') from exc
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail='A dependent engineering workflow service is unavailable. Check ingestion logs and retry the same source and metadata.') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/source-profiles/inspect", summary="Inspect a schema or sample file for profile creation")
+async def inspect_source_profile(file: UploadFile = File(...)) -> dict:
+    try:
+        content = await _read_bounded_upload(file)
+        return await run_in_threadpool(profiles.inspect, filename=file.filename or "source", content=content)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Source inspection failed: {exc}") from exc
+
+
+@router.post('/analytics/xml-artifacts', summary='Retain a bounded XML instance for an approved analytics job')
+async def retain_analytics_xml(file: UploadFile = File(...)) -> dict:
+    from backend.artifact_store import ArtifactStore
+    content = await _read_bounded_upload(file)
+    filename = file.filename or 'instance.xml'
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(413, 'XML analytics instances must not exceed 25 MiB')
+    if not filename.lower().endswith('.xml') or Path(filename).name != filename or '\\' in filename or ':' in filename:
+        raise HTTPException(422, 'Use a plain .xml filename')
+    try:
+        # Well-formedness is not an XSD conformance assertion.
+        ET.fromstring(content, forbid_dtd=True)
+        artifact = await run_in_threadpool(ArtifactStore().ingest_bytes, content,
+            filename=filename, kind='xml-instance', media_type='application/xml',
+            provenance={'validation': 'well-formed-only; XSD validation occurs in the approved load job'})
+    except Exception as exc:
+        from defusedxml.common import DefusedXmlException
+        if isinstance(exc, (ET.ParseError, DefusedXmlException, ValueError)):
+            raise HTTPException(422, 'XML must be well formed without DTDs or entity declarations') from exc
+        raise
+    return {'artifact': artifact, 'instance_validation': 'not_performed'}
+
+
+@router.get("/source-profiles", summary="List reusable source profiles")
+def list_source_profiles() -> dict:
+    entries = profiles.list()
+    return {"profiles": entries, "count": len(entries)}
+
+
+@router.post("/source-profiles", summary="Create or version a declarative source profile")
+def save_source_profile(profile: SourceProfileBody) -> dict:
+    try:
+        return profiles.save(profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/source-profiles/{profile_id}/normalize", summary="Normalize one source record for the ontology service")
+def normalize_source_record(profile_id: str, record: SourceRecordBody) -> dict:
+    try:
+        return profiles.normalize(profile=profiles.get(profile_id), record=record)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/source-profiles/{profile_id}/execute", summary="Normalize a JSON, JSON-LD, or XML batch with a reusable profile")
+async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) -> dict:
+    """Produce the canonical entity payload consumed by the ontology service.
+
+    This endpoint deliberately normalizes only; persistence remains an explicit
+    downstream ontology/graph operation so uploads cannot mutate the graph by
+    surprise.
+    """
+    try:
+        content = await _read_bounded_upload(file)
+        return await run_in_threadpool(profiles.normalize_batch,
+            profile=profiles.get(profile_id), filename=file.filename or "source", content=content,
+        )
+    except HTTPException:
+        raise
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
+        raise HTTPException(status_code=422, detail=f"Profile execution failed: {exc}") from exc
+
+
+@router.post("/source-profiles/{profile_id}/workflow", summary="Generate and register an ontology draft from a source profile batch")
+async def run_source_profile_workflow(
+    request: Request,
+    profile_id: str,
+    file: UploadFile = File(...),
+    ontology_name: str = Form(""),
+    prefix: str = Form(""),
+    base_uri: str = Form("https://depo.local/ontology/"),
+    publish: bool = Form(False),
+    enforce_quality: bool = Form(True),
+    policy_exception_ids: str = Form("[]"),
+) -> dict:
+    """Run normalize → Semantica generate/validate → draft registration.
+
+    ``publish`` requests publication-readiness checks only. A separate
+    approved publication action is required to mutate the governed graph.
+    """
+    try:
+        profile = profiles.get(profile_id)
+        content = await _read_bounded_upload(file)
+        normalized = await run_in_threadpool(profiles.normalize_batch, profile=profile, filename=file.filename or "source", content=content)
+        selected_prefix = prefix or str(profile.get("prefix") or profile_id)
+        return await workflow.run(
+            normalized=normalized,
+            name=ontology_name or str(profile.get("name") or profile_id),
+            prefix=selected_prefix,
+            base_uri=base_uri,
+            publish=publish,
+            enforce_quality=enforce_quality,
+            policy_exception_ids=_policy_exceptions(policy_exception_ids),
+            request_id=getattr(request.state, "request_id", None),
+        )
+    except HTTPException:
+        raise
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
+        raise HTTPException(status_code=422, detail=f"Profile workflow failed: {exc}") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Dependent semantic service is unavailable: {exc}") from exc
+
+
+@router.post("/ingest-data", summary="Ingest tabular data through the ingestion service")
+async def ingest_data(
+    request: Request, file: UploadFile = File(...), nodeDefinitions: str = Form(...), relationshipDefinitions: str = Form(...),
+    indexes: str = Form(...), constraints: str = Form(...),
+) -> dict:
+    # Retain this legacy direct-Cypher shape only for controlled migration.
+    # New clients must use governed-import and the canonical publication path.
+    if os.getenv("DEPO_ALLOW_DIRECT_TABULAR_WRITES", "false").lower() != "true":
+        raise HTTPException(status_code=409, detail="Direct tabular writes are disabled; submit the source through governed-import")
+    from backend.depo_platform.authorization import service_write_identity
+    service_write_identity(request, token_env="INGESTION_WRITE_TOKEN", default_actor="ingestion-service")
+    try:
+        node_defs, rel_defs, index_defs, constraint_defs = [json.loads(item) for item in (nodeDefinitions, relationshipDefinitions, indexes, constraints)]
+        if not all(isinstance(item, list) for item in (node_defs, rel_defs, index_defs, constraint_defs)):
+            raise ValueError("All ingestion configuration fields must be JSON arrays")
+        content = await _read_bounded_upload(file)
+        table = load_table(content, file.filename or "")
+        if len(table) > MAX_IMPORT_ROWS:
+            raise HTTPException(status_code=413, detail="Import exceeds the 100,000 row limit")
+        rows = records(table)
+        statements = [
+            *(index_query(item["type"], item["name"], item["label"], item["properties"]) for item in index_defs),
+            *(constraint_query(item["type"], item["name"], item["label"], item["properties"]) for item in constraint_defs),
+            *(node_query(item["label"], item["properties"], item.get("mergeKeys", [])) for item in node_defs if item.get("label") and item.get("properties")),
+            *(relationship_query(item["type"], item["fromLabel"], item["toLabel"], item["fromProperty"], item["toProperty"]) for item in rel_defs if item.get("type") and item.get("fromLabel") and item.get("toLabel")),
+        ]
+        results = []
+        for statement in filter(None, statements):
+            try:
+                writer.execute(statement, parameters={"rows": rows} if "UNWIND" in statement else None)
+                results.append({"status": "success"})
+            except Exception as exc:
+                results.append({"status": "error", "error": str(exc)})
+        return {"message": "Data ingestion completed", "results": results}
+    except HTTPException:
+        raise
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/ontology-upload-options', summary='Read ontology file and aggregate schema-set limits')
+def ontology_upload_options() -> dict:
+    limit = ontology_upload_limit()
+    return {'max_file_bytes': limit, 'max_schema_set_bytes': min(limit, 25 * 1024 * 1024)}

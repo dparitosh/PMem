@@ -1,0 +1,537 @@
+"""Governed metadata registry endpoints, separate from ontology browsing."""
+
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+import re
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Form
+from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+try:
+    from ..core.graph import graph
+except ImportError:
+    from core.graph import graph
+
+from backend.depo_platform.authorization import service_write_identity, graph_read_identity
+from backend.depo_platform import metadata_service as metadata_backend
+from backend.depo_platform.request_bodies import MetadataMigrationBody
+
+
+def _metadata_registry_identity(request: Request) -> str:
+    if request.url.path.endswith("/migrations/postgres"):
+        return service_write_identity(request, token_env="ADMIN_API_KEY", default_actor="metadata-migration")
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return graph_read_identity(request)
+    return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="metadata-steward")
+
+
+router = APIRouter(prefix="/metadata-registry", tags=["metadata-registry"], dependencies=[Depends(_metadata_registry_identity)])
+LIFECYCLE_STATUSES = {"draft", "in_review", "approved", "deprecated", "retired"}
+COMPATIBILITY_STATUSES = {"compatible", "breaking", "unknown"}
+SEMVER_PATTERN = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?")
+
+
+def _normalize_lifecycle_status(value: str) -> str:
+    status = str(value or "").strip().lower()
+    if status not in LIFECYCLE_STATUSES:
+        raise ValueError("Unsupported lifecycle status")
+    return status
+
+
+def _normalize_compatibility_status(value: str) -> str:
+    status = str(value or "").strip().lower()
+    if status not in COMPATIBILITY_STATUSES:
+        raise ValueError("Unsupported compatibility status")
+    return status
+
+
+def _validate_namespace_uri(value: str) -> str:
+    uri = str(value or "").strip()
+    if uri and not (uri.startswith(("http://", "https://", "urn:"))):
+        raise ValueError("namespace_uri must use an http(s) or urn URI")
+    return uri
+
+
+class MetadataAssetRequest(BaseModel):
+    asset_id: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=300)
+    definition: str = Field(default="", max_length=10000)
+    asset_type: str = Field(default="DataElement", max_length=100)
+    domain: str = Field(default="", max_length=200)
+    owner: str = Field(default="", max_length=200)
+    steward: str = Field(default="", max_length=200)
+    source_system: str = Field(default="", max_length=200)
+    lifecycle_status: str = Field(default="draft", max_length=50)
+    version: str = Field(default="1.0.0", max_length=50)
+    persistent_id: str = Field(default="", max_length=500)
+    namespace_uri: str = Field(default="", max_length=2000)
+    namespace_prefix: str = Field(default="", max_length=100)
+    compatibility_status: str = Field(default="unknown", max_length=50)
+    replaces_asset_id: str = Field(default="", max_length=200)
+    deprecation_reason: str = Field(default="", max_length=5000)
+    approval_evidence: str = Field(default="", max_length=2000)
+    effective_from: str = Field(default="", max_length=50)
+    effective_to: str = Field(default="", max_length=50)
+    ontology_uri: str = Field(default="", max_length=2000)
+    implementation_ref: str = Field(default="", max_length=2000)
+
+    @field_validator("lifecycle_status")
+    @classmethod
+    def validate_lifecycle_status(cls, value: str) -> str:
+        return _normalize_lifecycle_status(value)
+
+    @field_validator("version")
+    @classmethod
+    def validate_semantic_version(cls, value: str) -> str:
+        if not SEMVER_PATTERN.fullmatch(str(value or "")):
+            raise ValueError("version must use semantic versioning, e.g. 1.2.3")
+        return value
+
+    @field_validator("compatibility_status")
+    @classmethod
+    def validate_compatibility_status(cls, value: str) -> str:
+        return _normalize_compatibility_status(value)
+
+    @field_validator("namespace_uri")
+    @classmethod
+    def validate_namespace_uri(cls, value: str) -> str:
+        return _validate_namespace_uri(value)
+
+    @field_validator("effective_from", "effective_to")
+    @classmethod
+    def validate_effective_date(cls, value: str) -> str:
+        text = str(value or "").strip()
+        if text:
+            try:
+                datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("effective dates must use ISO-8601 format") from exc
+        return text
+
+    @model_validator(mode="after")
+    def validate_effective_window(self):
+        if self.effective_from and self.effective_to:
+            start = datetime.fromisoformat(self.effective_from.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(self.effective_to.replace("Z", "+00:00"))
+            if (start.tzinfo is None) != (end.tzinfo is None):
+                raise ValueError("effective dates must use consistent timezone qualification")
+            if end < start:
+                raise ValueError("effective_to cannot precede effective_from")
+        return self
+
+    @model_validator(mode="after")
+    def validate_governance_fields(self):
+        if self.lifecycle_status == "approved" and (not self.steward or not self.approval_evidence):
+            raise ValueError("approved assets require steward and approval_evidence")
+        if self.lifecycle_status in {"deprecated", "retired"} and not self.deprecation_reason:
+            raise ValueError("deprecated or retired assets require deprecation_reason")
+        return self
+
+
+class MetadataAssetUpdateRequest(BaseModel):
+    expected_revision: Optional[int] = Field(default=None, ge=1, description='Optimistic revision check in PostgreSQL metadata mode')
+    name: Optional[str] = Field(default=None, min_length=1, max_length=300)
+    definition: Optional[str] = Field(default=None, max_length=10000)
+    asset_type: Optional[str] = Field(default=None, max_length=100)
+    domain: Optional[str] = Field(default=None, max_length=200)
+    owner: Optional[str] = Field(default=None, max_length=200)
+    steward: Optional[str] = Field(default=None, max_length=200)
+    source_system: Optional[str] = Field(default=None, max_length=200)
+    lifecycle_status: Optional[str] = Field(default=None, max_length=50)
+    version: Optional[str] = Field(default=None, max_length=50)
+    persistent_id: Optional[str] = Field(default=None, max_length=500)
+    namespace_uri: Optional[str] = Field(default=None, max_length=2000)
+    namespace_prefix: Optional[str] = Field(default=None, max_length=100)
+    compatibility_status: Optional[str] = Field(default=None, max_length=50)
+    replaces_asset_id: Optional[str] = Field(default=None, max_length=200)
+    deprecation_reason: Optional[str] = Field(default=None, max_length=5000)
+    approval_evidence: Optional[str] = Field(default=None, max_length=2000)
+    effective_from: Optional[str] = Field(default=None, max_length=50)
+    effective_to: Optional[str] = Field(default=None, max_length=50)
+    ontology_uri: Optional[str] = Field(default=None, max_length=2000)
+    implementation_ref: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("lifecycle_status")
+    @classmethod
+    def validate_lifecycle_status(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _normalize_lifecycle_status(value)
+
+    @field_validator("version")
+    @classmethod
+    def validate_semantic_version(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not SEMVER_PATTERN.fullmatch(str(value or "")):
+            raise ValueError("version must use semantic versioning, e.g. 1.2.3")
+        return value
+
+    @field_validator("compatibility_status")
+    @classmethod
+    def validate_compatibility_status(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _normalize_compatibility_status(value)
+
+    @field_validator("namespace_uri")
+    @classmethod
+    def validate_namespace_uri(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _validate_namespace_uri(value)
+
+    @field_validator("effective_from", "effective_to")
+    @classmethod
+    def validate_effective_date(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if text:
+            try:
+                datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("effective dates must use ISO-8601 format") from exc
+        return text
+
+    @model_validator(mode="after")
+    def validate_effective_window(self):
+        if self.effective_from and self.effective_to:
+            start = datetime.fromisoformat(self.effective_from.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(self.effective_to.replace("Z", "+00:00"))
+            if (start.tzinfo is None) != (end.tzinfo is None):
+                raise ValueError("effective dates must use consistent timezone qualification")
+            if end < start:
+                raise ValueError("effective_to cannot precede effective_from")
+        return self
+
+
+class LifecycleTransitionRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=50)
+    actor: str = Field(default="", max_length=200, deprecated=True, description='Legacy display field; audit identity is resolved from authenticated access')
+    comment: str = Field(default="", max_length=5000)
+    approval_evidence: str = Field(default="", max_length=2000)
+    deprecation_reason: str = Field(default="", max_length=5000)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        return _normalize_lifecycle_status(value)
+
+    @model_validator(mode="after")
+    def validate_transition_evidence(self):
+        if self.status == "approved" and not self.approval_evidence:
+            raise ValueError("approved transition requires approval_evidence")
+        if self.status in {"deprecated", "retired"} and not self.deprecation_reason:
+            raise ValueError("deprecated or retired transition requires deprecation_reason")
+        return self
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _row_asset(row: Dict[str, Any]) -> Dict[str, Any]:
+    return dict(row.get("asset") or row)
+
+
+def _migration_identity(request: Request):
+    return service_write_identity(request,token_env='ADMIN_API_KEY',default_actor='metadata-migration')
+
+
+@router.post('/migrations/postgres', summary='Adopt selected Neo4j metadata assets and preserve their legacy audit history',
+             dependencies=[Depends(_migration_identity)])
+def adopt_metadata_postgres(payload: MetadataMigrationBody, actor: str = Depends(_migration_identity)) -> dict:
+    from backend.depo_platform.metadata_repository import MetadataConflict
+    identifiers=payload['asset_ids']
+    if not identifiers or len(identifiers)>100 or len(set(identifiers))!=len(identifiers):
+        raise HTTPException(422,'Select 1-100 unique metadata asset IDs')
+    results=[]
+    repository=metadata_backend.repository()
+    for identity in identifiers:
+        rows=graph.query('MATCH (a:MetadataAsset {asset_id:$id}) RETURN properties(a) AS asset',params={'id':identity})
+        if not rows: raise HTTPException(404,'Selected metadata asset was not found; earlier results remain retained')
+        value=_row_asset(rows[0])
+        previous=repository.get(identity)
+        if previous:
+            if {key:item for key,item in previous.items() if key not in {'revision','publication_status'}} != value:
+                raise HTTPException(409,'Previously adopted metadata differs; reconcile before changing storage mode')
+            results.append({'asset_id':identity,'status':'unchanged'})
+            continue
+        history=graph.query('MATCH (:MetadataAsset {asset_id:$id})-[:HAS_AUDIT_EVENT]->(e:MetadataAuditEvent) RETURN properties(e) AS event ORDER BY e.created_at,e.event_id',params={'id':identity})
+        try:
+            repository.save(identity,value,expected_revision=0,actor=actor,legacy_history=[row['event'] for row in history])
+        except MetadataConflict as exc:
+            raise HTTPException(409,'Metadata adoption raced with another writer; verify before retrying') from exc
+        results.append({'asset_id':identity,'status':'adopted'})
+    return {'assets':results,'count':len(results),'storage_changed':False,'next_action':'Freeze legacy writes, verify all required assets, then set DEPO_METADATA_STORAGE=postgres and restart ontology services'}
+
+
+@router.get("/assets")
+def list_metadata_assets(
+    status: Optional[str] = Query(default=None, max_length=50),
+    domain: Optional[str] = Query(default=None, max_length=200),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+):
+    if metadata_backend.enabled():
+        return metadata_backend.repository().page(status=status,domain=domain,limit=limit,offset=offset)
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset)
+            WHERE ($status IS NULL OR a.lifecycle_status = $status)
+              AND ($domain IS NULL OR a.domain = $domain)
+            RETURN properties(a) AS asset
+            ORDER BY a.name, a.version DESC, a.asset_id
+            SKIP $offset
+            LIMIT $limit
+            """,
+            params={"status": status, "domain": domain, "limit": limit + 1, "offset": offset},
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    return {"assets": [_row_asset(row) for row in rows[:limit]], "count": len(rows[:limit]),
+            "offset": offset, "limit": limit, "has_more": len(rows) > limit}
+
+
+@router.get("/assets/{asset_id}")
+def get_metadata_asset(asset_id: str):
+    if metadata_backend.enabled(): return metadata_backend.get(asset_id)
+    try:
+        rows = graph.query(
+            "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN properties(a) AS asset LIMIT 1",
+            params={"asset_id": asset_id},
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        raise HTTPException(status_code=404, detail="Metadata asset not found")
+    return _row_asset(rows[0])
+
+
+def _asset_mutation_query(action: str) -> str:
+    return f"""
+        MERGE (a:MetadataAsset {{asset_id: $asset_id}})
+        ON CREATE SET a.created_at = $created_at
+        SET a.name = $name, a.definition = $definition, a.asset_type = $asset_type,
+            a.domain = $domain, a.owner = $owner, a.steward = $steward,
+            a.source_system = $source_system, a.lifecycle_status = $lifecycle_status,
+            a.version = $version, a.effective_from = $effective_from,
+            a.effective_to = $effective_to, a.ontology_uri = $ontology_uri,
+            a.implementation_ref = $implementation_ref, a.persistent_id = $persistent_id,
+            a.namespace_uri = $namespace_uri, a.namespace_prefix = $namespace_prefix,
+            a.compatibility_status = $compatibility_status, a.replaces_asset_id = $replaces_asset_id,
+            a.deprecation_reason = $deprecation_reason, a.approval_evidence = $approval_evidence,
+            a.updated_at = $updated_at
+        WITH a
+        MERGE (e:MetadataAuditEvent {{event_id: $event_id}})
+        SET e.action = '{action}', e.actor = $actor, e.comment = $comment, e.created_at = $updated_at
+        MERGE (a)-[:HAS_AUDIT_EVENT]->(e)
+        RETURN properties(a) AS asset
+    """
+
+
+def _ensure_metadata_constraints() -> None:
+    graph.query(
+        "CREATE CONSTRAINT metadata_asset_id IF NOT EXISTS "
+        "FOR (a:MetadataAsset) REQUIRE a.asset_id IS UNIQUE"
+    )
+
+
+@router.post("/assets", status_code=201)
+def create_metadata_asset(request: MetadataAssetRequest, actor: str = Depends(_metadata_registry_identity)):
+    now = _now()
+    payload = request.model_dump()
+    asset_id = request.asset_id or str(uuid4())
+    payload.update({"asset_id": asset_id, "persistent_id": request.persistent_id or asset_id, "created_at": now, "updated_at": now, "event_id": str(uuid4()), "actor": actor, "comment": ""})
+    if metadata_backend.enabled():
+        return metadata_backend.save(payload,actor,0)
+    try:
+        _ensure_metadata_constraints()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry schema is unavailable. Ask an administrator to verify its constraints.") from exc
+    create_query = _asset_mutation_query("created").replace(
+        "MERGE (a:MetadataAsset {asset_id: $asset_id})\n        ON CREATE SET a.created_at = $created_at",
+        "CREATE (a:MetadataAsset {asset_id: $asset_id})\n        SET a.created_at = $created_at",
+        1,
+    )
+    try:
+        rows = graph.query(create_query, params=payload) or []
+    except Exception as exc:
+        if "constraint" in str(exc).lower() or "already exists" in str(exc).lower():
+            raise HTTPException(status_code=409, detail="Metadata asset already exists") from exc
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.")
+    return _row_asset(rows[0])
+
+
+@router.patch("/assets/{asset_id}")
+def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest, actor: str = Depends(_metadata_registry_identity)):
+    now = _now()
+    updates = request.model_dump(exclude_unset=True, exclude_none=True)
+    expected_revision = updates.pop('expected_revision',None)
+    if not updates:
+        raise HTTPException(status_code=400, detail="At least one metadata field is required")
+    if "lifecycle_status" in updates:
+        raise HTTPException(status_code=400, detail="Use the lifecycle transition endpoint to change lifecycle_status")
+    if metadata_backend.enabled(): return metadata_backend.update(asset_id,updates,actor,expected_revision)
+    if expected_revision is not None:
+        raise HTTPException(422,'expected_revision requires PostgreSQL metadata mode')
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset {asset_id: $asset_id})
+            WITH a, keys($updates) AS changed_fields,
+                 [key IN keys($updates) | coalesce(toString(a[key]), '')] AS before_values
+            SET a += $updates, a.updated_at = $updated_at
+            WITH a, changed_fields, before_values,
+                 [key IN changed_fields | coalesce(toString(a[key]), '')] AS after_values
+            CREATE (e:MetadataAuditEvent {event_id: $event_id})
+            SET e.action = 'updated', e.actor = $actor, e.comment = '',
+                e.created_at = $updated_at, e.changed_fields = changed_fields,
+                e.before_values = before_values, e.after_values = after_values
+            CREATE (a)-[:HAS_AUDIT_EVENT]->(e)
+            RETURN properties(a) AS asset
+            """,
+            params={
+                "asset_id": asset_id,
+                "updates": updates,
+                "updated_at": now,
+                "event_id": str(uuid4()),
+                "actor": actor,
+            },
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        raise HTTPException(status_code=404, detail="Metadata asset not found")
+    return _row_asset(rows[0])
+
+
+@router.post("/assets/{asset_id}/transition")
+def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest, actor: str = Depends(_metadata_registry_identity)):
+    if metadata_backend.enabled(): return metadata_backend.transition(asset_id,request,actor)
+    allowed_from = {
+        "draft": ["in_review"],
+        "in_review": ["draft", "approved"],
+        "approved": ["in_review"],
+        "deprecated": ["approved"],
+        "retired": ["deprecated"],
+    }[request.status]
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset {asset_id: $asset_id})
+            WHERE coalesce(a.lifecycle_status, 'draft') IN $allowed_from
+              AND ($status <> 'approved' OR trim(coalesce(a.steward,'')) <> '')
+            WITH a, coalesce(a.lifecycle_status, 'draft') AS previous_status
+            SET a.lifecycle_status = $status, a.updated_at = $updated_at,
+                a.approval_evidence = CASE WHEN $approval_evidence <> '' THEN $approval_evidence ELSE a.approval_evidence END,
+                a.deprecation_reason = CASE WHEN $deprecation_reason <> '' THEN $deprecation_reason ELSE a.deprecation_reason END
+            WITH a, previous_status
+            MERGE (e:MetadataAuditEvent {event_id: $event_id})
+            SET e.action = 'lifecycle_transition', e.actor = $actor,
+                e.comment = $comment, e.status = $status, e.previous_status = previous_status,
+                e.approval_evidence = $approval_evidence, e.deprecation_reason = $deprecation_reason,
+                e.changed_fields = ['lifecycle_status'], e.before_values = [previous_status],
+                e.after_values = [$status], e.created_at = $updated_at
+            MERGE (a)-[:HAS_AUDIT_EVENT]->(e)
+            RETURN properties(a) AS asset
+            """,
+            params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": actor, "comment": request.comment, "approval_evidence": request.approval_evidence, "deprecation_reason": request.deprecation_reason, "event_id": str(uuid4()), "updated_at": _now()},
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        try:
+            existing = graph.query(
+                "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN a.lifecycle_status AS status LIMIT 1",
+                params={"asset_id": asset_id},
+            ) or []
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Invalid lifecycle transition from {existing[0].get('status') or 'draft'} to {request.status}")
+        raise HTTPException(status_code=404, detail="Metadata asset not found")
+    return _row_asset(rows[0])
+
+
+@router.get("/assets/{asset_id}/history")
+def metadata_asset_history(asset_id: str, limit: int = Query(default=100, ge=1, le=500)):
+    if metadata_backend.enabled():
+        metadata_backend.get(asset_id)
+        events=metadata_backend.repository().history(asset_id,limit)
+        return {'events':events,'count':len(events)}
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset {asset_id: $asset_id})-[:HAS_AUDIT_EVENT]->(e:MetadataAuditEvent)
+            RETURN properties(e) AS event ORDER BY e.created_at DESC LIMIT $limit
+            """,
+            params={"asset_id": asset_id, "limit": limit},
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        try:
+            exists = graph.query(
+                "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN a.asset_id AS asset_id LIMIT 1",
+                params={"asset_id": asset_id},
+            ) or []
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+        if not exists:
+            raise HTTPException(status_code=404, detail="Metadata asset not found")
+    return {"events": [dict(row.get("event") or row) for row in rows], "count": len(rows)}
+
+
+@router.post('/rdf-sources', status_code=201, summary='Register an uploaded RDF source as a retained metadata draft')
+async def register_rdf_source(file: UploadFile = File(...), name: str = Form(..., min_length=1, max_length=300),
+                              actor: str = Depends(_metadata_registry_identity)):
+    from pathlib import Path
+    import hashlib
+    from backend.artifact_store import ArtifactStore
+    from backend.data_pipeline_service.semantic_datasets import FORMATS, MAX_BYTES, parse_records
+    filename = file.filename or ''
+    if Path(filename).name != filename or any(char in filename for char in ('\\', ':')) or Path(filename).suffix.lower() not in FORMATS:
+        await file.close()
+        raise HTTPException(422, 'Choose a plain .ttl, .nt, .rdf, .owl or .jsonld filename')
+    content = bytearray()
+    try:
+        while block := await file.read(1024 * 1024):
+            content.extend(block)
+            if len(content) > MAX_BYTES:
+                raise HTTPException(413, 'RDF sources must not exceed 25 MiB; supply a bounded partition')
+    finally:
+        await file.close()
+    if not content:
+        raise HTTPException(422, 'Choose a nonempty RDF file')
+    if not name.strip():
+        raise HTTPException(422, 'Enter a source name')
+    def register():
+        try:
+            parse_records(bytes(content), FORMATS[Path(filename).suffix.lower()])
+        except Exception as exc:
+            from rdflib.exceptions import ParserError
+            from xml.sax import SAXException
+            if isinstance(exc, (ValueError, SyntaxError, ParserError, SAXException)):
+                raise HTTPException(422, 'RDF syntax or safety checks failed; review the selected file') from exc
+            raise
+        artifact = ArtifactStore().ingest_bytes(bytes(content), filename=filename, kind='registered-rdf-source',
+                    provenance={'registered_by':actor,'validation':'bounded RDF syntax; semantic approval not granted'})
+        identity='rdf-'+hashlib.sha256((actor+'\0'+name.strip()+'\0'+artifact['artifact_id']).encode()).hexdigest()[:40]
+        try:
+            existing=get_metadata_asset(identity)
+        except HTTPException as exc:
+            if exc.status_code != 404:raise
+            existing=None
+        if existing:
+            if existing.get('implementation_ref') != artifact['artifact_id']:
+                raise HTTPException(409, 'Registered source identity differs; inspect the retained record')
+            return {'asset':existing,'source_id':'metadata:'+identity,'artifact_id':artifact['artifact_id'],'approval_status':'not_granted'}
+        request=MetadataAssetRequest(asset_id=identity,name=name.strip(),definition='Uploaded RDF source; syntax checked. Semantic release approval and analytics preparation are separate operations.',
+                  asset_type='RDFSource',owner=actor,steward=actor,implementation_ref=artifact['artifact_id'])
+        try:
+            asset=create_metadata_asset(request,actor)
+        except HTTPException as exc:
+            if exc.status_code != 409:raise
+            asset=get_metadata_asset(identity)
+            if asset.get('implementation_ref') != artifact['artifact_id']:raise
+        return {'asset':asset,'source_id':'metadata:'+identity,'artifact_id':artifact['artifact_id'],'approval_status':'not_granted'}
+    return await run_in_threadpool(register)

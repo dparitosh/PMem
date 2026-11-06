@@ -11,7 +11,7 @@ pip install -r scripts/requirements_3dx.txt
 Example run:
 
 ```bash
-python scripts/convert_3dx_schema.py --src "C:\Users\895428\Depo\SPLM_Folder\Schema - Shared" --out Depo_onto/outputs/3dx_ontology.ttl --prefix 3dx --base http://example.org/3dx#
+python scripts/convert_3dx_schema.py --src "D:\path\to\Schema - Shared" --out outputs/3dx_ontology.ttl --prefix 3dx --base http://example.org/3dx#
 ```
 
 The generator creates one OWL class per spreadsheet filename and a datatype property per column.

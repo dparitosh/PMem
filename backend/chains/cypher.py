@@ -1,69 +1,31 @@
-import os
-import sys
 import logging
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from core.llm import llm, LLM_AVAILABLE
-from core.graph import graph
-from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
+import re
+from backend.core.llm import llm, LLM_AVAILABLE
+from backend.core.graph import graph, query_with_timeout
 from langchain.prompts.prompt import PromptTemplate
 from typing import Optional, List, Dict, Any
 
-logger = logging.getLogger(__name__)
+from backend.core.cypher_safety import assert_read_only_cypher
+from backend.core.db_config import get_config
 
-schema = graph.get_schema
-# print(schema)
+logger = logging.getLogger(__name__)
 
 CYPHER_GENERATION_TEMPLATE = """
 You are a Cypher expert working with a Neo4j knowledge graph for a Digital Engineering Product Ontology (DEPO).
 
-The graph contains:
-- InstanceNode nodes (Motor assembly parts, operations, work plans) with prefix="ds3dx"
-- MbseNode nodes (SysML Sugar Plant MBSE model elements) with prefix="sysml"
-- OntologyClass, OntologyProperty, OntologyRelationship nodes (ontology schema)
+Use the supplied schema as the only authority for labels, relationship types and
+properties. Domain examples, prefixes and source-system names are not universal.
 
-Key labels on InstanceNode: ManufacturingAssembly, ProvidedPart, WorkPlan, HeaderOperation, GeneralOperation, LoadingOperation, SystemInst, SystemPortIN, SystemPortOUT, TransformationInst, OperationInst
-Key labels on MbseNode: Package, Class, Association, UseCase, Actor, Property, Port, Connector
-
-Key relationship types: OWNED_BY, PRECEDES, INSTANCES, IMPLEMENTS_OPERATION, IMPLEMENTS_TRANSFORMATION, INSTANCE_OF, MEMBER_END, TYPED_BY, PART_OF_ASSOCIATION, CLIENT, SUPPLIER, INCLUDES, CONNECTS_TO
-
-Important Instructions:
-1. Use only the labels, relationship types, and properties explicitly mentioned in the schema or examples.
-2. Do NOT invent labels or properties. Prefer n.name for name lookups.
-3. Return only what the user asks for.
-4. Do not add LIMIT unless the user asks for a small sample.
-5. Property names are case-sensitive.
-
-Examples:
-
-1. User Query: "What parts are in the 5 HP MOTOR ASSEMBLY?"
-   Cypher: MATCH (a:ManufacturingAssembly:InstanceNode {name: "5 HP MOTOR ASSEMBLY"})<-[:OWNED_BY]-(p:ProvidedPart:InstanceNode) RETURN p.name AS part_name ORDER BY p.name
-
-2. User Query: "Show the assembly operation sequence for the motor"
-   Cypher: MATCH (a:InstanceNode)-[:PRECEDES]->(b:InstanceNode) RETURN a.name AS from_operation, b.name AS to_operation ORDER BY a.name
-
-3. User Query: "What operations does the ROTOR SHAFT go through?"
-   Cypher: MATCH (op:LoadingOperation:InstanceNode)-[:INSTANCES]->(p:ProvidedPart:InstanceNode {name: "ROTOR SHAFT"}) RETURN op.name AS operation
-
-4. User Query: "List all SysML use cases in the Sugar Plant model"
-   Cypher: MATCH (n:UseCase:MbseNode) RETURN n.name AS use_case ORDER BY n.name
-
-5. User Query: "What SysML packages exist in the MBSE model?"
-   Cypher: MATCH (n:Package:MbseNode) RETURN n.name AS package_name ORDER BY n.name
-
-6. User Query: "Show the SysML blocks (classes) related to Variable Speed Drive"
-   Cypher: MATCH (n:Class:MbseNode) WHERE n.name CONTAINS "Variable Speed" OR n.name CONTAINS "VSD" RETURN n.name AS class_name
-
-7. User Query: "What actors are in the MBSE model?"
-   Cypher: MATCH (n:Actor:MbseNode) RETURN n.name AS actor
-
-8. User Query: "Show OntologyClass nodes for the 3DEXPERIENCE ontology"
-   Cypher: MATCH (n:OntologyClass {prefix: "ds3dx"}) RETURN n.name AS class_name, n.ontology_name AS ontology ORDER BY n.name
-
-9. User Query: "What relationships exist between ManufacturingAssembly and ProvidedPart?"
-   Cypher: MATCH (a:ManufacturingAssembly:InstanceNode)-[r]->(b:ProvidedPart:InstanceNode) RETURN DISTINCT type(r) AS relationship_type
-
-10. User Query: "Show all IMPLEMENTS_OPERATION links"
-    Cypher: MATCH (a:InstanceNode)-[:IMPLEMENTS_OPERATION]->(b:InstanceNode) RETURN a.name AS system_inst, b.name AS operation LIMIT 20
+Instructions:
+1. Use only labels, relationships and properties present in the supplied schema.
+2. Do not assume a particular ontology prefix, source system or engineering model.
+3. Apply an ontology or import scope only when supplied explicitly by the user and
+   supported by the schema. Do not infer scope from a similar term name.
+4. Return only the requested evidence. If the schema cannot answer the question,
+   explain the missing evidence rather than inventing a query or an entity.
+5. Generate a read-only query. Never generate mutations, procedures with side
+   effects, schema changes, or external network/file operations.
+6. Property names are case-sensitive. Use bounded results for broad questions.
 
 Schema:
 {schema}
@@ -77,41 +39,63 @@ cypher_prompt = PromptTemplate.from_template(CYPHER_GENERATION_TEMPLATE)
 cypher_qa = None
 
 
+class ReadOnlyGraphAdapter:
+    """Delegate schema access while enforcing read-only, timed query execution."""
+
+    def __init__(self, wrapped_graph):
+        self._graph = wrapped_graph
+
+    def query(self, query: str, params: Optional[dict] = None):
+        return query_with_timeout(assert_read_only_cypher(query), params=params)
+
+    def __getattr__(self, name):
+        return getattr(self._graph, name)
+
+
+readonly_graph = ReadOnlyGraphAdapter(graph)
+
+
+class SafeCypherQA:
+    """Generate one Cypher statement and execute it through the read-only gateway."""
+
+    @staticmethod
+    def _extract_query(response: Any) -> str:
+        text = getattr(response, "content", response)
+        if isinstance(text, list):
+            text = "".join(
+                str(item.get("text", "") if isinstance(item, dict) else item)
+                for item in text
+            )
+        text = str(text or "").strip()
+        fenced = re.search(r"```(?:cypher)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL)
+        if fenced:
+            text = fenced.group(1).strip()
+        text = re.sub(r"^\s*(?:cypher(?:\s+query)?\s*:)\s*", "", text, flags=re.IGNORECASE)
+        return assert_read_only_cypher(text)
+
+    def invoke(self, payload: Any) -> Dict[str, Any]:
+        question = payload.get("query") or payload.get("question") or payload.get("input") if isinstance(payload, dict) else payload
+        prompt = cypher_prompt.format(schema=graph.get_schema, question=str(question or ""))
+        generated = llm.invoke(prompt)
+        query = self._extract_query(generated)
+        rows = readonly_graph.query(query)
+        return {"result": rows, "intermediate_steps": [{"query": query}]}
+
+    def __call__(self, question: str) -> Dict[str, Any]:
+        return self.invoke({"query": question})
+
+
 # ============================================
 # Cypher QA Chain Initialization (With Fallback)
 # ============================================
-# Note: GraphCypherQAChain has strict pydantic validation that requires
-# the graph parameter to be an actual GraphStore instance.
-# Neo4jGraph doesn't inherit from GraphStore, causing validation errors.
-# 
-# Solution: Try to initialize chain, but gracefully fall back to
-# direct Cypher queries if it fails. This is actually fine because:
-# 1. Direct queries work perfectly
-# 2. Most users can write basic Cypher
-# 3. LLM-based query generation is optional feature
-# 4. System remains 100% functional
-
 if LLM_AVAILABLE:
     try:
-        # Attempt chain initialization
-        # This may fail with ValidationError if graph type doesn't match
-        cypher_qa = GraphCypherQAChain.from_llm(
-            llm=llm,
-            graph=graph,
-            verbose=True,
-            cypher_prompt=cypher_prompt,
-            allow_dangerous_requests=True,
-            return_direct=True,
-            return_intermediate_steps=True,
-        )
+        cypher_qa = SafeCypherQA()
         logger.info("Cypher QA chain initialized successfully")
-    
+
     except Exception as exc:
-        # Expected to fail due to GraphStore validation
-        # This is fine - direct queries work as fallback
         logger.debug(
-            "Cypher QA chain not available (expected): %s\n"
-            "Using direct Cypher queries instead (fully functional)",
+            "Cypher QA initialization unavailable: %s",
             type(exc).__name__
         )
         cypher_qa = None
@@ -125,22 +109,22 @@ else:
 def query_cypher(query: str) -> List[Dict[str, Any]]:
     """
     Execute Cypher query directly without LLM.
-    
+
     Use this as fallback if cypher_qa chain is unavailable.
-    
+
     Args:
         query: Cypher query string
-        
+
     Returns:
         List of result records
-        
+
     Example:
         >>> results = query_cypher("MATCH (n:Product) RETURN n.name LIMIT 10")
         >>> for record in results:
         ...     print(record)
     """
     try:
-        return graph.query(query)
+        return query_with_timeout(assert_read_only_cypher(query))
     except Exception as exc:
         logger.error(f"Direct Cypher query failed: {exc}")
         raise
@@ -149,9 +133,9 @@ def query_cypher(query: str) -> List[Dict[str, Any]]:
 def get_cypher_qa():
     """
     Get the Cypher QA chain if available, otherwise None.
-    
+
     Returns:
-        GraphCypherQAChain or None
+        SafeCypherQA or None
     """
     return cypher_qa
 
@@ -159,7 +143,7 @@ def get_cypher_qa():
 def cypher_qa_available() -> bool:
     """
     Check if Cypher QA chain is available.
-    
+
     Returns:
         True if cypher_qa chain initialized successfully
     """

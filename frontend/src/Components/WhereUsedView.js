@@ -1,31 +1,107 @@
-import React, { useState, useEffect, useRef } from 'react';
-import * as d3 from 'd3';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../App.css';
-import { API, buildUrl, replaceParams } from '../config';
-import { apiClient } from '../services/apiClient';
+import { API, buildUrl } from '../config';
+import { apiClient, API_METHODS } from '../services/apiClient';
+import { graphApi } from '../services/graphApi';
 import { useSchema } from '../SchemaContext';
-import { buildTooltipHeader } from './tooltipBuilder';
+import DataGridWidget from '../widgets/DataGridWidget';
 import logger from '../utils/logger';
+import { normalizeGraphDataset as normalizeGraphDatasetShared, getLinkEndpointId } from '../utils/graphUtils';
+import { UI_COLORS } from '../styles/uiTokens';
 
-// ──── DEVELOPER CONFIG: Node Display Label ────────────────────────────────
+// Shared UI configuration
 //
-// DISPLAY_NAME_PROPERTY  — priority-ordered list of node properties to try.
+// Shared UI configuration
 //   The first property found on a node is used as the display name.
-//   Set to [] (empty array) to rely solely on the Neo4j label.
+//   Set to [] (empty array) to rely solely on the knowledge graph label.
 const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'id'];
-// const DISPLAY_NAME_PROPERTY = ['title', 'name'];
-// const DISPLAY_NAME_PROPERTY = [];                // ← Neo4j label only
 //
-// DISPLAY_MODE  — controls what is shown in the node label.
-//   'both-label-first'  → "Label - PropertyValue"   (default)
-//   'both-prop-first'   → "PropertyValue (Label)"
-//   'label-only'        → "Label"
-//   'property-only'     → "PropertyValue"
+// Shared UI configuration
+// Shared UI configuration
+// Shared UI configuration
+// Shared UI configuration
+// Shared UI configuration
 const DISPLAY_MODE = 'both-label-first';
-// const DISPLAY_MODE = 'both-prop-first';
-// const DISPLAY_MODE = 'label-only';
-// const DISPLAY_MODE = 'property-only';
-// ───────────────────────────────────────────────────────────────────────────
+// Shared UI configuration
+
+const SEARCHABLE_NODE_KEYS = [
+  'name', 'title', 'code', 'key', 'abbreviation', 'id', 'description', 'label',
+  'external_id', 'external_version', 'version', 'entity_type', 'node_type',
+  'source_name', 'target_name', 'class_name', 'type', 'value', 'identifier',
+  'ontology_prefix', 'prefix', 'ontology_name', 'source_ontology', 'namespace',
+  'import_id', 'file_name', 'filename', 'part_number', 'part_id', 'requirement_id',
+];
+
+const normalizeSearchValue = (value) => String(value || '').trim().toLowerCase();
+
+const getNodeProps = (node) => node?.properties || node || {};
+
+const vocabularyName = value => String(value || '').split(/[#/:]/).pop().replace(/[^a-z0-9]/gi, '').toLowerCase();
+const businessTypes = new Set(['part','product','productrevision','productinstance','component','item','itemrevision','assembly','requirement','requirementspecification','process','operation','manufacturingprocess','document','change','changerequest','changenotice']);
+const businessNode = node => {
+  const props = getNodeProps(node);
+  if (/^urn:depo:(assertion|evidence):/i.test(String(props.iri || props.uri || props.name || ''))) return false;
+  return [...(node?.labels || []), ...(Array.isArray(props.rdf_types) ? props.rdf_types : []), props.semantic_role, props.element_type, props.entity_type]
+    .some(value => businessTypes.has(vocabularyName(value).replace(/type$/, '')));
+};
+// Direction is defined by the predicate, not by the drawing's arrow orientation.
+const parentToChild = new Set(['haspart','hascomponent','assemblycontains','contains','haschild','haschildinstance','parentof','uses','masterref','masterreference','revisionref','productref','partref','instanceref','instancedref']);
+const childToParent = new Set(['partof','childof','usedby','belongsto']);
+
+const getNodeLabel = (node) => node?.labels?.[0] || node?.label || 'Node';
+
+const collectSearchableNodeValues = (node) => {
+  const props = getNodeProps(node);
+  const values = new Set([node?.elementId, getNodeLabel(node)]);
+
+  SEARCHABLE_NODE_KEYS.forEach((key) => {
+    if (props[key] != null) values.add(props[key]);
+  });
+
+  Object.entries(props).forEach(([key, value]) => {
+    if (value == null) return;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      values.add(value);
+      values.add(key);
+    }
+  });
+
+  return Array.from(values).map(normalizeSearchValue).filter(Boolean);
+};
+
+const scoreNodeMatch = (node, rawTerm) => {
+  const term = normalizeSearchValue(rawTerm);
+  if (!term) return 0;
+
+  const props = getNodeProps(node);
+  const label = normalizeSearchValue(getNodeLabel(node));
+  const elementId = normalizeSearchValue(node?.elementId);
+  const preferredName = normalizeSearchValue(resolveDisplayProp(props) || props.name || props.title || props.code || '');
+  const corpus = collectSearchableNodeValues(node);
+
+  let score = 0;
+  if (elementId === term) score += 500;
+  if (preferredName === term) score += 450;
+  if (label === term) score += 350;
+  if (preferredName.startsWith(term)) score += 220;
+  if (elementId.startsWith(term)) score += 200;
+  if (label.startsWith(term)) score += 150;
+  if (corpus.some((value) => value.includes(term))) score += 80;
+  if (corpus.some((value) => term.includes('*') && value.includes(term.replace(/\*/g, '')))) score += 60;
+  return score;
+};
+
+const buildRelationshipKey = (relationship) => relationship?.elementId || `${relationship?.start || relationship?.source}-${relationship?.type}-${relationship?.end || relationship?.target}`;
+
+const hydrateGraphNode = (rawNode) => {
+  if (!rawNode) return null;
+  return {
+    ...rawNode.properties,
+    elementId: rawNode.elementId,
+    labels: rawNode.labels || ['Node'],
+    label: rawNode.labels?.[0] || rawNode.label || 'Node',
+  };
+};
 
 // Helper: resolve the first matching property from DISPLAY_NAME_PROPERTY list
 const resolveDisplayProp = (props) => {
@@ -36,7 +112,7 @@ const resolveDisplayProp = (props) => {
   return null;
 };
 
-// Helper: format a display string from a Neo4j label and a property value
+// Helper: format a display string from a knowledge graph label and a property value
 const formatNodeDisplay = (label, propValue) => {
   switch (DISPLAY_MODE) {
     case 'label-only':
@@ -55,18 +131,64 @@ const formatNodeDisplay = (label, propValue) => {
   }
 };
 
+const WU = {
+    primary: UI_COLORS.primary,
+    primarySoft: UI_COLORS.primaryLight,
+    surface: UI_COLORS.surface,
+    bg: UI_COLORS.bg,
+    border: '#D9E2EC',
+    borderStrong: '#BCCCDC',
+    text: UI_COLORS.textPrimary,
+    muted: '#52606D',
+    subtle: '#7B8794',
+    error: UI_COLORS.red,
+};
+
+const panelStyle = {
+    background: WU.surface,
+    border: `1px solid ${WU.border}`,
+    borderRadius: 8,
+    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)',
+    padding: 12,
+    boxSizing: 'border-box',
+};
+
+const fieldLabelStyle = {
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: 0,
+    color: WU.muted,
+    textTransform: 'uppercase',
+};
+
+const inputStyle = {
+    width: '100%',
+    minHeight: 36,
+    padding: '8px 11px',
+    border: `1px solid ${WU.borderStrong}`,
+    borderRadius: 6,
+    fontSize: 13,
+    color: WU.text,
+    boxSizing: 'border-box',
+    outline: 'none',
+};
+
+const buttonStyle = {
+    minHeight: 36,
+    padding: '8px 14px',
+    border: 'none',
+    borderRadius: 6,
+    background: WU.primary,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+};
+
 const WhereUsedView = ({
     data,
-    setData,
-    searchResults,
-    setSearchResults,
-    chatResults,
-    setChatResults,
-    visibleRelationships,
-    setVisibleRelationships,
-    setActiveTab,
-    showChat,
-    toggleChat
+    remoteSearch = false,
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     // Local hierarchy search results (distinct from global graph searchResults passed via props)
@@ -79,708 +201,241 @@ const WhereUsedView = ({
     const [autoExpanded, setAutoExpanded] = useState(false);
     const [expansionError, setExpansionError] = useState(null);
     const [levels, setLevels] = useState([]); // Array of arrays: ancestors by distance
-    const svgRef = useRef();
+    const [sessionRevision, setSessionRevision] = useState(0);
+    const searchAbortRef = useRef(null);
+    const expansionAbortRef = useRef(null);
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
-    // Removed viewMode toggle; always show hierarchy view per latest requirements
-    
-    // Generic hash-based color generation (consistent with GraphHEB.js)
-    const getNodeColor = (label) => {
-        if (!label) return '#999';
-        let hash = 0;
-        for (let i = 0; i < label.length; i++) {
-            hash = label.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const hue = Math.abs(hash) % 360;
-        return `hsl(${hue}, 65%, 55%)`;
-    };
-    
-    // Unified primary button color per request
-    const primaryButtonColor = 'rgb(10, 130, 118)';
 
-    // Unified search using same backend logic as GraphHEB (POST /graphfilter)
+    const suppliedSnapshot = !remoteSearch && sessionRevision === 0 && Boolean(data?.nodes?.length || data?.links?.length);
+    const effectiveGraphData = suppliedSnapshot ? data : {nodes: [], links: []};
+
+    useEffect(() => {
+        const reset = () => {
+            searchAbortRef.current?.abort();
+            expansionAbortRef.current?.abort();
+            expansionAbortRef.current = null;
+            setHierarchySearchResults([]);
+            setSelectedNode(null);
+            setTreeData(null);
+            setLevels([]);
+            setAutoExpanded(false);
+            setIsSearching(false);
+            setIsExpandingUpwards(false);
+            setSearchError(null);
+            setExpansionError(null);
+            setSessionRevision(value => value + 1);
+        };
+        const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
+        events.forEach(event => window.addEventListener(event, reset));
+        return () => {
+            events.forEach(event => window.removeEventListener(event, reset));
+            searchAbortRef.current?.abort();
+            expansionAbortRef.current?.abort();
+        };
+    }, []);
+    
+    // Standalone search resolves business objects independently of the overview cap.
     const handleSearch = async () => {
+        expansionAbortRef.current?.abort();
+        expansionAbortRef.current = null;
+        setIsExpandingUpwards(false);
+        setExpansionError(null);
+        setAutoExpanded(false);
         const term = searchTerm.trim();
         if (!term) return;
+        searchAbortRef.current?.abort();
+        const controller = new AbortController();
+        searchAbortRef.current = controller;
         setIsSearching(true);
         setSearchError(null);
         try {
-            // Use graphfilter endpoint similar to GraphHEB implementation
-            const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() });
-            const records = response.data?.results || [];
-            if (records.length === 0) {
-                setHierarchySearchResults([]);
-                setIsSearching(false);
-                return;
+            let sourceNodes = effectiveGraphData?.nodes || [];
+            if (!suppliedSnapshot) {
+                const response = await graphApi.searchBusiness(term, controller.signal);
+                if (controller.signal.aborted || searchAbortRef.current !== controller) return;
+                sourceNodes = normalizeGraphDatasetShared(response.data).nodes;
             }
-            // Extract nodes like in GraphHEB
-            const nodesMap = new Map();
-            records.forEach(record => {
-                const n = record['n'];
-                const r = record['r'];
-                const m = record['m'];
-                if (n) {
-                    const nodeIdN = n.elementId;
-                    const nodeN = {
-                        ...n.properties,
-                        elementId: nodeIdN,
-                        labels: n.labels || ['Node'],
-                        label: n.labels?.[0] || 'Node'
-                    };
-                    if (!nodesMap.has(nodeIdN)) nodesMap.set(nodeIdN, nodeN);
-                }
-                if (r && m) {
-                    const nodeIdM = m.elementId;
-                    if (!nodesMap.has(nodeIdM)) {
-                        nodesMap.set(nodeIdM, {
-                            ...m.properties,
-                            elementId: nodeIdM,
-                            labels: m.labels || ['Node'],
-                            label: m.labels?.[0] || 'Node'
-                        });
-                    }
-                }
-            });
-            const nodes = Array.from(nodesMap.values());
-            setHierarchySearchResults(nodes);
+            const nodes = sourceNodes
+                .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
+                .filter(({ score }) => score > 0)
+                .sort((a, b) => b.score - a.score)
+                .map(({ node }) => node);
+
+            const finalNodes = nodes;
+            if (finalNodes.length === 0) {
+                setSearchError(suppliedSnapshot ? 'No matching business objects in the loaded graph snapshot. This does not prove the object is absent from the full graph.' : 'No matching business objects in this bounded graph search. A missing match does not prove that an entity is unused.');
+            }
+
+            setHierarchySearchResults(finalNodes);
+            if (finalNodes.length > 0) {
+                handleNodeSelect(finalNodes[0]);
+            } else {
+                setSelectedNode(null);
+                setTreeData(null);
+                setLevels([]);
+            }
         } catch (err) {
-            logger.search('Search error (server):', err);
-            // Fallback to client-side filtering of provided data
-            try {
-                const fallbackNodes = (data?.nodes || []).filter(n => {
-                    const name = (n.name || '').toLowerCase();
-                    const version = (n.external_version || n.version || '').toLowerCase();
-                    return name.includes(term.toLowerCase()) || version.includes(term.toLowerCase());
-                });
-                setHierarchySearchResults(fallbackNodes);
-                setSearchError('Server search failed. Showing local filtered results.');
-            } catch (fe) {
-                setHierarchySearchResults([]);
-                setSearchError('Search failed.');
-            }
+            if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
+            logger.search('Loaded graph search failed:', err);
+            setHierarchySearchResults([]);
+            setSelectedNode(null);
+            setTreeData(null);
+            setLevels([]);
+            setSearchError('Unable to search business objects. Check graph access and retry.');
         } finally {
-            setIsSearching(false);
+            if (!controller.signal.aborted) setIsSearching(false);
+            if (searchAbortRef.current === controller) searchAbortRef.current = null;
         }
     };
 
     // Upward expansion logic: recursively fetch parents via graphtraverse until top-level
-    const expandAllParents = async (startNode) => {
-        if (!startNode) return;
+    const expandAllParents = useCallback(async (startNode) => {
+        if (!startNode?.elementId) return;
+        expansionAbortRef.current?.abort();
+        const controller = new AbortController();
+        expansionAbortRef.current = controller;
         setIsExpandingUpwards(true);
         setExpansionError(null);
+        let timedOut = false;
+        const deadlineTimer = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
         try {
-            const ancestorMap = new Map();
-            const linkSet = new Map(); // key: elementId
+            const ancestorMap = new Map([[startNode.elementId, startNode]]);
+            const linkSet = new Map();
             const visited = new Set();
-            const queue = [{ node: startNode, level: 0 }];
-            ancestorMap.set(startNode.elementId, startNode);
+            let failedBranches = 0;
+            const queue = [startNode.elementId];
+            const depths = new Map([[startNode.elementId, 0]]);
+            let bounded = false;
+
 
             while (queue.length > 0) {
-                const current = queue.shift();
-                const currentNode = current.node;
-                const currentLevel = current.level;
-                if (visited.has(currentNode.elementId)) continue;
-                visited.add(currentNode.elementId);
+                if (controller.signal.aborted) return;
+                if (visited.size >= 100 || ancestorMap.size >= 1000) { bounded = true; break; }
+                const currentNodeId = queue.shift();
+                if ((depths.get(currentNodeId) || 0) >= 10) { bounded = true; continue; }
+                if (!currentNodeId || visited.has(currentNodeId)) continue;
+                visited.add(currentNodeId);
 
-                // Call traverse API for current node
                 try {
-                    const resp = await apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: currentNode.elementId })));
-                    const records = resp.data?.results || [];
-                    records.forEach(record => {
-                        const n = record['n'];
-                        const r = record['r'];
-                        const m = record['m'];
-                        if (!r) return;
-                        // Relationship direction: r.start -> r.end
-                        // We want parents of current node: links where current is target (r.end === currentNode.elementId)
-                        if (r.end === currentNode.elementId) {
-                            // Parent is r.start
-                            const parentNodeRaw = (n && n.elementId === r.start) ? n : (m && m.elementId === r.start ? m : null);
-                            if (parentNodeRaw) {
-                                const parentNode = {
-                                    ...parentNodeRaw.properties,
-                                    elementId: parentNodeRaw.elementId,
-                                    labels: parentNodeRaw.labels || ['Node'],
-                                    label: parentNodeRaw.labels?.[0] || 'Node'
-                                };
-                                if (!ancestorMap.has(parentNode.elementId)) {
-                                    ancestorMap.set(parentNode.elementId, parentNode);
-                                    queue.push({ node: parentNode, level: currentLevel + 1 });
-                                }
-                                if (!linkSet.has(r.elementId)) {
-                                    linkSet.set(r.elementId, {
-                                        elementId: r.elementId,
-                                        source: r.start,
-                                        target: r.end,
-                                        type: r.type,
-                                        properties: r.properties
-                                    });
-                                }
+                    const resp = await graphApi.getTraversal(currentNodeId, 1, controller.signal);
+                    if (controller.signal.aborted) return;
+                    const records = Array.isArray(resp.data?.results) ? resp.data.results.filter(record => record && typeof record === 'object') : [];
+                    const normalizedTraversal = records.length ? null : normalizeGraphDatasetShared(resp.data);
+
+                    const relationships = records.length
+                        ? records.map((record) => ({ relationship: record['r'], nodes: [record['n'], record['m']].map(hydrateGraphNode).filter(Boolean) }))
+                        : (normalizedTraversal.links || []).map((relationship) => ({ relationship, nodes: normalizedTraversal.nodes || [] }));
+
+                    relationships.forEach(({ relationship, nodes }) => {
+                        if (!relationship) return;
+
+                        const sourceId = getLinkEndpointId(relationship.start ?? relationship.source);
+                        const targetId = getLinkEndpointId(relationship.end ?? relationship.target);
+                        if (!sourceId || !targetId) return;
+
+                        const predicate = vocabularyName(relationship.properties?.predicate || relationship.predicate || relationship.type || relationship.label);
+                        const parentId = targetId === currentNodeId && parentToChild.has(predicate) ? sourceId
+                            : sourceId === currentNodeId && childToParent.has(predicate) ? targetId : null;
+                        if (parentId) {
+                            const parent = nodes.find(node => node?.elementId === parentId);
+                            if (!businessNode(parent)) return;
+                            if (!ancestorMap.has(parentId)) {
+                                if (ancestorMap.size >= 1000) { bounded = true; return; }
+                                ancestorMap.set(parentId, parent);
+                            }
+                            const key = buildRelationshipKey({ ...relationship, source: sourceId, target: targetId });
+                            if (!linkSet.has(key)) {
+                                linkSet.set(key, {
+                                    elementId: relationship.elementId || key,
+                                    source: parentId,
+                                    target: currentNodeId,
+                                    originalSource: sourceId,
+                                    originalTarget: targetId,
+                                    type: relationship.properties?.predicate || relationship.predicate || relationship.type || relationship.label || 'RELATED',
+                                    properties: relationship.properties || {},
+                                });
+                            }
+                            if (!depths.has(parentId)) {
+                                depths.set(parentId, (depths.get(currentNodeId) || 0) + 1);
+                                queue.push(parentId);
                             }
                         }
                     });
                 } catch (e) {
-                        logger.warn('Traverse fetch failed for %s: %s', currentNode.elementId, e.message);
+                    if (controller.signal.aborted) return;
+                    logger.warn('Traverse fetch failed for %s: %s', currentNodeId, e.message);
+                    failedBranches += 1;
                 }
             }
 
-            // Organize nodes into levels (distance from selected node upward)
-            const levelMap = new Map();
-            // We'll BFS again using links to compute distance (already tracked during traversal via queue level)
-            // Reconstruct levels from queue processing by computing minimal distance using parent relationships
-            ancestorMap.forEach((node, id) => {
-                if (id === startNode.elementId) {
-                    if (!levelMap.has(0)) levelMap.set(0, []);
-                    levelMap.get(0).push(node);
-                }
-            });
-            // We stored levels during queue pushes; recompute by exploring parents from start node:
-            const distances = new Map();
-            distances.set(startNode.elementId, 0);
             const parentLinks = Array.from(linkSet.values());
+            const distances = new Map([[startNode.elementId, 0]]);
             const pending = [startNode.elementId];
+
             while (pending.length) {
                 const childId = pending.shift();
-                const childDist = distances.get(childId);
-                parentLinks.forEach(l => {
-                    if (l.target === childId) {
-                        const parentId = l.source;
-                        if (!distances.has(parentId) || distances.get(parentId) > childDist + 1) {
-                            distances.set(parentId, childDist + 1);
-                            pending.push(parentId);
-                        }
+                const childDist = distances.get(childId) || 0;
+                parentLinks.forEach((link) => {
+                    if (link.target !== childId) return;
+                    const parentId = link.source;
+                    if (!distances.has(parentId) || distances.get(parentId) > childDist + 1) {
+                        distances.set(parentId, childDist + 1);
+                        pending.push(parentId);
                     }
                 });
             }
+
+            const levelMap = new Map();
             distances.forEach((dist, nodeId) => {
                 const nodeObj = ancestorMap.get(nodeId);
+                if (!nodeObj) return;
                 if (!levelMap.has(dist)) levelMap.set(dist, []);
                 levelMap.get(dist).push(nodeObj);
             });
-            const sortedLevels = Array.from(levelMap.entries()).sort((a,b) => b[0]-a[0]).map(e => e[1]); // top ancestors first
-            
+
+            const sortedLevels = Array.from(levelMap.entries())
+                .sort((a, b) => b[0] - a[0])
+                .map((entry) => entry[1]);
+
             logger.data('WhereUsed - Hierarchy built:');
             logger.data('  Total nodes: %d', Array.from(ancestorMap.values()).length);
             logger.data('  Total links: %d', parentLinks.length);
             logger.data('  Levels: %d', sortedLevels.length);
-            sortedLevels.forEach((level, idx) => {
-                logger.data('  Level %d: %d nodes', idx, level.length);
-            });
-            
+
+            if (controller.signal.aborted || expansionAbortRef.current !== controller) return;
             setLevels(sortedLevels);
             setTreeData({
                 nodes: Array.from(ancestorMap.values()),
                 links: parentLinks,
                 root: startNode
             });
-            setAutoExpanded(true);
+            setAutoExpanded(failedBranches === 0 && !bounded);
+            if (bounded) setExpansionError('Partial hierarchy: reached the safety limit of 10 hops, 1,000 nodes or 100 requests. Select a parent to explore further.');
+            else if (failedBranches) setExpansionError(`Partial hierarchy: ${failedBranches} parent branch request(s) failed. Retry expansion to complete the evidence.`);
         } catch (err) {
+            if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
             setExpansionError(err.message);
         } finally {
-            setIsExpandingUpwards(false);
+            clearTimeout(deadlineTimer);
+            if (expansionAbortRef.current === controller) {
+                setIsExpandingUpwards(false);
+                if (timedOut) setExpansionError('Hierarchy request exceeded 30 seconds. Select a narrower root and retry.');
+                expansionAbortRef.current = null;
+            }
         }
-    };
+    }, []);
 
     // Select node and build tree
-    const handleNodeSelect = (node) => {
+    const handleNodeSelect = useCallback((node) => {
         setSelectedNode(node);
         setTreeData(null);
         setLevels([]);
         setAutoExpanded(false);
         expandAllParents(node);
-    };
+    }, [expandAllParents]);
 
-    // Render tree with D3
-    // Zoom behavior stored in ref for reset button access across renders
-    const zoomBehaviorRef = useRef(null);
-    useEffect(() => {
-        if (!treeData || levels.length === 0 || !svgRef.current) return;
-        const svgEl = svgRef.current;
-        const container = svgEl.parentElement;
-        // Create or select tooltip (same style as GraphHEB)
-        let tooltip = d3.select(container).select('.tooltip');
-        if (tooltip.empty()) {
-            tooltip = d3.select(container)
-                .append('div')
-                .attr('class', 'tooltip')
-                .style('position', 'absolute')
-                .style('opacity', 0)
-                .style('background', 'rgba(255,255,255,0.98)')
-                .style('color', '#333')
-                .style('padding', '0')
-                .style('border', '1px solid rgba(0,0,0,0.1)')
-                .style('border-radius', '12px')
-                .style('backdrop-filter', 'blur(20px)')
-                .style('box-shadow', '0 12px 40px rgba(0,0,0,0.15)')
-                .style('font-family', "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif")
-                .style('font-size', '12px')
-                .style('max-width', '350px')
-                .style('line-height', '1.5')
-                .style('overflow', 'hidden')
-                .style('pointer-events', 'auto')
-                .style('z-index', 12)
-                .style('transition', 'opacity 0.15s');
-        }
-        // Close button HTML for tooltips
-        const closeBtn = `<button onclick="this.closest('.tooltip').style.opacity='0';this.closest('.tooltip').style.pointerEvents='none'" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
-        // Track active tooltip target
-        let activeTooltipTarget = null;
-    // Dynamic sizing: keep fixed height but allow width to grow based on widest level
-    const forcedHeight = 678;
-    const paddingX = 60;
-    const paddingY = 60;
-    const baseGap = 40; // minimum gap between nodes
-    // Precompute per-level required width (without compression)
-    const levelMetrics = levels.map(levelNodes => {
-        const nodeWidths = levelNodes.map(n => {
-            const label = n.name || n.elementId;
-            const estLabelWidth = Math.min(140, (label.length * 7)) + 12; // match rect logic
-            const circleDiameter = 36; // r=18
-            return Math.max(circleDiameter, estLabelWidth);
-        });
-        const totalNeeded = nodeWidths.reduce((a,b)=>a+b,0) + baseGap * Math.max(0, nodeWidths.length -1);
-        return { nodeWidths, totalNeeded };
-    });
-    const widest = levelMetrics.reduce((m,l)=> Math.max(m, l.totalNeeded), 0);
-    const containerWidth = Math.max(678, Math.min(2400, widest + paddingX * 2));
-    const containerHeight = forcedHeight;
-        const svg = d3.select(svgEl);
-    // Click on empty SVG background dismisses any open tooltip
-    svg.on('click', function(event) {
-      if (event.target === svgEl) {
-        tooltip.style('opacity', 0).style('pointer-events', 'none');
-        activeTooltipTarget = null;
-      }
-    });
-    svg.selectAll('*').remove();
-        // Define arrowhead markers
-        const defs = svg.append('defs');
-        const baseArrow = defs.append('marker')
-            .attr('id','hier-arrow')
-            .attr('viewBox','0 0 10 10')
-            // refX tuned so the arrow tip sits just outside the target node edge after we shorten the link
-            .attr('refX',9)
-            .attr('refY',5)
-            .attr('markerWidth',7)
-            .attr('markerHeight',7)
-            .attr('orient','auto');
-        baseArrow.append('path').attr('d','M0,0 L10,5 L0,10 Z').attr('fill','#999');
-        const activeArrow = defs.append('marker')
-            .attr('id','hier-arrow-active')
-            .attr('viewBox','0 0 10 10')
-            .attr('refX',9)
-            .attr('refY',5)
-            .attr('markerWidth',8)
-            .attr('markerHeight',8)
-            .attr('orient','auto');
-        activeArrow.append('path').attr('d','M0,0 L10,5 L0,10 Z').attr('fill','#ff9800');
-    // Use containerWidth directly as logical width
-    const width = containerWidth - 20;
-    const levelHeight = 160; // vertical spacing
-    svg.attr('width', containerWidth).attr('height', containerHeight);
-
-        // Position nodes: levels[0] is top ancestors, last level contains selected node
-        const positionedNodes = [];
-        levels.forEach((levelNodes, idx) => {
-            const y = paddingY + idx * levelHeight;
-            const metrics = levelMetrics[idx];
-            const nodeWidths = metrics.nodeWidths;
-            const totalNeeded = metrics.totalNeeded;
-            // No compression; allow horizontal scroll if exceeds viewport
-            let cursorX = paddingX + (width - (totalNeeded)) / 2;
-            // If totalNeeded > width, cursorX starts at paddingX (left aligned) for clarity
-            if (totalNeeded > width) cursorX = paddingX;
-            levelNodes.forEach((n,i)=> {
-                const w = nodeWidths[i];
-                const xCenter = cursorX + w/2;
-                positionedNodes.push({ ...n, x: xCenter, y });
-                cursorX += w + baseGap;
-            });
-        });
-        const nodePosMap = new Map(positionedNodes.map(n => [n.elementId, n]));
-
-        // Root group for zooming
-        const g = svg.append('g').attr('class','zoom-layer');
-        const links = treeData.links;
-
-        // --- Arrowhead visibility adjustment for bidirectional (two-way) relationships ---
-        // Goal: If two nodes have links in both directions, only show ONE arrowhead pointing "upward" (towards the ancestor).
-        // Ancestor detection: nodes at higher index distance (farther from selected node) appear in earlier levels array.
-        // Distance heuristic: derive distance-from-selected (0 = selected/root of this view) by reversing level ordering.
-        const distanceMap = new Map();
-        levels.forEach((levelNodes, idx) => {
-            // levels[0] = farthest ancestors, last = selected node; compute original distance
-            const distanceFromSelected = (levels.length - 1) - idx; // so selected node distance 0
-            levelNodes.forEach(n => distanceMap.set(n.elementId, distanceFromSelected));
-        });
-
-        // Build per-pair direction map
-        const pairDirMap = new Map(); // key: sorted pair id, value: array of link refs
-        links.forEach(l => {
-            if (!nodePosMap.has(l.source) || !nodePosMap.has(l.target)) return; // skip orphan
-            const a = l.source;
-            const b = l.target;
-            const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`;
-            if (!pairDirMap.has(pairKey)) pairDirMap.set(pairKey, []);
-            pairDirMap.get(pairKey).push(l);
-        });
-
-        // Default: every link shows arrowhead unless suppressed below
-        links.forEach(l => { l.__showArrow = true; });
-
-        pairDirMap.forEach(linkArr => {
-            if (linkArr.length < 2) return; // only one direction, leave as-is
-            // If more than 2 (multiple relationship types both ways) treat all by direction groups
-            // Group by direction signature source->target vs target->source using the first pair encountered.
-            // Determine which direction is upward: the one whose TARGET has greater distance (farther from selected / higher in hierarchy)
-            // Because links are stored parent->child normally, the reverse (child->parent) is the upward one.
-            linkArr.forEach(l => { l.__showArrow = false; }); // start by clearing all then enable one
-            let chosen = null;
-            linkArr.forEach(l => {
-                const srcDist = distanceMap.get(l.source);
-                const tgtDist = distanceMap.get(l.target);
-                if (srcDist == null || tgtDist == null) return; // safety
-                // Upward if target is farther from selected (higher ancestor) i.e., tgtDist > srcDist
-                if (tgtDist > srcDist) {
-                    if (!chosen) chosen = l; // first qualifying upward link
-                }
-            });
-            // Fallback: if none matched (e.g., equal distances due to data anomaly), pick arbitrary stable link
-            if (!chosen && linkArr.length) chosen = linkArr[0];
-            if (chosen) chosen.__showArrow = true;
-        });
-
-        g.selectAll('.link')
-            .data(links.filter(l => nodePosMap.has(l.source) && nodePosMap.has(l.target)))
-            .enter()
-            .append('path')
-            .attr('class', 'link')
-            .attr('d', d => {
-                // Shorten the line at both ends so the arrowhead sits just outside node icon/circle
-                const s = nodePosMap.get(d.source);
-                const t = nodePosMap.get(d.target);
-                if (!s || !t) return '';
-                const dx = t.x - s.x;
-                const dy = t.y - s.y;
-                const len = Math.sqrt(dx*dx + dy*dy) || 1;
-                // Base visual radius of node (icon 36px -> radius 18) + small padding to keep arrowhead off the node
-                const rSource = 18; // could vary if different node sizes later
-                const rTarget = 18;
-                // Additional padding so arrowhead tip touches the node edge not hidden beneath
-                const padTarget = 4; // tweak as needed
-                const padSource = 4;
-                const ux = dx / len;
-                const uy = dy / len;
-                const startX = s.x + ux * (rSource + padSource);
-                const startY = s.y + uy * (rSource + padSource);
-                const endX = t.x - ux * (rTarget + padTarget);
-                const endY = t.y - uy * (rTarget + padTarget);
-                return `M${startX},${startY} L${endX},${endY}`;
-            })
-            .attr('fill', 'none')
-            .attr('stroke', '#999')
-            .attr('stroke-width', 2)
-            .attr('stroke-opacity', 0.9)
-            .attr('marker-end', d => d.__showArrow ? 'url(#hier-arrow)' : null)
-            // Ensure links render above background and below nodes but arrowhead remains visible (shortened path)
-            .style('pointer-events','stroke')
-            .on('click', function(event, d) {
-                event.stopPropagation();
-                const linkId = d.elementId || `${d.source}-${d.target}`;
-                if (activeTooltipTarget && activeTooltipTarget !== linkId) {
-                    tooltip.style('opacity', 0).style('pointer-events', 'none');
-                }
-                activeTooltipTarget = linkId;
-
-                d3.select(this)
-                    .attr('stroke','#ff9800')
-                    .attr('stroke-width',3)
-                    .attr('marker-end', d.__showArrow ? 'url(#hier-arrow-active)' : null);
-                
-                const relType = d.type || 'Relationship';
-                const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties) 
-                  ? d.properties 
-                  : d;
-                
-                const sourceNode = nodePosMap.get(d.source);
-                const targetNode = nodePosMap.get(d.target);
-                const srcLabel = sourceNode?.labels?.[0] || 'Node';
-                const tgtLabel = targetNode?.labels?.[0] || 'Node';
-                
-                let tooltipContent = `
-                  <div style="position:relative; background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); color: white; padding: 8px 12px; margin: -8px -8px 8px -8px; font-weight: bold; border-radius: 4px 4px 0 0;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <i class="fas fa-link" style="font-size: 16px;"></i>
-                      <span>${relType}</span>
-                    </div>
-                    ${closeBtn}
-                  </div>
-                `;
-                
-                tooltipContent += `<div style="margin: 8px; padding: 8px; background: #f8f9fa; border-radius: 4px; font-size: 11px; color: #495057;">
-                  <strong style="color: #0066B3;">From:</strong> ${srcLabel}<br/>
-                  <strong style="color: #28A745;">To:</strong> ${tgtLabel}
-                </div>`;
-                
-                // Only exclude D3/graph-library internals — ALL real relationship properties will be shown
-                const excludedProps = [
-                  'source', 'target', 'index',                                           // D3 link internals
-                  'start', 'end',                                                        // Neo4j relationship endpoints
-                  'elementId', 'elementID', 'identity', 'properties', '__typename',       // driver metadata
-                  '__showArrow',                                                          // custom display flag
-                ];
-                
-                const allProps = Object.keys(props)
-                  .filter(k => {
-                    if (excludedProps.includes(k)) return false;
-                    if (typeof props[k] === 'function') return false;
-                    return true;
-                  })
-                  .map(k => [k, props[k]]);
-                
-                if (allProps.length > 0) {
-                  tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 250px; overflow-y: auto;">`;
-                  allProps.forEach(([k, v]) => {
-                    const formattedKey = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    let formattedValue = v;
-                    if (v === null || v === undefined) {
-                      formattedValue = '<em style="color: #95a5a6;">N/A</em>';
-                    } else if (typeof v === 'object') {
-                      formattedValue = JSON.stringify(v);
-                    } else if (typeof v === 'boolean') {
-                      formattedValue = v ? '<span style="color: #27ae60;">Yes</span>' : '<span style="color: #e74c3c;">No</span>';
-                    } else {
-                      formattedValue = String(v);
-                    }
-                    tooltipContent += `<div style="margin: 4px 0; padding: 3px 0; border-bottom: 1px solid #f0f0f0;"><strong style="color: #2c3e50;">${formattedKey}:</strong> <span style="color: #34495e; margin-left: 8px;">${formattedValue}</span></div>`;
-                  });
-                  tooltipContent += `</div>`;
-                } else {
-                  tooltipContent += `<div style="margin-top: 8px; padding: 12px; font-size: 12px; color: #95a5a6; font-style: italic; text-align: center;">No properties available</div>`;
-                }
-                
-                tooltip.html(tooltipContent)
-                    .style('left', (event.offsetX + 14) + 'px')
-                    .style('top', (event.offsetY + 14) + 'px')
-                    .style('pointer-events', 'auto')
-                    .style('opacity', 1);
-            });
-
-        // Draw nodes
-        // Deduplicate duplicates while ensuring we KEEP the selected/root node at its correct (lowest) level.
-        // Previous logic kept the first occurrence (top-level) which was wrong when the root appeared twice.
-        const rootId = treeData.root.elementId;
-        let rootMaxY = -Infinity;
-        positionedNodes.forEach(pn => {
-            if (pn.elementId === rootId && pn.y > rootMaxY) rootMaxY = pn.y; // find lowest (largest y) root occurrence
-        });
-        const uniquePositioned = [];
-        const seenIds = new Set();
-        // We want to keep last occurrence for any duplicate IDs so iterate from end to start.
-        for (let i = positionedNodes.length - 1; i >= 0; i--) {
-            const pn = positionedNodes[i];
-            // For root node keep only the one at rootMaxY
-            if (pn.elementId === rootId && pn.y !== rootMaxY) continue;
-            if (!seenIds.has(pn.elementId)) {
-                seenIds.add(pn.elementId);
-                // We'll push in reverse order then reverse later to restore drawing order (top ancestors first)
-                uniquePositioned.push(pn);
-            }
-        }
-        uniquePositioned.reverse();
-        const nodeGroup = g.selectAll('.node')
-            .data(uniquePositioned)
-            .enter()
-            .append('g')
-            .attr('class', 'node')
-            .attr('transform', d => `translate(${d.x},${d.y})`);
-
-        // Draw icon or fallback circle
-        nodeGroup.each(function(d) {
-            const gnode = d3.select(this);
-            const primaryLabel = d.labels?.[0] || d.label || 'Unknown';
-            const nodeColor = getNodeColor(primaryLabel);
-            
-            // Use colored circles instead of icons
-            gnode.append('circle')
-                .attr('r', 18)
-                .attr('fill', d.elementId === treeData.root.elementId ? '#ff6b6b' : nodeColor)
-                .attr('stroke', '#fff')
-                .attr('stroke-width', 2)
-                .attr('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))');
-        });
-
-        // Add label group below circle to avoid overlap with node center
-    // Move label further down so it doesn't overlap circle edge
-    const labelGroup = nodeGroup.append('g').attr('transform', 'translate(0,40)');
-        // Draw background rect first; final sizing will be adjusted after wrapping
-        labelGroup.append('rect')
-            .attr('x', -60)
-            .attr('y', -10)
-            .attr('height', 32)
-            .attr('width', 120)
-            .attr('rx', 4)
-            .attr('ry', 4)
-            .attr('fill', 'rgba(255,255,255,0.85)')
-            .attr('stroke', '#ddd');
-
-        // Multi-line wrapping for labels
-        labelGroup.each(function(d) {
-            // Developer-configured property with configurable priority (see DISPLAY_NAME_PROPERTY / DISPLAY_MODE at top of file)
-            const props = d.properties || d;
-            const nodeLabel = d.labels?.[0] || d.label || '';
-            let propValue = resolveDisplayProp(props);
-            if (!propValue) {
-                propValue = schemaDisplayName ? schemaDisplayName(d) : (
-                    props.name || props.title || props.code || props.key ||
-                    props.abbreviation || props.milestone_abbreviation ||
-                    props.jira_project_key || props.project_name ||
-                    props.milestone_name || props.workproduct_name ||
-                    d.elementId || ''
-                );
-            }
-            const displayText = formatNodeDisplay(nodeLabel, propValue);
-            const maxCharsPerLine = 18; // heuristic per line
-            const words = displayText.split(/[\s_-]+/).filter(Boolean);
-            const lines = [];
-            let current = '';
-            words.forEach(w => {
-                const test = current ? current + ' ' + w : w;
-                if (test.length <= maxCharsPerLine) {
-                    current = test;
-                } else {
-                    if (current) lines.push(current);
-                    current = w;
-                }
-            });
-            if (current) lines.push(current);
-            // Fallback if no words (e.g., single long token)
-            if (lines.length === 0 && displayText) {
-                for (let i = 0; i < displayText.length; i += maxCharsPerLine) {
-                    lines.push(displayText.slice(i, i + maxCharsPerLine));
-                }
-            }
-            const lineHeight = 14;
-            const maxLineLen = Math.max(...lines.map(l => l.length), 0);
-            const approxWidth = Math.min(160, maxLineLen * 7) + 16; // padding
-            const totalHeight = lineHeight * lines.length + 8; // padding
-            // Adjust rectangle size & position
-            d3.select(this).select('rect')
-                .attr('width', approxWidth)
-                .attr('x', -approxWidth / 2)
-                .attr('height', totalHeight)
-                .attr('y', -totalHeight / 2);
-            // Append text with tspans
-            const textEl = d3.select(this).append('text')
-                .attr('class', 'hier-node-label')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#000')
-                .style('font-size', '12px')
-                .style('font-weight', '500')
-                .style('pointer-events', 'none');
-            lines.forEach((line, i) => {
-                textEl.append('tspan')
-                    .attr('x', 0)
-                    .attr('dy', i === 0 ? (lines.length === 1 ? lineHeight/2 : 0) : lineHeight)
-                    .text(line);
-            });
-            // Center first line vertically when single line
-            if (lines.length === 1) {
-                textEl.attr('dy', lineHeight/2);
-            }
-        });
-
-        // Attach unified hover handlers to entire node group (circle + label)
-        nodeGroup
-            .on('click', function(event, d) {
-                event.stopPropagation();
-                const nodeId = d.elementId || d.id;
-                if (activeTooltipTarget && activeTooltipTarget !== nodeId) {
-                    tooltip.style('opacity', 0).style('pointer-events', 'none');
-                }
-                activeTooltipTarget = nodeId;
-
-                d3.select(this).select('circle').attr('stroke', '#222').attr('stroke-width', 3);
-                
-                const nodeType = d.labels?.[0] || 'Node';
-                const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties) 
-                  ? d.properties 
-                  : d;
-                
-                                let tooltipContent = buildTooltipHeader(nodeType, closeBtn);
-                
-                                // Show all enumerable own properties (exclude functions only)
-                                const allProps = Object.keys(props)
-                                    .filter(k => typeof props[k] !== 'function')
-                                    .map(k => [k, props[k]]);
-                
-                if (allProps.length > 0) {
-                  tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 300px; overflow-y: auto;">`;
-                  allProps.forEach(([k, v]) => {
-                    const formattedKey = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    let formattedValue = v;
-                    if (v === null || v === undefined) {
-                      formattedValue = '<em style="color: #95a5a6;">N/A</em>';
-                    } else if (typeof v === 'object') {
-                      formattedValue = JSON.stringify(v);
-                    } else if (typeof v === 'boolean') {
-                      formattedValue = v ? '<span style="color: #27ae60;">Yes</span>' : '<span style="color: #e74c3c;">No</span>';
-                    } else {
-                      formattedValue = String(v);
-                    }
-                    tooltipContent += `<div style="margin: 4px 0; padding: 3px 0; border-bottom: 1px solid #f0f0f0;"><strong style="color: #2c3e50;">${formattedKey}:</strong> <span style="color: #34495e; margin-left: 8px;">${formattedValue}</span></div>`;
-                  });
-                  tooltipContent += `</div>`;
-                } else {
-                  tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; color: #95a5a6; font-style: italic;">No properties available</div>`;
-                }
-                
-                // Dock tooltip to right side of the SVG canvas
-                const svgRect = svgEl.getBoundingClientRect();
-                const parentRect = container.getBoundingClientRect();
-                const panelWidth = 340;
-                let panelTop = Math.max(0, Math.round(svgRect.top - parentRect.top));
-                let panelLeft = Math.max(0, Math.round(svgRect.right - parentRect.left - panelWidth));
-                if (svgRect.width < panelWidth) panelLeft = Math.max(0, Math.round(svgRect.left - parentRect.left));
-                tooltip.html(tooltipContent)
-                    .style('left', panelLeft + 'px')
-                    .style('top', panelTop + 'px')
-                    .style('pointer-events', 'auto')
-                    .style('opacity', 1)
-                    .style('width', panelWidth + 'px')
-                    .style('max-height', Math.min(svgRect.height, window.innerHeight - 40) + 'px')
-                    .style('overflow-y', 'auto');
-            });
-
-        // Compute bounding box of logical content for auto-fit
-        const xs = positionedNodes.map(n => n.x);
-        const ys = positionedNodes.map(n => n.y);
-        const minX = Math.min(...xs) - 40;
-        const maxX = Math.max(...xs) + 40;
-        const minY = Math.min(...ys) - 40;
-        const maxY = Math.max(...ys) + 40;
-        const contentWidth = maxX - minX;
-        const contentHeight = maxY - minY;
-        const scale = Math.min(
-            containerWidth / contentWidth,
-            containerHeight / contentHeight,
-            1 // avoid upscaling beyond 1
-        );
-        const offsetX = (containerWidth - contentWidth * scale) / 2 - minX * scale;
-        const offsetY = (containerHeight - contentHeight * scale) / 2 - minY * scale;
-        g.attr('transform', `translate(${offsetX},${offsetY}) scale(${scale})`);
-
-        // Define zoom behavior
-        zoomBehaviorRef.current = d3.zoom()
-            .scaleExtent([0.2, 2])
-            .on('zoom', (event) => {
-                g.attr('transform', event.transform);
-            });
-        svg.call(zoomBehaviorRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [treeData, levels]);
-
-    const getNodeDisplayName = (node) => {
+    const getNodeDisplayName = useCallback((node) => {
         if (!node) return 'Unknown';
         const firstLabel = node.labels?.[0] || node.label || 'Unknown';
         const props = node.properties || node;
@@ -803,139 +458,240 @@ const WhereUsedView = ({
         }
 
         return formatNodeDisplay(firstLabel, propValue);
-    };
+    }, [schemaDisplayName]);
+
+    const getNodeRelationships = useCallback((nodeId) => {
+        if (!treeData?.links?.length || !nodeId) return [];
+        return treeData.links.filter(link => link.source === nodeId || link.target === nodeId);
+    }, [treeData]);
+
+    const searchGridRows = useMemo(() => hierarchySearchResults.map((node) => {
+        const nodeLabel = node.labels?.[0] || node.label || 'Node';
+        return {
+            id: node.elementId,
+            displayName: getNodeDisplayName(node),
+            label: nodeLabel,
+            sourceFile: node.properties?.source_filename || '',
+            sourceType: node.properties?.part_type || node.properties?.source_element_name || nodeLabel,
+            revision: node.properties?.revision || '',
+            properties: Object.keys(node.properties || node).filter(k => !['elementId', 'labels', 'label'].includes(k)).length,
+            node,
+        };
+    }), [hierarchySearchResults, getNodeDisplayName]);
+
+    const hierarchyGridRows = useMemo(() => {
+        if (!treeData || !levels.length) return [];
+        return levels.flatMap((levelNodes, levelIndex) => {
+            const depth = levels.length - 1 - levelIndex;
+            return levelNodes.map((node) => {
+                const relationships = getNodeRelationships(node.elementId);
+                const nodeLabel = node.labels?.[0] || node.label || 'Node';
+                return {
+                    id: `${levelIndex}-${node.elementId}`,
+                    nodeId: node.elementId,
+                    node,
+                    depth,
+                    level: depth === 0 ? 'Selected node' : `Ancestor level ${depth}`,
+                    displayName: getNodeDisplayName(node),
+                    label: nodeLabel,
+                    relationships: relationships.map(link => link.type || 'RELATED').join(', ') || 'None',
+                    relationshipCount: relationships.length,
+                };
+            });
+        });
+    }, [treeData, levels, getNodeDisplayName, getNodeRelationships]);
+
+    const searchGridColumns = useMemo(() => [
+        { headerName: 'Node', field: 'displayName', flex: 1.5, minWidth: 260, tooltipField: 'displayName' },
+        { headerName: 'Label', field: 'label', flex: 0.7, minWidth: 160 },
+        { headerName: 'Source type', field: 'sourceType', minWidth: 180 },
+        { headerName: 'Revision', field: 'revision', width: 100 },
+        { headerName: 'Source file', field: 'sourceFile', minWidth: 240, tooltipField: 'sourceFile' },
+        { headerName: 'Properties', field: 'properties', width: 120, type: 'numericColumn' },
+        {
+            headerName: 'Action',
+            field: 'id',
+            width: 150,
+            pinned: 'right',
+            sortable: false,
+            filter: false,
+            cellRenderer: (params) => (
+                <button
+                    type="button"
+                    onClick={() => handleNodeSelect(params.data.node)}
+                    style={{
+                        ...buttonStyle,
+                        minHeight: 28,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        background: selectedNode?.elementId === params.data.id ? WU.subtle : WU.primary,
+                    }}
+                    title="Show where this business object is used"
+                >
+                    Select
+                </button>
+            ),
+        },
+    ], [selectedNode, handleNodeSelect]);
+
+    const usageSummary = useMemo(() => {
+        if (!selectedNode || !treeData?.nodes?.length) return '';
+
+        const selectedId = selectedNode.elementId;
+        const incoming = (treeData.links || []).filter((link) => link?.target === selectedId);
+        const usageTypes = new Set(['uses','contains','haspart','haschild','haschildinstance','hascomponent','assemblycontains','parentof',...childToParent]);
+        const usageLinks = incoming.filter(link => usageTypes.has(vocabularyName(link.type)));
+        const directParents = (usageLinks.length ? usageLinks : incoming)
+            .map((link) => treeData.nodes.find((node) => node.elementId === link.source))
+            .filter(Boolean);
+
+        const uniqueParents = Array.from(
+            new Map(
+                directParents.map((node) => [node.elementId, getNodeDisplayName(node)])
+            ).values()
+        );
+
+        const selectedName = getNodeDisplayName(selectedNode);
+        if (!uniqueParents.length) {
+            return `No upstream references were returned for ${selectedName} in this loaded scope. This does not establish that the object is unused.`;
+        }
+
+        const preview = uniqueParents.slice(0, 3).join(', ');
+        const suffix = uniqueParents.length > 3 ? ` and ${uniqueParents.length - 3} more` : '';
+        return usageLinks.length
+            ? `Source-provided usage links connect ${selectedName} to ${preview}${suffix}. Review the relationship types before assessing assembly impact.`
+            : `Upstream source references connect ${selectedName} to ${preview}${suffix}. Revision/master references do not establish physical assembly usage.`;
+    }, [selectedNode, treeData, getNodeDisplayName]);
+
+    const hierarchyGridColumns = useMemo(() => [
+        { headerName: 'Level', field: 'level', width: 170 },
+        { headerName: 'Depth', field: 'depth', width: 95, type: 'numericColumn' },
+        { headerName: 'Node', field: 'displayName', flex: 1.4, minWidth: 260, tooltipField: 'displayName' },
+        { headerName: 'Label', field: 'label', flex: 0.6, minWidth: 150 },
+        { headerName: 'Relationships', field: 'relationships', flex: 1, minWidth: 220, tooltipField: 'relationships' },
+        { headerName: 'Links', field: 'relationshipCount', width: 90, type: 'numericColumn' },
+        {
+            headerName: 'Action',
+            field: 'nodeId',
+            width: 140,
+            sortable: false,
+            filter: false,
+            cellRenderer: (params) => (
+                <button
+                    type="button"
+                    onClick={() => handleNodeSelect(params.data.node)}
+                    style={{
+                        ...buttonStyle,
+                        minHeight: 28,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        background: selectedNode?.elementId === params.data.nodeId ? WU.subtle : WU.primary,
+                    }}
+                    title="Focus on this business object"
+                >
+                    Focus
+                </button>
+            ),
+        },
+    ], [handleNodeSelect, selectedNode]);
+
+    const totalSearchableNodes = (effectiveGraphData?.nodes || []).length;
 
     return (
-        <div style={{ padding: '12px 20px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0 }}>
-            {/* Duplicate header & back button removed; toolbar provided by parent App.js */}
-            <p style={{ marginTop:0, marginBottom: '12px' }}>Search for a node to see all parent hierarchies leading to it</p>
-
-            {/* Search Section */}
-            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search for a node..."
-                    style={{ 
-                        padding: '8px 12px', 
-                        border: '1px solid #ddd', 
-                        borderRadius: '4px',
-                        width: '300px'
-                    }}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                />
-                <button 
-                    onClick={handleSearch}
-                    disabled={isSearching}
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: isSearching ? 'rgba(10,130,118,0.6)' : primaryButtonColor,
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: isSearching ? 'not-allowed' : 'pointer'
-                    }}
-                >
-                    {isSearching ? 'Searching...' : 'Search'}
-                </button>
+        <>
+        <p role="status">{suppliedSnapshot ? 'Search covers only the supplied graph snapshot. A missing match does not prove that an entity is unused.' : 'Search queries business objects directly, independently of the overview slice. Results are bounded to 80 candidates; upward traversal has separate depth and time limits.'}</p>
+        <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>
+            <div style={{ ...panelStyle, marginBottom: 12, padding: '10px 12px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
+                <div style={{ fontSize: 12, color: WU.muted, lineHeight: 1.5 }}>Search for a part, requirement, instance, or named business object. We rank matches, select the best one, then build its upward usage chain from the graph.</div>
+                <div style={{ marginTop: 8, fontSize: 11, color: WU.subtle, fontWeight: 600 }}>
+                    {suppliedSnapshot ? `${totalSearchableNodes} business-object candidates are available in the supplied snapshot.` : 'Enter a business object name to find recorded usage.'}
+                </div>
+            </div>
+            <div style={{ ...panelStyle, marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) auto', gap: 10, alignItems: 'end' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                        <span style={fieldLabelStyle}>Node search</span>
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => {
+                                searchAbortRef.current?.abort();
+                                expansionAbortRef.current?.abort();
+                                setIsSearching(false); setIsExpandingUpwards(false);
+                                setHierarchySearchResults([]); setSelectedNode(null);
+                                setTreeData(null); setLevels([]); setSearchError(null);
+                                setSearchTerm(e.target.value);
+                            }}
+                            placeholder="Enter part, class, instance, requirement, or property name"
+                            style={inputStyle}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        />
+                    </label>
+                    <button
+                        onClick={handleSearch}
+                        disabled={isSearching || !searchTerm.trim()}
+                        style={{
+                            ...buttonStyle,
+                            background: isSearching || !searchTerm.trim() ? WU.subtle : WU.primary,
+                            cursor: isSearching || !searchTerm.trim() ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        {isSearching ? 'Searching...' : 'Search'}
+                    </button>
+                </div>
                 {searchError && (
-                    <span style={{ color: '#a94442', fontSize: 12 }}>{searchError}</span>
+                    <div role="status" aria-label="Search outcome" style={{ marginTop: 8, color: WU.muted, fontSize: 12, fontWeight: 600 }}>{searchError}</div>
                 )}
             </div>
             {/* Search Results */}
             {hierarchySearchResults.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: 14, color: '#2c3e50' }}>Search Results ({hierarchySearchResults.length})</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxHeight: '200px', overflowY: 'auto', padding: '4px' }}>
-                        {hierarchySearchResults.map((node) => {
-                            const nodeLabel = node.labels?.[0] || node.label || 'Node';
-                            const isSelected = selectedNode?.elementId === node.elementId;
-                            const displayName = (() => {
-                                const props = node.properties || node;
-                                let val = resolveDisplayProp(props);
-                                if (!val) val = schemaDisplayName ? schemaDisplayName(node) : (props.name || props.title || props.code || props.key || props.abbreviation || 'Unnamed');
-                                return formatNodeDisplay(nodeLabel, val);
-                            })();
-                            return (
-                                <div
-                                    key={node.elementId}
-                                    onClick={() => handleNodeSelect(node)}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '8px 12px',
-                                        backgroundColor: isSelected ? primaryButtonColor : '#fff',
-                                        color: isSelected ? 'white' : '#333',
-                                        border: isSelected ? `2px solid ${primaryButtonColor}` : '1px solid #e0e0e0',
-                                        borderRadius: '8px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease',
-                                        boxShadow: isSelected ? '0 2px 8px rgba(10,130,118,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
-                                        minWidth: '120px',
-                                        maxWidth: '280px'
-                                    }}
-                                >
-                                    <span style={{
-                                        display: 'inline-block',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        fontSize: '10px',
-                                        fontWeight: 600,
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                        backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : getNodeColor(nodeLabel),
-                                        color: 'white',
-                                        whiteSpace: 'nowrap',
-                                        flexShrink: 0
-                                    }}>{nodeLabel}</span>
-                                    <span style={{
-                                        fontSize: '13px',
-                                        fontWeight: 500,
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap'
-                                    }}>{displayName}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
+                <div style={{ marginBottom: 12 }}>
+                    <DataGridWidget
+                        title={`Matching nodes (${hierarchySearchResults.length})`}
+                        rows={searchGridRows}
+                        columns={searchGridColumns}
+                        height={220}
+                        emptyLabel="No matching nodes"
+                        onRowClicked={(row) => row?.node && handleNodeSelect(row.node)}
+                    />
                 </div>
             )}
 
-            {/* Tree Visualization */}
+            {/* Where-used hierarchy */}
             {treeData && (
                 <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap', marginBottom:8 }}>
-                        <h4 style={{ margin:0 }}>Parent Hierarchy for: {getNodeDisplayName(selectedNode)}</h4>
-                        <span style={{ fontSize: 12, color: '#555' }}>Levels: {levels.length} | Ancestors: {treeData.nodes.length - 1} | Links: {treeData.links.length}</span>
-                        {isExpandingUpwards && <span style={{ color: '#0a8276', fontSize: 12 }}>Expanding...</span>}
-                        {expansionError && <span style={{ color: '#a94442', fontSize: 12 }}>Error: {expansionError}</span>}
+                    <div style={{ ...panelStyle, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:8, padding: '10px 12px' }}>
+                        <div style={{ minWidth: 260, flex: '1 1 320px' }}>
+                            <div style={fieldLabelStyle}>Business object</div>
+                            <div style={{ fontSize: 14, color: WU.text, fontWeight: 800, marginTop: 4 }}>{getNodeDisplayName(selectedNode)}</div>
+                        </div>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Reference levels {levels.length}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Upstream records {treeData.nodes.length - 1}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Links {treeData.links.length}</span>
+                        {isExpandingUpwards && <span style={{ color: WU.primary, fontSize: 12, fontWeight: 700 }}>Expanding...</span>}
+                        {expansionError && <span style={{ color: WU.error, fontSize: 12, fontWeight: 700 }}>Error: {expansionError}</span>}
                         {!autoExpanded && !isExpandingUpwards && (
-                            <button onClick={() => expandAllParents(selectedNode)} style={{ padding:'6px 12px', background: primaryButtonColor, color:'#fff', border:'none', borderRadius:4, cursor:'pointer' }}>Expand Upwards</button>
+                            <button onClick={() => expandAllParents(selectedNode)} style={buttonStyle}>Expand Upwards</button>
                         )}
-                        <button onClick={() => {
-                            // reset zoom to fit
-                            if (svgRef.current) {
-                                const svg = d3.select(svgRef.current);
-                                svg.transition().duration(400).call(zoomBehaviorRef.current.transform, d3.zoomIdentity);
-                            }
-                        }} style={{ padding:'6px 12px', background: primaryButtonColor, color:'#fff', border:'none', borderRadius:4, cursor:'pointer' }}>Reset View</button>
                     </div>
-                    <div style={{ position:'relative', flex:1, border:'1px solid #ddd', borderRadius:4, background:'#fafafa', overflow:'hidden' }}>
-                        <svg ref={svgRef} style={{ display:'block', width:'100%', height:'100%' }}></svg>
+                    <div style={{ ...panelStyle, marginBottom: 8, padding: '10px 12px', fontSize: 13, fontWeight: 600, color: WU.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {usageSummary || 'Select a business object to see where it is used.'}
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                        <DataGridWidget
+                            title="Business object usage"
+                            rows={hierarchyGridRows}
+                            columns={hierarchyGridColumns}
+                            height={420}
+                            emptyLabel="No business usage rows"
+                            onRowClicked={(row) => row?.node && handleNodeSelect(row.node)}
+                        />
                     </div>
                 </div>
             )}
-
-            {/* {selectedNode && !treeData?.parents?.length && (
-                // <div style={{ marginTop: '20px', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-                //     <p>No parent nodes found for <strong>{getNodeDisplayName(selectedNode)}</strong></p>
-                //     <p>This appears to be a root level node.</p>
-                // </div>
-            )} */}
         </div>
+        </>
     );
 };
 

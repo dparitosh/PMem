@@ -1,0 +1,6 @@
+# Conservative closure of service imports, including lazy feature paths.
+fastapi
+httpx
+psycopg[binary]
+pydantic
+typing-extensions

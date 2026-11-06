@@ -177,7 +177,7 @@ _RE_INVERSE_ATTR = re.compile(
 
 # UNIQUE: UR1: attr1, attr2;
 _RE_UNIQUE = re.compile(
-    r"^\s*(UR\d+)\s*:\s*([^;]+);",
+    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^;]+);",
     re.IGNORECASE
 )
 
@@ -334,7 +334,7 @@ def _parse_entity_block(name: str, body: str) -> ExpressEntity:
     
     # Parse UNIQUE constraints
     unique_text = '\n'.join(sections['unique'])
-    for m in re.finditer(r"(UR\d+)\s*:\s*([^;]+);", unique_text, re.IGNORECASE):
+    for m in _RE_UNIQUE.finditer(unique_text):
         constraint_name = m.group(1).strip()
         attrs_str = m.group(2).strip()
         attr_names = [a.strip() for a in attrs_str.split(',') if a.strip()]
@@ -539,7 +539,7 @@ def parse_express(path: Path) -> ExpressSchema:
                 else:
                     # P7 FIX: capture aggregate aliases e.g. SET [1:?] OF product → element type
                     m_agg = re.match(
-                        r"(?:SET|LIST|BAG|ARRAY)\s*\[[^\]]+\]\s+OF\s+(\w+)\s*;",
+                        r"(?:SET|LIST|BAG|ARRAY)(?:\s*\[[^\]]+\])?\s+OF\s+(\w+)\s*;",
                         type_body.strip(), re.IGNORECASE
                     )
                     if m_agg:

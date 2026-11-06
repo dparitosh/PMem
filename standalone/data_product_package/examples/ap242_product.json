@@ -1,0 +1,15 @@
+{
+  "product_id": "dp-ap242-001",
+  "name": "AP242 Engineering Traceability",
+  "version": "1.0.0",
+  "domain": "MBD3D AP242",
+  "description": "Ontology-backed part, PMI, requirement, and traceability package.",
+  "owner": "Engineering Data",
+  "ontologies": [
+    {"id": "ap242", "name": "AP242", "prefix": "ap242"}
+  ],
+  "sources": [
+    {"id": "import-001", "type": "ImportTask", "name": "sample.stpx"}
+  ],
+  "artifacts": []
+}

@@ -1,0 +1,41 @@
+import { formatChatMarkdown } from './chatMarkdown';
+
+describe('formatChatMarkdown', () => {
+  test('shows numbered references while retaining full identities in evidence data', () => {
+    const html = formatChatMarkdown('Motor [evidence:long-uuid]', [{ resource_id: 'long-uuid' }]);
+    expect(html).toContain('chat-citation');
+    expect(html).toContain('[1]');
+    expect(html).not.toContain('long-uuid');
+    expect(formatChatMarkdown('Unknown [evidence:unknown]', [])).toContain('[evidence:unknown]');
+  });
+  test('renders structured headings, facts, lists, and tables', () => {
+    const html = formatChatMarkdown(
+      '## Impact\nDirect: REQ-006\n\n- Bearing\n- Process\n\n| Object | Relation |\n| --- | --- |\n| Part | SATISFIES |'
+    );
+
+    expect(html).toContain('chat-heading-2');
+    expect(html).toContain('chat-fact');
+    expect(html).toContain('<ul');
+    expect(html).toContain('<table');
+    expect(html).toContain('SATISFIES');
+  });
+
+  test('sanitizes model-generated markup', () => {
+    const html = formatChatMarkdown('<script>alert(1)</script>\n**Safe**');
+    expect(html).not.toContain('<script');
+    expect(html).toContain('<strong>Safe</strong>');
+  });
+
+  test('keeps Unicode bullet items as separate list entries', () => {
+    const html = formatChatMarkdown('• First finding\n• Second finding\n• Third finding');
+
+    expect(html).toContain('<ul class="chat-list">');
+    expect((html.match(/<li>/g) || []).length).toBe(3);
+    expect(html).toContain('Second finding');
+  });
+});
+test('citation IDs come from projected records, not nested business IDs', () => {
+  const html = formatChatMarkdown('Record [evidence:node] Property [evidence:forged]', [{elementId:'node', properties:{id:'forged'}}]);
+  expect(html).toContain('chat-citation');
+  expect(html).toContain('[evidence:forged]');
+});

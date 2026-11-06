@@ -1,7 +1,7 @@
 """
 Build 3DEXPERIENCE ontology in Neo4j from SPLM Schema XLS (TSV) files.
 
-Source: C:\\Users\\895428\\Depo\\SPLM_Folder\\Schema - Shared
+Source: set SPLM_SCHEMA_BASE to the SPLM Schema - Shared folder
 Output: Neo4j spdm database, prefix=ds3dx, ontology='3DEXPERIENCE'
 
 Maps:
@@ -27,7 +27,7 @@ from backend.core.db_config import get_config
 
 # ── Config ───────────────────────────────────────────────────────────────────
 _NEO4J_CONFIG = get_config()
-SCHEMA_BASE   = os.getenv("SPLM_SCHEMA_BASE", r"C:\Users\895428\Depo\SPLM_Folder\Schema - Shared")
+SCHEMA_BASE   = os.getenv("SPLM_SCHEMA_BASE", str(ROOT / "data" / "splm_schema"))
 NEO4J_URI     = _NEO4J_CONFIG.uri
 NEO4J_USER    = _NEO4J_CONFIG.username
 NEO4J_PASS    = _NEO4J_CONFIG.password

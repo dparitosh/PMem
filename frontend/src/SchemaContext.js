@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { API, buildUrl } from './config';
 import { apiClient } from './services/apiClient';
+import logger from './utils/logger';
 
 const SchemaContext = createContext(null);
 
@@ -14,7 +15,21 @@ export function SchemaProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const controller = new AbortController();
+    const schemaEndpoint = API.schema.schema;
+    if (!schemaEndpoint) {
+      setSchemaLoading(false);
+      return () => controller.abort();
+    }
+    const wait = (ms) => new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        const error = new Error('Request cancelled');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    });
 
     const shouldRetry = (err) => {
       const code = String(err?.code || '').toUpperCase();
@@ -29,28 +44,30 @@ export function SchemaProvider({ children }) {
     };
 
     const fetchSchema = async () => {
-      const maxAttempts = 3;
+      const maxAttempts = 2;
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 20000 });
+            const res = await apiClient.get(buildUrl(schemaEndpoint), { timeout: 10000, signal: controller.signal });
             if (!cancelled) setSchema(res.data);
             return;
           } catch (err) {
             if (attempt >= maxAttempts || !shouldRetry(err)) {
               throw err;
             }
-            await wait(600 * attempt);
+            await wait(250 * attempt);
           }
         }
       } catch (err) {
-        console.warn('Failed to fetch graph schema:', err.message);
+        if (controller.signal.aborted || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
+        if (!cancelled) setSchema(null);
+        logger.warn('Failed to fetch graph schema:', err.message);
       } finally {
         if (!cancelled) setSchemaLoading(false);
       }
     };
     fetchSchema();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, []);
 
   /**

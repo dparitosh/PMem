@@ -9,7 +9,8 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from typing import Dict, List, Any, Optional
 import logging
 
@@ -22,6 +23,17 @@ from ..Services.multi_domain_pipeline_controller import (
     MultiDomainPipelineController,
     IndustryDomain,
     DomainPipelineConfig,
+)
+from ..Services.semantic_taxonomy_service import (
+    SemanticTaxonomyService,
+    SkosNeo4jRepository,
+    normalize_skos_payload,
+)
+from ..Services.swrl_reasoning_service import (
+    ApplicationRuleExecutor,
+    InferenceNeo4jRepository,
+    SemanticFact,
+    SwrlRuleService,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +52,53 @@ class DomainPipelineRequest(BaseModel):
     relationships: List[Dict[str, Any]]
     domain: str
     task_id: Optional[str] = None
+
+
+class SkosPayloadRequest(BaseModel):
+    """SKOS concept scheme and concept payload."""
+    scheme: Dict[str, Any]
+    concepts: List[Dict[str, Any]]
+    query: Optional[str] = None
+    root_id: Optional[str] = None
+    direction: Optional[str] = "narrower"
+    depth: Optional[int] = 3
+    limit: Optional[int] = 25
+
+
+class SwrlRuleRequest(BaseModel):
+    """SWRL-style rule request with optional facts for application execution."""
+    rule: Optional[Dict[str, Any]] = None
+    expression: Optional[str] = None
+    rule_id: Optional[str] = None
+    name: Optional[str] = None
+    version: Optional[str] = None
+    enabled: Optional[bool] = None
+    use_case: Optional[str] = None
+    body: Optional[List[Dict[str, Any]]] = None
+    head: Optional[List[Dict[str, Any]]] = None
+    facts: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=10000)
+    execution_id: Optional[str] = None
+    scope_id: Optional[str] = None
+    namespaces: Optional[Dict[str, str]] = None
+
+    def rule_payload(self) -> Dict[str, Any]:
+        if isinstance(self.rule, dict) and self.rule:
+            return self.rule
+        return {
+            key: value
+            for key, value in {
+                "expression": self.expression,
+                "namespaces": self.namespaces,
+                "rule_id": self.rule_id,
+                "name": self.name,
+                "version": self.version,
+                "enabled": self.enabled,
+                "use_case": self.use_case,
+                "body": self.body,
+                "head": self.head,
+            }.items()
+            if value is not None
+        }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -135,9 +194,244 @@ async def get_ap242_mappings(source_format: str):
 # GENERIC ONTOLOGY ENDPOINTS (any uploaded ontology prefix)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+@router.post("/semantic/skos/validate")
+async def validate_skos_taxonomy(request: SkosPayloadRequest):
+    """Validate SKOS labels, hierarchy references, and cycle safety."""
+    try:
+        scheme, concepts = normalize_skos_payload(request.dict())
+        validation = SemanticTaxonomyService.validate(concepts)
+        return {
+            "status": "success",
+            "scheme": {
+                "scheme_id": scheme.scheme_id,
+                "pref_label": scheme.pref_label,
+                "definition": scheme.definition,
+                "version": scheme.version,
+            },
+            "validation": validation,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS validation failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
+@router.post("/semantic/skos/search")
+async def search_skos_taxonomy(request: SkosPayloadRequest):
+    """Search concepts by preferred labels, synonyms, definitions, hierarchy, and mappings."""
+    try:
+        _, concepts = normalize_skos_payload(request.dict())
+        results = SemanticTaxonomyService.search(concepts, request.query or "", request.limit or 25)
+        return {"status": "success", "query": request.query or "", "results": results, "count": len(results)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS search failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
+@router.post("/semantic/skos/traverse")
+async def traverse_skos_taxonomy(request: SkosPayloadRequest):
+    """Return a connected broader/narrower concept slice from a selected root concept."""
+    try:
+        _, concepts = normalize_skos_payload(request.dict())
+        if not request.root_id:
+            raise HTTPException(status_code=400, detail="root_id is required")
+        result = SemanticTaxonomyService.traverse(
+            concepts,
+            request.root_id,
+            request.direction or "narrower",
+            request.depth or 3,
+        )
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS traversal failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
+@router.post("/semantic/skos/storage-plan")
+async def skos_storage_plan(request: SkosPayloadRequest):
+    """Return parameterized Cypher for storing SKOS concepts in Neo4j."""
+    try:
+        scheme, concepts = normalize_skos_payload(request.dict())
+        validation = SemanticTaxonomyService.validate(concepts)
+        return {
+            "status": "success",
+            "validation": validation,
+            "plan": SkosNeo4jRepository.storage_plan(scheme, concepts),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS storage plan failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
+@router.post("/semantic/rules/validate")
+async def validate_swrl_rule(request: SwrlRuleRequest):
+    """Validate a SWRL-style rule without executing or mutating Neo4j."""
+    try:
+        rule = SwrlRuleService.parse_rule(request.rule_payload())
+        return {"status": "success", "validation": SwrlRuleService.validate(rule)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SWRL rule validation failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
+@router.post("/semantic/rules/execute-preview")
+async def execute_swrl_rule_preview(request: SwrlRuleRequest):
+    """Execute supported SWRL-style rules in application memory only."""
+    try:
+        rule = SwrlRuleService.parse_rule(request.rule_payload())
+        facts = [
+            SemanticFact(
+                subject=str(item.get("subject") or ""),
+                predicate=str(item.get("predicate") or ""),
+                object=str(item["object"]),
+                fact_id=str(item.get("fact_id") or item.get("id") or ""),
+                asserted=bool(item.get("asserted", True)),
+                properties=item.get("properties") or {},
+            )
+            for item in (request.facts or [])
+            if item.get("subject") and item.get("predicate") and item.get("object") is not None
+        ]
+        execution_id = request.execution_id or f"preview-{rule.rule_id}-{rule.version}"
+        return await run_in_threadpool(ApplicationRuleExecutor.execute, rule, facts, execution_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SWRL rule execution preview failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
+@router.post("/semantic/rules/materialization-plan")
+async def swrl_materialization_plan(request: SwrlRuleRequest):
+    """Return parameterized Cypher for approved inferred facts with provenance."""
+    try:
+        rule = SwrlRuleService.parse_rule(request.rule_payload())
+        facts = [
+            SemanticFact(
+                subject=str(item.get("subject") or ""),
+                predicate=str(item.get("predicate") or ""),
+                object=str(item["object"]),
+                fact_id=str(item.get("fact_id") or item.get("id") or ""),
+                asserted=bool(item.get("asserted", True)),
+                properties=item.get("properties") or {},
+            )
+            for item in (request.facts or [])
+            if item.get("subject") and item.get("predicate") and item.get("object") is not None
+        ]
+        execution_id = request.execution_id or f"exec-{rule.rule_id}-{rule.version}"
+        result = await run_in_threadpool(ApplicationRuleExecutor.execute, rule, facts, execution_id)
+        if result.get("status") != "success":
+            return result
+        return {
+            **result,
+            "plan": InferenceNeo4jRepository.materialization_plan(
+                rule,
+                result.get("inferred_facts") or [],
+                execution_id,
+                scope_id=request.scope_id or execution_id,
+            ),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SWRL materialization plan failed")
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
+
+
 _INTERNAL_PROPS = {"ontology_prefix", "ontology_id", "ontology_name", "source_ontology",
                    "version", "created_at", "updated_at", "id", "elementId",
                    "prefix", "source_format", "source_file"}
+
+
+def _semantic_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
+    """Build dictionary from uploaded OWL semantics when Neo4j projection is empty."""
+    try:
+        from backend.ontology_service.domain.reasoning import OntologyReasoningService
+
+        reasoning = OntologyReasoningService.get_reasoning(prefix)
+    except Exception as exc:
+        logger.debug("semantic runtime dictionary fallback unavailable for %s: %s", prefix, exc)
+        return None
+
+    entities: Dict[str, Any] = {}
+    all_props: Dict[str, Any] = {}
+    relationships: Dict[str, Any] = {}
+
+    for row in reasoning.get("classes") or []:
+        label = str(row.get("label") or row.get("local_name") or row.get("iri") or "").strip()
+        if not label:
+            continue
+        entities[label] = {
+            "type": label,
+            "concept_type": "Class",
+            "namespace": reasoning.get("ontology_iri") or prefix,
+            "ontology_prefix": reasoning.get("prefix") or prefix,
+            "source": "semantica",
+            "iri": row.get("iri"),
+            "definition": row.get("definition") or "",
+            "properties": [],
+        }
+
+    for row in (reasoning.get("datatype_properties") or []) + (reasoning.get("annotation_properties") or []):
+        label = str(row.get("label") or row.get("local_name") or row.get("iri") or "").strip()
+        if not label:
+            continue
+        domains = [item.get("label") or item.get("local_name") or item.get("iri") for item in (row.get("domain") or [])]
+        domains = [item for item in domains if item]
+        all_props[label] = {
+            "name": label,
+            "classes": domains,
+            "iri": row.get("iri"),
+            "range": row.get("range") or [],
+            "source": "semantica",
+        }
+        for domain in domains:
+            if domain in entities and label not in entities[domain]["properties"]:
+                entities[domain]["properties"].append(label)
+
+    for row in reasoning.get("object_properties") or []:
+        label = str(row.get("label") or row.get("local_name") or row.get("iri") or "").strip()
+        if not label:
+            continue
+        domains = [item.get("label") or item.get("local_name") or item.get("iri") for item in (row.get("domain") or [])]
+        ranges = [item.get("label") or item.get("local_name") or item.get("iri") for item in (row.get("range") or [])]
+        connections = [
+            {"from": domain, "to": range_value}
+            for domain in domains if domain
+            for range_value in ranges if range_value
+        ]
+        relationships[label] = {
+            "type": label,
+            "iri": row.get("iri"),
+            "source": "semantica",
+            "connections": connections,
+        }
+
+    if not entities and not all_props and not relationships:
+        return None
+    return {
+        "status": "success",
+        "ontology": reasoning.get("prefix") or prefix,
+        "data": {
+            "entities": entities,
+            "relationships": relationships,
+            "properties": all_props,
+        },
+        "entity_count": len(entities),
+        "relationship_count": len(relationships),
+        "property_count": len(all_props),
+        "source": "semantic_inspection",
+    }
 
 
 @router.get("/{prefix}/data-dictionary")
@@ -158,12 +452,21 @@ async def get_generic_data_dictionary(
        to derive the real property keys that were written by the data-import commit.
     3. Relationship types between nodes carrying those class labels → relationships section.
 
-    Fallback: ap239 hardcoded catalog when no schema nodes exist.
+    Fallback: derive a lightweight dictionary from live instance labels/properties when no schema nodes exist.
     """
     try:
         normalized_prefix = (prefix or "").strip()
         if not normalized_prefix:
             raise HTTPException(status_code=400, detail="Ontology prefix is required")
+
+        # Browsers select immutable catalog IDs, while graph vocabulary retains
+        # the human-facing prefix. Resolve the selected artifact before querying.
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        try:
+            metadata = OntologyTaxonomyService._resolve_metadata(normalized_prefix)
+            normalized_prefix = metadata.get("prefix") or metadata.get("ontology_prefix") or normalized_prefix
+        except ValueError:
+            pass  # Graph-only baseline ontologies remain browseable by prefix.
 
         from ..core.graph import get_graph
         graph = get_graph()
@@ -407,7 +710,10 @@ async def get_generic_data_dictionary(
                     if lbl not in all_props[p]["classes"]:
                         all_props[p]["classes"].append(lbl)
 
-        if not entities and not all_props:
+        if not entities and not all_props and not relationships:
+            semantic_payload = _semantic_data_dictionary(normalized_prefix)
+            if semantic_payload:
+                return semantic_payload
             raise HTTPException(
                 status_code=404,
                 detail=f"No data found in Neo4j for ontology prefix '{normalized_prefix}'. "
@@ -431,7 +737,7 @@ async def get_generic_data_dictionary(
         raise
     except Exception as e:
         logger.exception(f"Failed to retrieve data dictionary for prefix '{prefix}'")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.get("/{prefix}/mappings/{source_format}")
@@ -449,6 +755,17 @@ async def get_generic_mappings(
         if not normalized_prefix:
             raise HTTPException(status_code=400, detail="Ontology prefix is required")
 
+        # Browsers select immutable catalog IDs, while graph vocabulary retains
+        # the human-facing prefix. Resolve the selected artifact before querying.
+        ontology_id = normalized_prefix
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        try:
+            metadata = OntologyTaxonomyService._resolve_metadata(normalized_prefix)
+            ontology_id = metadata.get("ontology_id") or normalized_prefix
+            normalized_prefix = metadata.get("prefix") or metadata.get("ontology_prefix") or normalized_prefix
+        except ValueError:
+            pass  # Graph-only baseline ontologies remain browseable by prefix.
+
         from ..core.graph import get_graph
         graph = get_graph()
         normalized_source_format = (source_format or "").strip().lower()
@@ -459,33 +776,44 @@ async def get_generic_mappings(
                  toLower(
                    coalesce(
                      a.source_format,
-                     a.file_type,
-                     a.source_file_type,
-                     a.source_format_detected,
+                     a['file_type'],
+                     a['source_format_detected'],
                      ''
                    )
                  ) AS src_fmt
-                        WHERE coalesce(a.ontology_prefix, a.prefix) = $prefix
-                            AND coalesce(b.ontology_prefix, b.prefix) = $prefix
-              AND (src_fmt = '' OR src_fmt = $source_format)
+            WHERE (
+              ((coalesce(a.ontology_id, a.source_ontology) = $ontology_id
+                 OR ($ontology_id = $prefix AND coalesce(a.ontology_id, a.source_ontology) IS NULL
+                     AND coalesce(a.ontology_prefix, a.prefix) = $prefix))
+               AND (coalesce(b.ontology_id, b.source_ontology) = $ontology_id
+                 OR ($ontology_id = $prefix AND coalesce(b.ontology_id, b.source_ontology) IS NULL
+                     AND coalesce(b.ontology_prefix, b.prefix) = $prefix)
+                 OR r.predicate IN $alignment_predicates))
+              OR (r.predicate IN $alignment_predicates
+                  AND coalesce(b.ontology_id, b.source_ontology) = $ontology_id)
+            )
+              AND ($source_format = 'all' OR src_fmt = '' OR src_fmt = $source_format OR r.predicate IN $alignment_predicates)
             RETURN DISTINCT
-              CASE
-                WHEN 'OntologyClass' IN labels(a) THEN coalesce(a.name, labels(a)[0])
-                WHEN 'OntologyProperty' IN labels(a) THEN coalesce(a.name, labels(a)[0])
-                ELSE labels(a)[0]
-              END AS from_label,
-              CASE
-                WHEN 'OntologyClass' IN labels(b) THEN coalesce(b.name, labels(b)[0])
-                WHEN 'OntologyProperty' IN labels(b) THEN coalesce(b.name, labels(b)[0])
-                ELSE labels(b)[0]
-              END AS to_label,
-              type(r) AS rel
+              coalesce(a.iri, a.uri, a.name, elementId(a)) AS source_term,
+              coalesce(b.iri, b.uri, b.name, elementId(b)) AS target_term,
+              coalesce(a.label, a.name, a.iri, a.uri, elementId(a)) AS from_label,
+              coalesce(b.label, b.name, b.iri, b.uri, elementId(b)) AS to_label,
+              coalesce(r.predicate, type(r)) AS rel
+            ORDER BY source_term, rel, target_term
             LIMIT toInteger($mapping_limit)
             """,
             {
                 "prefix": normalized_prefix,
+                "ontology_id": ontology_id,
                 "source_format": normalized_source_format,
-                "mapping_limit": mapping_limit,
+                "alignment_predicates": [
+                    "http://www.w3.org/2002/07/owl#equivalentClass",
+                    "http://www.w3.org/2002/07/owl#equivalentProperty",
+                    "http://www.w3.org/2002/07/owl#sameAs",
+                    *["http://www.w3.org/2004/02/skos/core#" + name for name in
+                      ("exactMatch", "closeMatch", "broadMatch", "narrowMatch", "relatedMatch")],
+                ],
+                "mapping_limit": mapping_limit + 1,
             },
         )
 
@@ -494,11 +822,11 @@ async def get_generic_mappings(
                 "source_label": row.get("from_label"),
                 "target_label": row.get("to_label"),
                 "mapping_type": row.get("rel", "mapsTo"),
-                "source_term": f"{source_format}:{row.get('from_label')}",
-                "target_term": f"{normalized_prefix}:{row.get('to_label')}",
+                "source_term": row.get("source_term"),
+                "target_term": row.get("target_term"),
             }
-            for row in (rows or [])
-            if row.get("from_label") and row.get("to_label")
+            for row in (rows or [])[:mapping_limit]
+            if row.get("source_term") and row.get("target_term")
         ]
 
         # Keep legacy dict format for backwards compatibility,
@@ -515,16 +843,21 @@ async def get_generic_mappings(
             "mappings": mappings,
             "mapping_edges": mapping_edges,
             "mapping_count": len(mapping_edges),
+            "truncated": len(rows or []) > mapping_limit,
+            "mapping_limit": mapping_limit,
+            "ontology_id": ontology_id,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Failed to retrieve mappings for '{prefix}' / '{source_format}'")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.post("/ap239/map-entity")
 async def map_entity_to_ap239(request: EntityMappingRequest):
     """
-    Map a single entity to AP239 ontology.
+    Legacy single-entity seed mapping to AP239. Use Semantic Bridge instance.link for persisted instance-to-ontology alignment.
     
     Returns:
     - Remapped entity with AP239 type and electronics properties
@@ -550,10 +883,14 @@ async def map_entity_to_ap239(request: EntityMappingRequest):
             "original_entity": request.entity,
             "mapped_entity": mapped_entity,
             "electronics_properties": mapped_entity.get("electronics_properties", {}),
+            "deprecated": True,
+            "mode": "legacy_single_entity_seed_mapping",
+            "replacement_workflow": "instance.link",
+            "replacement_endpoint": "/api/v1/workflows/execute",
         }
     except Exception as e:
         logger.exception("Failed to map entity to AP239")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.post("/{prefix}/map-entity")
@@ -587,12 +924,16 @@ async def map_entity_generic(prefix: str, request: EntityMappingRequest):
             "original_entity": entity,
             "mapped_entity": mapped_entity,
             "mapping_strategy": "ui_selected_target" if selected_target else "passthrough",
+            "deprecated": True,
+            "mode": "legacy_single_entity_seed_mapping",
+            "replacement_workflow": "instance.link",
+            "replacement_endpoint": "/api/v1/workflows/execute",
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Failed to map entity (generic)")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.get("/ap239/domain-pipelines")
@@ -619,7 +960,7 @@ async def get_ap239_domain_pipelines():
         }
     except Exception as e:
         logger.exception("Failed to retrieve AP239 domain pipelines")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -650,7 +991,7 @@ async def get_available_domains():
         }
     except Exception as e:
         logger.exception("Failed to retrieve available domains")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.get("/pipelines/domain/{domain_name}")
@@ -693,7 +1034,7 @@ async def get_domain_configuration(domain_name: str):
         raise
     except Exception as e:
         logger.exception(f"Failed to retrieve configuration for domain: {domain_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.post("/pipelines/process")
@@ -746,7 +1087,7 @@ async def process_data_through_pipeline(request: DomainPipelineRequest):
         raise
     except Exception as e:
         logger.exception(f"Failed to process data through {request.domain} pipeline")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

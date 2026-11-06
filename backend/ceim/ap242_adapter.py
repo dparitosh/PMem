@@ -1,0 +1,216 @@
+"""AP242 STEP/Part-28 MBD adapter for the governed CEIM contract.
+
+This adapter preserves AP242 as the source standard.  It turns the semantic
+entities exposed by the conservative STEP parser into a CEIM batch; it does
+not claim geometric-kernel reconstruction or Part-21-to-Part-28 conversion.
+"""
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from typing import Any
+
+from backend.Services.step_parser import parse_step_with_pmi, extract_step_strings
+from backend.parsers.ap242_identity import is_ap242
+
+from .contract import CEIMContract, contract
+
+
+def _record(source_type: str, item: Any) -> dict[str, Any]:
+    source_id = str(getattr(item, "id", "") or "")
+    attributes = {
+        "name": str(getattr(item, "name", "") or ""),
+        "description": str(getattr(item, "description", "") or ""),
+        "external_id": str(getattr(item, "external_id", "") or source_id),
+        "source_entity": str(getattr(item, 'entity_type', '') or getattr(item, 'dimension_type', '') or getattr(item, 'tolerance_type', '') or getattr(item, 'annotation_type', '') or getattr(item, 'finish_type', '')),
+    }
+    if source_type == "dimension":
+        attributes.update({
+            "nominal_value": getattr(item, "nominal_value", None),
+            "lower_tolerance": getattr(item, "lower_tolerance", None),
+            "upper_tolerance": getattr(item, "upper_tolerance", None),
+            "unit": str(getattr(item, "unit", "") or ""),
+            "toleranced_feature_references": ",".join(str(value) for value in (getattr(item, "feature_refs", []) or [])),
+        })
+    elif source_type == "geometric_tolerance":
+        attributes.update({
+            "tolerance_value": getattr(item, "magnitude", None),
+            "unit": str(getattr(item, "unit", "") or ""),
+            "datum_references": ",".join(str(value) for value in (getattr(item, "datum_system_refs", []) or [])),
+            "toleranced_feature_references": ",".join(str(value) for value in (getattr(item, "toleranced_feature_refs", []) or [])),
+        })
+    elif source_type == "datum":
+        attributes["name"] = str(getattr(item, "name", "") or getattr(item, "label", "") or "datum")
+    elif source_type == "annotation":
+        attributes["text"] = str(getattr(item, "text", "") or "")
+    elif source_type == 'surface_finish':
+        attributes.update({'roughness_average': item.roughness_average, 'unit': item.unit,
+                           'toleranced_feature_references': ','.join(map(str, item.feature_refs))})
+    return {"source_type": source_type, "source_id": source_id, "attributes": attributes}
+
+
+def ap242_to_ceim_batch(content: bytes, *, filename: str = "source.stp", ceim: CEIMContract | None = None) -> dict[str, Any]:
+    """Extract an identified AP242 MBD exchange into a non-persisted CEIM batch."""
+    if not content:
+        raise ValueError("AP242 STEP content is empty")
+    suffix = Path(filename).suffix.lower() or ".stp"
+    if suffix not in {".stp", ".step", ".stpx", ".xml"}:
+        raise ValueError("AP242 MBD ingestion supports .stp, .step, .stpx, and AP242 XML files")
+    with NamedTemporaryFile(suffix=suffix, delete=False) as handle:
+        handle.write(content)
+        temporary_path = Path(handle.name)
+    try:
+        document = parse_step_with_pmi(temporary_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+    if not is_ap242(document.metadata.file_schema, document.metadata.namespace, content):
+        raise ValueError("The source does not identify an AP242 STEP or AP242 Domain Model representation")
+    if any(entity.unresolved_refs for entity in document.entities):
+        raise ValueError('AP242 source contains unresolved or unsupported external references')
+    if any(reference not in document.entity_map for entity in document.entities for reference in entity.ref_ids):
+        raise ValueError('AP242 source contains an unresolved STEP entity reference')
+
+    active_contract = ceim or contract
+    typed_items: list[tuple[str, Any]] = []
+    for item in document.cad_products:
+        typed_items.append(("product_definition" if item.entity_type in {"PRODUCT", "PRODUCT_DEFINITION"} else "product_definition_formation", item))
+    typed_items.extend(("shape_representation", item) for item in document.cad_representations)
+    typed_items.extend(("topology_entity", item) for item in document.cad_topology)
+    typed_items.extend(('feature' if item.entity_type == 'SHAPE_ASPECT' or 'FEATURE' in item.entity_type else 'geometry_body', item) for item in document.cad_geometry)
+    typed_items.extend(("geometric_tolerance", item) for item in document.geometric_tolerances)
+    typed_items.extend(("datum", item) for item in document.datums)
+    typed_items.extend(("dimension", item) for item in document.dimensions)
+    typed_items.extend(("annotation", item) for item in document.annotations)
+    typed_items.extend(("graphic_presentation", item) for item in document.graphic_presentations)
+    typed_items.extend(("saved_view", item) for item in document.saved_views)
+    typed_items.extend(('surface_finish', item) for item in document.surface_finishes)
+
+    entities: list[dict[str, Any]] = []
+    emitted: set[str] = set()
+    for source_type, item in typed_items:
+        source_id = str(getattr(item, "id", "") or "")
+        if not source_id or source_id in emitted:
+            continue
+        entities.append(active_contract.normalize_entity(standard="ap242", record=_record(source_type, item)))
+        emitted.add(source_id)
+
+    # Assembly occurrences are explicit AP242 semantic relations.  Retain only
+    # references to extracted semantic objects; raw context/style references
+    # are not silently promoted to product structure.
+    relationships: list[dict[str, Any]] = []
+    for entity in document.entities:
+        if entity.entity_type in {'PRODUCT_DEFINITION', 'PRODUCT_DEFINITION_FORMATION', 'PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE'}:
+            expected = {'PRODUCT_DEFINITION': {'PRODUCT_DEFINITION_FORMATION', 'PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE'}}.get(entity.entity_type, {'PRODUCT'})
+            for reference in entity.ref_ids:
+                if document.entity_map[reference].entity_type in expected and str(reference) in emitted:
+                    relationships.append(active_contract.normalize_relationship(
+                        standard='ap242', record={'source_type': 'product_definition_relationship',
+                            'source_id': str(entity.step_id), 'target_id': str(reference),
+                            'source_key': f'STEP:#{entity.step_id}:formation/product'},
+                    ))
+        if entity.entity_type not in {"NEXT_ASSEMBLY_USAGE_OCCURRENCE", "ASSEMBLY_COMPONENT_USAGE"}:
+            continue
+        source_id = str(entity.step_id)
+        if source_id not in emitted:
+            occurrence = active_contract.normalize_entity(
+                standard="ap242", record={"source_type": "next_assembly_usage_occurrence", "source_id": source_id,
+                    "attributes": {"name": (extract_step_strings(entity.raw_args) + ['', ''])[1],
+                                   "external_id": (extract_step_strings(entity.raw_args) + [''])[0],
+                                   "source_entity": entity.entity_type}},
+            )
+            entities.append(occurrence); emitted.add(source_id)
+        products = [reference for reference in entity.ref_ids
+                    if document.entity_map.get(reference) and
+                    document.entity_map[reference].entity_type == 'PRODUCT_DEFINITION']
+        if len(products) != 2 or any(str(reference) not in emitted for reference in products):
+            raise ValueError('AP242 assembly occurrence requires two resolved product-definition references')
+        relationships.append(active_contract.normalize_relationship(
+            standard='ap242', record={'source_type': 'next_assembly_usage_occurrence',
+                                     'source_id': str(products[0]), 'target_id': str(products[1]),
+                                     'source_key': f'STEP:#{source_id}:relating/related_product_definition'},
+        ))
+
+    # Resolve only an explicit Part-21 PMI -> shape aspect -> product shape
+    # -> product definition chain. Shared files/geometry are never ownership.
+    if document.metadata.format != 'stpx':
+        from .ap242_pmi import owner_paths
+        for characteristic in [*document.dimensions, *document.geometric_tolerances]:
+            item_id = str(characteristic.id)
+            row = document.entity_map.get(characteristic.id)
+            paths = owner_paths(row, document.entity_map, emitted) if row else []
+            if not paths or item_id not in emitted:
+                continue
+            product_id = paths[0][0]
+            edge = active_contract.normalize_relationship(standard='ap242', record={
+                'source_type': 'verified_pmi_characteristic', 'source_id': str(product_id),
+                'target_id': item_id, 'source_key': ';'.join(
+                    f'STEP:#{characteristic.id}->#{feature_id}->#{shape_id}->#{owner_id}'
+                    for owner_id, feature_id, shape_id in sorted(set(paths)))})
+            relationships.append(edge)
+
+    if not entities:
+        raise ValueError('AP242 source contains no supported semantic entities')
+
+    # Source references/containment remain TRACE_TO evidence, not inferred semantics.
+    def owner(step_id):
+        visited=set()
+        while step_id and step_id not in visited:
+            if str(step_id) in emitted: return step_id
+            visited.add(step_id)
+            row=document.entity_map.get(step_id)
+            step_id=row.parent_step_id if row else None
+        return None
+
+    for row in document.entities:
+        source=owner(row.step_id)
+        if source:
+            for target in row.ref_ids:
+                if str(target) in emitted and target!=source:
+                    relationships.append(active_contract.normalize_relationship(standard='ap242',record={
+                        'source_type':'source_reference','source_id':str(source),'target_id':str(target),
+                        'source_key':f'STEP:#{row.step_id}:explicit-reference'}))
+        if document.metadata.format=='stpx' and str(row.step_id) in emitted:
+            parent=owner(row.parent_step_id)
+            if parent and parent!=row.step_id:
+                relationships.append(active_contract.normalize_relationship(standard='ap242',record={
+                    'source_type':'source_containment','source_id':str(parent),'target_id':str(row.step_id),
+                    'source_key':f'XML:#{row.step_id}:contained-by:#{parent}'}))
+    if document.metadata.format=='stpx':
+        names={}
+        for row in document.entities:
+            if not row.text_value: continue
+            parent=row.parent_step_id; under_name=False
+            while parent and str(parent) not in emitted:
+                ancestor=document.entity_map.get(parent)
+                if not ancestor: break
+                under_name=under_name or ancestor.entity_type=='NAME'
+                parent=ancestor.parent_step_id
+            if under_name and parent: names.setdefault(str(parent),row.text_value)
+        for entity in entities:
+            source_id=str(entity['provenance']['source_id']); row=document.entity_map[int(source_id)]
+            entity['provenance']['source_identifier']=row.source_identifier
+            entity['provenance']['source_identifier_kind']=row.source_identifier_kind
+            if source_id in names: entity['properties']['name']=names[source_id]
+
+    # Part-21 #numbers and Part-28 synthetic ids are document-local. Content
+    # scope prevents unrelated files from overwriting the same CAD:#number.
+    digest=hashlib.sha256(content).hexdigest()
+    ids={entity['id']:f"ap242:document:{digest}:{entity['id']}" for entity in entities}
+    entities=[{**entity,'id':ids[entity['id']], 'provenance':{
+        **entity['provenance'],'source_document_sha256':digest}} for entity in entities]
+    relationships=[{**edge,'source_id':ids[edge['source_id']], 'target_id':ids[edge['target_id']],
+        'provenance':{**edge['provenance'],'source_document_sha256':digest}} for edge in relationships]
+    return {
+        "standard": "ap242", "representation": "normalized-ceim-v1",
+        "ceim_version": active_contract.version, "entities": entities, "relationships": relationships,
+        "source_summary": {
+            "part21_entities": len(document.entities), "products": len(document.cad_products),
+            "representations": len(document.cad_representations), "topology": len(document.cad_topology),
+            "geometry": len(document.cad_geometry), "geometric_tolerances": len(document.geometric_tolerances),
+            "datums": len(document.datums), "dimensions": len(document.dimensions),
+            "annotations": len(document.annotations), "presentations": len(document.graphic_presentations),
+            "saved_views": len(document.saved_views),
+            "surface_finishes": len(document.surface_finishes),
+        },
+    }

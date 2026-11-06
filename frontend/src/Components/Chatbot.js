@@ -1,108 +1,180 @@
-import React, { useState, useRef, useEffect } from 'react';
-import DOMPurify from 'dompurify';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Sparkles } from 'lucide-react';
 import '../CSS/chat.css';
-import { API, buildUrl } from '../config';
+import { API, buildUrl, buildSemanticServiceUrl, config } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
+import { formatChatMarkdown } from '../utils/chatMarkdown';
+import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
+import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection, wasBrowserSessionExpired } from '../services/serviceAuth';
+import { createChatFrameParser } from '../services/chatStreamFrames';
+import { companionFallbackPrompts } from '../services/companionPrompts';
+import { companionEvidenceIds } from '../features/graph/companionGraphEvidence';
 
-const Chatbot = ({ setChatResults }) => {
+const CHAT_COLORS = {
+    primary: '#005a9c',
+    primarySoft: 'var(--theme-color-soft-primary, var(--ui-surface, #e8f1fc))',
+    primaryBorder: '#c2d9f0',
+    surfaceMuted: 'var(--theme-color-std-background, #f8fafc)',
+    assistantBubble: 'var(--theme-color-2, var(--ui-surface, #eef2f6))',
+    danger: '#c62828',
+    dangerSoft: '#ffebee',
+    dangerBorder: '#ffcdd2',
+    textMuted: 'var(--theme-color-soft-text, #66788a)',
+};
+
+const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '', nodeId = '', runId = '', productId = '', productVersion = '', reconciliationId = '', contextLabel = '' }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
+    const [requestActive, setRequestActive] = useState(false);
     const [error, setError] = useState(null);
     const [statusLabel, setStatusLabel] = useState(null);
+    const [historyVersion, setHistoryVersion] = useState(0);
     const abortRef = useRef(null);
-    const sessionIdRef = useRef(
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : Math.random().toString(36).slice(2) + Date.now().toString(36)
-    );
-    const assistantIdRef = useRef(null);
-
-    // [OK] SECURE: Markdown parser with DOMPurify sanitization
-    const parseMarkdown = (text) => {
-        if (!text) return text;
-        
-        let html = text
-            // Headers
-            .replace(/^### (.*$)/gim, '<h3 style="color:#004B87;font-size:1.05em;margin:8px 0 4px 0;font-weight:bold;">$1</h3>')
-            .replace(/^## (.*$)/gim, '<h2 style="color:#004B87;font-size:1.15em;margin:10px 0 6px 0;font-weight:bold;">$1</h2>')
-            .replace(/^# (.*$)/gim, '<h1 style="color:#004B87;font-size:1.3em;margin:12px 0 8px 0;font-weight:bold;">$1</h1>')
-            
-            // Bold text
-            .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight:bold;">$1</strong>')
-            
-            // Italic text
-            .replace(/\*(.*?)\*/g, '<em style="font-style:italic;">$1</em>')
-            
-            // Inline code
-            .replace(/`(.*?)`/g, '<code style="background-color:rgba(0,75,135,0.08);padding:2px 5px;border-radius:4px;font-family:monospace;font-size:0.9em;color:#004B87;">$1</code>')
-            
-            // Horizontal rules
-            .replace(/^---$/gim, '<hr style="border:none;border-top:1px solid #dde3ea;margin:12px 0;" />')
-            
-            // Line breaks
-            .replace(/\n\n/g, '</p><p style="margin:6px 0;line-height:1.6;">')
-            
-            // LaTeX-style math (safe)
-            .replace(/\\\((.*?)\\\)/g, '<span style="font-style:italic;">$1</span>')
-            .replace(/\\\[(.*?)\\\]/g, '<div style="text-align:center;margin:10px 0;font-style:italic;">$1</div>')
-            
-            // Subscripts and superscripts
-            .replace(/([A-Za-z0-9])_{([^}]+)}/g, '$1<sub style="font-size: 0.8em;">$2</sub>')
-            .replace(/([A-Za-z0-9])\^{([^}]+)}/g, '$1<sup style="font-size: 0.8em;">$2</sup>')
-            .replace(/([A-Za-z])_{([0-9]+)}/g, '$1<sub style="font-size: 0.8em;">$2</sub>')
-            .replace(/([A-Za-z])\^{([0-9]+)}/g, '$1<sup style="font-size: 0.8em;">$2</sup>')
-            
-            // List items
-            .replace(/^- (.*$)/gim, '<li style="margin: 4px 0;">$1</li>')
-            .replace(/^(\d+)\. (.*$)/gim, '<li style="margin: 4px 0;">$2</li>');
-
-        // Wrap content in paragraphs
-        if (!html.startsWith('<')) {
-            html = '<p style="margin: 8px 0; line-height: 1.6;">' + html + '</p>';
+    const requestActiveRef = useRef(false);
+    const messageSequenceRef = useRef(0);
+    const messagesEndRef = useRef(null);
+    const followLatestRef = useRef(true);
+    const [followingLatest, setFollowingLatest] = useState(true);
+    const sessionIdRef = useRef(getClientSessionId());
+    const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || '';
+    const scopePrefix = ontologyPrefix || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
+    const scopeNodeId = nodeId || graphData?.root_node_id || graphData?.view?.root_node_id || '';
+    const recordScope = JSON.stringify([runId, productId, productVersion,reconciliationId]);
+    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope });
+    const resetConversation = useCallback((preserveSession = false) => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        requestActiveRef.current = false;
+        if (preserveSession !== true) {
+            clearClientSessionId();
+            sessionIdRef.current = null;
         }
+        setChatMessages([]);
+        setChatResults?.([]);
+        setRequestActive(false);
+        setShowSpinner(false);
+        setStatusLabel(null);
+        setError(null);
+        followLatestRef.current = true; setFollowingLatest(true);
+        setQuestion('');
+    }, [setChatResults]);
 
-        // Wrap consecutive list items in a single <ul>
-        html = html.replace(/((<li[^>]*>.*?<\/li>\s*)+)/gs, (match) => {
-            return '<ul style="margin:6px 0;padding-left:20px;line-height:1.5;">' + match + '</ul>';
-        });
+    useEffect(() => {
+        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix && scopeRef.current.page === pageId && scopeRef.current.node === scopeNodeId && scopeRef.current.record === recordScope) return;
+        scopeRef.current = { id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope };
+        resetConversation(true);
+    }, [scopeId, scopePrefix, pageId, scopeNodeId, recordScope, resetConversation]);
 
-        // [OK] SANITIZE OUTPUT with DOMPurify before rendering
-        return DOMPurify.sanitize(html, {
-            ALLOWED_TAGS: ['p', 'strong', 'em', 'code', 'h1', 'h2', 'h3', 'ul', 'li', 'ol', 'pre', 'hr', 'sub', 'sup', 'div', 'span'],
-            ALLOWED_ATTR: ['style'],
-            KEEP_CONTENT: true,
-        });
-    };
+    useEffect(() => {
+        let readKey = getCredentialProfile('GRAPH_READ_TOKEN');
+        const reset = () => {
+            const nextKey = getCredentialProfile('GRAPH_READ_TOKEN');
+            if (nextKey === readKey) return;
+            const previousKey = readKey;
+            readKey = nextKey;
+            if (!nextKey && wasBrowserSessionExpired()) {
+                abortRef.current?.abort();
+                abortRef.current=null;requestActiveRef.current=false;setRequestActive(false);setShowSpinner(false);setStatusLabel(null);
+                setError('Access expired. Reconnect in Admin to resume this conversation.');
+                return;
+            }
+            if (!previousKey && sessionIdRef.current) {
+                setChatMessages([]);
+                setHistoryVersion(value => value + 1);
+                return;
+            }
+            resetConversation();
+        };
+        const replaced = () => {
+            readKey = getCredentialProfile('GRAPH_READ_TOKEN');
+            abortRef.current?.abort();
+            abortRef.current=null;requestActiveRef.current=false;setRequestActive(false);setShowSpinner(false);setStatusLabel(null);
+            setChatMessages([]);
+            setChatResults?.([]);
+            setError(null);
+            setHistoryVersion(value => value + 1);
+        };
+        window.addEventListener('depo:session-replaced', replaced);
+        window.addEventListener('depo:credentials-changed', reset);
+        window.addEventListener('depo:credentials-cleared', resetConversation);
+        return () => {
+            window.removeEventListener('depo:session-replaced', replaced);
+            window.removeEventListener('depo:credentials-changed', reset);
+            window.removeEventListener('depo:credentials-cleared', resetConversation);
+        };
+    }, [resetConversation]);
 
-    const [sampleQueries, setSampleQueries] = useState([
-        'What are all the parts in the 5 HP MOTOR ASSEMBLY and in what sequence are they assembled?',
-        'Show the complete assembly operation sequence for 5 HP MOTOR ASSEMBLY',
-        'Recommend manufacturing processes for ROTOR SHAFT',
-        'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
-        'What SysML requirements relate to the Variable Speed Drive?',
-        'Show all use cases and actors in the Sugar Production Plant MBSE model',
-        'Analyse change impact if ROTOR SHAFT is modified',
-        'Analyse change impact if THREE PHASE WINDINGS is modified',
-    ]);
+    useEffect(() => {
+        const identifier = sessionIdRef.current;
+        const credential = getCredentialProfile('GRAPH_READ_TOKEN');
+        if (!identifier || !credential) return undefined;
+        const controller = new AbortController();
+        let active = true;
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history?ontology_id=${encodeURIComponent(scopeId)}&ontology_prefix=${encodeURIComponent(scopePrefix)}&page=${encodeURIComponent(pageId)}&node_id=${encodeURIComponent(scopeNodeId)}&run_id=${encodeURIComponent(runId)}&product_id=${encodeURIComponent(productId)}&product_version=${encodeURIComponent(productVersion)}&reconciliation_id=${encodeURIComponent(reconciliationId)}`);
+        const headers=serviceAuthHeaders(url);
+        fetch(url, { headers, signal: controller.signal, credentials: 'omit', redirect: 'error' })
+            .then(async response => {
+                if ([404, 410].includes(response.status)) {
+                    if (active && !requestActiveRef.current) { clearClientSessionId(); sessionIdRef.current = null; }
+                    return null;
+                }
+                if (!response.ok) {
+                    const body=await response.json().catch(()=>({}));
+                    if(active&&!controller.signal.aborted&&credential===getCredentialProfile('GRAPH_READ_TOKEN'))handleSessionRejection(response.status,headers.Authorization||'',body.detail);
+                    throw new Error(`Conversation restore failed (${response.status})`);
+                }
+                return response.json();
+            }).then(body => {
+                if (!active || credential !== getCredentialProfile('GRAPH_READ_TOKEN') || requestActiveRef.current || !Array.isArray(body?.turns)) return;
+                const restored = body.turns.flatMap(turn => [
+                    { id: `${turn.job_id}-user`, role: 'user', text: turn.user_request || '' },
+                    { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, restored: true, retainedPromptJobId: turn.job_id },
+                ]);
+                setChatMessages(current => current.length ? current : restored);
+            }).catch(error => { if (active && !controller.signal.aborted && credential===getCredentialProfile('GRAPH_READ_TOKEN') && error.name !== 'AbortError') setError(error.message); })
+            .finally(() => clearTimeout(timeout));
+        return () => { active = false; clearTimeout(timeout); controller.abort(); };
+    }, [scopeId, scopePrefix, pageId, scopeNodeId, runId, productId, productVersion,reconciliationId, historyVersion]);
+
+    const [sampleQueries, setSampleQueries] = useState(companionFallbackPrompts);
 
     // [OK] SECURE: Input validation + error handling
     const handleAsk = async (queryText = null) => {
         const messageText = queryText || question.trim();
+        if (requestActiveRef.current) return;
+        let controller = null;
+        let assistantId = null;
+        let timeoutId = null;
+        let timedOut = false;
         
         try {
             // [OK] Validate input against prompt injection
             const validated = validateChatInput(messageText);
+            followLatestRef.current = true;
+            setFollowingLatest(true);
             
-            // Cancel any in-flight request
+            // Cancel any in-flight request and finalize its placeholder.
             if (abortRef.current) abortRef.current.abort();
-            const controller = new AbortController();
+            setChatMessages(prev => prev.map(item =>
+                item.streaming ? { ...item, streaming: false } : item
+            ));
+            controller = new AbortController();
             abortRef.current = controller;
+            requestActiveRef.current = true;
+            setRequestActive(true);
+            // config validates the shared 1-second to 30-minute range.
+            const timeoutMs = Number(config.chatStreamTimeout) || 900000;
+            timeoutId = window.setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+            }, timeoutMs);
 
-            const userMsg = { id: Date.now(), role: 'user', text: validated };
-            const assistantId = `asst-${Date.now()}`;
-            assistantIdRef.current = assistantId;
+            const messageSequence = ++messageSequenceRef.current;
+            const userMsg = { id: `user-${messageSequence}`, role: 'user', text: validated };
+            assistantId = `asst-${messageSequence}`;
             const assistantMsg = { id: assistantId, role: 'assistant', text: '', streaming: true };
 
             setChatMessages(prev => [...prev, userMsg, assistantMsg]);
@@ -112,68 +184,169 @@ const Chatbot = ({ setChatResults }) => {
             setStatusLabel(null);
 
             let accumulated = '';
-            let buffer = '';
+            let streamBytes = 0;
+            let streamCompleted = false;
+            let streamFailed = false;
+            let evidenceReceived = false;
+            let responseEvidence = [];
+            let responseSources = [];
+            let responseAnswerable = null;
 
             logger.data('Sending chat request:', validated);
 
-            const response = await fetch(buildUrl(API.chat.chatStream), {
+            let activeSessionId = getClientSessionId() || sessionIdRef.current;
+            sessionIdRef.current = activeSessionId;
+            const graphContext = (scopeId || scopePrefix || pageId || scopeNodeId || runId || productId || reconciliationId) ? { ontology: scopeId, ontology_prefix: scopePrefix, ...(pageId ? {page:pageId}: {}), ...(scopeNodeId ? {node_id:scopeNodeId}: {}), ...(runId ? {run_id:runId}: {}), ...(reconciliationId?{reconciliation_id:reconciliationId}:{}), ...(productId ? {product_id:productId,product_version:productVersion}: {}) } : null;
+            let requestAuthorization = '';
+            const sendRequest = (sessionId) => {
+                const authHeaders = serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post');
+                requestAuthorization = authHeaders.Authorization || '';
+                return fetch(buildUrl(API.chat.chatStream), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionIdRef.current, message: validated }),
+                credentials: 'omit',
+                redirect: 'error',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...authHeaders,
+                    ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
+                },
+                body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),
                 signal: controller.signal,
-            });
+                });
+            };
 
-            if (!response.ok) throw new Error(`Server error ${response.status}`);
+            let response = await sendRequest(activeSessionId);
+            if (activeSessionId && [404, 410].includes(response.status)) {
+                // An expired session must not be silently reused. Retrieval is
+                // read-only, so retry once with a fresh server-owned session.
+                clearClientSessionId();
+                sessionIdRef.current = null;
+                activeSessionId = null;
+                response = await sendRequest(null);
+            }
+            if (controller.signal.aborted) return;
+            let returnedSessionId = response.headers.get('x-session-id');
+            if (returnedSessionId) {
+                sessionIdRef.current = returnedSessionId;
+                setClientSessionId(returnedSessionId);
+            }
+            if (response.status === 403 && returnedSessionId && returnedSessionId !== activeSessionId) {
+                activeSessionId = returnedSessionId;
+                response = await sendRequest(activeSessionId);
+                if(controller.signal.aborted)return;
+                returnedSessionId = response.headers.get('x-session-id');
+                if (returnedSessionId) {
+                    sessionIdRef.current = returnedSessionId;
+                    setClientSessionId(returnedSessionId);
+                }
+            }
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                handleSessionRejection(response.status, requestAuthorization, payload?.detail);
+                throw new Error(payload?.detail || `Server error ${response.status}`);
+            }
 
+            if (!response.body) throw new Error('The server returned an empty chat stream.');
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
-            const processLine = (line) => {
-                if (!line.startsWith('data: ')) return;
-                const raw = line.slice(6).trim();
-                if (!raw) return;
-                try {
-                    const parsed = JSON.parse(raw);
-                    if (parsed.token) {
+            const processEvent = (parsed) => {
+                if (controller.signal.aborted) return;
+                if (streamCompleted) return;
+                    if (typeof parsed.token === 'string') {
                         accumulated += parsed.token;
                         setShowSpinner(false);
                         setStatusLabel(null);
                         setChatMessages(prev => prev.map(m =>
                             m.id === assistantId ? { ...m, text: accumulated } : m
                         ));
+                    } else if (Array.isArray(parsed.evidence)) {
+                        if (typeof parsed.response === 'string') {
+                            accumulated = parsed.response;
+                        }
+                        evidenceReceived = true;
+                        responseEvidence = parsed.evidence;
+                        responseSources = Array.isArray(parsed.sources) ? parsed.sources : [];
+                        responseAnswerable = parsed.answerable;
+                        setChatMessages(prev => prev.map(m =>
+                            m.id === assistantId ? { ...m, text: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, generation: parsed.generation, runId: parsed.run_id, retainedPromptJobId: parsed.retained_prompt_job_id } : m
+                        ));
                     } else if (parsed.status) {
                         setStatusLabel(parsed.status);
-                    } else if (parsed.done) {
+                    } else if (parsed.done === true) {
+                        streamCompleted = true;
+                        if ((!accumulated || !evidenceReceived) && !streamFailed) {
+                            streamFailed = true;
+                            const emptyMessage = 'The response was incomplete or missing evidence. Please try again.';
+                            setError(emptyMessage);
+                            setQuestion(messageText);
+                            setChatMessages(prev => prev.map(m =>
+                                m.id === assistantId ? { ...m, text: emptyMessage, streaming: false } : m
+                            ));
+                        }
                         setChatMessages(prev => prev.map(m =>
                             m.id === assistantId ? { ...m, streaming: false } : m
                         ));
                         setStatusLabel(null);
                         setShowSpinner(false);
-                        if (setChatResults) setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
+                        if (!streamFailed && setChatResults) setChatResults([{ query: validated, response: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, timestamp: new Date().toISOString() }]);
+                        if (!streamFailed && pageId === 'graph') {
+                            const ids = companionEvidenceIds(responseEvidence, scopeNodeId);
+                            window.dispatchEvent(new CustomEvent('nexus:companion-graph-evidence', {detail: {ids, rootId:scopeNodeId, ontologyId:scopeId, ontologyPrefix:scopePrefix}}));
+                        }
                     } else if (parsed.error) {
-                        const errMsg = typeof parsed.error === 'string' ? parsed.error : 'An error occurred.';
+                        streamCompleted = true;
+                        streamFailed = true;
+                        const errMsg = (typeof parsed.error === 'string' ? parsed.error : 'An error occurred.') +
+                            (typeof parsed.action === 'string' ? ` ${parsed.action}` : '') +
+                            (typeof parsed.request_id === 'string' && parsed.request_id ? ` Request ID: ${parsed.request_id}` : '');
                         setError(errMsg);
+                        setQuestion(messageText);
                         setStatusLabel(null);
                         setShowSpinner(false);
                         setChatMessages(prev => prev.map(m =>
-                            m.id === assistantId ? { ...m, text: errMsg, streaming: false } : m
+                            m.id === assistantId ? { ...m, text: errMsg, streaming: false, runId: parsed.run_id, requestId: parsed.request_id, failureCategory: parsed.category } : m
                         ));
                     }
-                } catch (_e) { /* skip malformed SSE lines */ }
             };
+            const frames = createChatFrameParser(processEvent);
 
-            while (true) {
+            try {
+              while (true) {
+                if (controller.signal.aborted) return;
                 const { done, value } = await reader.read();
                 if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-                for (const line of lines) processLine(line.trim());
+                streamBytes += value.byteLength;
+                if (streamBytes > 8 * 1024 * 1024) { await reader.cancel(); throw new Error('Chat response exceeds the permitted size. Narrow your question.'); }
+                frames.push(decoder.decode(value, { stream: true }));
+                if (streamCompleted) { await reader.cancel?.(); break; }
+              }
+              if (!streamCompleted) {
+                frames.push(decoder.decode());
+                frames.finish();
+              }
+            } finally {
+              if (!streamCompleted) await Promise.resolve(reader.cancel?.()).catch(() => {});
+              reader.releaseLock?.();
             }
-            if (buffer.trim()) processLine(buffer.trim());
+            if (!streamCompleted) {
+                throw new Error('The chat stream ended before completion; the response is incomplete.');
+            }
 
         } catch (err) {
-            if (err.name === 'AbortError') return;
+            if (!controller?.signal.aborted || timedOut) setQuestion(messageText);
+            if (err.name === 'AbortError') {
+                if (timedOut) {
+                    const timeoutMessage = 'Chat request timed out. Please try again.';
+                    setError(timeoutMessage);
+                    setStatusLabel(null);
+                    setShowSpinner(false);
+                    setChatMessages(prev => prev.map(m =>
+                        m.id === assistantId ? { ...m, text: timeoutMessage, streaming: false } : m
+                    ));
+                }
+                return;
+            }
             
             if (err instanceof ValidationError) {
                 setError(err.message);
@@ -181,17 +354,26 @@ const Chatbot = ({ setChatResults }) => {
                 return;
             }
 
+            if (controller?.signal.aborted) return;
             logger.error('Chat stream error:', err);
             setShowSpinner(false);
             setStatusLabel(null);
             setError('Error: ' + (err.message || 'Unknown error occurred'));
             
-            const failId = assistantIdRef.current;
             setChatMessages(prev => prev.map(m =>
-                m.id === failId
+                m.id === assistantId
                     ? { ...m, text: 'Sorry, I encountered an error. Please try again.', streaming: false, statusLabel: null }
                     : m
             ));
+        } finally {
+            if (timeoutId) window.clearTimeout(timeoutId);
+            if (abortRef.current === controller) {
+                abortRef.current = null;
+                requestActiveRef.current = false;
+                setRequestActive(false);
+                setShowSpinner(false);
+                setStatusLabel(null);
+            }
         }
     };
 
@@ -202,15 +384,33 @@ const Chatbot = ({ setChatResults }) => {
     // [OK] CLEANUP: Abort requests on unmount
     useEffect(() => {
         // Fetch dynamic sample queries from backend
+        const sampleController = new AbortController();
+        const sampleCredential=getCredentialProfile('GRAPH_READ_TOKEN');
+        setSampleQueries(companionFallbackPrompts);
+        const samplesUrl = new URL(buildUrl(API.chat.sampleQueries), window.location.origin);
+        samplesUrl.searchParams.set('page', pageId || 'home');
         const fetchSampleQueries = async () => {
             try {
-                const response = await fetch(buildUrl(API.chat.sampleQueries), {
+                const activeSessionId = getClientSessionId() || sessionIdRef.current;
+                sessionIdRef.current = activeSessionId;
+                const response = await fetch(samplesUrl.toString(), {
                     method: 'GET',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...serviceAuthHeaders(samplesUrl.toString(), 'get'),
+                        ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
+                    },
+                    signal: sampleController.signal,
                 });
+                if (sampleController.signal.aborted || sampleCredential!==getCredentialProfile('GRAPH_READ_TOKEN')) return;
+                const returnedSessionId = response.headers.get('x-session-id');
+                if (returnedSessionId) {
+                    sessionIdRef.current = returnedSessionId;
+                    setClientSessionId(returnedSessionId);
+                }
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.queries && data.queries.length > 0) {
+                    if (!sampleController.signal.aborted && sampleCredential===getCredentialProfile('GRAPH_READ_TOKEN') && Array.isArray(data.queries) && data.queries.length > 0 && data.queries.length <= 8 && data.queries.every(query => typeof query === 'string' && query.trim() && query.length <= 300)) {
                         setSampleQueries(data.queries);
                         logger.data('Loaded dynamic sample queries', {
                             count: data.queries.length,
@@ -220,6 +420,7 @@ const Chatbot = ({ setChatResults }) => {
                     }
                 }
             } catch (err) {
+                if (sampleController.signal.aborted || err?.name === 'AbortError') return;
                 logger.warn('Could not fetch dynamic queries, using defaults:', err.message);
                 // Keep default queries on error
             }
@@ -229,96 +430,114 @@ const Chatbot = ({ setChatResults }) => {
         
         // Cleanup: Abort requests on unmount
         return () => {
+            sampleController.abort();
             if (abortRef.current) {
                 abortRef.current.abort();
             }
         };
-    }, []);
+    }, [pageId]);
+
+    useEffect(() => {
+        if (followLatestRef.current) messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
+    }, [chatMessages, statusLabel]);
 
     return (
         <div style={{ 
             height: '100%',
+            width: '100%',
+            boxSizing: 'border-box',
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
             minWidth: '0',
-            backgroundColor: 'white',
+            backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))',
+            color: 'var(--theme-color-std-text, var(--ui-text, #252a2e))',
             overflow: 'hidden'
         }}>
-            {/* Chat header */}
+            {/* Compact session utility row; the surrounding IX card owns the panel title. */}
             <div style={{
-                background: 'linear-gradient(135deg,#004B87 0%,#1a6fb5 100%)',
-                color: '#fff', padding: '8px 14px',
+                background: 'var(--theme-color-std-background, #f4f6f8)',
+                color: 'var(--theme-color-std-text, #252a2e)', padding: '6px 12px',
+                borderBottom: '1px solid var(--theme-color-weak-bdr, #d9e2ec)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexShrink: 0,
+                flexShrink: 0, gap: 8, flexWrap: 'wrap',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>[AI] Knowledge Assistant</span>
+                    <Sparkles size={14} />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Evidence-grounded answers</span>
+                    {contextLabel && <span style={{fontSize:12}} aria-label="Selected answer context">Context: {contextLabel}</span>}
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
                             padding: '1px 8px', fontSize: 11, fontWeight: 600,
-                        }}>{Math.ceil(chatMessages.length / 2)} turns</span>
+                        }}>{Math.ceil(chatMessages.length / 2)} {chatMessages.length <= 2 ? 'turn' : 'turns'}</span>
                     )}
                 </div>
+                <div className="chat-toolbar-actions">
+                <a href="#/admin" title="Manage access in Admin → Service credentials">Manage access</a>
                 {chatMessages.length > 0 && (
                     <button
-                        onClick={() => { setChatMessages([]); setStatusLabel(null); setError(null); }}
+                        type="button"
+                        onClick={resetConversation}
                         title="Clear conversation"
                         style={{
-                            background: 'rgba(255,255,255,0.15)', color: '#fff',
+                            background: 'var(--theme-color-std-background)', color: 'var(--theme-color-std-text, #252a2e)',
                             border: '1px solid rgba(255,255,255,0.3)', borderRadius: 5,
                             padding: '2px 10px', fontSize: 11, cursor: 'pointer',
                         }}
-                    >Clear</button>
+                    >Clear conversation</button>
                 )}
+                </div>
             </div>
 
-            {/* Status bar — shown while a tool is executing */}
+            {/* Status bar â€” shown while a tool is executing */}
             {statusLabel && (
                 <div style={{
-                    background: '#eaf2fb', color: '#004B87',
-                    borderBottom: '1px solid #c2d9f0',
+                    background: CHAT_COLORS.primarySoft, color: CHAT_COLORS.primary,
+                    borderBottom: `1px solid ${CHAT_COLORS.primaryBorder}`,
                     padding: '5px 14px', fontSize: 12, fontWeight: 600,
                     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 }}>
-                    <span style={{ animation: 'pulse 1.4s ease infinite', display: 'inline-block' }}>[*]</span>
+                    <span style={{ animation: 'pulse 1.4s ease infinite', display: 'inline-block' }}>...</span>
                     {statusLabel}
                 </div>
             )}
 
             {/* Chat body */}
-            <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'white' }}>
+            <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
                 {/* Messages Container */}
-                <div className='chat-messages' style={{
+                <div className="chat-history-region">
+                <div className='chat-messages' role="log" aria-label="Conversation history" aria-live="off" tabIndex={0}
+                    onScroll={event => {
+                        const panel = event.currentTarget;
+                        const follow = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 80;
+                        followLatestRef.current = follow; setFollowingLatest(follow);
+                    }} style={{
                     flex: 1,
                     overflowY: 'auto',
-                    padding: '4px 6px',
-                    backgroundColor: '#f8f9fa',
+                    padding: '10px 12px',
+                    backgroundColor: CHAT_COLORS.surfaceMuted,
                     minHeight: 0
                 }}>
                     {chatMessages.length === 0 ? (
                         <div style={{
                             textAlign: 'center',
-                            color: '#6c757d',
+                            color: CHAT_COLORS.textMuted,
                             paddingTop: '20px',
                             fontSize: '13px'
                         }}>
-                            <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#004B87' }}>
-                                Motor Assembly · SysML MBSE · Process Planning · Change Impact
-                            </p>
                             <p style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
-                                Select a query below or type your own question.
+                                Ask a question or start from a sample prompt.
                             </p>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, textAlign: 'left' }}>
                                 {sampleQueries.map((query, idx) => (
-                                    <button key={idx} onClick={() => handleSampleQueryClick(query)}
+                                    <button key={idx} type="button" onClick={() => handleSampleQueryClick(query)}
                                         style={{
                                             padding: '7px 10px',
-                                            backgroundColor: '#e8f0fe',
-                                            border: '1px solid #c2d9f0',
+                                            backgroundColor: CHAT_COLORS.primarySoft,
+                                            border: `1px solid ${CHAT_COLORS.primaryBorder}`,
                                             borderRadius: 6,
-                                            color: '#004B87',
+                                            color: CHAT_COLORS.primary,
                                             cursor: 'pointer',
                                             fontSize: 11,
                                             fontWeight: 500,
@@ -330,108 +549,114 @@ const Chatbot = ({ setChatResults }) => {
                             </div>
                         </div>
                     ) : (
-                        chatMessages.map(msg => (
+                        chatMessages.map((msg, index) => (
                             <div
                                 key={msg.id}
                                 style={{
-                                    marginBottom: '4px',
+                                    marginBottom: '12px',
                                     display: 'flex',
                                     justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
                                 }}
                             >
                                 <div
                                     style={{
-                                        maxWidth: '90%',
-                                        padding: '6px 8px',
-                                        borderRadius: '6px',
-                                        backgroundColor: msg.role === 'user' ? '#004B87' : '#e8e8e8',
-                                        color: msg.role === 'user' ? '#fff' : '#1a1a1a',
-                                        border: msg.role === 'assistant' ? '1px solid #e2e6ea' : 'none',
+                                        maxWidth: msg.role === 'user' ? '90%' : '100%',
+                                        minWidth: 0,
+                                        padding: '10px 12px',
+                                        borderRadius: '10px',
+                                        backgroundColor: msg.role === 'user' ? CHAT_COLORS.primary : CHAT_COLORS.assistantBubble,
+                                        color: msg.role === 'user' ? '#fff' : 'var(--ui-text, var(--theme-color-std-text, #252a2e))',
+                                        border: msg.role === 'assistant' ? '1px solid var(--ui-border, #e2e6ea)' : 'none',
                                         boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-                                        fontSize: '12px',
-                                        lineHeight: '1.4',
-                                        wordWrap: 'break-word'
+                                        fontSize: '14px',
+                                        lineHeight: '1.65',
+                                        overflowWrap: 'anywhere',
+                                        whiteSpace: msg.role === 'user' ? 'pre-wrap' : 'normal'
                                     }}
                                 >
+                                    <div className="chat-message-label">{msg.role === 'user' ? 'You · Question' : 'Companion · Response'} {Math.floor(index / 2) + 1}</div>
                                     {msg.role === 'assistant' ? (
-                                        <div dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.text) }} />
+                                        <>
+                                            <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text, msg.evidence || []) }} />
+                                            {Array.isArray(msg.evidence) && msg.evidence.length > 0 && (
+                                                <details style={{ marginTop: 8 }}>
+                                                    <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Evidence ({msg.evidence.length})</summary>
+                                                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                                                        {msg.evidence.slice(0, 26).map((item, index) => (
+                                                            <li key={`${item.resource_id || item.source_id || 'evidence'}-${index}`}>
+                                                                [{index + 1}] {item.label || `${item.source_id} ${item.relationship || ''} ${item.target_id}`}
+                                                                <details><summary>Source identity</summary><code>{item.resource_id || item.source_id || item.source}</code>{item.ontology_id ? ` · ${item.ontology_id}` : ''}</details>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </details>
+                                            )}
+                                        </>
                                     ) : (
                                         msg.text
                                     )}
+                                    {msg.generation && <p>Model generation: {msg.generation.status}{msg.generation.provider ? ` (${msg.generation.provider})` : ''}</p>}
+                                    {msg.generation?.status === 'completed' && <p>Model summary — verify its interpretation against the evidence.</p>}
+                                    {msg.generation?.action && <p>{msg.generation.action}</p>}
+                                    {msg.restored && <p>Saved answer — evidence has not been refreshed.</p>}
+                                    {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
-                                        <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>●●●</span>
+                                        <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>
                                     )}
                                 </div>
                             </div>
                         ))
                     )}
+                    <div ref={messagesEndRef} aria-hidden="true" />
+                </div>
+                {!followingLatest && chatMessages.length > 0 && <button type="button" className="chat-latest-button" onClick={() => {
+                    followLatestRef.current = true; setFollowingLatest(true);
+                    messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
+                }}>Jump to latest message</button>}
                 </div>
 
                 {/* Error Display */}
                 {error && (
                     <div style={{
-                        backgroundColor: '#ffebee',
-                        color: '#c62828',
+                        backgroundColor: CHAT_COLORS.dangerSoft,
+                        color: CHAT_COLORS.danger,
                         padding: '8px 12px',
                         fontSize: '12px',
-                        borderTop: '1px solid #ffcdd2',
+                        borderTop: `1px solid ${CHAT_COLORS.dangerBorder}`,
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     }}>
                         <span>{error}</span>
-                        <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>
+                        <button type="button" aria-label="Dismiss chat error" onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: CHAT_COLORS.danger, cursor: 'pointer', fontSize: 14, padding: 0 }}>x</button>
                     </div>
                 )}
 
-                {/* Input Area */}
-                <div style={{
-                    padding: '6px 8px',
-                    borderTop: '1px solid #ddd',
-                    display: 'flex',
-                    gap: '6px',
-                    background: '#fff',
-                }}>
-                    <input
-                        type='text'
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleAsk();
-                            }
-                        }}
-                        placeholder='Ask about parts, traceability, CAD structure, change impact…'
-                        style={{
-                            flex: 1,
-                            padding: '7px 10px',
-                            border: '1px solid #ddd',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontFamily: 'inherit'
-                        }}
-                        disabled={showSpinner}
-                    />
-                    <button
-                        onClick={() => handleAsk()}
-                        disabled={showSpinner || !question.trim()}
-                        style={{
-                            padding: '7px 16px',
-                            backgroundColor: showSpinner || !question.trim() ? '#ccc' : '#004B87',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: showSpinner || !question.trim() ? 'not-allowed' : 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 600
-                        }}
-                    >
-                        {showSpinner ? 'Sending...' : 'Send'}
-                    </button>
+                <div className="chat-composer">
+                    <form className="chat-composer-form" onSubmit={event => { event.preventDefault(); handleAsk(question); }}>
+                        <textarea
+                            value={question}
+                            disabled={requestActive}
+                            rows={2}
+                            placeholder="Ask about parts, traceability, or ontology resources..."
+                            aria-label="Chat question"
+                            onChange={event => setQuestion(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                                    event.preventDefault();
+                                    if (!requestActive && question.trim()) handleAsk(question);
+                                }
+                            }}
+                        />
+                        <button type="submit" aria-label="Send chat question" disabled={requestActive || !question.trim()}>Send</button>
+                    </form>
+                    <details className="chat-answer-help"><summary>About these answers</summary>Answers use matching graph resources and saved mapping reviews. Historical reviews do not verify current knowledge graph publication. Model summaries require an enabled provider; missing evidence is never invented. Use Shift+Enter for a new line.</details>
+                    {requestActive && <button type="button" onClick={() => {
+                        abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');
+                        setChatMessages(messages => messages.map(message => message.streaming ? { ...message, streaming: false, stopped: true } : message));
+                    }}>Stop response</button>}
                 </div>
             </div>
         </div>
     );
 };
 
-// 🔒 MEDIUM PRIORITY: Memoize component to prevent unnecessary re-renders
-export default React.memo(Chatbot, (prevProps, nextProps) => prevProps.setChatResults === nextProps.setChatResults);
+export default React.memo(Chatbot);

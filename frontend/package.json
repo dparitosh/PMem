@@ -3,37 +3,33 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
-    "@mui/material": "^7.1.1",
-    "@mui/x-tree-view": "^8.5.2",
+    "@siemens/ix": "5.2.1",
+    "@siemens/ix-echarts": "4.1.1",
+    "@siemens/ix-icons": "^3.5.0",
+    "@siemens/ix-react": "^5.2.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
+    "@xyflow/react": "^12.11.2",
     "ag-grid-community": "^35.3.1",
     "ag-grid-react": "^35.3.1",
     "axios": "^1.10.0",
     "bootstrap": "^5.3.6",
     "d3": "^7.9.0",
     "dompurify": "^3.4.5",
+    "echarts": "6.1.0",
     "lucide-react": "^0.510.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "6.2.3"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:unit": "vitest run"
   },
   "browserslist": {
     "production": [
@@ -48,6 +44,14 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@vitejs/plugin-react": "^5.0.2",
+    "jsdom": "^26.1.0",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=10.2.0"
   }
 }

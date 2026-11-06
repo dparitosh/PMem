@@ -16,82 +16,40 @@ import re
 import json
 import uuid
 import logging
+from enum import Enum
 from pathlib import Path
 from datetime import datetime
 import time
 from typing import Dict, Any, Optional, List, Tuple
 
+from .import_file_types import FileFormatDetector, FileType
+from .import_format_helpers import (
+    derive_prefix_from_namespace,
+    detect_xml_family,
+    plmxml_row_has_payload,
+)
+from .import_parser_router import route_parse_request
+from .specialized_format_parser import SpecializedFormatParser as ExtractedSpecializedFormatParser
 from .workflow_artifact_service import WorkflowArtifactService
-
-
-def _derive_prefix_from_namespace(namespace: str) -> str:
-    """Derive a short lowercase ontology prefix from an XML namespace URI.
-
-    Examples:
-      http://www.plmxml.org/Schemas/PLMXMLSchema  -> plmxml
-      http://www.omg.org/XMI                     -> xmi
-      http://www.w3.org/2001/XMLSchema            -> xsd
-    """
-    if not namespace:
-        return 'unknown'
-    _KNOWN = {
-        'plmxml.org': 'plmxml',
-        'omg.org/XMI': 'xmi',
-        'omg.org/spec/XMI': 'xmi',
-        'XMLSchema': 'xsd',
-        '22-rdf-syntax-ns': 'rdf',
-        '/owl#': 'owl',
-        '/owl/': 'owl',
-        'mbse': 'mbse',
-        'step-': 'step',
-        'AP239': 'ap239',
-        'AP242': 'ap242',
-    }
-    for pattern, prefix in _KNOWN.items():
-        if pattern in namespace:
-            return prefix
-    # Extract from URI path: last non-empty segment, strip non-alnum
-    path_parts = [p for p in namespace.rstrip('/').split('/') if p]
-    for part in reversed(path_parts):
-        cleaned = re.sub(r'[^a-z0-9]', '', part.lower())
-        if len(cleaned) >= 2:
-            return cleaned[:20]
-    # Fallback: second-level domain (e.g. 'plmxml' from 'www.plmxml.org')
-    try:
-        host = namespace.split('/')[2]  # 'www.plmxml.org'
-        domain_parts = host.split('.')
-        sld = domain_parts[-2] if len(domain_parts) >= 2 else domain_parts[0]
-        cleaned = re.sub(r'[^a-z0-9]', '', sld.lower())
-        if cleaned:
-            return cleaned[:20]
-    except Exception:
-        pass
-    return 'unknown'
-
-from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+
+def _detect_xml_family(file_content: bytes) -> str:
+    """Backward-compatible XML family detector shim for legacy parser callers/tests."""
+    return detect_xml_family(file_content)
+
 # Keep write transactions moderate to reduce AuraDB timeout risk.
-IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '200'))
-
-class FileType(Enum):
-    CSV = 'csv'
-    EXCEL = 'excel'
-    JSON = 'json'
-    PLMXML = 'plmxml'
-    STEP = 'step'
-    EXPRESS = 'express'
-    XML = 'xml'
-    XMI = 'xmi'
-    XSD = 'xsd'
-    ONTOLOGY = 'ontology'
-
+# Relationship-heavy imports usually benefit from smaller batches than node writes.
+IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '250'))
+IMPORT_LINK_BATCH_SIZE = int(os.getenv('IMPORT_LINK_BATCH_SIZE', '150'))
+IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '600')))
 
 class ImportStatus(Enum):
     """Status of import task"""
     PENDING = 'pending'
     PROCESSING = 'processing'
+    READY_FOR_COMMIT = 'ready_for_commit'
     COMPLETED = 'completed'
     FAILED = 'failed'
     CANCELLED = 'cancelled'
@@ -110,45 +68,8 @@ class ImportStage(Enum):
     VERIFY = 'verify'
 
 
-class FileFormatDetector:
-    """Detects file format and provides format utilities"""
-    
-    # Mapping of file extensions to FileType
-    _EXTENSION_MAP = {
-        '.csv': FileType.CSV,
-        '.xlsx': FileType.EXCEL,
-        '.xls': FileType.EXCEL,
-        '.json': FileType.JSON,
-        '.plmxml': FileType.PLMXML,
-        '.step': FileType.STEP,
-        '.stp': FileType.STEP,
-        '.stpx': FileType.STEP,
-        '.exp': FileType.EXPRESS,
-        '.xml': FileType.XML,
-        '.xmi': FileType.XMI,
-        '.mdxml': FileType.XMI,
-        '.xsd': FileType.XSD,
-        '.owl': FileType.ONTOLOGY,
-        '.rdf': FileType.ONTOLOGY,
-        '.ttl': FileType.ONTOLOGY,
-    }
-    
-    @classmethod
-    def detect(cls, filename: str) -> Optional[FileType]:
-        """Detect file type from filename"""
-        if not filename:
-            return None
-        
-        # Get file extension
-        _, ext = os.path.splitext(filename.lower())
-        return cls._EXTENSION_MAP.get(ext)
-    
-    @classmethod
-    def get_supported_formats(cls) -> list:
-        """Get list of supported file formats"""
-        return [f for f in cls._EXTENSION_MAP.keys() if f]
-
-
+class SpecializedFormatParser:
+    """Compatibility surface for non-tabular specialized parser entrypoints."""
 
     @staticmethod
     def parse_xmi(file_content: bytes) -> tuple[list[dict], dict]:
@@ -232,11 +153,12 @@ class FileFormatDetector:
                             break
             except Exception:
                 pass
-        _ns_prefix = _derive_prefix_from_namespace(_ns_uri) if _ns_uri else (
+        _ns_prefix = derive_prefix_from_namespace(_ns_uri) if _ns_uri else (
             'ap239' if ap239_stats.get('is_ap239') else 'xmi'
         )
 
         stats = {
+            'success': True,
             "row_count": len(preview_rows),
             "column_count": len(columns),
             "columns": list(columns),
@@ -276,7 +198,7 @@ class FileFormatDetector:
             
             for entity_name in schema_metadata.get('entities', [])[:10]:  # Preview first 10
                 rows.append({
-                    'label': 'DataNode',
+                    'label': 'ExpressEntity',
                     'entity': entity_name,
                 })
             
@@ -611,6 +533,31 @@ class FileFormatDetector:
         """Generate Cypher queries for node creation"""
         if not rows:
             return [], {'created': 0}
+
+        # Neo4j properties may be scalars or lists of scalars, but ReqIF and
+        # other structured parsers legitimately produce nested dictionaries
+        # (for example ATTRIBUTE-VALUE records). Serialize only the values
+        # that Neo4j cannot store directly; keep scalar lists queryable.
+        def _neo4j_property(value: Any) -> Any:
+            if isinstance(value, dict):
+                return json.dumps(value, ensure_ascii=False, default=str)
+            if isinstance(value, (list, tuple, set)):
+                values = list(value)
+                if all(not isinstance(item, (dict, list, tuple, set)) for item in values):
+                    return values
+                return json.dumps(values, ensure_ascii=False, default=str)
+            if isinstance(value, bytes):
+                return value.decode('utf-8', errors='replace')
+            return value
+
+        normalized_rows = [
+            {str(key): _neo4j_property(value) for key, value in row.items()}
+            for row in rows
+        ]
+        # The caller passes the same batch to execute_cypher after generating
+        # this query. Update that list in place so the sanitized values, not
+        # the original nested parser objects, reach the Neo4j driver.
+        rows[:] = normalized_rows
         
         merge_keys = merge_keys or [list(rows[0].keys())[0]]
         
@@ -671,6 +618,100 @@ class FileFormatDetector:
         
         return queries
 
+    @staticmethod
+    def _append_index(indexes: List[Dict[str, Any]], seen: set, idx_type: str, label: str, properties: List[str], name: str) -> None:
+        safe_properties = [str(prop) for prop in (properties or []) if prop]
+        if not label or not safe_properties:
+            return
+        signature = (idx_type, str(label), tuple(safe_properties))
+        if signature in seen:
+            return
+        seen.add(signature)
+        indexes.append({
+            'type': idx_type,
+            'name': name,
+            'label': label,
+            'properties': safe_properties,
+        })
+
+    @classmethod
+    def _recommended_indexes_for_label(cls, label: str, merge_key: str, properties: List[str]) -> List[Dict[str, Any]]:
+        indexes: List[Dict[str, Any]] = []
+        seen = set()
+        props = {str(prop) for prop in (properties or []) if prop}
+        safe_label = str(label).lower().replace(':', '_').replace(' ', '_')
+
+        if 'import_row_key' in props:
+            if 'import_id' in props:
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'range',
+                    label,
+                    ['import_id', 'import_row_key'],
+                    f"idx_{safe_label}_import_id_import_row_key".replace('-', '_'),
+                )
+            cls._append_index(
+                indexes,
+                seen,
+                'range',
+                label,
+                ['import_row_key'],
+                f"idx_{safe_label}_import_row_key".replace('-', '_'),
+            )
+
+        if merge_key:
+            if 'import_id' in props and merge_key != 'import_id':
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'range',
+                    label,
+                    ['import_id', merge_key],
+                    f"idx_{safe_label}_import_id_{merge_key}".replace('-', '_'),
+                )
+            cls._append_index(
+                indexes,
+                seen,
+                'range',
+                label,
+                [merge_key],
+                f"idx_{safe_label}_{merge_key}".replace('-', '_'),
+            )
+
+        for text_prop in ('name', 'part_number', 'title', 'external_id', 'label', 'identifier'):
+            if text_prop in props and text_prop != merge_key:
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'text',
+                    label,
+                    [text_prop],
+                    f"idx_{safe_label}_{text_prop}_text".replace('-', '_'),
+                )
+
+        for range_prop in (
+            'ontology_prefix',
+            'source_ontology',
+            'part_ref',
+            'parent_ref',
+            'entity_type',
+            'semantic_role',
+            'is_cad_business_object',
+            'source_identifier',
+        ):
+            if range_prop in props and range_prop != merge_key:
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'range',
+                    label,
+                    [range_prop],
+                    f"idx_{safe_label}_{range_prop}".replace('-', '_'),
+                )
+
+        return indexes
+
 
 # ========== File Parser Router ==========
 
@@ -678,7 +719,11 @@ class FileParser:
     """Dispatcher for routing files to appropriate parser based on type"""
     
     @staticmethod
-    def parse(file_content: bytes, file_type: FileType) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def parse(
+        file_content: bytes,
+        file_type: FileType,
+        parse_options: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Parse file content based on file type
         
@@ -689,41 +734,313 @@ class FileParser:
         Returns:
             Tuple of (rows: List[Dict], stats: Dict)
         """
+        parse_options = parse_options or {}
         try:
-            if file_type == FileType.CSV:
-                return FileParser._parse_csv(file_content)
-            elif file_type == FileType.EXCEL:
-                return FileParser._parse_excel(file_content)
-            elif file_type == FileType.XMI:
-                return FileFormatDetector.parse_xmi(file_content)
-            elif file_type == FileType.XSD:
-                return FileFormatDetector.parse_xsd(file_content)
-            elif file_type == FileType.EXPRESS:
-                return FileFormatDetector.parse_express(file_content)
-            elif file_type == FileType.PLMXML:
-                return FileParser._parse_plmxml(file_content)
-            elif file_type == FileType.STEP:
-                return FileParser._parse_step(file_content)
-            elif file_type == FileType.XML:
-                # Content-sniff: if the root element is PLMXML (namespace or tag),
-                # treat it as PLMXML so we get namespace extraction + structured parsing.
-                _head = file_content[:4096]
-                _is_plmxml = (
-                    b'<PLMXML' in _head
-                    or b'PLMXMLSchema' in _head
-                    or b'plmxml.org' in _head
-                )
-                if _is_plmxml:
-                    return FileParser._parse_plmxml(file_content)
-                return FileParser._parse_xml(file_content)
-            elif file_type == FileType.JSON:
-                return FileParser._parse_json(file_content)
-            else:
-                return [], {'error': f'Unsupported file type: {file_type}'}
+            return route_parse_request(
+                file_type=file_type,
+                file_content=file_content,
+                parse_options=parse_options,
+                parsers={
+                    'csv': FileParser._parse_csv,
+                    'excel': FileParser._parse_excel,
+                    'xmi': ExtractedSpecializedFormatParser.parse_xmi,
+                    'xsd': ExtractedSpecializedFormatParser.parse_xsd,
+                    'express': ExtractedSpecializedFormatParser.parse_express,
+                    'plmxml': FileParser._parse_plmxml,
+                    'step': FileParser._parse_step,
+                    '3dxml': FileParser._parse_threedxml,
+                    'archimate': FileParser._parse_archimate,
+                    'xml': FileParser._parse_xml,
+                    'reqif': FileParser._parse_reqif,
+                    'json': FileParser._parse_json,
+                },
+            )
         except Exception as e:
             logging.error(f"Error parsing {file_type.value}: {str(e)}")
             return [], {'error': str(e), 'file_type': file_type.value}
     
+    @staticmethod
+    def _parse_reqif(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse ReqIF 1.2 XML into requirement, specification, and relation preview rows.
+
+        ReqIF is XML, but it is not a generic XML instance graph. The parser keeps
+        child elements available until each ReqIF business object is processed so
+        refs, values, and type metadata are not lost during streaming.
+        """
+        try:
+            from defusedxml import ElementTree as ET
+            from io import BytesIO
+            from backend.Services.reqif_source import reqif_xml, parse_reqif
+
+            data = reqif_xml(file_content)
+            parse_reqif(data)
+
+            def local(tag: str) -> str:
+                raw = str(tag or '')
+                return raw.rsplit('}', 1)[-1] if '}' in raw else raw.split(':')[-1]
+
+            def attr(elem, name: str) -> str:
+                return str(elem.attrib.get(name, '') or '').strip()
+
+            def text_value(elem) -> str:
+                return ''.join(elem.itertext()).strip()
+
+            def direct_child(elem, child_name: str):
+                for child in list(elem):
+                    if local(child.tag) == child_name:
+                        return child
+                return None
+
+            def child_text_or_attr(elem, child_name: str) -> str:
+                value = attr(elem, child_name)
+                if value:
+                    return value
+                child = direct_child(elem, child_name)
+                return text_value(child) if child is not None else ''
+
+            def first_ref(elem, container_name: str) -> str:
+                for child in elem.iter():
+                    if local(child.tag) == container_name:
+                        for ref in child.iter():
+                            if local(ref.tag).endswith('-REF') and ref.text:
+                                return ref.text.strip()
+                return ''
+
+            def collect_attribute_values(elem) -> List[Dict[str, str]]:
+                values: List[Dict[str, str]] = []
+                values_container = direct_child(elem, 'VALUES')
+                if values_container is None:
+                    return values
+                for value_elem in list(values_container):
+                    value_type = local(value_elem.tag)
+                    if not value_type.startswith('ATTRIBUTE-VALUE'):
+                        continue
+                    definition = first_ref(value_elem, 'DEFINITION')
+                    value = attr(value_elem, 'THE-VALUE')
+                    if not value:
+                        the_value = direct_child(value_elem, 'THE-VALUE')
+                        value = text_value(the_value) if the_value is not None else ''
+                    if not value and value_type == 'ATTRIBUTE-VALUE-ENUMERATION':
+                        enum_refs = [text_value(ref) for ref in value_elem.iter() if local(ref.tag) == 'ENUM-VALUE-REF' and text_value(ref)]
+                        value = ', '.join(enum_refs)
+                    if not value:
+                        value = text_value(value_elem)
+                    values.append({
+                        'definition': definition,
+                        'value': value,
+                        'value_type': value_type,
+                    })
+                return values
+
+            def make_unique_id(identifier: str, fallback: str) -> tuple[str, str, bool]:
+                if not identifier:
+                    raise ValueError('ReqIF business object requires an IDENTIFIER')
+                if identifier in seen_ids:
+                    raise ValueError(f'ReqIF duplicate IDENTIFIER: {identifier}')
+                seen_ids[identifier] = 1
+                return identifier, identifier, False
+
+            def attribute_value(attributes: List[Dict[str, str]], *needles: str) -> str:
+                lowered = [needle.lower() for needle in needles if needle]
+                for item in attributes:
+                    definition = str(item.get('definition') or '').lower()
+                    value = str(item.get('value') or '').strip()
+                    if value and any(needle in definition for needle in lowered):
+                        return value
+                return ''
+
+            def semantic_title(elem, identifier: str, attributes: List[Dict[str, str]]) -> str:
+                return (
+                    attr(elem, 'LONG-NAME')
+                    or attribute_value(attributes, 'object_name', 'name')
+                    or identifier
+                )
+
+            def semantic_description(elem, attributes: List[Dict[str, str]]) -> str:
+                return (
+                    child_text_or_attr(elem, 'DESC')
+                    or attribute_value(attributes, 'xhtml', 'object_desc', 'description', 'text')
+                    or ''
+                )
+
+            rows: List[Dict[str, Any]] = []
+            counts = {
+                'requirements': 0,
+                'specifications': 0,
+                'relations': 0,
+                'attribute_values': 0,
+                'attribute_definitions': 0,
+                'duplicate_ids': 0,
+            }
+            seen_ids: Dict[str, int] = {}
+            root_name = ''
+            namespace_uri = ''
+            context = ET.iterparse(BytesIO(data), events=('start', 'end'))
+            for event, elem in context:
+                if event == 'start' and not root_name:
+                    root_name = local(elem.tag)
+                    raw_tag = str(elem.tag or '')
+                    namespace_uri = raw_tag[1:].split('}', 1)[0] if raw_tag.startswith('{') and '}' in raw_tag else ''
+                    if root_name != 'REQ-IF':
+                        raise ValueError('The supplied XML is not a ReqIF document')
+                    continue
+                if event != 'end':
+                    continue
+
+                name = local(elem.tag)
+                if name.startswith('ATTRIBUTE-VALUE'):
+                    counts['attribute_values'] += 1
+                elif name.startswith('ATTRIBUTE-DEFINITION'):
+                    counts['attribute_definitions'] += 1
+                elif name == 'SPEC-OBJECT':
+                    counts['requirements'] += 1
+                    identifier, original_id, duplicate = make_unique_id(attr(elem, 'IDENTIFIER'), f"REQIF-{counts['requirements']}")
+                    if duplicate:
+                        counts['duplicate_ids'] += 1
+                    attributes = collect_attribute_values(elem)
+                    title = semantic_title(elem, identifier, attributes)
+                    description = semantic_description(elem, attributes)
+                    rows.append({
+                        'row_type': 'requirement',
+                        'id': identifier,
+                        'original_id': original_id,
+                        'name': title,
+                        'title': title,
+                        'description': description,
+                        'text': description,
+                        'entity_type': 'Requirement',
+                        'source_format': 'reqif',
+                        'semantic_role': 'requirement',
+                        'type_ref': first_ref(elem, 'TYPE'),
+                        'attributes': attributes,
+                        'attribute_count': len(attributes),
+                        'last_change': attr(elem, 'LAST-CHANGE'),
+                    })
+                    elem.clear()
+                elif name == 'SPECIFICATION':
+                    counts['specifications'] += 1
+                    identifier, original_id, duplicate = make_unique_id(attr(elem, 'IDENTIFIER'), f"SPEC-{counts['specifications']}")
+                    if duplicate:
+                        counts['duplicate_ids'] += 1
+                    attributes = collect_attribute_values(elem)
+                    object_refs = [text_value(ref) for ref in elem.iter() if local(ref.tag) == 'SPEC-OBJECT-REF' and text_value(ref)]
+                    hierarchy = []
+                    def visit_hierarchy(node, parent_id):
+                        for ordinal, child in enumerate(node):
+                            if local(child.tag) == 'SPEC-HIERARCHY':
+                                object_node = direct_child(child, 'OBJECT')
+                                object_id = text_value(object_node) if object_node is not None else ''
+                                if not object_id:
+                                    raise ValueError('ReqIF hierarchy requires an object reference')
+                                hierarchy.append({'source': parent_id, 'target': object_id,
+                                                  'hierarchy_id': attr(child, 'IDENTIFIER'), 'ordinal': ordinal})
+                                visit_hierarchy(child, object_id)
+                            else:
+                                visit_hierarchy(child, parent_id)
+                    visit_hierarchy(elem, identifier)
+                    title = semantic_title(elem, identifier, attributes)
+                    description = semantic_description(elem, attributes)
+                    rows.append({
+                        'row_type': 'specification',
+                        'id': identifier,
+                        'original_id': original_id,
+                        'name': title,
+                        'title': title,
+                        'description': description,
+                        'entity_type': 'Specification',
+                        'source_format': 'reqif',
+                        'semantic_role': 'requirement_specification',
+                        'type_ref': first_ref(elem, 'TYPE'),
+                        'attributes': attributes,
+                        'attribute_count': len(attributes),
+                        'object_refs': object_refs,
+                        'hierarchy': hierarchy,
+                        'object_ref_count': len(object_refs),
+                        'last_change': attr(elem, 'LAST-CHANGE'),
+                    })
+                    elem.clear()
+                elif name == 'SPEC-RELATION':
+                    counts['relations'] += 1
+                    identifier, original_id, duplicate = make_unique_id(attr(elem, 'IDENTIFIER'), f"REL-{counts['relations']}")
+                    if duplicate:
+                        counts['duplicate_ids'] += 1
+                    attributes = collect_attribute_values(elem)
+                    title = semantic_title(elem, identifier, attributes)
+                    description = semantic_description(elem, attributes)
+                    rows.append({
+                        'row_type': 'relation',
+                        'id': identifier,
+                        'original_id': original_id,
+                        'name': title,
+                        'title': title,
+                        'description': description,
+                        'entity_type': 'RequirementRelation',
+                        'source_format': 'reqif',
+                        'semantic_role': 'requirement_trace_relation',
+                        'source_ref': first_ref(elem, 'SOURCE'),
+                        'target_ref': first_ref(elem, 'TARGET'),
+                        'type_ref': first_ref(elem, 'TYPE'),
+                        'attributes': attributes,
+                        'attribute_count': len(attributes),
+                        'last_change': attr(elem, 'LAST-CHANGE'),
+                    })
+                    elem.clear()
+
+            requirement_original_ids = {
+                row.get('original_id')
+                for row in rows
+                if row.get('row_type') == 'requirement' and row.get('original_id')
+            }
+            unresolved_relation_refs = 0
+            unresolved_spec_object_refs = 0
+            for row in rows:
+                if row.get('row_type') == 'relation':
+                    for ref_key in ('source_ref', 'target_ref'):
+                        ref = row.get(ref_key)
+                        if ref and ref not in requirement_original_ids:
+                            unresolved_relation_refs += 1
+                    row['source_resolved'] = bool(row.get('source_ref') in requirement_original_ids)
+                    row['target_resolved'] = bool(row.get('target_ref') in requirement_original_ids)
+                elif row.get('row_type') == 'specification':
+                    unresolved = [ref for ref in row.get('object_refs') or [] if ref not in requirement_original_ids]
+                    row['unresolved_object_refs'] = unresolved
+                    unresolved_spec_object_refs += len(unresolved)
+
+            if unresolved_relation_refs or unresolved_spec_object_refs or any(row.get('row_type') == 'relation' and (not row.get('source_resolved') or not row.get('target_resolved')) for row in rows):
+                raise ValueError('ReqIF contains unresolved requirement references')
+
+            return rows, {
+                'format': 'ReqIF',
+                'file_format': 'ReqIF',
+                'target_reqif_version': '1.2',
+                'namespace_uri': namespace_uri,
+                'root_element': root_name,
+                'row_count': len(rows),
+                'unresolved_relation_refs': unresolved_relation_refs,
+                'unresolved_spec_object_refs': unresolved_spec_object_refs,
+                **counts,
+            }
+        except Exception as exc:
+            return [], {'error': str(exc), 'file_format': 'ReqIF'}
+
+    @staticmethod
+    def _parse_archimate(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse ArchiMate Model Exchange XML into architecture/process rows."""
+        try:
+            from .archimate_service import parse_archimate_model_exchange
+
+            rows, stats = parse_archimate_model_exchange(file_content)
+            logging.info(
+                "[OK] ArchiMate parsed: %s elements, %s relationships, %s views",
+                stats.get("element_count", len(rows)),
+                stats.get("relationship_count", 0),
+                stats.get("view_count", 0),
+            )
+            return rows, stats
+        except Exception as exc:
+            logging.error("ArchiMate parse error: %s", exc)
+            return [], {"error": str(exc), "file_format": "ArchiMate"}
+
     @staticmethod
     def _coerce_value(val: Any) -> Any:
         """Coerce a string scalar to int/float/bool where unambiguous; leaves non-strings unchanged."""
@@ -932,7 +1249,10 @@ class FileParser:
             return [], {'error': str(e)}
 
     @staticmethod
-    def _parse_plmxml(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def _parse_plmxml(
+        file_content: bytes,
+        metadata_exclusion_tags: Optional[List[str]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse PLMXML file using the dedicated plmxml_parser module.
 
         Extracts semantic PLM objects: parts, BOMs, processes, requirements,
@@ -942,67 +1262,343 @@ class FileParser:
         import tempfile
         from pathlib import Path as _Path
         try:
-            from .plmxml_parser import parse_plmxml_file
+            from .plmxml_parser import parse_plmxml_file, _normalize_ref
 
             with tempfile.NamedTemporaryFile(delete=False, suffix='.plmxml') as tmp:
                 tmp.write(file_content)
                 tmp_path = _Path(tmp.name)
             try:
-                doc = parse_plmxml_file(tmp_path)
+                doc = parse_plmxml_file(tmp_path, metadata_exclusion_tags=metadata_exclusion_tags)
             finally:
                 tmp_path.unlink(missing_ok=True)
 
             rows: List[Dict[str, Any]] = []
+            rows_by_id: Dict[str, Dict[str, Any]] = {}
             raw_rels: List[Dict[str, Any]] = []
+            rel_seen = set()
+            row_key_counts: Dict[str, int] = {}
+            metadata_only_skipped = 0
+            metadata_properties_attached = 0
+
+            def append_row(row: Dict[str, Any]) -> None:
+                if row.get('id') and not row.get('name'):
+                    row['name'] = row['id']
+                source_id = str(row.get('id') or '').strip()
+                if source_id:
+                    occurrence = row_key_counts.get(source_id, 0) + 1
+                    row_key_counts[source_id] = occurrence
+                    row.setdefault('import_row_key', source_id if occurrence == 1 else f'{source_id}::{occurrence}')
+                rows.append(row)
+                if row.get('id'):
+                    rows_by_id[str(row['id'])] = row
+
+            def append_rel(from_id: str, to_id: str, rel_type: str, **props: Any) -> None:
+                from_id = _normalize_ref(str(from_id or ''))
+                to_id = _normalize_ref(str(to_id or ''))
+                if not from_id or not to_id or from_id == to_id:
+                    return
+                safe_type = str(rel_type or 'RELATED_TO')
+                key = (from_id, to_id, safe_type)
+                if key in rel_seen:
+                    return
+                rel_seen.add(key)
+                payload = {
+                    'from_props': {'id': from_id},
+                    'to_props': {'id': to_id},
+                    'type': safe_type,
+                }
+                if props:
+                    payload['properties'] = props
+                raw_rels.append(payload)
+
+            def _safe_metadata_key(prefix: str, key: str) -> str:
+                slug = re.sub(r'[^0-9a-zA-Z]+', '_', str(key or '').strip()).strip('_').lower()
+                if not slug:
+                    slug = 'value'
+                return f'{prefix}_{slug}'
+
+            def _merge_metadata_properties(target_row: Dict[str, Any], metadata_props: Dict[str, Any]) -> bool:
+                changed = False
+                for key, value in metadata_props.items():
+                    if value in (None, '', [], {}):
+                        continue
+                    if key not in target_row:
+                        target_row[key] = value
+                        changed = True
+                return changed
+
+            def _metadata_properties_for_id(metadata_id: str) -> Dict[str, Any]:
+                metadata_id = _normalize_ref(str(metadata_id or ''))
+                if not metadata_id:
+                    return {}
+                user_data = doc.user_data.get(metadata_id)
+                if user_data:
+                    props: Dict[str, Any] = {
+                        'metadata_user_data_id': user_data.id,
+                    }
+                    if user_data.type:
+                        props['metadata_user_data_type'] = user_data.type
+                    if user_data.title:
+                        props['metadata_user_data_title'] = user_data.title
+                    for title, value in (user_data.values or {}).items():
+                        if value not in (None, ''):
+                            props[_safe_metadata_key('user_data', title)] = value
+                    return props
+
+                form = doc.forms.get(metadata_id)
+                if form and getattr(form, 'is_structural', False):
+                    props = {
+                        'metadata_form_id': form.id,
+                    }
+                    if form.sub_type:
+                        props['metadata_form_sub_type'] = form.sub_type
+                    if form.sub_class:
+                        props['metadata_form_sub_class'] = form.sub_class
+                    if form.description:
+                        props['metadata_form_description'] = form.description
+                    for title, value in (form.attributes or {}).items():
+                        if value not in (None, ''):
+                            props[_safe_metadata_key('form', title)] = value
+                    return props
+
+                generic = doc.generic_entities.get(metadata_id)
+                if generic and getattr(generic, 'is_structural', False):
+                    props = {
+                        'metadata_tag': generic.tag,
+                    }
+                    if generic.subtype:
+                        props['metadata_sub_type'] = generic.subtype
+                    if generic.description:
+                        props['metadata_description'] = generic.description
+                    return props
+                return {}
+
+            def _consume_metadata_reference(target_row: Dict[str, Any], metadata_id: str) -> bool:
+                nonlocal metadata_properties_attached
+                metadata_props = _metadata_properties_for_id(metadata_id)
+                if not metadata_props:
+                    return False
+                if _merge_metadata_properties(target_row, metadata_props):
+                    metadata_properties_attached += 1
+                return True
 
             for pid, part in doc.parts.items():
-                rows.append({
+                part_row = {
                     'element_type': 'Part', 'id': pid,
                     'name': part.name, 'part_number': part.part_number,
                     'revision': part.revision, 'description': part.description,
                     'part_type': part.part_type,
-                })
+                    'master_ref': part.master_ref,
+                }
+                append_row(part_row)
+                for user_data_ref in part.user_data_refs:
+                    if not _consume_metadata_reference(part_row, user_data_ref):
+                        append_rel(pid, user_data_ref, 'USER_DATA_REF')
+                if part.master_ref and not _consume_metadata_reference(part_row, part.master_ref):
+                    append_rel(pid, part.master_ref, 'MASTER_REF')
 
             for rid, req in doc.requirements.items():
-                rows.append({
+                append_row({
                     'element_type': 'Requirement', 'id': rid,
                     'name': req.name, 'catalogue_id': req.catalogue_id,
                     'revision': req.revision,
                     'body_text': (req.body_text or '')[:500],
+                    'master_ref': req.master_ref,
+                    'dataset_ref': req.dataset_ref,
                 })
+                if req.master_ref:
+                    append_rel(rid, req.master_ref, 'MASTER_REF')
+                if req.dataset_ref:
+                    append_rel(rid, req.dataset_ref, 'DATASET_REF')
+                if req.revision_id and req.revision_id != rid:
+                    append_row({
+                        'element_type': 'RequirementRevision', 'id': req.revision_id,
+                        'name': req.name, 'catalogue_id': req.catalogue_id,
+                        'revision': req.revision,
+                        'body_text': (req.body_text or '')[:500],
+                        'master_ref': req.master_ref,
+                        'dataset_ref': req.dataset_ref,
+                        'requirement_ref': rid,
+                    })
+                    append_rel(req.revision_id, rid, 'REVISION_OF')
+                    if req.master_ref:
+                        append_rel(req.revision_id, req.master_ref, 'MASTER_REF')
+                    if req.dataset_ref:
+                        append_rel(req.revision_id, req.dataset_ref, 'DATASET_REF')
 
             for proc_id, proc in doc.processes.items():
-                rows.append({
+                append_row({
                     'element_type': 'Process', 'id': proc_id,
                     'name': proc.name, 'process_type': proc.process_type,
                     'description': proc.description,
                 })
+                for resource_id in proc.resources:
+                    append_rel(proc_id, resource_id, 'RESOURCE_REF')
+
+            for view_id, view in doc.product_views.items():
+                append_row({
+                    'element_type': 'ProductView', 'id': view_id,
+                    'name': view.name, 'view_type': view.view_type,
+                    'structure_type': view.structure_type,
+                    'product_ref': view.product_ref,
+                })
+                if view.product_ref:
+                    append_rel(view_id, view.product_ref, 'PRODUCT_REF')
+                for root_ref in view.root_refs:
+                    append_rel(view_id, root_ref, 'HAS_ROOT')
 
             for inst in doc.product_instances:
-                rows.append({
+                inst_row = {
                     'element_type': 'ProductInstance', 'id': inst.id,
                     'name': inst.name, 'part_ref': inst.part_ref,
-                    'parent_ref': inst.parent_ref, 'quantity': str(inst.quantity),
+                    'parent_ref': inst.parent_ref, 'transform_ref': inst.transform_ref,
+                    'quantity': str(inst.quantity),
+                }
+                append_row(inst_row)
+                if inst.parent_ref:
+                    append_rel(inst.parent_ref, inst.id, 'HAS_CHILD_INSTANCE')
+                if inst.part_ref:
+                    append_rel(inst.id, inst.part_ref, 'PART_REF')
+                if inst.transform_ref:
+                    append_rel(inst.id, inst.transform_ref, 'TRANSFORM_REF')
+                for occurrence_ref in inst.occurrence_refs:
+                    append_rel(inst.id, occurrence_ref, 'OCCURRENCE_REF')
+                for user_data_ref in inst.user_data_refs:
+                    if not _consume_metadata_reference(inst_row, user_data_ref):
+                        append_rel(inst.id, user_data_ref, 'USER_DATA_REF')
+                for app_ref in inst.application_refs:
+                    if not _consume_metadata_reference(inst_row, app_ref):
+                        append_rel(inst.id, app_ref, 'APPLICATION_REF')
+
+            for view_id, view in doc.process_views.items():
+                append_row({
+                    'element_type': 'ProcessView', 'id': view_id,
+                    'name': view.name,
                 })
-                if inst.parent_ref and inst.part_ref:
-                    raw_rels.append({'from_props': {'id': inst.parent_ref},
-                                     'to_props': {'id': inst.part_ref}, 'type': 'CONTAINS'})
+                for root_process_ref in view.root_process_refs:
+                    append_rel(view_id, root_process_ref, 'HAS_ROOT_PROCESS')
+                for product_ref in view.product_refs:
+                    append_rel(view_id, product_ref, 'PRODUCT_REF')
+
+            for proc_inst in doc.process_instances:
+                append_row({
+                    'element_type': 'ProcessInstance', 'id': proc_inst.id,
+                    'process_ref': proc_inst.process_ref,
+                })
+                if proc_inst.process_ref:
+                    append_rel(proc_inst.id, proc_inst.process_ref, 'PROCESS_REF')
+                for predecessor_ref in proc_inst.predecessor_refs:
+                    append_rel(proc_inst.id, predecessor_ref, 'PREDECESSOR_REF')
+                for product_instance_ref in proc_inst.product_instance_refs:
+                    append_rel(proc_inst.id, product_instance_ref, 'PRODUCT_INSTANCE_REF')
+
+            for notice_id, notice in doc.change_notices.items():
+                append_row({
+                    'element_type': 'ChangeNotice', 'id': notice_id,
+                    'name': notice.name, 'change_type': notice.change_type,
+                    'status': notice.status, 'description': notice.description,
+                })
+                for affected_id in notice.affected_items:
+                    append_rel(notice_id, affected_id, 'AFFECTED_ITEM')
+
+            for revision_id, revision in doc.revisions.items():
+                append_row({
+                    'element_type': 'Revision', 'id': revision_id,
+                    'revision_id': revision.revision_id,
+                    'revision_type': revision.revision_type,
+                    'base_ref': revision.base_ref,
+                    'description': revision.description,
+                })
+                if revision.base_ref:
+                    append_rel(revision_id, revision.base_ref, 'BASE_REF')
+                for notice_ref in revision.change_notice_refs:
+                    append_rel(revision_id, notice_ref, 'CHANGE_NOTICE_REF')
+
+            for transform_id, transform in doc.transforms.items():
+                append_row({
+                    'element_type': 'Transform', 'id': transform_id,
+                    'matrix': ' '.join(str(v) for v in transform.matrix),
+                })
+
+            for userdata_id, userdata in doc.user_data.items():
+                metadata_only_skipped += 1
+
+            for document_id, document in doc.documents.items():
+                document_row = {
+                    'element_type': 'Document', 'id': document_id,
+                    'name': document.name,
+                    'document_type': document.document_type,
+                    'revision': document.revision,
+                    'description': document.description,
+                }
+                append_row(document_row)
+                for file_ref in document.external_file_refs:
+                    append_rel(document_id, file_ref, 'EXTERNAL_FILE_REF')
+                for userdata_ref in document.user_data_refs:
+                    if not _consume_metadata_reference(document_row, userdata_ref):
+                        append_rel(document_id, userdata_ref, 'USER_DATA_REF')
+
+            for file_id, external_file in doc.external_files.items():
+                append_row({
+                    'element_type': 'ExternalFile', 'id': file_id,
+                    'name': external_file.name,
+                    'location': external_file.location,
+                    'format': external_file.format,
+                    'mime_type': external_file.mime_type,
+                })
 
             for rel in doc.general_relations:
+                append_row({
+                    'element_type': 'GeneralRelation', 'id': rel.id,
+                    'name': rel.tc_label or rel.sub_type or rel.id,
+                    'sub_type': rel.sub_type,
+                    'tc_label': rel.tc_label,
+                    'related_count': str(len(rel.related_refs)),
+                })
                 for target_id in rel.related_refs:
-                    raw_rels.append({'from_props': {'id': rel.id},
-                                     'to_props': {'id': target_id},
-                                     'type': rel.sub_type or 'RELATED_TO'})
+                    append_rel(rel.id, target_id, rel.sub_type or 'RELATED_TO', tc_label=rel.tc_label)
 
-            # Extract namespace from file content (first 512 bytes is enough)
-            import defusedxml.ElementTree as _ET2
-            _root2 = _ET2.fromstring(file_content[:8192])
-            _ns_uri = _root2.tag[1:_root2.tag.index('}')] if _root2.tag.startswith('{') else _root2.get('xmlns', '')
-            _ns_prefix = _derive_prefix_from_namespace(_ns_uri)
+            for form_id, form in doc.forms.items():
+                metadata_only_skipped += 1
+
+            for generic_id, generic in doc.generic_entities.items():
+                generic_row = {
+                    'element_type': generic.tag, 'id': generic_id,
+                    'name': generic.name,
+                    'description': generic.description,
+                    'sub_type': generic.subtype,
+                    'semantic_role': getattr(generic, 'semantic_role', 'entity'),
+                }
+                if getattr(generic, 'is_structural', False) or not plmxml_row_has_payload(generic_row, generic.tag):
+                    metadata_only_skipped += 1
+                    continue
+                append_row(generic_row)
+
+            for rel in doc.relationships:
+                source_row = rows_by_id.get(_normalize_ref(rel.source_id))
+                target_row = rows_by_id.get(_normalize_ref(rel.target_id))
+                source_is_metadata = bool(_metadata_properties_for_id(rel.source_id))
+                target_is_metadata = bool(_metadata_properties_for_id(rel.target_id))
+
+                if source_row and target_is_metadata and _consume_metadata_reference(source_row, rel.target_id):
+                    continue
+                if target_row and source_is_metadata and _consume_metadata_reference(target_row, rel.source_id):
+                    continue
+                if source_is_metadata or target_is_metadata:
+                    metadata_only_skipped += 1
+                    continue
+                append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
+
+            from .import_identity import attach_plmxml_identities
+            source_identity_records = attach_plmxml_identities(file_content, rows)
+            _ns_uri = str(doc.parse_stats.get('namespace') or '')
+            _ns_prefix = derive_prefix_from_namespace(_ns_uri)
 
             columns = list(rows[0].keys()) if rows else []
             stats = {
                 'format': 'PLMXML',
+                '_source_identity_records': source_identity_records,
+                'source_application_ref_count': len(source_identity_records),
                 'schema_version': doc.schema_version,
                 'namespace': _ns_uri,
                 'ontology_prefix': _ns_prefix,
@@ -1014,6 +1610,20 @@ class FileParser:
                 'requirements_count': len(doc.requirements),
                 'processes_count': len(doc.processes),
                 'bom_links': len(doc.product_instances),
+                'elements_parsed': doc.parse_stats.get('elements_parsed', 0),
+                'classes_created': doc.parse_stats.get('classes_created', 0),
+                'individuals_created': len(rows),
+                'relationships_created': len(raw_rels),
+                'unresolved_references': doc.parse_stats.get('unresolved_references', 0),
+                'duplicate_ids': doc.parse_stats.get('duplicate_ids', 0),
+                'skipped_elements': doc.parse_stats.get('skipped_elements', 0),
+                'malformed_elements': doc.parse_stats.get('malformed_elements', 0),
+                'parse_ingestion_time': doc.parse_stats.get('ingestion_time', 0),
+                'unresolved_reference_details': doc.unresolved_references[:200],
+                'duplicate_id_values': doc.duplicate_ids[:200],
+                'metadata_only_entities_skipped': metadata_only_skipped,
+                'metadata_properties_attached': metadata_properties_attached,
+                'metadata_exclusion_tags': doc.parse_stats.get('metadata_exclusion_tags', []),
                 '_xmi_relationships': raw_rels,  # reused by commit_import relationship writer
             }
             return rows, stats
@@ -1029,7 +1639,7 @@ class FileParser:
             root = ET.fromstring(file_content)
             # Extract namespace from root tag: {http://...}TagName
             ns_uri = root.tag[1:root.tag.index('}')] if root.tag.startswith('{') else root.get('xmlns', '')
-            ns_prefix = _derive_prefix_from_namespace(ns_uri)
+            ns_prefix = derive_prefix_from_namespace(ns_uri)
             import re as _re_xml
             rows = []
             raw_rels: List[Dict[str, Any]] = []
@@ -1074,6 +1684,100 @@ class FileParser:
             return [], {'error': str(e)}
 
     @staticmethod
+    def _parse_threedxml(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse 3DXML content using the dedicated extractor and flatten it for import."""
+        import tempfile
+        from pathlib import Path as _Path
+
+        try:
+            from .threedxml_ontology_extractor import ThreeDXMLExtractor
+        except Exception:
+            from backend.Services.threedxml_ontology_extractor import ThreeDXMLExtractor
+
+        try:
+            with tempfile.TemporaryDirectory(prefix='threedxml_import_') as temp_dir:
+                temp_path = _Path(temp_dir) / 'import.3dxml'
+                temp_path.write_bytes(file_content)
+                extractor = ThreeDXMLExtractor(temp_dir)
+                summary = extractor.extract()
+
+            rows: List[Dict[str, Any]] = []
+            rels: List[Dict[str, Any]] = []
+            columns = set()
+
+            for entity_name, entity in (extractor.entities or {}).items():
+                row: Dict[str, Any] = {
+                    'element_type': getattr(entity, 'entity_type', '3DXML'),
+                    'id': entity_name,
+                    'import_row_key': entity_name,
+                    'name': getattr(entity, 'name', entity_name),
+                    'label': getattr(entity, 'name', entity_name),
+                    'namespace': getattr(entity, 'namespace', ''),
+                    'description': getattr(entity, 'description', ''),
+                }
+                metadata = getattr(entity, 'metadata', {}) or {}
+                for key, value in metadata.items():
+                    if value in (None, '', [], {}):
+                        continue
+                    row[f'metadata_{key}'] = value
+                attributes = getattr(entity, 'attributes', {}) or {}
+                for attr_name, attr in attributes.items():
+                    attr_value = getattr(attr, 'description', None)
+                    if attr_value in (None, ''):
+                        attr_value = getattr(attr, 'name', None)
+                    if attr_name and attr_value not in (None, ''):
+                        row[str(attr_name)] = attr_value
+                rows.append(row)
+                columns.update(row.keys())
+
+            for rel in getattr(extractor, 'relationships', []) or []:
+                source = getattr(rel, 'source', '')
+                target = getattr(rel, 'target', '')
+                if not source or not target or source == target:
+                    continue
+                rel_payload = {
+                    'from_props': {'id': source},
+                    'to_props': {'id': target},
+                    'type': str(getattr(rel, 'relation_type', 'RELATED_TO') or 'RELATED_TO'),
+                }
+                rel_metadata = {
+                    'source_entity_type': getattr(rel, 'source_type', ''),
+                    'target_entity_type': getattr(rel, 'target_type', ''),
+                    'cardinality': getattr(rel, 'cardinality', ''),
+                    'description': getattr(rel, 'description', ''),
+                }
+                rel_payload['properties'] = {
+                    key: value for key, value in rel_metadata.items() if value not in (None, '', [], {})
+                }
+                rels.append(rel_payload)
+
+            stats = {
+                'format': '3DXML',
+                'row_count': len(rows),
+                'column_count': len(columns),
+                'columns': list(columns),
+                'entity_count': len(getattr(extractor, 'entities', {}) or {}),
+                'relationship_count': len(getattr(extractor, 'relationships', []) or []),
+                'entity_types': sorted(list(getattr(extractor, 'entity_types', set()) or [])),
+                '_xmi_relationships': rels,
+                'root_element': '3DXML',
+            }
+            if isinstance(summary, dict):
+                summary_meta = summary.get('metadata') or {}
+                summary_stats = summary_meta.get('stats') or {}
+                if isinstance(summary_stats, dict):
+                    for key in ('source_format', 'source_path'):
+                        if key in summary_meta and key not in stats:
+                            stats[key] = summary_meta[key]
+                    for key, value in summary_stats.items():
+                        if key not in stats and value not in (None, '', [], {}):
+                            stats[key] = value
+            return rows, stats
+        except Exception as e:
+            logging.error(f"3DXML parse error: {e}")
+            return FileParser._parse_xml(file_content)
+
+    @staticmethod
     def _parse_step(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse STEP/STP file using the dedicated step_parser module (ISO 10303 Part 21/28).
 
@@ -1084,7 +1788,7 @@ class FileParser:
         from pathlib import Path as _Path
         try:
             from .step_parser import iter_part21_entities, parse_step_metadata, \
-                extract_step_strings, _AP242_NAMED_ENTITIES
+                _AP242_NAMED_ENTITIES, classify_step_semantic_role, step_entity_display_fields
 
             # G-A: detect STPX (Part 28 XML) content to use correct temp file suffix.
             # detect_step_format() relies on the suffix, so write to .stpx when content is XML.
@@ -1102,6 +1806,7 @@ class FileParser:
 
                 rows: List[Dict[str, Any]] = []
                 type_counts: Dict[str, int] = {}
+                semantic_role_counts: Dict[str, int] = {}
                 ref_map: Dict[int, List[int]] = {}  # step_id -> [ref_step_ids]
 
                 for entity in iter_part21_entities(tmp_path):
@@ -1116,20 +1821,67 @@ class FileParser:
                         'args': args_preview,
                         'ref_ids': list(entity.ref_ids),
                     }
-                    # G-B: extract name/description for AP242 semantic entity types.
-                    # Canonical pattern from requirements/src/engines/ap242_bom_mapper.py.
-                    if entity.entity_type in _AP242_NAMED_ENTITIES:
-                        strings = extract_step_strings(entity.raw_args)
-                        row['external_id'] = strings[0] if strings else ''
-                        row['name'] = strings[1] if len(strings) > 1 else ''
-                        row['description'] = strings[2] if len(strings) > 2 else ''
+                    semantic_role = classify_step_semantic_role(entity)
+                    if semantic_role:
+                        row['semantic_role'] = semantic_role
+                        row['is_cad_business_object'] = True
+                        semantic_role_counts[semantic_role] = semantic_role_counts.get(semantic_role, 0) + 1
+                    if getattr(entity, 'compound_entity_types', None):
+                        row['compound_entity_types'] = list(entity.compound_entity_types)
+                    if entity.source_identifier:
+                        row['source_identifier'] = entity.source_identifier
+                        row['source_identifier_kind'] = entity.source_identifier_kind
+                    if entity.text_value:
+                        row['text_value'] = entity.text_value
+                    if entity.parent_step_id is not None:
+                        row['parent_step_id'] = f'#{entity.parent_step_id}'
+                    if entity.unresolved_refs:
+                        row['unresolved_refs'] = list(entity.unresolved_refs)
+                    if entity.attributes:
+                        reserved_keys = {
+                            'id', 'entity_type', 'args', 'ref_ids', 'import_row_key',
+                            'source_identifier', 'source_identifier_kind',
+                            'text_value', 'parent_step_id', 'unresolved_refs',
+                            'compound_entity_types',
+                        }
+                        for attr_key, attr_value in entity.attributes.items():
+                            safe_key = str(attr_key).strip()
+                            if not safe_key:
+                                continue
+                            target_key = f'xml_{safe_key}' if safe_key in reserved_keys else safe_key
+                            row[target_key] = attr_value
+                    # G-B: extract name/description for AP242 semantic entity types and
+                    # Part28 BO model rows so graph/search surfaces business objects.
+                    if entity.entity_type in _AP242_NAMED_ENTITIES or semantic_role:
+                        external_id, name, description = step_entity_display_fields(entity)
+                        if external_id:
+                            row['external_id'] = external_id
+                        if name:
+                            row['name'] = name
+                        if description:
+                            row['description'] = description
                     rows.append(row)
                     type_counts[entity.entity_type] = type_counts.get(entity.entity_type, 0) + 1
                     if entity.ref_ids:
                         ref_map[entity.step_id] = entity.ref_ids
 
+                rows_by_id = {str(row.get('id') or ''): row for row in rows}
+                for row in rows:
+                    parent_row = rows_by_id.get(str(row.get('parent_step_id') or ''))
+                    text_value = str(row.get('text_value') or '').strip()
+                    if not parent_row or not text_value:
+                        continue
+                    entity_type = str(row.get('entity_type') or '').upper()
+                    if entity_type == 'NAME' and parent_row.get('is_cad_business_object'):
+                        if not parent_row.get('name') or parent_row.get('name') == parent_row.get('external_id'):
+                            parent_row['name'] = text_value
+                    elif entity_type == 'IDENTIFIER' and parent_row.get('is_cad_business_object'):
+                        parent_row.setdefault('external_id', text_value)
+
                 id_seen: Dict[str, int] = {}
+                source_identifier_seen: Dict[str, int] = {}
                 duplicate_id_count = 0
+                unresolved_reference_total = 0
                 for row in rows:
                     source_id = str(row.get('id') or '')
                     id_seen[source_id] = id_seen.get(source_id, 0) + 1
@@ -1137,6 +1889,14 @@ class FileParser:
                     if occurrence > 1:
                         duplicate_id_count += 1
                     row['import_row_key'] = source_id if occurrence == 1 else f'{source_id}::{occurrence}'
+                    unresolved_reference_total += len(row.get('unresolved_refs') or [])
+                    source_identifier = str(row.get('source_identifier') or '')
+                    if source_identifier:
+                        source_identifier_seen[source_identifier] = source_identifier_seen.get(source_identifier, 0) + 1
+
+                duplicate_source_identifier_count = sum(
+                    1 for count in source_identifier_seen.values() if count > 1
+                )
 
                 all_columns = sorted({key for row in rows for key in row.keys()})
                 stats = {
@@ -1149,7 +1909,14 @@ class FileParser:
                     'column_count': len(all_columns) if rows else 4,
                     'columns': all_columns if rows else ['import_row_key', 'id', 'entity_type', 'args'],
                     'entity_types': type_counts,
+                    'semantic_role_counts': semantic_role_counts,
+                    'cad_business_object_count': sum(
+                        1 for row in rows if row.get('is_cad_business_object')
+                    ),
                     'duplicate_source_id_count': duplicate_id_count,
+                    'duplicate_source_identifier_count': duplicate_source_identifier_count,
+                    'unresolved_reference_count': unresolved_reference_total,
+                    'elements_parsed': len(rows),
                     '_step_ref_map': ref_map,
                 }
                 return rows, stats
@@ -1250,7 +2017,7 @@ class DataTransformer:
                     continue
                 type_cols = sorted({k for r in type_rows for k in r.keys()})
                 merge_key = next(
-                    (c for c in ('id', 'uuid', 'key', 'name') if c in type_cols),
+                    (c for c in ('import_row_key', 'id', 'uuid', 'key', 'name') if c in type_cols),
                     next((c for c in type_cols if c not in _SKIP_MERGE), type_cols[0]),
                 )
                 nodes.append({
@@ -1260,13 +2027,47 @@ class DataTransformer:
                     '_filter_key': 'element_type',
                     '_filter_val': etype,
                 })
-                indexes.append({
-                    'type': 'range',
-                    'name': f"idx_{etype.lower()}_{merge_key}",
-                    'label': etype,
-                    'properties': [merge_key],
-                })
+                indexes.extend(SpecializedFormatParser._recommended_indexes_for_label(etype, merge_key, type_cols))
             return {'nodes': nodes, 'indexes': indexes}
+
+        # ── STEP/AP242 entity typing ─────────────────────────────────────────
+        # STEP imports expose parser-normalized AP242 entity_type values such as
+        # PRODUCT, PRODUCT_DEFINITION, and SHAPE_REPRESENTATION. Use those as
+        # graph labels so visualizations do not collapse instance nodes into a
+        # generic fallback label.
+        entity_type_vals = sorted({
+            str(row.get('entity_type', '')).replace(' ', '_').replace(':', '_')
+            for row in rows if row.get('entity_type')
+            and not (
+                str(row.get('source_format') or '').lower() == 'reqif'
+                and str(row.get('row_type') or '').lower() == 'relation'
+            )
+        })
+        if entity_type_vals:
+            nodes = []
+            indexes = []
+            for entity_type in entity_type_vals:
+                type_rows = [
+                    r for r in rows
+                    if str(r.get('entity_type', '')).replace(' ', '_').replace(':', '_') == entity_type
+                ]
+                if not type_rows:
+                    continue
+                type_cols = sorted({k for r in type_rows for k in r.keys()})
+                merge_key = next(
+                    (c for c in ('import_row_key', 'id', 'uuid', 'key') if c in type_cols),
+                    type_cols[0],
+                )
+                nodes.append({
+                    'label': entity_type,
+                    'mergeKeys': [merge_key],
+                    'properties': type_cols,
+                    '_filter_key': 'entity_type',
+                    '_filter_val': entity_type,
+                })
+                indexes.extend(SpecializedFormatParser._recommended_indexes_for_label(entity_type, merge_key, type_cols))
+            if nodes:
+                return {'nodes': nodes, 'indexes': indexes}
 
         # ── XMI-style multi-label detection (type column as discriminator) ────
         # Triggered when 'element_type' column is absent but 'type' column holds
@@ -1298,12 +2099,7 @@ class DataTransformer:
                     '_filter_key': 'type',
                     '_filter_val': tval,
                 })
-                indexes.append({
-                    'type': 'range',
-                    'name': f"idx_{tval.lower()}_{merge_key}",
-                    'label': tval,
-                    'properties': [merge_key],
-                })
+                indexes.extend(SpecializedFormatParser._recommended_indexes_for_label(tval, merge_key, type_cols))
             return {'nodes': nodes, 'indexes': indexes}
 
         # ── Single-label schema (original logic, column union fix applied) ────
@@ -1312,15 +2108,11 @@ class DataTransformer:
         merge_key = next((c for c in ('import_row_key', 'id', 'uuid', 'key', 'name') if c in columns), columns[0])
         default_label = (
             element_types[0] if element_types
-            else str(rows[0].get('type', 'DataNode')).replace(' ', '_').replace(':', '_')
+            else str(rows[0].get('entity_type', '')).replace(' ', '_').replace(':', '_') if rows[0].get('entity_type')
+            else str(rows[0].get('type', 'ImportedRecord')).replace(' ', '_').replace(':', '_')
         )
         nodes = [{'label': default_label, 'mergeKeys': [merge_key], 'properties': columns}]
-        indexes = [{
-            'type': 'range',
-            'name': f"idx_{default_label.lower()}_{merge_key}",
-            'label': default_label,
-            'properties': [merge_key],
-        }]
+        indexes = SpecializedFormatParser._recommended_indexes_for_label(default_label, merge_key, columns)
         return {'nodes': nodes, 'indexes': indexes}
 
     @staticmethod
@@ -1330,12 +2122,12 @@ class DataTransformer:
         merge_keys: Optional[List[str]] = None,
     ) -> Tuple[List[str], Dict[str, Any]]:
         """Generate Cypher MERGE queries for node creation."""
-        return FileFormatDetector.transform_to_nodes(rows, node_label, merge_keys)
+        return SpecializedFormatParser.transform_to_nodes(rows, node_label, merge_keys)
 
     @staticmethod
     def create_indexes(index_defs: List[Dict[str, Any]]) -> List[str]:
         """Generate index creation queries."""
-        return FileFormatDetector.create_indexes(index_defs)
+        return SpecializedFormatParser.create_indexes(index_defs)
 
 
 # ========== Neo4j Integration ==========
@@ -1375,6 +2167,7 @@ class Neo4jImporter:
                 check_rows = rows
 
             missing_key_count = 0
+            missing_key_examples = []
             for row_idx, row in enumerate(check_rows):
                 if not row:
                     return False, f"Row {row_idx} is empty"
@@ -1382,12 +2175,19 @@ class Neo4jImporter:
                 for key in merge_keys:
                     if key not in row or row[key] is None:
                         missing_key_count += 1
+                        if len(missing_key_examples) < 5:
+                            missing_key_examples.append(str(row.get('id') or row.get('name') or f'row-{row_idx}'))
             # Fail only if ALL rows are missing the merge key (schema mismatch),
             # not just some — partial rows are filtered out at write time.
             if missing_key_count == len(check_rows) and check_rows:
                 return False, (
                     f"All {len(check_rows)} rows missing merge key '{merge_keys[0]}'. "
                     "Schema may be incorrect."
+                )
+            if missing_key_count > 0:
+                return False, (
+                    f"{missing_key_count} rows are missing merge key '{merge_keys[0]}'. "
+                    f"Examples: {', '.join(missing_key_examples)}"
                 )
         
         return True, ""
@@ -1430,7 +2230,12 @@ class Neo4jImporter:
         return len(duplicates), duplicates
 
     @staticmethod
-    def execute_cypher(queries: List[str], rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def execute_cypher(
+        queries: List[str],
+        rows: Optional[List[Dict[str, Any]]] = None,
+        batch_size: Optional[int] = None,
+        batch_callback: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """Execute Cypher queries with error tracking"""
         try:
             from core.graph import graph as _graph  # lazy import — avoids boot-time connection errors  # noqa: F401
@@ -1442,6 +2247,7 @@ class Neo4jImporter:
             'queries_executed': 0,
             'nodes_created': 0,
             'relationships_created': 0,
+            'matched_rows': 0,
             'errors': []
         }
 
@@ -1451,23 +2257,106 @@ class Neo4jImporter:
 
             try:
                 if rows and 'UNWIND $rows' in query:
-                    _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
+                    _BATCH = max(100, int(batch_size or IMPORT_WRITE_BATCH_SIZE))
+                    _total_batches = max(1, (len(rows) + _BATCH - 1) // _BATCH)
                     for _i in range(0, len(rows), _BATCH):
                         _batch = rows[_i:_i + _BATCH]
-                        result = _query_with_timeout(query, {'rows': _batch})
+                        result = _query_with_timeout(query, {'rows': _batch}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                         stats['queries_executed'] += 1
                         if isinstance(result, list):
                             stats['nodes_created'] += len(result)
+                            for record in result:
+                                if isinstance(record, dict) and record.get('matched_rows') is not None:
+                                    try:
+                                        stats['matched_rows'] += int(record.get('matched_rows') or 0)
+                                    except (TypeError, ValueError):
+                                        pass
+                        if callable(batch_callback):
+                            batch_callback({
+                                'batch_index': (_i // _BATCH) + 1,
+                                'batch_size': len(_batch),
+                                'total_batches': _total_batches,
+                                'rows_processed': min(_i + len(_batch), len(rows)),
+                                'rows_total': len(rows),
+                            })
                 else:
-                    result = _query_with_timeout(query)
+                    result = _query_with_timeout(query, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                     stats['queries_executed'] += 1
                     if isinstance(result, list):
                         stats['nodes_created'] += len(result)
+                        for record in result:
+                            if isinstance(record, dict) and record.get('matched_rows') is not None:
+                                try:
+                                    stats['matched_rows'] += int(record.get('matched_rows') or 0)
+                                except (TypeError, ValueError):
+                                    pass
             except Exception as e:
                 logger.error(f"Query execution error: {str(e)}", exc_info=True)
                 stats['errors'].append(str(e))
+                stats['success'] = False
+                # Later statements often depend on earlier nodes/indexes. Stop
+                # instead of reporting a misleading partially-successful commit.
+                break
 
         return stats
+
+    @staticmethod
+    def validate_indexes_and_constraints(
+        schema: Dict[str, Any],
+        extra_indexes: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        try:
+            from core.graph import query_with_timeout as _query_with_timeout
+        except ModuleNotFoundError:
+            from ..core.graph import query_with_timeout as _query_with_timeout
+
+        existing_indexes = _query_with_timeout(
+            "SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties, state "
+            "RETURN name, type, entityType, labelsOrTypes, properties, state"
+        ) or []
+        existing_constraints = _query_with_timeout(
+            "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties "
+            "RETURN name, type, entityType, labelsOrTypes, properties"
+        ) or []
+
+        existing_signatures = set()
+        for record in existing_indexes:
+            if str(record.get('entityType', '')).upper() != 'NODE':
+                continue
+            labels = tuple(sorted(record.get('labelsOrTypes') or []))
+            properties = tuple(record.get('properties') or [])
+            idx_type = str(record.get('type', 'RANGE')).upper()
+            existing_signatures.add((idx_type, labels, properties))
+
+        required_indexes: List[Dict[str, Any]] = list(schema.get('indexes', []))
+        if extra_indexes:
+            required_indexes.extend(extra_indexes)
+
+        seen_required = set()
+        deduped_required: List[Dict[str, Any]] = []
+        for idx in required_indexes:
+            idx_type = str(idx.get('type', 'range')).upper()
+            label = str(idx.get('label', ''))
+            properties = tuple(str(p) for p in (idx.get('properties') or []) if p)
+            signature = (idx_type, (label,), properties)
+            if not label or not properties or signature in seen_required:
+                continue
+            seen_required.add(signature)
+            deduped_required.append(idx)
+
+        missing_indexes = [
+            idx for idx in deduped_required
+            if (str(idx.get('type', 'range')).upper(), (str(idx.get('label', '')),), tuple(str(p) for p in idx.get('properties', [])))
+            not in existing_signatures
+        ]
+
+        return {
+            'existing_index_count': len(existing_indexes),
+            'existing_constraint_count': len(existing_constraints),
+            'required_index_count': len(deduped_required),
+            'missing_index_count': len(missing_indexes),
+            'missing_indexes': missing_indexes,
+        }
 
 
 # ========== Main Service ==========
@@ -1478,6 +2367,10 @@ class Neo4jImporter:
 # will cause 404 errors on status polls because each worker has its own independent copy.
 # Mitigation: always start with --reload (enforces one worker) or explicitly --workers 1.
 import_tasks: Dict[str, Dict[str, Any]] = {}
+
+
+from backend.depo_platform.ontology_maintenance import ontology_writer
+from backend.depo_platform.import_cleanup import cleared as import_task_cleared
 
 
 class UnifiedDataImportService:
@@ -1491,6 +2384,30 @@ class UnifiedDataImportService:
         """Initialize upload directory"""
         cls.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def _update_commit_state(
+        cls,
+        task_id: str,
+        task: Dict[str, Any],
+        *,
+        progress: Optional[int] = None,
+        message: Optional[str] = None,
+        phase: Optional[str] = None,
+        batch_progress: Optional[Dict[str, Any]] = None,
+        commit_metrics: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if progress is not None:
+            task['progress'] = max(0, min(100, int(progress)))
+        if message is not None:
+            task['message'] = message
+        if phase is not None:
+            task['commit_phase'] = phase
+        if batch_progress is not None:
+            task['batch_progress'] = batch_progress
+        if commit_metrics is not None:
+            task['commit_metrics'] = commit_metrics
+        cls._persist_task(task_id)
 
     @classmethod
     def _task_snapshot_path(cls, task_id: str) -> Path:
@@ -1521,152 +2438,27 @@ class UnifiedDataImportService:
         return persistable
 
     @classmethod
+    @ontology_writer
     def _persist_task(cls, task_id: str) -> None:
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return
         task = import_tasks.get(task_id)
         if not task:
             return
+        from .import_task_persistence import persist_task, TaskPersistenceError
         try:
-            snapshot = cls._build_persistable_task(task)
-            # Add writer metadata to help diagnose race/overwrite issues
-            ver = int(snapshot.get('_persist_version', 0) or 0) + 1
-            snapshot['_persisted_by'] = {
-                'pid': os.getpid(),
-                'time': datetime.now().isoformat(),
-                'version': ver,
-            }
-            snapshot['_persist_version'] = ver
-            # Diagnostic: log which keys are being persisted and parsed_rows size
-            try:
-                keys = list(snapshot.keys())
-                parsed_rows_info = None
-                if 'parsed_rows' in snapshot:
-                    try:
-                        parsed_rows_info = len(snapshot.get('parsed_rows') or [])
-                    except Exception:
-                        parsed_rows_info = 'unlenable'
-                # Surface this at INFO level so it's always visible in dev logs
-                logger.info(f"Persisting snapshot for {task_id} keys={keys} parsed_rows={parsed_rows_info}")
-                # Note: debug copy will be written after path is resolved below
-            except Exception:
-                # swallow logging diagnostics to avoid breaking persist
-                pass
-            path = cls._task_snapshot_path(task_id)
-            # Ensure directory exists before writing
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # Acquire a lightweight per-task lock to avoid overlapping persists
-            lock_path = path.with_suffix('.lock')
-            lock_acquired = False
-            try:
-                attempts = 0
-                while attempts < 10:
-                    try:
-                        # Use exclusive create to acquire lock; will fail if exists
-                        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                        os.close(fd)
-                        lock_acquired = True
-                        break
-                    except FileExistsError:
-                        attempts += 1
-                        time.sleep(0.02)
-                if not lock_acquired:
-                    # If we couldn't acquire lock, proceed but log a warning
-                    logger.warning(f"Task {task_id}: couldn't acquire persist lock after {attempts} attempts")
-                # Proceed with writing while holding the lock (if acquired)
-                
-                # If parsed_rows present, write them to a separate file atomically to
-                # avoid large-list overwrite races and to make persistence robust.
-                parsed_rows = None
-                try:
-                    if 'parsed_rows' in snapshot:
-                        parsed_rows = snapshot.pop('parsed_rows')
-                        parsed_path = path.with_name(path.name + ".parsed_rows.json")
-                        parsed_tmp = parsed_path.with_suffix('.json.tmp')
-                        # Write parsed rows using default=str to tolerate odd values
-                        parsed_tmp.write_text(json.dumps(parsed_rows, ensure_ascii=True, default=str), encoding='utf-8')
-                        try:
-                            logger.info(f"Task {task_id}: about to atomically replace parsed_rows tmp -> {parsed_path.name} (pid={os.getpid()} v={ver})")
-                            parsed_tmp.replace(parsed_path)
-                            logger.info(f"Task {task_id}: parsed_rows replace completed -> {parsed_path.name} (size={parsed_path.stat().st_size} bytes)")
-                        except Exception as e_replace:
-                            logger.exception(f"Task {task_id}: failed atomic replace for parsed_rows: {e_replace}")
-                        # add pointer to snapshot for restore
-                        snapshot['_parsed_rows_file'] = parsed_path.name
-                        # Persist pointer into the in-memory task as well so concurrent
-                        # persists will include the pointer and not overwrite it.
-                        try:
-                            task['_parsed_rows_file'] = parsed_path.name
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.exception('Failed to persist parsed_rows separately')
-
-                # If a SHACL report is present in the snapshot (from OWL generation/validation),
-                # persist it separately to avoid bloating the snapshot and to make reports
-                # available for downstream inspection.
-                try:
-                    if 'shacl_report' in snapshot:
-                        shacl_report = snapshot.pop('shacl_report')
-                        shacl_path = path.with_name(path.name + ".shacl_report.json")
-                        shacl_tmp = shacl_path.with_suffix('.json.tmp')
-                        shacl_tmp.write_text(json.dumps(shacl_report, ensure_ascii=True, default=str), encoding='utf-8')
-                        try:
-                            logger.info(f"Task {task_id}: about to atomically replace shacl tmp -> {shacl_path.name} (pid={os.getpid()} v={ver})")
-                            shacl_tmp.replace(shacl_path)
-                            logger.info(f"Task {task_id}: shacl replace completed -> {shacl_path.name} (size={shacl_path.stat().st_size} bytes)")
-                        except Exception as e_sh:
-                            logger.exception(f"Task {task_id}: failed atomic replace for shacl_report: {e_sh}")
-                        # add pointer to snapshot and in-memory task
-                        snapshot['_shacl_file'] = shacl_path.name
-                        try:
-                            task['_shacl_file'] = shacl_path.name
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.exception('Failed to persist shacl_report separately')
-                # Ensure any shacl_report pointer present in-memory is reflected
-                try:
-                    if '_shacl_file' not in snapshot and task.get('_shacl_file'):
-                        snapshot['_shacl_file'] = task.get('_shacl_file')
-                except Exception:
-                    pass
-
-                # Ensure any parsed_rows pointer present in-memory is reflected
-                # in the snapshot before writing to avoid losing the pointer when
-                # another writer started earlier.
-                try:
-                    if '_parsed_rows_file' not in snapshot and task.get('_parsed_rows_file'):
-                        snapshot['_parsed_rows_file'] = task.get('_parsed_rows_file')
-                except Exception:
-                    pass
-
-                # Also write a per-write debug copy to help diagnose overwrite/race issues
-                try:
-                    debug_path = path.with_name(path.name + f".writer_{os.getpid()}_v{ver}.json")
-                    debug_path.write_text(json.dumps(snapshot, ensure_ascii=True, default=str), encoding='utf-8')
-                except Exception:
-                    logger.debug("Failed to write debug snapshot copy", exc_info=True)
-                tmp_path = path.with_suffix('.json.tmp')
-                # Use default=str to tolerate any non-serializable values (best-effort)
-                tmp_path.write_text(json.dumps(snapshot, ensure_ascii=True, default=str), encoding='utf-8')
-                try:
-                    logger.info(f"Task {task_id}: about to atomically replace snapshot tmp -> {path.name} (pid={os.getpid()} v={ver})")
-                    tmp_path.replace(path)
-                    logger.info(f"Task {task_id}: snapshot replace completed -> {path.name} (size={path.stat().st_size} bytes)")
-                except Exception as e_replace:
-                    logger.exception(f"Task {task_id}: failed atomic replace for snapshot: {e_replace}")
-            finally:
-                try:
-                    if lock_acquired and lock_path.exists():
-                        lock_path.unlink()
-                except Exception:
-                    logger.debug("Failed to remove persist lock", exc_info=True)
-            
+            persist_task(cls._task_snapshot_path(task_id), task, cls._build_persistable_task)
         except Exception as exc:
-            logger.exception(f"Task {task_id}: failed to persist snapshot: {exc}")
+            task['_persistence_error'] = 'Import status could not be saved. Check task-storage permissions and file locks; refresh status before retrying this operation.'
+            logger.exception('Task %s: snapshot persistence failed; previous snapshot retained', task_id)
+            raise TaskPersistenceError(task['_persistence_error']) from exc
 
     @classmethod
     def _restore_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Restore task snapshot when current worker does not have in-memory state."""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            import_tasks.pop(task_id, None)
+            return None
         if task_id in import_tasks:
             return import_tasks[task_id]
 
@@ -1699,6 +2491,7 @@ class UnifiedDataImportService:
             (tid, t) for tid, t in import_tasks.items()
             if t.get('status') in (
                 ImportStatus.COMPLETED.value,
+                ImportStatus.READY_FOR_COMMIT.value,
                 ImportStatus.FAILED.value,
                 ImportStatus.CANCELLED.value,
             )
@@ -1710,15 +2503,72 @@ class UnifiedDataImportService:
             import_tasks.pop(tid, None)
 
     @classmethod
-    async def start_import(cls, file_content: bytes, filename: str, ontology_mapping: str = '') -> str:
+    def list_tasks(cls) -> List[Dict[str, Any]]:
+        """List persisted unified import tasks after a worker restart.
+
+        The unified importer persists status snapshots so preview, commit,
+        and Semantic Bridge can continue after a browser refresh or backend
+        restart. Listing must read those snapshots as well as the in-memory
+        store; otherwise the UI renders an empty instance selector.
+        """
+        tasks_by_id: Dict[str, Dict[str, Any]] = {}
+        for task in list(import_tasks.values()):
+            if isinstance(task, dict) and task.get('task_id') and not import_task_cleared(str(task['task_id']), cls.TASK_STORE_DIR):
+                tasks_by_id[str(task['task_id'])] = task
+
+        cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
+        for path in cls.TASK_STORE_DIR.glob('*.json'):
+            # Only primary task snapshots belong in the registry. Sidecars
+            # include both legacy names and content-addressed hash names.
+            if '.parsed_rows.' in path.name or '.shacl_report.' in path.name:
+                continue
+            try:
+                task = json.loads(path.read_text(encoding='utf-8'))
+                if not isinstance(task, dict):
+                    logger.warning('Skipping non-object import task snapshot %s', path.name)
+                    continue
+                task_id = str(task.get('task_id') or '')
+                if task_id and path.name == f'{task_id}.json' and not import_task_cleared(task_id, cls.TASK_STORE_DIR):
+                    tasks_by_id[task_id] = task
+            except (OSError, ValueError, TypeError) as exc:
+                logger.warning("Skipping unreadable import task snapshot %s: %s", path, exc)
+
+        fields = (
+            'task_id', 'filename', 'file_type', 'current_stage', 'progress',
+            'message', 'status', 'committing', 'error', 'stats', 'result',
+            'commit_phase', 'batch_progress', 'commit_metrics',
+            'workflow_id', 'artifact_manifest', 'started_at', 'completed_at',
+            'preview_completed_at',
+        )
+        result = [{key: task.get(key) for key in fields} for task in tasks_by_id.values()]
+        result.sort(key=lambda task: str(task.get('started_at') or ''), reverse=True)
+        return result
+
+    @classmethod
+    @ontology_writer
+    async def start_import(
+        cls,
+        file_content: bytes,
+        filename: str,
+        ontology_mapping: str = '',
+        parse_options: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         Start an import task
         Returns task_id
         """
+        parse_options = parse_options or {}
+
         # Validate file type
         file_type = FileFormatDetector.detect(filename)
         if not file_type:
             raise ValueError(f"Unsupported file type. Supported: {', '.join(FileFormatDetector.get_supported_formats())}")
+        if file_type == FileType.XML:
+            xml_family = detect_xml_family(file_content)
+            if xml_family == 'archimate':
+                file_type = FileType.ARCHIMATE
+            elif xml_family == 'reqif':
+                file_type = FileType.REQIF
 
         # Create task
         task_id = str(uuid.uuid4())
@@ -1729,12 +2579,15 @@ class UnifiedDataImportService:
             FileType.EXPRESS,
             FileType.XMI,
             FileType.XSD,
+            FileType.REQIF,
         }
         # Normalize mapping and seed task-level ontology metadata so downstream
         # stages (preview/commit) and Neo4j writes can rely on a stable prefix/name.
         mapping_value = (ontology_mapping or '').strip()
         normalized_mapping = mapping_value if mapping_value else 'auto'
         seeded_stats = {'ontology_mapping': normalized_mapping}
+        if parse_options.get('metadata_exclusion_tags'):
+            seeded_stats['metadata_exclusion_tags'] = list(parse_options['metadata_exclusion_tags'])
         # If a concrete mapping was provided (not 'auto'), expose it as
         # ontology_prefix and ontology_name so later commit logic can pick it up.
         if normalized_mapping != 'auto':
@@ -1754,9 +2607,15 @@ class UnifiedDataImportService:
             'stats': seeded_stats,
             'started_at': datetime.now().isoformat(),
             'completed_at': None,
+            'preview_completed_at': None,
             'result': None,
-            'workflow_id': 'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY} else 'instance.import',
+            'workflow_id': (
+                'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY}
+                else 'architecture.archimate' if file_type == FileType.ARCHIMATE
+                else 'instance.import'
+            ),
             'artifact_manifest': None,
+            'parse_options': parse_options,
             # Keep raw bytes only where downstream OWL generation may need them.
             'file_content': file_content if keep_file_content else None,
         }
@@ -1775,7 +2634,11 @@ class UnifiedDataImportService:
             filename,
             file_content,
             "source_file",
-            {"file_type": file_type.value, "ontology_mapping": normalized_mapping},
+            {
+                "file_type": file_type.value,
+                "ontology_mapping": normalized_mapping,
+                "parse_options": parse_options,
+            },
         )
         # Register task immediately so the frontend can start polling
         import_tasks[task_id] = task_info
@@ -1791,6 +2654,7 @@ class UnifiedDataImportService:
         return task_id
 
     @classmethod
+    @ontology_writer
     def _parse_and_preview(
         cls,
         task_id: str,
@@ -1809,11 +2673,21 @@ class UnifiedDataImportService:
             task_info['message'] = f'Parsing {file_type.value.upper()} file...'
             cls._persist_task(task_id)
 
-            rows, stats = FileParser.parse(file_content, file_type)
+            rows, stats = FileParser.parse(file_content, file_type, task_info.get('parse_options'))
+            source_filename = task_info.get('filename', '') or ''
+            if source_filename:
+                for row in rows:
+                    if isinstance(row, dict):
+                        row.setdefault('source_filename', source_filename)
 
             # Extract relationship objects before merging stats (not JSON-serializable in bulk)
             xmi_rels = stats.pop('_xmi_relationships', [])
             step_ref_map = stats.pop('_step_ref_map', {})
+            source_identity_records = stats.pop('_source_identity_records', [])
+            if source_identity_records:
+                WorkflowArtifactService.write_json(task_id, 'source', 'source-identities.json',
+                    {'application_references': source_identity_records}, 'source_identity')
+                cls._refresh_artifact_manifest(task_id, task_info)
             if xmi_rels:
                 task_info['_xmi_relationships'] = xmi_rels
             if step_ref_map:
@@ -1821,11 +2695,8 @@ class UnifiedDataImportService:
 
             task_info['parsed_rows'] = rows
             # Persist parsed rows immediately to survive worker/process restarts
-            try:
-                cls._persist_task(task_id)
-                logger.info(f"Task {task_id}: persisted parsed_rows ({len(rows)} rows)")
-            except Exception:
-                logger.exception(f"Task {task_id}: failed to persist parsed_rows")
+            cls._persist_task(task_id)
+            logger.debug("Task %s: persisted parsed_rows (%s rows)", task_id, len(rows))
             # Merge stats — preserve ontology_mapping set during init
             task_info['stats'] = {**task_info.get('stats', {}), **stats}
 
@@ -1939,6 +2810,9 @@ class UnifiedDataImportService:
                     "ontology_ttl",
                     task_info.get('schema_metadata') or {},
                 )
+            # Parsing is complete, but Neo4j has not been changed yet.
+            task_info['status'] = ImportStatus.READY_FOR_COMMIT.value
+            task_info['preview_completed_at'] = datetime.now().isoformat()
             cls._persist_task(task_id)
             
             logger.info(f"Task {task_id} ready for preview: {len(rows)} rows")
@@ -1954,14 +2828,27 @@ class UnifiedDataImportService:
             # Do NOT re-raise — frontend polls /status to read the real error
 
     @classmethod
+    def _read_status_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
+        """Read atomic persisted state without replacing an active writer object."""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return None
+        try:
+            task = json.loads(cls._task_snapshot_path(task_id).read_text(encoding='utf-8'))
+            if isinstance(task, dict) and task.get('task_id') == task_id:
+                warning = (import_tasks.get(task_id) or {}).get('_persistence_error')
+                if warning:
+                    task['persistence_warning'] = warning
+                return task
+        except (OSError, ValueError, TypeError):
+            pass
+        return import_tasks.get(task_id)
+
+    @classmethod
     def get_status(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Get task status"""
-        if task_id not in import_tasks:
-            restored = cls._restore_task(task_id)
-            if not restored:
-                return None
-        
-        task = import_tasks[task_id]
+        task = cls._read_status_task(task_id)
+        if not task:
+            return None
         artifact_manifest = task.get('artifact_manifest')
         if not artifact_manifest:
             try:
@@ -1977,19 +2864,28 @@ class UnifiedDataImportService:
             'progress': task['progress'],
             'message': task['message'],
             'status': task['status'],
+            'committing': task.get('committing', False),
             'error': task.get('error'),
+            'persistence_warning': task.get('persistence_warning') or task.get('_persistence_error'),
             'stats': task.get('stats'),
+            'result': task.get('result'),
+            'commit_phase': task.get('commit_phase'),
+            'batch_progress': task.get('batch_progress'),
+            'commit_metrics': task.get('commit_metrics'),
             'schema_metadata': task.get('schema_metadata'),
             'owl_ttl': task.get('owl_ttl'),  # Include OWL if available
             'workflow_id': task.get('workflow_id'),
             'artifact_manifest': artifact_manifest,
             'started_at': task['started_at'],
             'completed_at': task.get('completed_at'),
+            'preview_completed_at': task.get('preview_completed_at'),
         }
 
     @classmethod
     def get_preview(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Get preview data"""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return None
         if task_id not in import_tasks:
             restored = cls._restore_task(task_id)
             if not restored:
@@ -2003,62 +2899,79 @@ class UnifiedDataImportService:
         return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
 
     @classmethod
-    def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, Dict[str, Any]]:
-        """Return normalized AP242/selected ontology class names keyed for STEP linking."""
-        prefix = str(ontology_prefix or '').lower()
-        preferred_prefixes = [prefix]
-        if prefix in ('step', 'step_ap242_mbd3d', 'ap242_mbd3d') or 'ap242' in prefix:
-            preferred_prefixes.extend(['ap242', 'step_ap242_mbd3d'])
-        preferred_prefixes = sorted({p for p in preferred_prefixes if p})
-
-        query = """
-        MATCH (c:OntologyClass)
-        WHERE toLower(coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '')) IN $prefixes
-           OR ($ap242 = true AND (
-                toLower(coalesce(c.prefix, '')) CONTAINS 'ap242'
-                OR toLower(coalesce(c.ontology_prefix, '')) CONTAINS 'ap242'
-                OR toLower(coalesce(c.ontology_id, '')) CONTAINS 'ap242'
-                OR toLower(coalesce(c.namespace, '')) CONTAINS '10303'
-           ))
-        RETURN elementId(c) AS element_id,
-               coalesce(c.name, c.label, c.id, c.uri) AS name,
-               coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '') AS prefix
-        """
-        try:
-            try:
-                from core.graph import query_with_timeout as _query_with_timeout
-            except ModuleNotFoundError:
-                from ..core.graph import query_with_timeout as _query_with_timeout
-            records = _query_with_timeout(
-                query,
-                {'prefixes': preferred_prefixes, 'ap242': any('ap242' in p for p in preferred_prefixes)},
-            ) or []
-        except Exception as exc:
-            logger.warning(f"Ontology class lookup skipped for prefix '{ontology_prefix}': {exc}")
-            return {}
-
-        lookup: Dict[str, Dict[str, Any]] = {}
-        for record in records:
-            name = record.get('name')
-            element_id = record.get('element_id')
-            if not name or not element_id:
+    def _collect_ontology_link_candidates(cls, row: Dict[str, Any]) -> List[str]:
+        candidates: List[str] = []
+        for key in (
+            'entity_type',
+            'element_type',
+            'type',
+            'xsi:type',
+            'class',
+            'category',
+            'part_type',
+        ):
+            value = row.get(key)
+            if not value:
                 continue
-            key = cls._ontology_match_key(name)
-            if key and key not in lookup:
-                lookup[key] = {
-                    'element_id': element_id,
-                    'class_name': str(name),
-                    'prefix': record.get('prefix') or ontology_prefix,
-                }
+            for variant in (str(value), str(value).split(':')[-1], str(value).split('#')[-1]):
+                normalized = cls._ontology_match_key(variant)
+                if normalized:
+                    candidates.append(normalized)
+
+        if not candidates:
+            value = row.get('name')
+            if value:
+                normalized = cls._ontology_match_key(value)
+                if normalized:
+                    candidates.append(normalized)
+
+        unique_candidates: List[str] = []
+        seen = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            unique_candidates.append(candidate)
+        return unique_candidates
+
+    @classmethod
+    def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Read class targets through the Graph data service; never query its DB."""
+        from backend.depo_platform.graph_data_client import graph_data_client
+        records = graph_data_client.mapping_terms(ontology_prefix)
+        lookup = {}
+        for record in records:
+            if record.get('kind') != 'Class' or not record.get('element_id') or not record.get('name'):
+                continue
+            name = str(record['name'])
+            uri = str(record.get('iri') or '')
+            for alias in {name, uri.rsplit('#', 1)[-1].rsplit('/', 1)[-1]}:
+                key = cls._ontology_match_key(alias)
+                if key:
+                    lookup.setdefault(key, []).append({
+                        'element_id': record['element_id'], 'graph_element_id': record['element_id'],
+                        'graph_linkable': True, 'class_name': name, 'prefix': ontology_prefix,
+                        'target_ontology_type': 'Class', 'iri': uri, 'target_ontology_iri': uri,
+                        'normalized': key,
+                        'tokens': [token for token in re.split(r'[^a-zA-Z0-9]+', name.lower()) if len(token) > 1],
+                        'is_generic': name.strip().lower() in {'part', 'class', 'entity', 'item', 'object', 'resource', 'thing', 'type', 'value'},
+                    })
         return lookup
 
     @classmethod
+    @ontology_writer
     def _commit_sync(cls, task_id: str, task: dict, schema: dict) -> Dict[str, Any]:
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            raise ValueError('Import workflow was cleared by an administrator')
         """
         Synchronous Neo4j write body — called via asyncio.to_thread so it never
         blocks the FastAPI event loop.
         """
+        from .import_completeness import require_complete_archimate
+        require_complete_archimate(task)
         import re as _re
+        from .import_commit_integrity import scoped_merge_keys
+        commit_started_at = time.perf_counter()
         rows = task.get('parsed_rows', [])
 
         # 🔒 DATA LOSS PREVENTION: Validate data integrity before commit
@@ -2071,8 +2984,27 @@ class UnifiedDataImportService:
         if dup_count > 0:
             logger.warning(f"Found {dup_count} duplicate entries. These will be merged. IDs: {dup_ids[:5]}...")
 
-        task['message'] = 'Writing to Neo4j...'
-        task['progress'] = 85
+        task['commit_phase'] = 'prepare'
+        task['batch_progress'] = None
+        task['commit_metrics'] = {
+            'rows_total': len(rows),
+            'node_batch_size': IMPORT_WRITE_BATCH_SIZE,
+            'link_batch_size': IMPORT_LINK_BATCH_SIZE,
+            'nodes_written': 0,
+            'relationships_written': 0,
+            'relationships_skipped': 0,
+            'instance_links_created': 0,
+            'ontology_classes_matched': 0,
+            'phase': 'prepare',
+        }
+        cls._update_commit_state(
+            task_id,
+            task,
+            progress=82,
+            message='Preparing Neo4j batches...',
+            phase='prepare',
+            commit_metrics=task['commit_metrics'],
+        )
 
         # Derive ontology prefix/name from parsed stats (namespace-based)
         _stats = task.get('stats', {})
@@ -2084,19 +3016,102 @@ class UnifiedDataImportService:
             f"ontology_name='{_ontology_name}', namespace='{_namespace_uri}'"
         )
         # Stamp namespace-derived metadata onto every row before writing
+        from .import_identity import stamp_instance_identity
         for _row in rows:
-            _row.setdefault('import_id', task_id)
+            if _row.get('import_row_key'):
+                stamp_instance_identity(_row, task_id)
+            _row['import_id'] = task_id
             _row.setdefault('ontology_prefix', _ontology_prefix)
             _row.setdefault('source_ontology', _namespace_uri or _ontology_name)
+            _row.setdefault('source_filename', task.get('filename') or '')
 
         result = {'queries_executed': 0, 'nodes_created': 0,
                   'relationships_created': 0, 'instance_links_created': 0,
                   'ontology_classes_matched': 0, 'errors': []}
+        result['warnings'] = []
+        result['classes_created'] = len([nd for nd in schema.get('nodes', []) if nd.get('label')])
+        result['individuals_created'] = len(rows)
+        result['unresolved_references'] = int((_stats.get('unresolved_references') or 0))
+        result['duplicate_ids'] = int((_stats.get('duplicate_ids') or 0))
+        result['relationships_skipped'] = 0
+        result['skipped_node_rows'] = 0
+
+        if task.get('file_type') == 'plmxml' and result['duplicate_ids'] > 0:
+            raise ValueError(
+                "PLMXML import contains duplicate source identifiers. "
+                "Commit is blocked to prevent ambiguous node merges and relationship resolution."
+            )
+
+        def _sync_metrics(
+            phase: str,
+            progress: int,
+            message: str,
+            batch_progress: Optional[Dict[str, Any]] = None,
+        ) -> None:
+            current_progress = int(task.get('progress') or 0)
+            stable_progress = max(current_progress, int(progress))
+            task['commit_metrics'] = {
+                **(task.get('commit_metrics') or {}),
+                'phase': phase,
+                'nodes_written': result['nodes_created'],
+                'relationships_written': result['relationships_created'],
+                'relationships_skipped': result['relationships_skipped'],
+                'instance_links_created': result['instance_links_created'],
+                'ontology_classes_matched': result['ontology_classes_matched'],
+            }
+            cls._update_commit_state(
+                task_id,
+                task,
+                progress=stable_progress,
+                message=message,
+                phase=phase,
+                batch_progress=batch_progress,
+                commit_metrics=task['commit_metrics'],
+            )
+
+        merge_support_indexes: List[Dict[str, Any]] = []
+        seen_merge_signatures = set()
+        for node_def in schema.get('nodes', []):
+            label = node_def.get('label')
+            merge_keys = scoped_merge_keys(node_def.get('mergeKeys') or [])
+            if not label or not merge_keys:
+                continue
+            signature = (str(label), tuple(merge_keys))
+            if signature in seen_merge_signatures:
+                continue
+            seen_merge_signatures.add(signature)
+            merge_support_indexes.append({
+                'type': 'range',
+                'name': f"idx_merge_{str(label).replace(':', '_')}_{'_'.join(merge_keys)}",
+                'label': label,
+                'properties': merge_keys,
+            })
+
+        _sync_metrics('prepare', 83, 'Validating Neo4j indexes and constraints...')
+        schema_validation = Neo4jImporter.validate_indexes_and_constraints(schema, merge_support_indexes)
+        result['schema_validation'] = schema_validation
+        if schema_validation.get('missing_indexes'):
+            missing_index_queries = DataTransformer.create_indexes(schema_validation['missing_indexes'])
+            if missing_index_queries:
+                logger.info(
+                    "Task %s: creating %s missing Neo4j indexes before ingest",
+                    task_id,
+                    len(schema_validation['missing_indexes']),
+                )
+                idx_result = Neo4jImporter.execute_cypher(missing_index_queries)
+                result['queries_executed'] += idx_result.get('queries_executed', 0)
+                result['errors'].extend(idx_result.get('errors', []))
+                if idx_result.get('errors'):
+                    raise RuntimeError('Import index preparation failed; no entity batches were started')
+                result['schema_validation']['created_index_count'] = len(schema_validation['missing_indexes'])
+        else:
+            result['schema_validation']['created_index_count'] = 0
 
         # ── Node queries ────────────────────────────────────────────────────
+        _sync_metrics('nodes', 84, 'Writing entity batches to Neo4j...')
         for node_def in schema.get('nodes', []):
-            label = node_def.get('label', 'DataNode')
-            merge_keys = node_def.get('mergeKeys', [])
+            label = node_def.get('label', 'ImportedRecord')
+            merge_keys = scoped_merge_keys(node_def.get('mergeKeys') or [])
             filter_key = node_def.get('_filter_key')
             filter_val = node_def.get('_filter_val')
             if filter_key and filter_val:
@@ -2104,53 +3119,171 @@ class UnifiedDataImportService:
                              if str(r.get(filter_key, '')).replace(' ', '_').replace(':', '_') == filter_val]
             else:
                 node_rows = rows
+            original_node_row_count = len(node_rows)
             # Skip rows missing any required merge key (avoids Cypher MERGE on null)
             if merge_keys:
                 node_rows = [r for r in node_rows if all(r.get(k) is not None for k in merge_keys)]
+            skipped_for_label = original_node_row_count - len(node_rows)
+            if skipped_for_label > 0:
+                result['skipped_node_rows'] += skipped_for_label
+                warning = (
+                    f"Skipped {skipped_for_label} '{label}' rows because required merge keys "
+                    f"{merge_keys} were missing."
+                )
+                result['warnings'].append(warning)
+                logger.warning("Task %s: %s", task_id, warning)
             if not node_rows:
                 continue
             queries, _ = DataTransformer.transform_to_nodes(node_rows, label, merge_keys)
-            node_result = Neo4jImporter.execute_cypher(queries, node_rows)
+            node_batch_size = max(100, IMPORT_WRITE_BATCH_SIZE)
+            node_total_batches = max(1, (len(node_rows) + node_batch_size - 1) // node_batch_size)
+            node_result = Neo4jImporter.execute_cypher(
+                queries,
+                node_rows,
+                batch_size=node_batch_size,
+                batch_callback=lambda batch, _label=label, _total=node_total_batches, _rows_total=len(node_rows): _sync_metrics(
+                    'nodes',
+                    84 + int(8 * (batch.get('rows_processed', 0) / max(1, _rows_total))),
+                    f"Writing {(_label or 'entity')} batch {batch.get('batch_index', 1)} of {_total}...",
+                    {
+                        'scope': _label or 'entity',
+                        'batch_index': batch.get('batch_index', 1),
+                        'total_batches': _total,
+                        'rows_processed': batch.get('rows_processed', 0),
+                        'rows_total': _rows_total,
+                    },
+                ),
+            )
             result['queries_executed'] += node_result.get('queries_executed', 0)
-            result['nodes_created'] += len(node_rows)
             result['errors'].extend(node_result.get('errors', []))
+            if node_result.get('errors'):
+                raise RuntimeError(f"Entity batch failed for {label}; partial graph may exist: {node_result['errors'][0]}")
+            result['nodes_created'] += len(node_rows)
 
-        # ── Index queries ────────────────────────────────────────────────────
-        index_queries = DataTransformer.create_indexes(schema.get('indexes', []))
-        if index_queries:
-            idx_result = Neo4jImporter.execute_cypher(index_queries)
-            result['queries_executed'] += idx_result.get('queries_executed', 0)
-            result['errors'].extend(idx_result.get('errors', []))
+        # ── XMI relationship edges ───────────────────────────────────────────
+        # ReqIF relation objects are edge records, not business-object nodes.
+        # Resolve their original identifiers to the unique imported node IDs
+        # and create traceability/containment edges after node writes.
+        reqif_rows = [r for r in rows if str(r.get('source_format') or '').lower() == 'reqif']
+        if reqif_rows:
+            reqif_id_map = {
+                str(r.get('original_id') or r.get('id')): str(r.get('id'))
+                for r in reqif_rows
+                if r.get('id')
+            }
+            reqif_edge_groups: Dict[str, List[Dict[str, Any]]] = {}
+            for row in reqif_rows:
+                row_type = str(row.get('row_type') or '').lower()
+                if row_type == 'relation':
+                    source_id = reqif_id_map.get(str(row.get('source_ref') or ''))
+                    target_id = reqif_id_map.get(str(row.get('target_ref') or ''))
+                    if source_id and target_id:
+                        reqif_edge_groups.setdefault('REQIF_TRACE', []).append({
+                            'from_id': source_id,
+                            'to_id': target_id,
+                            'properties': {
+                                'reqif_relation_id': row.get('id'),
+                                'reqif_type_ref': row.get('type_ref') or '',
+                                'name': row.get('name') or row.get('title') or 'ReqIF trace relation',
+                                'source_format': 'reqif',
+                            },
+                        })
+                elif row_type == 'specification':
+                    specification_id = reqif_id_map.get(str(row.get('original_id') or row.get('id')))
+                    for item in row.get('hierarchy') or []:
+                        parent_id = reqif_id_map.get(str(item['source']))
+                        requirement_id = reqif_id_map.get(str(item['target']))
+                        if parent_id and requirement_id:
+                            reqif_edge_groups.setdefault('REQIF_CONTAINS', []).append({
+                                'from_id': parent_id,
+                                'to_id': requirement_id,
+                                'properties': {'source_format': 'reqif', 'hierarchy_id': item['hierarchy_id'], 'ordinal': item['ordinal']},
+                            })
+
+            if reqif_edge_groups:
+                _sync_metrics('relationships', 91, 'Creating ReqIF requirement trace links...')
+                for rel_type, rel_rows in reqif_edge_groups.items():
+                    rel_cypher = f"""
+                    UNWIND $rows AS row
+                    MATCH (a {{id: row.from_id, import_id: row.import_id}})
+                    MATCH (b {{id: row.to_id, import_id: row.import_id}})
+                    MERGE (a)-[rel:`{rel_type}` {{reqif_identity: coalesce(row.properties.hierarchy_id, row.properties.reqif_relation_id, '')}}]->(b)
+                    SET rel += coalesce(row.properties, {{}})
+                    RETURN count(*) AS matched_rows
+                    """
+                    scoped = [{**edge, 'import_id': task_id} for edge in rel_rows]
+                    rel_result = Neo4jImporter.execute_cypher(
+                        [rel_cypher],
+                        scoped,
+                        batch_size=max(100, IMPORT_LINK_BATCH_SIZE),
+                    )
+                    result['queries_executed'] += rel_result.get('queries_executed', 0)
+                    result['relationships_created'] += rel_result.get('matched_rows', 0)
 
         # ── XMI relationship edges ───────────────────────────────────────────
         xmi_rels = task.get('_xmi_relationships', [])
         schema_labels = [nd.get('label', '') for nd in schema.get('nodes', []) if nd.get('label')]
         _label_hint = f":`{schema_labels[0]}`" if len(schema_labels) == 1 else ''
+        row_id_set = {str(r.get('id')) for r in rows if r.get('id') is not None}
         if xmi_rels:
-            rel_by_type: Dict[str, List[Dict[str, str]]] = {}
+            id_labels = {}
+            for definition in schema.get('nodes', []):
+                label = definition.get('label')
+                key, value = definition.get('_filter_key'), definition.get('_filter_val')
+                for row in rows:
+                    if label and row.get('id') is not None and (not key or not value or str(row.get(key, '')).replace(' ', '_').replace(':', '_') == value):
+                        id_labels[str(row['id'])] = ':' + '`' + label.replace('`', '``') + '`'
+            rel_by_type: Dict[str, List[Dict[str, Any]]] = {}
             for rel in xmi_rels:
-                from_id = (rel.get('from_props') or {}).get('id', '')
-                to_id = (rel.get('to_props') or {}).get('id', '')
+                from_id = str((rel.get('from_props') or {}).get('id', '') or '')
+                to_id = str((rel.get('to_props') or {}).get('id', '') or '')
                 raw_type = rel.get('type') or 'RELATED_TO'
                 safe_type = _re.sub(r'[^A-Z0-9_]', '_', raw_type.upper()).strip('_') or 'RELATED_TO'
                 if from_id and to_id:
-                    rel_by_type.setdefault(safe_type, []).append({'from_id': from_id, 'to_id': to_id})
-            for rel_type, rel_rows in rel_by_type.items():
+                    if from_id in row_id_set and to_id in row_id_set:
+                        rel_by_type.setdefault((safe_type, id_labels.get(from_id, _label_hint), id_labels.get(to_id, _label_hint)), []).append({
+                            'from_id': from_id,
+                            'to_id': to_id,
+                            'properties': rel.get('properties') or {},
+                        })
+                    else:
+                        result['relationships_skipped'] += 1
+            _sync_metrics('relationships', 92, 'Creating relationship batches...')
+            for (rel_type, from_label, to_label), rel_rows in rel_by_type.items():
                 rel_cypher = f"""
                 UNWIND $rows AS row
-                MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
-                MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
-                MERGE (a)-[:`{rel_type}`]->(b)
+                MATCH (a{from_label} {{id: row.from_id, import_id: row.import_id}})
+                MATCH (b{to_label} {{id: row.to_id, import_id: row.import_id}})
+                MERGE (a)-[rel:`{rel_type}`]->(b)
+                SET rel += coalesce(row.properties, {{}})
+                RETURN count(*) AS matched_rows
                 """
                 try:
                     rel_rows_scoped = [{**rr, 'import_id': task_id} for rr in rel_rows]
-                    rel_result = Neo4jImporter.execute_cypher([rel_cypher], rel_rows_scoped)
-                    if rel_result.get('errors'):
-                        logger.warning(f"Relationship write errors for type {rel_type}: {rel_result['errors']}")
-                    else:
-                        result['relationships_created'] += len(rel_rows)
+                    rel_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                    rel_total_batches = max(1, (len(rel_rows_scoped) + rel_batch_size - 1) // rel_batch_size)
+                    rel_result = Neo4jImporter.execute_cypher(
+                        [rel_cypher],
+                        rel_rows_scoped,
+                        batch_size=rel_batch_size,
+                        batch_callback=lambda batch, _type=rel_type, _total=rel_total_batches, _rows_total=len(rel_rows_scoped): _sync_metrics(
+                            'relationships',
+                            92 + int(3 * (batch.get('rows_processed', 0) / max(1, _rows_total))),
+                            f"Creating {_type} batch {batch.get('batch_index', 1)} of {_total}...",
+                            {
+                                'scope': _type,
+                                'batch_index': batch.get('batch_index', 1),
+                                'total_batches': _total,
+                                'rows_processed': batch.get('rows_processed', 0),
+                                'rows_total': _rows_total,
+                            },
+                        ),
+                    )
+                    from .import_commit_integrity import require_relationship_batch
+                    require_relationship_batch(rel_result, len(rel_rows), rel_type)
+                    result['relationships_created'] += rel_result['matched_rows']
                 except Exception as rel_err:
-                    logger.warning(f"Relationship write skipped for type {rel_type}: {rel_err}")
+                    raise RuntimeError(f"Relationship write did not complete for {rel_type}: {rel_err}") from rel_err
 
         # ── STEP reference edges ────────────────────────────────────────────
         step_ref_map = task.get('_step_ref_map', {})
@@ -2165,14 +3298,36 @@ class UnifiedDataImportService:
             UNWIND $rows AS row
             MATCH (a{_label_hint} {{import_row_key: row.from_key, import_id: row.import_id}})
             MATCH (b{_label_hint} {{import_row_key: row.to_id, import_id: row.import_id}})
-            MERGE (a)-[:REFERENCES {target_source_id: row.to_id}]->(b)
+            MERGE (a)-[:REFERENCES {{target_source_id: row.to_id}}]->(b)
+            RETURN count(*) AS matched_rows
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in step_ref_rows]
-                step_rel_result = Neo4jImporter.execute_cypher([step_rel_cypher], ref_rows_scoped)
+                ref_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                ref_total_batches = max(1, (len(ref_rows_scoped) + ref_batch_size - 1) // ref_batch_size)
+                step_rel_result = Neo4jImporter.execute_cypher(
+                    [step_rel_cypher],
+                    ref_rows_scoped,
+                    batch_size=ref_batch_size,
+                    batch_callback=lambda batch, _total=ref_total_batches, _rows_total=len(ref_rows_scoped): _sync_metrics(
+                        'relationships',
+                        94,
+                        f"Linking STEP references batch {batch.get('batch_index', 1)} of {_total}...",
+                        {
+                            'scope': 'STEP references',
+                            'batch_index': batch.get('batch_index', 1),
+                            'total_batches': _total,
+                            'rows_processed': batch.get('rows_processed', 0),
+                            'rows_total': _rows_total,
+                        },
+                    ),
+                )
                 if not step_rel_result.get('errors'):
-                    result['relationships_created'] += len(step_ref_rows)
-                    logger.info(f"Task {task_id}: STEP — wrote {len(step_ref_rows)} row-key REFERENCES edges")
+                    matched_rows = int(step_rel_result.get('matched_rows') or 0)
+                    skipped_rows = max(0, len(step_ref_rows) - matched_rows)
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += skipped_rows
+                    logger.info(f"Task {task_id}: STEP — wrote {matched_rows} row-key REFERENCES edges")
                 else:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
             except Exception as step_rel_err:
@@ -2188,74 +3343,90 @@ class UnifiedDataImportService:
             MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
             MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
             MERGE (a)-[:REFERENCES]->(b)
+            RETURN count(*) AS matched_rows
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in ref_rows]
-                step_rel_result = Neo4jImporter.execute_cypher([step_rel_cypher], ref_rows_scoped)
+                ref_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                ref_total_batches = max(1, (len(ref_rows_scoped) + ref_batch_size - 1) // ref_batch_size)
+                step_rel_result = Neo4jImporter.execute_cypher(
+                    [step_rel_cypher],
+                    ref_rows_scoped,
+                    batch_size=ref_batch_size,
+                    batch_callback=lambda batch, _total=ref_total_batches, _rows_total=len(ref_rows_scoped): _sync_metrics(
+                        'relationships',
+                        94,
+                        f"Linking STEP references batch {batch.get('batch_index', 1)} of {_total}...",
+                        {
+                            'scope': 'STEP references',
+                            'batch_index': batch.get('batch_index', 1),
+                            'total_batches': _total,
+                            'rows_processed': batch.get('rows_processed', 0),
+                            'rows_total': _rows_total,
+                        },
+                    ),
+                )
                 if not step_rel_result.get('errors'):
-                    result['relationships_created'] += len(ref_rows)
-                    logger.info(f"Task {task_id}: STEP — wrote {len(ref_rows)} REFERENCES edges")
+                    matched_rows = int(step_rel_result.get('matched_rows') or 0)
+                    skipped_rows = max(0, len(ref_rows) - matched_rows)
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += skipped_rows
+                    logger.info(f"Task {task_id}: STEP — wrote {matched_rows} REFERENCES edges")
                 else:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
             except Exception as step_rel_err:
                 logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
 
-        # ── STEP/STPX semantic links to ontology classes ────────────────────
-        if task.get('file_type') == FileType.STEP.value:
-            class_lookup = cls._load_ontology_class_lookup(_ontology_prefix)
-            link_rows: List[Dict[str, Any]] = []
-            seen_link_keys = set()
-            for row in rows:
-                entity_type = row.get('entity_type') or row.get('type') or row.get('name')
-                row_key = row.get('import_row_key') or row.get('id')
-                match = class_lookup.get(cls._ontology_match_key(entity_type))
-                if not row_key or not match:
-                    continue
-                unique_key = (row_key, match['element_id'])
-                if unique_key in seen_link_keys:
-                    continue
-                seen_link_keys.add(unique_key)
-                link_rows.append({
-                    'import_row_key': row_key,
-                    'import_id': task_id,
-                    'class_element_id': match['element_id'],
-                    'class_name': match['class_name'],
-                    'mapping': _ontology_prefix,
-                })
+        # ── STPX parent-child hierarchy edges ──────────────────────────────
+        parent_rows = [
+            {'child_id': r.get('id'), 'parent_id': r.get('parent_step_id')}
+            for r in rows
+            if r.get('id') and r.get('parent_step_id')
+        ]
+        if parent_rows:
+            parent_cypher = f"""
+            UNWIND $rows AS row
+            MATCH (child{_label_hint} {{id: row.child_id, import_id: row.import_id}})
+            MATCH (parent{_label_hint} {{id: row.parent_id, import_id: row.import_id}})
+            MERGE (parent)-[:PARENT_OF]->(child)
+            RETURN count(*) AS matched_rows
+            """
+            try:
+                parent_rows_scoped = [{**rr, 'import_id': task_id} for rr in parent_rows]
+                parent_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                parent_total_batches = max(1, (len(parent_rows_scoped) + parent_batch_size - 1) // parent_batch_size)
+                parent_result = Neo4jImporter.execute_cypher(
+                    [parent_cypher],
+                    parent_rows_scoped,
+                    batch_size=parent_batch_size,
+                    batch_callback=lambda batch, _total=parent_total_batches, _rows_total=len(parent_rows_scoped): _sync_metrics(
+                        'relationships',
+                        95,
+                        f"Linking STPX parent hierarchy batch {batch.get('batch_index', 1)} of {_total}...",
+                        {
+                            'scope': 'STPX hierarchy',
+                            'batch_index': batch.get('batch_index', 1),
+                            'total_batches': _total,
+                            'rows_processed': batch.get('rows_processed', 0),
+                            'rows_total': _rows_total,
+                        },
+                    ),
+                )
+                if not parent_result.get('errors'):
+                    matched_rows = int(parent_result.get('matched_rows') or 0)
+                    skipped_rows = max(0, len(parent_rows) - matched_rows)
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += skipped_rows
+                    logger.info(f"Task {task_id}: STPX — wrote {matched_rows} PARENT_OF edges")
+                else:
+                    logger.warning(f"Task {task_id}: STPX hierarchy write errors: {parent_result['errors'][:3]}")
+            except Exception as parent_err:
+                logger.warning(f"Task {task_id}: STPX parent hierarchy edges skipped: {parent_err}")
 
-            result['ontology_classes_matched'] = len({r['class_element_id'] for r in link_rows})
-            if link_rows:
-                link_cypher = f"""
-                UNWIND $rows AS row
-                MATCH (n{_label_hint} {{import_row_key: row.import_row_key, import_id: row.import_id}})
-                MATCH (c:OntologyClass)
-                WHERE elementId(c) = row.class_element_id
-                MERGE (n)-[rel:INSTANCE_OF]->(c)
-                SET rel.mapping = row.mapping,
-                    rel.class_name = row.class_name,
-                    rel.import_id = row.import_id
-                RETURN count(rel) AS linked
-                """
-                try:
-                    try:
-                        from core.graph import query_with_timeout as _query_with_timeout
-                    except ModuleNotFoundError:
-                        from ..core.graph import query_with_timeout as _query_with_timeout
-                    _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
-                    linked_total = 0
-                    for _i in range(0, len(link_rows), _BATCH):
-                        linked_result = _query_with_timeout(link_cypher, {'rows': link_rows[_i:_i + _BATCH]}) or []
-                        result['queries_executed'] += 1
-                        if linked_result and isinstance(linked_result[0], dict):
-                            linked_total += int(linked_result[0].get('linked') or 0)
-                    result['instance_links_created'] = linked_total
-                    result['relationships_created'] += linked_total
-                    logger.info(
-                        f"Task {task_id}: linked {linked_total} STEP/STPX instances "
-                        f"to {result['ontology_classes_matched']} ontology classes"
-                    )
-                except Exception as link_err:
-                    logger.warning(f"Task {task_id}: AP242 INSTANCE_OF linking skipped: {link_err}")
+        # Semantic ontology linking is intentionally deferred to the
+        # `instance.link` semantic bridge workflow so import remains structural,
+        # faster, and easier to reason about for end users.
+        _sync_metrics('verification', 96, 'Structural import complete. Semantic linking is available in Link instances to ontology.')
 
         # ── ownerId → OWNED_BY relationship edges (XMI ownership hierarchy) ──
         owner_rows = [
@@ -2269,18 +3440,29 @@ class UnifiedDataImportService:
             MATCH (child {id: row.child_id, import_id: row.import_id})
             MATCH (parent {id: row.parent_id, import_id: row.import_id})
             MERGE (child)-[:OWNED_BY]->(parent)
+            RETURN count(*) AS matched_rows
             """
-            _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
+            _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
+            _sync_metrics('verification', 98, 'Finalizing ownership and verification links...')
             for _i in range(0, len(owner_rows), _BATCH):
                 _batch = owner_rows[_i:_i + _BATCH]
                 try:
                     _batch_scoped = [{**rr, 'import_id': task_id} for rr in _batch]
                     try:
-                        from core.graph import graph as _g
+                        from core.graph import query_with_timeout as _query_with_timeout
                     except ModuleNotFoundError:
-                        from ..core.graph import graph as _g
-                    _g.query(owner_cypher, {'rows': _batch_scoped})
-                    result['relationships_created'] += len(_batch)
+                        from ..core.graph import query_with_timeout as _query_with_timeout
+                    _owner_result = _query_with_timeout(owner_cypher, {'rows': _batch_scoped}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT) or []
+                    matched_rows = 0
+                    if isinstance(_owner_result, list):
+                        for _record in _owner_result:
+                            if isinstance(_record, dict):
+                                try:
+                                    matched_rows += int(_record.get('matched_rows') or 0)
+                                except (TypeError, ValueError):
+                                    pass
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += max(0, len(_batch) - matched_rows)
                 except Exception as _own_err:
                     logger.warning(f"Task {task_id}: OWNED_BY batch {_i // _BATCH}: {_own_err}")
 
@@ -2288,17 +3470,20 @@ class UnifiedDataImportService:
         task.pop('parsed_rows', None)
 
         task['current_stage'] = ImportStage.INGEST.value
-        task['progress'] = 100
-        task['message'] = 'Import completed successfully'
         task['status'] = ImportStatus.COMPLETED.value
+        result['ingestion_time'] = round(time.perf_counter() - commit_started_at, 6)
         task['result'] = result
         task['completed_at'] = datetime.now().isoformat()
+        task['committing'] = False
+        _sync_metrics('complete', 100, 'Import completed successfully', None)
+        task['batch_progress'] = None
         cls._persist_task(task_id)
 
         logger.info(f"Task {task_id} completed: {result}")
         return result
 
     @classmethod
+    @ontology_writer
     def _generate_owl_background(cls, task_id: str, task: dict) -> None:
         """Generate OWL/TTL in a background thread — does not block the commit response."""
         try:
@@ -2335,9 +3520,20 @@ class UnifiedDataImportService:
                 }
                 # Run SHACL validation on the generated OWL TTL and attach report
                 try:
-                    shacl_report = OWLGenerationService.validate_with_shacl(owl_ttl)
+                    try:
+                        shacl_report = OWLGenerationService.validate_with_shacl(
+                            owl_ttl,
+                            ontology_context=owl_meta.get('semantica'),
+                        )
+                    except TypeError:
+                        # Preserve compatibility with older test doubles / callers
+                        # that still expose the previous positional-only contract.
+                        shacl_report = OWLGenerationService.validate_with_shacl(owl_ttl)
                     task['shacl_report'] = shacl_report
                     task.setdefault('result', {})['shacl_conforms'] = shacl_report.get('conforms')
+                    task['result']['shacl_validation_scope'] = 'ontology'
+                    if shacl_report.get('ontology_context'):
+                        task['result']['shacl_ontology_context'] = shacl_report.get('ontology_context')
                     cls._write_artifact(
                         task_id,
                         task,
@@ -2349,6 +3545,10 @@ class UnifiedDataImportService:
                     )
                     logger.info(f"Task {task_id}: SHACL validation conforms={shacl_report.get('conforms')}")
                 except Exception as sh_err:
+                    task.setdefault('result', {})['shacl_conforms'] = False
+                    task['result']['shacl_validation_scope'] = 'ontology'
+                    task['shacl_report'] = {'conforms': False, 'validation_scope': 'ontology',
+                                            'error': 'Ontology validation is unavailable'}
                     logger.warning(f"Task {task_id}: SHACL validation failed: {sh_err}")
                 logger.info(
                     f"Task {task_id}: OWL background done — "
@@ -2362,24 +3562,33 @@ class UnifiedDataImportService:
             cls._persist_task(task_id)
 
     @classmethod
+    @ontology_writer
     async def commit_import(cls, task_id: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Commit import to Neo4j.
-        Fast pre-checks run synchronously; blocking Neo4j writes run in a thread
-        pool via asyncio.to_thread so the event loop is never blocked.
-        OWL generation is fired in a separate background thread so the HTTP
-        response returns as soon as Neo4j writes are complete.
+        Fast pre-checks run synchronously. The Neo4j write itself is queued in
+        the background so the HTTP response returns before gateway/proxy
+        timeouts can interrupt very large commits.
         """
         import asyncio
 
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            raise ValueError('Import workflow was cleared by an administrator')
         if task_id not in import_tasks:
             restored = cls._restore_task(task_id)
             if not restored:
                 raise ValueError(f"Task not found: {task_id}")
 
         task = import_tasks[task_id]
+        if task.get('committing'):
+            raise ValueError('Import commit is already in progress; poll its status')
+        from .import_completeness import require_complete_archimate
+        require_complete_archimate(task)
 
-        if task['status'] != ImportStatus.PROCESSING.value:
+        if task['status'] not in (
+            ImportStatus.PROCESSING.value,
+            ImportStatus.READY_FOR_COMMIT.value,
+        ):
             raise ValueError(f"Task not in processing state: {task['status']}")
 
         if not task.get('parsed_rows'):
@@ -2413,35 +3622,72 @@ class UnifiedDataImportService:
         schema = config or task.get('auto_schema', {})
         task['current_stage'] = ImportStage.INGEST.value
         task['progress'] = 80
-        task['message'] = 'Validating data before Neo4j commit...'
+        task['status'] = ImportStatus.PROCESSING.value
+        task['message'] = 'Queued for Neo4j commit...'
+        task['committing'] = True
         cls._persist_task(task_id)
 
-        try:
-            result = await asyncio.to_thread(cls._commit_sync, task_id, task, schema)
-            # Fire OWL generation in background — does NOT block the HTTP response.
-            asyncio.get_event_loop().run_in_executor(
-                None, cls._generate_owl_background, task_id, task
-            )
-            return result
-        except Exception as e:
-            # Revert to PROCESSING/preview so the user can retry.
-            task.pop('file_content', None)  # release on failure too
-            task['status'] = ImportStatus.PROCESSING.value
-            task['current_stage'] = ImportStage.PREVIEW.value
-            task['progress'] = 75
-            task['message'] = f'Commit failed — retry available. Error: {str(e)[:200]}'
-            task['error'] = str(e)
-            cls._persist_task(task_id)
-            logger.error(f"Task {task_id} commit failed (reset to preview for retry): {str(e)}")
-            raise
+        async def _run_commit_background() -> None:
+            try:
+                from .import_commit_integrity import commit_operation
+                def run_owned_commit():
+                    with commit_operation(task_id):
+                        return cls._commit_sync(task_id, task, schema)
+                result = await asyncio.to_thread(run_owned_commit)
+                # Fire OWL generation in background — does NOT block the HTTP response.
+                asyncio.get_running_loop().run_in_executor(
+                    None, cls._generate_owl_background, task_id, task
+                )
+                logger.info(f"Task {task_id}: Neo4j commit finished in background: {result}")
+            except Exception as e:
+                from .import_task_persistence import TaskPersistenceError
+                if isinstance(e, TaskPersistenceError):
+                    # A write may already have reached the graph. Never advertise
+                    # a retry based on a snapshot that could not be committed.
+                    task.update(status='outcome_unknown', current_stage='ingest', committing=False,
+                                commit_phase='outcome_unknown',
+                                message='Import outcome needs review because status could not be saved. Restore task storage and inspect graph results before retrying.',
+                                error=str(e))
+                    try:
+                        cls._persist_task(task_id)
+                    except TaskPersistenceError:
+                        pass  # original persistence error is already logged and visible
+                    return
+                # Revert to an explicit preview-ready state so the user can retry.
+                task.pop('file_content', None)
+                task['committing'] = False
+                task['status'] = ImportStatus.READY_FOR_COMMIT.value
+                task['current_stage'] = ImportStage.PREVIEW.value
+                task['progress'] = 75
+                task['commit_phase'] = 'error'
+                task['batch_progress'] = None
+                task['message'] = f'Commit failed — retry available. Error: {str(e)[:200]}'
+                task['error'] = str(e)
+                cls._persist_task(task_id)
+                logger.error(f"Task {task_id} commit failed (reset to preview for retry): {str(e)}")
+
+        asyncio.create_task(_run_commit_background())
+        return {
+            "queued": True,
+            "task_id": task_id,
+            "status": task['status'],
+            "current_stage": task['current_stage'],
+            "progress": task['progress'],
+            "message": "Neo4j commit queued in background. Continue polling task status.",
+        }
 
     @classmethod
+    @ontology_writer
     def cancel_import(cls, task_id: str) -> None:
         """Cancel import task"""
         if task_id in import_tasks:
             task = import_tasks[task_id]
-            if task['status'] == ImportStatus.PROCESSING.value:
+            if task['status'] in (
+                ImportStatus.PROCESSING.value,
+                ImportStatus.READY_FOR_COMMIT.value,
+            ):
                 task['status'] = ImportStatus.CANCELLED.value
                 task['completed_at'] = datetime.now().isoformat()
                 cls._persist_task(task_id)
                 logger.info(f"Task {task_id} cancelled")
+

@@ -3,3 +3,74 @@
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
+
+// Preserve the existing Jest-shaped tests while using Vitest as the runner.
+globalThis.jest = vi;
+const jest = globalThis.jest;
+
+// Siemens IX web components rely on browser APIs that JSDOM intentionally
+// does not implement. Small no-op test doubles allow component tests to
+// exercise DEPO behaviour without masking an IX component initialization
+// failure as an unhandled rejection.
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+if (globalThis.ElementInternals?.prototype && !globalThis.ElementInternals.prototype.setFormValue) {
+  globalThis.ElementInternals.prototype.setFormValue = () => {};
+}
+
+const mockAxios = {
+  get: jest.fn(() => Promise.resolve({ data: {} })),
+  post: jest.fn(() => Promise.resolve({ data: {} })),
+  put: jest.fn(() => Promise.resolve({ data: {} })),
+  patch: jest.fn(() => Promise.resolve({ data: {} })),
+  delete: jest.fn(() => Promise.resolve({ data: {} })),
+  request: jest.fn(() => Promise.resolve({ data: {} })),
+  interceptors: {
+    request: { use: jest.fn() },
+    response: { use: jest.fn() },
+  },
+};
+
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    ...mockAxios,
+    create: jest.fn(() => mockAxios),
+    isAxiosError: jest.fn(() => false),
+  },
+  ...mockAxios,
+  create: jest.fn(() => mockAxios),
+  isAxiosError: jest.fn(() => false),
+}));
+
+const originalConsoleError = console.error;
+let consoleErrorSpy;
+
+beforeAll(() => {
+  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args) => {
+    const [message = ''] = args;
+
+    if (
+      typeof message === 'string' &&
+      (
+        message.includes('ReactDOMTestUtils.act is deprecated in favor of React.act') ||
+        message.includes('A suspended resource finished loading inside a test') ||
+        message.includes('inside a test was not wrapped in act(...)')
+      )
+    ) {
+      return;
+    }
+
+    originalConsoleError(...args);
+  });
+});
+
+afterAll(() => {
+  consoleErrorSpy?.mockRestore?.();
+});

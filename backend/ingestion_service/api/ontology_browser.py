@@ -1,0 +1,301 @@
+"""HTTP browsing and export contracts for registered ingestion artifacts."""
+from __future__ import annotations
+
+from backend.depo_platform.request_bodies import InferenceBody
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from backend.depo_platform.authorization import graph_read_identity
+import os
+from backend.depo_platform.graph_access import GraphDatabase
+from fastapi.responses import Response
+from rdflib import Graph
+
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
+from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+router = APIRouter(prefix="/ontology", tags=["ontology-browser"], dependencies=[Depends(graph_read_identity)])
+
+
+@router.get("/{ontology_id}/export")
+def export_ontology(ontology_id: str, format: str = "ttl") -> Response:
+    formats = {"ttl": ("turtle", "text/turtle"), "rdf": ("xml", "application/rdf+xml"), "owl": ("xml", "application/rdf+xml"), "jsonld": ("json-ld", "application/ld+json")}
+    if format not in formats and format != "shacl":
+        raise HTTPException(422, "Supported export formats: ttl, rdf, owl, jsonld, shacl")
+    try:
+        context = OntologyReasoningService.semantic_context(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if format == "shacl":
+        metadata = context["meta"]
+        shape_id = (metadata.get("engineering_artifacts") or {}).get("shacl")
+        if shape_id:
+            from backend.artifact_store import ArtifactStore
+            shape_path = ArtifactStore().resolve(shape_id)[1]
+        else:
+            from pathlib import Path
+            shape_path = Path(metadata.get("shacl_file_path") or "")
+        if not shape_path.is_file():
+            raise HTTPException(404, "No retained SHACL shapes are associated with this ontology version")
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        with shape_path.open("rb") as stream:
+            content = stream.read(ontology_upload_limit() + 1)
+        if len(content) > ontology_upload_limit():
+            raise HTTPException(413, "SHACL artifact exceeds the export size limit")
+        return Response(content, media_type="text/turtle", headers={"Content-Disposition": 'attachment; filename="ontology.shacl.ttl"'})
+    path = context["file_path"]
+    from backend.depo_platform.upload_limits import ontology_upload_limit
+    from backend.ontology_service.catalog import OntologyCatalog
+    with path.open("rb") as stream:
+        content = stream.read(ontology_upload_limit() + 1)
+    if len(content) > ontology_upload_limit():
+        raise HTTPException(413, "Ontology artifact exceeds the export size limit")
+    try:
+        parsed = OntologyCatalog._parse_ontology(content, path.name)
+        graph = Graph().parse(data=content, format=parsed["rdf_format"])
+    except ValueError as exc:
+        raise HTTPException(422, "No valid RDF/OWL artifact is available for export") from exc
+    syntax, media_type = formats[format]
+    return Response(graph.serialize(format=syntax), media_type=media_type, headers={"Content-Disposition": f'attachment; filename="ontology.{format}"'})
+
+
+@router.get("/{ontology_id}/reason")
+def reasoning(ontology_id: str) -> dict:
+    try:
+        # Taxonomy resolves both the native catalog and legacy upload registry.
+        # The legacy-only resolver rejected engineering registrations first.
+        return OntologyTaxonomyService.get_reasoning(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
+@router.post("/{ontology_id}/inference/preview")
+def preview_inferences(ontology_id: str, body: InferenceBody | None = None) -> dict:
+    try:
+        return OntologyReasoningService.preview_inferences(_resolve_ontology_id(ontology_id), body or {})
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+def _resolve_ontology_id(ontology_id: str) -> str:
+    """Resolve a stable upload id or its human-facing prefix (for example AP242)."""
+    requested = str(ontology_id or "").strip()
+    if not requested:
+        raise ValueError("ontology_id is required")
+    direct = OntologyUploadManager.get_ontology(requested)
+    if direct.get("status") == "success":
+        return requested
+    listed = OntologyUploadManager.list_ontologies()
+    for entry in listed.get("ontologies") or []:
+        if str(entry.get("prefix") or "").strip().lower() == requested.lower():
+            return str(entry.get("ontology_id") or requested)
+    return requested
+
+
+def _taxonomy_from_graph(prefix: str) -> dict:
+    """Return a read-only taxonomy projection for graph-native ontologies.
+
+    Some baseline ontologies, including AP242, are loaded directly into Neo4j
+    rather than through the upload registry. They must remain browseable using
+    the same public taxonomy contract as uploaded artifacts.
+    """
+    with GraphDatabase.driver(os.environ["NEO4J_URI"], auth=(os.environ["NEO4J_USER"], os.environ["NEO4J_PASS"])) as driver:
+        with driver.session(database=os.getenv("NEO4J_DATABASE", "ontology")) as session:
+            nodes = session.run(
+                "MATCH (n) WHERE (n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:OntologyProperty) "
+                "AND (toLower(coalesce(n.prefix, n.ontology_prefix, '')) = toLower($prefix) "
+                "OR toLower(coalesce(n.source_ontology, '')) STARTS WITH toLower($prefix + '_')) "
+                "RETURN elementId(n) AS term_id, coalesce(n.name, n.label, n.uri, n.iri) AS label, "
+                "coalesce(n.uri, n.iri, '') AS uri, labels(n) AS labels LIMIT 5000",
+                prefix=prefix,
+            ).data()
+            if not nodes:
+                return {"status": "not_found", "ontology_id": prefix, "prefix": prefix, "nodes": [], "edges": [],
+                        "summary": {"terms": 0, "taxonomy_links": 0, "triple_count": 0},
+                        "diagnostics": [{"severity": "warning", "message": f"No graph taxonomy is loaded for '{prefix}'."}]}
+            node_ids = [row["term_id"] for row in nodes]
+            edges = session.run(
+                "MATCH (source)-[r]->(target) WHERE elementId(source) IN $ids AND elementId(target) IN $ids "
+                "RETURN elementId(source) AS source, elementId(target) AS target, type(r) AS type LIMIT 10000",
+                ids=node_ids,
+            ).data()
+    return {
+        "status": "success", "ontology_id": prefix, "prefix": prefix, "extraction_source": "neo4j_projection",
+        "nodes": [{"term_id": row["term_id"], "label": row.get("label") or row["term_id"], "uri": row.get("uri") or "", "kind": (row.get("labels") or ["OntologyResource"])[0]} for row in nodes],
+        "edges": edges,
+        "summary": {"terms": len(nodes), "taxonomy_links": len(edges), "triple_count": len(edges)},
+        "diagnostics": [],
+    }
+
+
+def _taxonomy_from_dictionary(ontology_id: str) -> dict:
+    """Adapt the authoritative dictionary projection into a browse taxonomy."""
+    dictionary = data_dictionary(ontology_id)
+    payload = dictionary.get("data") or {}
+    kinds = (
+        ("entities", "Class", "dictionary-class"),
+        ("properties", "DatatypeProperty", "dictionary-datatype-property"),
+        ("relationships", "ObjectProperty", "dictionary-object-property"),
+    )
+    nodes = []
+    for section, kind, source in kinds:
+        for key, item in (payload.get(section) or {}).items():
+            item = item or {}
+            label = str(item.get("label") or key)
+            nodes.append({
+                "term_id": str(item.get("iri") or f"{ontology_id}:{label}"),
+                "uri": str(item.get("iri") or ""),
+                "label": label,
+                "definition": str(item.get("definition") or ""),
+                "kind": kind,
+                "ontology_prefix": dictionary.get("prefix") or ontology_id,
+                # UI consumers use these stable type markers to separate OWL
+                # classes from datatype and object properties.
+                "source": source,
+            })
+    return {
+        "status": "success" if nodes else "not_found", "ontology_id": dictionary.get("ontology_id") or ontology_id,
+        "prefix": dictionary.get("prefix") or ontology_id, "extraction_source": "dictionary_projection",
+        "nodes": nodes, "edges": [],
+        "summary": {"terms": len(nodes), "taxonomy_links": 0, "triple_count": len(nodes)},
+        "diagnostics": [] if nodes else [{"severity": "warning", "message": f"No ontology terms are loaded for '{ontology_id}'."}],
+    }
+
+
+@router.get("/{ontology_id}/data-dictionary")
+def data_dictionary(ontology_id: str) -> dict:
+    try:
+        reasoning = OntologyReasoningService.get_reasoning(ontology_id)
+    except ValueError:
+        # Native standalone-service artifacts do not have the legacy
+        # semantic inspection cache.  Continue to the authoritative Neo4j projection
+        # instead of returning a false "not found" response.
+        reasoning = {}
+
+    def rows(values: list[dict], kind: str) -> dict:
+        result = {}
+        for item in values:
+            label = str(item.get('label') or item.get('name') or item.get('term_id') or item.get('iri') or '')
+            if not label:
+                continue
+            iri = item.get('iri') or item.get('uri') or item.get('term_id') or ''
+            key = label if label not in result else f'{label} [{iri}]'
+            result[key] = {
+                "label": str(item.get("label") or item.get("name") or item.get("term_id") or item.get("iri")),
+                "iri": item.get("iri") or item.get("uri") or item.get("term_id") or "",
+                "definition": item.get("definition") or item.get("comment") or "",
+                "kind": kind,
+                "domain": item.get("domain") or [],
+                "range": item.get("range") or [],
+                "source": "ontology_reasoning",
+            }
+        return result
+
+    entities = rows(reasoning.get("classes") or [], "Class")
+    properties = rows((reasoning.get("datatype_properties") or []) + (reasoning.get("annotation_properties") or []), "DatatypeProperty")
+    relationships = rows(reasoning.get("object_properties") or [], "ObjectProperty")
+    # Older, already-published ontologies are persisted directly in Neo4j and
+    # may not have an semantic inspection cache.  Preserve their browse experience with a
+    # read-only projection of the authoritative graph records.
+    if not (entities or properties or relationships):
+        with GraphDatabase.driver(os.environ["NEO4J_URI"], auth=(os.environ["NEO4J_USER"], os.environ["NEO4J_PASS"])) as driver:
+            with driver.session(database=os.getenv("NEO4J_DATABASE", "ontology")) as session:
+                graph_rows = session.run(
+                    "MATCH (n) WHERE (n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:OntologyResource) "
+                    "AND (n.source_ontology = $id OR n.ontology_id = $id OR n.prefix = $prefix) "
+                    "RETURN coalesce(n.name, n.label, n.uri, n.iri) AS label, coalesce(n.uri, n.iri) AS iri, "
+                    "n.comment AS definition, n.kind AS resource_kind, labels(n) AS labels LIMIT 10000",
+                    id=ontology_id, prefix=ontology_id,
+                ).data()
+        for item in graph_rows:
+            label = str(item.get("label") or item.get("iri") or "")
+            if not label:
+                continue
+            record = {"label": label, "iri": item.get("iri") or "", "definition": item.get("definition") or "", "source": "neo4j"}
+            labels = item.get("labels") or []
+            if "OntologyClass" in labels or item.get("resource_kind") == "class":
+                entities[label] = {**record, "kind": "Class", "domain": [], "range": []}
+            elif "ObjectProperty" in labels or item.get("resource_kind") == "property":
+                relationships[label] = {**record, "kind": "ObjectProperty", "domain": [], "range": []}
+            else:
+                properties[label] = {**record, "kind": "DatatypeProperty", "domain": [], "range": []}
+    return {"status": "success", "ontology_id": reasoning.get("ontology_id") or ontology_id,
+            "prefix": reasoning.get("prefix") or ontology_id, "total_terms": len(entities) + len(properties) + len(relationships),
+            "data": {"entities": entities, "properties": properties, "relationships": relationships}}
+
+
+def bounded_taxonomy(payload: dict, node_limit: int = 10000, edge_limit: int = 20000, offset: int = 0, query: str = '', kind: str = 'all') -> dict:
+    """Bound only the browser response; retained inventory/mapping stays complete."""
+    nodes, edges = payload.get('nodes', []), payload.get('edges', [])
+    # Keep declared terms ahead of anonymous expression/literal expansion.
+    priority = {'class': 0, 'property': 1, 'datatype': 2, 'individual': 3}
+    needle = query.strip().casefold()
+    matching = [n for n in nodes if (kind == 'all' or n.get('kind') == kind) and
+                (not needle or any(needle in str(n.get(key) or '').casefold()
+                for key in ('label', 'term_id', 'iri', 'uri', 'definition')))]
+    ordered = sorted(matching, key=lambda n: (priority.get(n.get('kind'), 4), str(n.get('term_id', ''))))
+    kept = ordered[offset:offset + node_limit]
+    ids = {n['term_id'] for n in kept}
+    declarations = {term: {'domain': [], 'range': [], 'parents': [], 'children_count': 0,
+                           'complete': not bool(payload.get('summary', {}).get('truncated'))} for term in ids}
+    for edge in edges:
+        source, target = edge.get('source_term'), edge.get('target_term')
+        relation = str(edge.get('mapping_type') or edge.get('type') or '').lower()
+        if source in declarations and relation in {'domain', 'range', 'subclassof', 'subclass_of'}:
+            field = 'parents' if relation in {'subclassof', 'subclass_of'} else relation
+            declarations[source][field].append({'term_id': target, 'label': edge.get('target_label') or target})
+        if target in declarations and relation in {'subclassof', 'subclass_of'}:
+            declarations[target]['children_count'] += 1
+    kept = [{**node, 'browse_declarations': declarations[node['term_id']]} for node in kept]
+    links = [e for e in edges if e.get('source_term') in ids and e.get('target_term') in ids][:edge_limit]
+    summary = {**payload.get('summary', {}), 'terms': len(kept), 'taxonomy_links': len(links),
+               'total_terms': payload.get('summary', {}).get('total_terms', len(nodes)),
+               'total_taxonomy_links': payload.get('summary', {}).get('total_taxonomy_links', len(edges)),
+               'truncated': bool(payload.get('summary', {}).get('truncated') or len(kept)<len(nodes) or len(links)<len(edges))}
+    return {**payload, 'nodes': kept, 'edges': links, 'summary': summary,
+            'page': {'offset': offset, 'limit': node_limit, 'matching_terms': len(ordered),
+                     'next_offset': offset + len(kept) if offset + len(kept) < len(ordered) else None,
+                     'query': query, 'kind': kind, 'scope': 'retained-taxonomy-slice'}}
+
+
+@router.get("/{ontology_id}/taxonomy")
+def taxonomy(ontology_id: str, limit: int = Query(10000, ge=1, le=10000),
+             offset: int = Query(0, ge=0), query: str = Query('', max_length=200),
+             kind: str = Query('all', pattern='^(all|class|property|datatype|individual)$')) -> dict:
+    resolved_id = _resolve_ontology_id(ontology_id)
+    try:
+        return OntologyTaxonomyService.get_taxonomy(resolved_id,
+            project=lambda payload: bounded_taxonomy(payload, limit, 20000, offset, query, kind))
+    except ValueError:
+        # The graph projection is indexed by ontology prefix, whereas the API
+        # receives an immutable upload id. Resolve the prefix before falling
+        # back so AP242 and other graph-native ontologies remain browseable.
+        dictionary_taxonomy = _taxonomy_from_dictionary(resolved_id)
+        if dictionary_taxonomy["nodes"]:
+            return bounded_taxonomy(dictionary_taxonomy, limit, 20000, offset, query, kind)
+        metadata = OntologyUploadManager.get_ontology(resolved_id).get("metadata") or {}
+        prefix = str(metadata.get("prefix") or ontology_id)
+        if resolved_id != prefix:
+            raise HTTPException(409, 'No version-scoped taxonomy is available; a shared-prefix graph cannot represent this retained ontology version')
+        result = _taxonomy_from_graph(prefix)
+        result['scope'] = 'shared-prefix-projection'
+        return bounded_taxonomy(result, limit, 20000, offset, query, kind)
+
+
+@router.get("/{ontology_id}/retained-inventory")
+def retained_inventory(ontology_id: str) -> dict:
+    """Inspect one retained ontology identity without a shared-prefix graph fallback."""
+    try:
+        metadata = OntologyTaxonomyService._resolve_metadata(ontology_id)
+        if str(metadata.get("ontology_id") or "") != ontology_id:
+            raise ValueError("An exact registered ontology ID is required")
+        result = OntologyTaxonomyService.get_taxonomy(ontology_id)
+        if result.get("extraction_source") == "rdf_parse_error":
+            raise ValueError("The retained ontology cannot be parsed")
+        return {**result, "scope": "retained-ontology-version", "graph_fallback": False}
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, "Retained ontology inspection is unavailable") from exc

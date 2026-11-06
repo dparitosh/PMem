@@ -16,23 +16,24 @@ In-process cache: _owl_storage[task_id] = ttl_str  (single-worker safe).
 """
 
 import logging
+import os
+import xml.etree.ElementTree as ET
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
-# In-process TTL cache (safe only with --workers 1 / single uvicorn process)
+from .ontology_semantic_runtime import OntologySemanticRuntime
+
+# In-process TTL cache is opt-in because it is not shared between workers.
 _owl_storage: Dict[str, str] = {}
+_MEMORY_CACHE_ENABLED = os.getenv("OWL_MEMORY_CACHE_ENABLED", "false").lower() == "true"
 
 # Disk-backed TTL cache — survives process restarts (uvicorn --reload, crashes).
 # Written alongside the in-memory cache so TTL is available after a hot reload.
-_TTL_CACHE_DIR = Path(__file__).parent.parent / "ttl_cache"
-
-
-def _ttl_path(task_id: str) -> Path:
-    """Return the on-disk path for a cached TTL file."""
-    return _TTL_CACHE_DIR / f"{task_id}.ttl"
+from .ttl_cache import cache_path as _ttl_path, read_ttl, write_ttl
 
 
 def _write_tmp(content: bytes, suffix: str) -> Path:
@@ -53,16 +54,86 @@ def _read_and_validate(ttl_path: Path) -> Tuple[str, Dict[str, Any]]:
         result = validator.validate_file(str(ttl_path))
         report = result.to_dict() if hasattr(result, "to_dict") else {}
     except Exception as val_err:
-        logger.debug(f"Ontology validation skipped: {val_err}")
+        raise ValueError('Generated ontology validation could not be completed') from val_err
+    if report.get('valid') is not True:
+        raise ValueError('Generated ontology failed validation; inspect ontology validator diagnostics')
     return ttl_str, report
+
+
+def _extract_xsd_target_namespace(file_content: bytes) -> str:
+    """Return the XSD targetNamespace when present, otherwise an empty string."""
+    try:
+        root = ET.fromstring(file_content)
+    except Exception:
+        return ""
+    target_namespace = (root.attrib.get("targetNamespace") or "").strip()
+    return target_namespace
+
+
+def _normalize_base_uri(namespace: str, fallback: str) -> str:
+    """Use the schema namespace as the ontology base URI when available."""
+    cleaned = (namespace or "").strip()
+    if cleaned:
+        if not cleaned.endswith(("#", "/")):
+            cleaned = cleaned + "#"
+        return cleaned
+    return fallback
+
+
+def _derive_prefix_from_namespace(namespace: str, fallback: str = "xsd") -> str:
+    from backend.depo_platform.ontology_namespace import ontology_prefix
+    return ontology_prefix(namespace, fallback)
+
+
+def _inspect_semantics(ttl_str: str, stem: str) -> Dict[str, Any]:
+    """Inspect generated TTL and return its asserted semantic structure."""
+    tmp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=f"_{stem}.ttl", delete=False, encoding="utf-8") as tmp:
+            tmp.write(ttl_str)
+            tmp_path = Path(tmp.name)
+        result = OntologySemanticRuntime.inspect_ontology(tmp_path, stem)
+        return {
+            "available": result.get("available", True),
+            "engine": result.get("engine", "semantica"),
+            "status": result.get("status", "success"),
+            "summary": result.get("summary", {}),
+            "diagnostics": result.get("diagnostics", []),
+            "ontology_iri": result.get("ontology_iri", ""),
+            "structural_validation": result.get("structural_validation", {}),
+            "reasoning_mode": result.get("reasoning_mode", "asserted_semantic_inspection"),
+            "deductive_reasoner_executed": False,
+            "consistency_verified": False,
+        }
+    except Exception as exc:
+        return {
+            "available": True,
+            "engine": "semantica",
+            "status": "error",
+            "message": str(exc),
+            "summary": {},
+            "diagnostics": [{
+                "severity": "warning",
+                "category": "semantica",
+                "message": f"semantic runtime inspection failed: {exc}",
+            }],
+        }
+    finally:
+        if tmp_path and tmp_path.exists():
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 class OWLGenerationService:
     """Dispatch uploaded file bytes to the right rdflib OWL generation engine."""
 
     @staticmethod
-    def generate_owl(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
+    def generate_owl(file_content: bytes, filename: str, *, schema_files: dict[str, bytes] | None = None) -> Tuple[str, Dict[str, Any]]:
         """Route to the format-specific engine based on filename extension."""
+        from backend.Services.schema_dependencies import resolve_schema_dependencies
+        file_content, schema_files = resolve_schema_dependencies(filename, file_content, schema_files)
         ext = Path(filename).suffix.lower().lstrip(".")
         dispatch = {
             "exp":     OWLGenerationService.generate_owl_from_express,
@@ -79,7 +150,7 @@ class OWLGenerationService:
         handler = dispatch.get(ext)
         if handler is None:
             raise ValueError(f"No OWL engine for file extension '.{ext}' (filename: {filename})")
-        return handler(file_content, filename)
+        return handler(file_content, filename, schema_files=schema_files) if ext == "xsd" else handler(file_content, filename)
 
     @staticmethod
     def generate_owl_from_express(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
@@ -90,13 +161,30 @@ class OWLGenerationService:
             from .express_parser import parse_express, emit_owl_ttl
             schema = parse_express(tmp_path)
             base_uri = f"http://depo-onto.local/exp#{schema.name}/"
-            owl_ttl = emit_owl_ttl(schema, base_uri=base_uri, prefix="exp", source_path=tmp_path)
+            # ``emit_owl_ttl`` deliberately produces a reusable body fragment.
+            # Service consumers receive a complete Turtle document, however,
+            # so the standard vocabulary prefixes must be declared here.
+            prefixes = "\n".join((
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> .",
+                "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
+                "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+                "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
+                "@prefix sh: <http://www.w3.org/ns/shacl#> .",
+                "@prefix skos: <http://www.w3.org/2004/02/skos/core#> .",
+                "",
+            ))
+            owl_ttl = prefixes + emit_owl_ttl(schema, base_uri=base_uri, prefix="exp", source_path=tmp_path)
             derives = sum(len(e.derived_attributes) for e in schema.entities.values())
             inverses = sum(len(e.inverse_attributes) for e in schema.entities.values())
             metadata = {
                 "format": "EXPRESS",
+                "source_kind": "schema",
                 "schema_name": schema.name,
+                "ontology_name": schema.name,
+                "ontology_prefix": "exp",
+                "base_uri": base_uri,
                 "entity_count": len(schema.entities),
+                "entities": sorted(schema.entities),
                 "enumeration_count": len(schema.enumerations),
                 "select_type_count": len(schema.select_types),
                 "derived_attributes": derives,
@@ -104,6 +192,7 @@ class OWLGenerationService:
                 "reference_count": len(schema.references),
                 "ttl_lines": owl_ttl.count("\n"),
                 "validation": {},
+                "semantica": _inspect_semantics(owl_ttl, f"express_{schema.name}"),
             }
             return owl_ttl, metadata
         except Exception as e:
@@ -117,6 +206,11 @@ class OWLGenerationService:
     def generate_owl_from_step(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
         """STEP (.stp/.step/.stpx) -> OWL2/Turtle via owl_step_engine."""
         ext = Path(filename).suffix or ".stp"
+        # STPX normally carries Part 28 XML, but external systems sometimes
+        # label a Part 21 exchange file as .stpx. Choose the parser from the
+        # payload rather than trusting the extension alone.
+        if ext.lower() == ".stpx" and file_content.lstrip().upper().startswith(b"ISO-10303-21"):
+            ext = ".stp"
         tmp_in: Optional[Path] = None
         tmp_out: Optional[Path] = None
         try:
@@ -126,7 +220,7 @@ class OWLGenerationService:
             stats = convert_step_to_ttl(
                 file_path=tmp_in,
                 output_path=tmp_out,
-                base_uri=f"http://depo-onto.local/step#{Path(filename).stem}/",
+                base_uri=f"http://depo-onto.local/step#{quote(Path(filename).stem, safe='')}/",
                 namespace_prefix="step",
                 include_pmi=True,
                 validate_against_domain=False,
@@ -139,7 +233,20 @@ class OWLGenerationService:
                 flat_stats = stats['stats']
             else:
                 flat_stats = stats if isinstance(stats, dict) else {}
-            metadata = {**flat_stats, "format": "STEP", "validation": report}
+            stem = Path(filename).stem or "step"
+            base_uri = f"http://depo-onto.local/step#{quote(stem, safe='')}/"
+            metadata = {
+                **flat_stats,
+                "format": "STEP",
+                "source_kind": "instance",
+                "schema_name": str(flat_stats.get("file_schema") or stem),
+                "ontology_name": stem,
+                "ontology_prefix": "step",
+                "base_uri": base_uri,
+                "entity_count": int(flat_stats.get("entity_count") or flat_stats.get("entities_processed") or 0),
+                "validation": report,
+            }
+            metadata["semantica"] = _inspect_semantics(ttl_str, f"step_{Path(filename).stem}")
             return ttl_str, metadata
         except Exception as e:
             logger.error(f"STEP OWL generation failed: {e}")
@@ -150,30 +257,60 @@ class OWLGenerationService:
                     p.unlink(missing_ok=True)
 
     @staticmethod
-    def generate_owl_from_xsd(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
+    def generate_owl_from_xsd(file_content: bytes, filename: str, *, schema_files: dict[str, bytes] | None = None) -> Tuple[str, Dict[str, Any]]:
         """XSD schema -> OWL2/Turtle with full SKOS/SHACL/OSLC via owl_xsd_engine."""
         tmp_dir: Optional[Path] = None
         try:
+            from backend.Services.schema_dependencies import resolve_schema_dependencies
+            file_content, dependencies = resolve_schema_dependencies(filename, file_content, schema_files)
             tmp_dir = Path(tempfile.mkdtemp())
+            for name, data in dependencies.items():
+                dependency = tmp_dir / name
+                dependency.parent.mkdir(parents=True, exist_ok=True)
+                dependency.write_bytes(data)
             xsd_path = tmp_dir / filename
             xsd_path.write_bytes(file_content)
+            from .xsd_semantics import validate_xsd_schema_set
+            validate_xsd_schema_set(xsd_path)
             tmp_out = tmp_dir / (Path(filename).stem + ".ttl")
             from .owl_xsd_engine import convert_xsd_to_owl, minimal_config
             stem = Path(filename).stem
+            target_namespace = _extract_xsd_target_namespace(file_content)
+            ontology_prefix = _derive_prefix_from_namespace(target_namespace, fallback=(stem[:16] or "xsd"))
+            base_uri = _normalize_base_uri(
+                target_namespace,
+                fallback=f"http://depo-onto.local/xsd#{stem}/",
+            )
             cfg = minimal_config(
-                base_uri=f"http://depo-onto.local/xsd#{stem}/",
-                prefix=(stem[:16] or "xsd"),
+                base_uri=base_uri,
+                prefix=ontology_prefix,
                 title=f"{stem} Ontology",
                 schema_dir=str(tmp_dir),
                 output_ttl=str(tmp_out),
             )
+            cfg.target_files = [Path(filename).stem]
+            cfg.source_ns = target_namespace
+            cfg.source_standard = target_namespace or "XML Schema"
+            # Preserve the source's declared version; do not invent a standard
+            # release number for the generated ontology header.
+            cfg.version_info = ET.fromstring(file_content).get('version', '').strip()
+            from .xsd_semantics import inspect_conversion_schemas
+            conversion_limitations = inspect_conversion_schemas([xsd_path, *[tmp_dir / name for name in dependencies]])
             result_path = convert_xsd_to_owl(cfg)
             ttl_str, report = _read_and_validate(result_path)
             metadata = {
                 "format": "XSD",
                 "schema_name": stem,
+                "ontology_name": stem,
+                "ontology_prefix": ontology_prefix,
+                "prefix": ontology_prefix,
+                "target_namespace": target_namespace,
+                "base_uri": base_uri,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
+                "conversion_limitations": conversion_limitations,
+                "constraint_profile": "OWL property/cardinality semantics and open SHACL shapes; full XSD conformance remains source-schema validation",
+                "semantica": _inspect_semantics(ttl_str, f"xsd_{stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -193,17 +330,21 @@ class OWLGenerationService:
             tmp_in = _write_tmp(file_content, ".xmi")
             tmp_out = tmp_in.with_suffix(".ttl")
             from .owl_xmi_engine import convert_xmi_to_ttl
-            convert_xmi_to_ttl(
+            converted = convert_xmi_to_ttl(
                 xmi_path=str(tmp_in),
                 output_path=str(tmp_out),
                 base_uri=f"http://depo-onto.local/xmi#{Path(filename).stem}/",
+                raise_on_error=True,
             )
+            if converted is not True or not tmp_out.is_file():
+                raise ValueError("XMI conversion did not produce an ontology; inspect the conversion diagnostics")
             ttl_str, report = _read_and_validate(tmp_out)
             metadata = {
                 "format": "XMI",
                 "schema_name": Path(filename).stem,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
+                "semantica": _inspect_semantics(ttl_str, f"xmi_{Path(filename).stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -237,6 +378,7 @@ class OWLGenerationService:
                 "schema_name": stem,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
+                "semantica": _inspect_semantics(ttl_str, f"csv_{stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -267,6 +409,7 @@ class OWLGenerationService:
                 "schema_name": Path(filename).stem,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
+                "semantica": _inspect_semantics(ttl_str, f"plmxml_{Path(filename).stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -278,7 +421,11 @@ class OWLGenerationService:
                     p.unlink(missing_ok=True)
 
     @staticmethod
-    def validate_with_shacl(ttl_content: str, shacl_shapes: Optional[str] = None) -> Dict[str, Any]:
+    def validate_with_shacl(
+        ttl_content: str,
+        shacl_shapes: Optional[str] = None,
+        ontology_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Validate a Turtle graph against SHACL shapes via shacl_service."""
         try:
             from .shacl_service import ShaclValidationService
@@ -293,7 +440,13 @@ class OWLGenerationService:
                 default_shapes_ttl = svc.create_default_shapes()
                 shacl_graph = rdflib.Graph()
                 shacl_graph.parse(data=default_shapes_ttl, format="turtle")
-            return svc.validate_graph(data_graph, shacl_graph)
+            if ontology_context is None:
+                ontology_context = _inspect_semantics(ttl_content, "shacl_validation")
+            return svc.validate_graph(
+                data_graph,
+                shacl_graph,
+                ontology_context=ontology_context,
+            )
         except Exception as e:
             logger.warning(f"SHACL validation failed: {e}")
             return {"is_valid": True, "error_count": 0, "warning_count": 0, "error": str(e)}
@@ -301,12 +454,9 @@ class OWLGenerationService:
     @staticmethod
     def store_owl(task_id: str, ttl: str) -> None:
         """Store generated TTL in memory cache and persist to disk."""
-        _owl_storage[task_id] = ttl
-        try:
-            _TTL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            _ttl_path(task_id).write_text(ttl, encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"TTL disk write failed for {task_id}: {e}")
+        write_ttl(task_id, ttl)
+        if _MEMORY_CACHE_ENABLED:
+            _owl_storage[task_id] = ttl
 
     @staticmethod
     def store(task_id: str, ttl: str) -> None:
@@ -316,18 +466,14 @@ class OWLGenerationService:
     @staticmethod
     def retrieve_owl(task_id: str) -> Optional[str]:
         """Retrieve cached TTL from memory, falling back to disk if not found."""
-        if task_id in _owl_storage:
+        _ttl_path(task_id)  # Validate identifiers before accessing the memory cache.
+        if _MEMORY_CACHE_ENABLED and task_id in _owl_storage:
             return _owl_storage[task_id]
         # Disk fallback — survives process restart / hot reload
-        disk = _ttl_path(task_id)
-        if disk.exists():
-            try:
-                ttl = disk.read_text(encoding="utf-8")
-                _owl_storage[task_id] = ttl  # repopulate in-memory cache
-                return ttl
-            except Exception as e:
-                logger.warning(f"TTL disk read failed for {task_id}: {e}")
-        return None
+        ttl = read_ttl(task_id)
+        if ttl is not None and _MEMORY_CACHE_ENABLED:
+            _owl_storage[task_id] = ttl
+        return ttl
 
     @staticmethod
     def retrieve(task_id: str) -> Optional[str]:

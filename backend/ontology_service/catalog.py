@@ -1,0 +1,621 @@
+"""Durable ontology artifact catalog owned by the ontology service.
+
+This deliberately does not import the legacy upload manager.  It is the
+replacement persistence boundary for newly published ontology artifacts.
+"""
+from __future__ import annotations
+
+from backend.depo_platform.ontology_maintenance import ontology_writer
+
+from contextlib import nullcontext, contextmanager
+import json
+import os
+import re
+import uuid
+import threading
+import logging
+import time
+import hashlib
+from collections import OrderedDict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from rdflib import Graph
+from rdflib.namespace import OWL
+
+from backend.artifact_store import artifact_store
+from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.upload_limits import ontology_upload_limit
+
+
+def validate_rdf_input(content: bytes, rdf_format: str) -> None:
+    if len(content) > ontology_upload_limit():
+        raise ValueError('Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+    if rdf_format == 'xml':
+        # Removing NULs recognizes declarations in UTF-16/32 as well as UTF-8.
+        probe = content.replace(b'\x00', b'').lower()
+        if b'<!doctype' in probe or b'<!entity' in probe:
+            raise ValueError('XML DTDs and entity declarations are not allowed')
+    if rdf_format == 'json-ld':
+        try:
+            document = json.loads(content)
+        except (ValueError, UnicodeError):
+            raise ValueError('JSON-LD must contain valid JSON') from None
+        def visit(node):
+            if isinstance(node, dict):
+                if '@import' in node:
+                    raise ValueError('JSON-LD context imports are not allowed')
+                context = node.get('@context')
+                contexts = context if isinstance(context, list) else [context]
+                if any(isinstance(value, str) for value in contexts):
+                    raise ValueError('JSON-LD remote contexts are not allowed; use inline contexts')
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+        visit(document)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_token(value: str, *, field: str) -> str:
+    token = str(value or "").strip()
+    if not token or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", token):
+        raise ValueError(f"{field} must start with a letter and contain only letters, numbers, _ or -")
+    return token
+
+
+class OntologyCatalog:
+    _lock_guard = threading.Lock()
+    _operation_locks = {}
+
+    @classmethod
+    @contextmanager
+    def _operation_lock(cls, key):
+        with cls._lock_guard:
+            lock, users = cls._operation_locks.get(key, (threading.RLock(), 0))
+            cls._operation_locks[key] = (lock, users + 1)
+        try:
+            with lock:
+                yield
+        finally:
+            with cls._lock_guard:
+                _, users = cls._operation_locks[key]
+                if users == 1:
+                    del cls._operation_locks[key]
+                else:
+                    cls._operation_locks[key] = (lock, users - 1)
+    def __init__(self, root: Path | None = None, registry: Any | None = None) -> None:
+        configured = os.getenv("ONTOLOGY_SERVICE_STORAGE")
+        self.root = root or (Path(configured) if configured else Path(__file__).resolve().parents[2] / "data" / "ontology_service")
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.registry = registry or PostgresRegistry("ontology_catalog")
+        self._digest_cache = OrderedDict()
+        self._digest_lock = threading.Lock()
+
+    @property
+    def _postgres_enabled(self) -> bool:
+        return bool(os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL"))
+
+    def _save_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        """PostgreSQL is authoritative; the local file is a recoverable artifact mirror."""
+        if self._postgres_enabled:
+            self.registry.put(str(metadata["ontology_id"]), metadata)
+        artifact_dir = self.root / str(metadata["ontology_id"])
+        temporary = None
+        try:
+            import tempfile
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=artifact_dir,
+                                             prefix='.metadata-', suffix='.tmp', delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(metadata, stream, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, artifact_dir / 'metadata.json')
+        except OSError as exc:
+            if not self._postgres_enabled:
+                raise
+            # PostgreSQL already committed. A mirror failure must not advertise
+            # a failed registration/transition and encourage a duplicate retry.
+            logging.getLogger(__name__).warning(
+                'Ontology metadata committed; disk mirror unavailable ontology_id=%s error_type=%s',
+                metadata['ontology_id'], type(exc).__name__)
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        return metadata
+
+    @staticmethod
+    def _parse_ontology(content: bytes, filename: str, *, include_graph=False) -> dict[str, Any]:
+        """Reject malformed RDF/OWL before it becomes a governed artifact."""
+        if len(content) > ontology_upload_limit():
+            raise ValueError('Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES; increase the setting consistently across ingestion, ontology and graph services or partition the ontology')
+        suffix = Path(filename).suffix.lower()
+        formats = {
+            ".ttl": ("turtle",),
+            ".rdf": ("xml", "turtle"),
+            ".xml": ("xml", "turtle"),
+            # OWL has no single concrete syntax: accept XML or Turtle based
+            # on the actual artifact, rather than trusting its extension.
+            ".owl": ("xml", "turtle"),
+            ".jsonld": ("json-ld",),
+            ".json": ("json-ld",),
+        }
+        candidates = formats.get(suffix)
+        if candidates is None:
+            raise ValueError("Ontology artifact must be TTL, RDF/XML, OWL, or JSON-LD")
+        last_error: Exception | None = None
+        for rdf_format in candidates:
+            try:
+                validate_rdf_input(content, rdf_format)
+                graph = Graph()
+                graph.parse(data=content, format=rdf_format)
+                if not graph:
+                    raise ValueError('Ontology artifact contains no RDF triples')
+                from backend.depo_platform.ontology_semantics import inventory
+                return {"rdf_format": rdf_format, "triple_count": len(graph), "semantic_inventory": inventory(graph),
+                        **({'graph': graph} if include_graph else {})}
+            except Exception as exc:  # try the other supported syntax
+                last_error = exc
+        raise ValueError('Ontology RDF/OWL parsing failed; check syntax and use inline JSON-LD contexts without XML DTDs') from last_error
+
+    @classmethod
+    def _analytics_from_content(cls, content: bytes, filename: str) -> dict[str, int]:
+        """Derive catalog metrics from a retained RDF artifact, never a graph copy."""
+        return cls._parse_ontology(content, filename)["semantic_inventory"]
+
+    def _validate_registration(self, *, content: bytes, filename: str, prefix: str, extra_metadata: dict[str, Any] | None = None) -> tuple[str, str, dict[str, Any]]:
+        if not content:
+            raise ValueError("An ontology artifact is required")
+        protected = {'ontology_id', 'artifact_path', 'artifact_id', 'validation', 'lifecycle_status',
+                     'lifecycle_events', 'created_at', 'prefix', 'original_filename'}
+        if protected.intersection(extra_metadata or {}):
+            raise ValueError('Extra metadata cannot replace catalog identity, artifact or lifecycle fields')
+        prefix = _safe_token(prefix, field="prefix")
+        safe_filename = Path((filename or "ontology.ttl").replace("\\", "/")).name
+        reserved = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
+        if (not safe_filename or safe_filename.lower() in {'.', '..', 'metadata.json'}
+                or safe_filename.split('.')[0].upper() in reserved
+                or safe_filename.endswith((' ', '.'))
+                or any(ord(char) < 32 or char in '<>:"|?*' for char in safe_filename)):
+            raise ValueError('A valid non-reserved artifact filename is required')
+        parse_result = self._parse_ontology(content, safe_filename)
+        return prefix, safe_filename, parse_result
+
+    @ontology_writer
+    def register(self, **kwargs) -> dict[str, Any]:
+        started = time.monotonic()
+        logging.getLogger(__name__).warning('Ontology registration started; bytes=%s', len(kwargs['content']))
+        outcome = 'failed'
+        try:
+            result = self._register_workflow(**kwargs)
+            outcome = 'completed'
+            return result
+        finally:
+            logging.getLogger(__name__).warning('Ontology registration finished; outcome=%s elapsed_seconds=%.3f', outcome, time.monotonic() - started)
+
+    def _register_workflow(self, **kwargs) -> dict[str, Any]:
+        prefix, safe_filename, parsed = self._validate_registration(
+            content=kwargs["content"], filename=kwargs["filename"], prefix=kwargs["prefix"],
+            extra_metadata=kwargs.get("extra_metadata"))
+        kwargs["prefix"] = prefix
+        kwargs["filename"] = safe_filename
+        kwargs["_validated"] = (prefix, safe_filename, parsed)
+        logging.getLogger(__name__).warning('Ontology registration syntax validation completed; triples=%s', parsed['triple_count'])
+        source = str(kwargs.get("source") or "api")
+        # Governed operation identities opt into artifact retry deduplication.
+        if not re.fullmatch(r"(?:(?:engineering|source-profile)-workflow|governed-merge):[0-9a-f]{64}", source):
+            return self._register(**kwargs)
+        with self._operation_lock(f'register:{source}'):
+            lock = self.registry.advisory_lock(f"register:{source}") if self._postgres_enabled else nullcontext(True)
+            with lock as acquired:
+                if not acquired:
+                    raise ValueError("This engineering registration is in progress; retry the same upload")
+                # PostgreSQL is authoritative: do not load every catalog record
+                # and scan/migrate filesystem mirrors during a registration.
+                if self._postgres_enabled:
+                    candidates = self.registry.find_by_field('source', source, limit=2)
+                    if len(candidates) > 1:
+                        raise ValueError('Multiple ontology registrations share this workflow identity; reconcile the catalog')
+                else:
+                    candidates = self.list()
+                logging.getLogger(__name__).warning('Ontology registration identity lookup completed')
+                for existing in candidates:
+                    if existing.get("source") == source:
+                        if existing.get("lifecycle_status") in {"deprecated", "retired"} or existing.get("status") == "superseded":
+                            raise ValueError("This ontology is retired, deprecated or superseded; create a reviewed replacement")
+                        if (existing.get("prefix") != kwargs["prefix"]
+                                or existing.get("ontology_name") != kwargs["ontology_name"]
+                                or existing.get("description", "") != kwargs.get("description", "")):
+                            raise ValueError("Workflow registration identity conflicts with its metadata")
+                        from rdflib.compare import isomorphic
+                        _, retained = self.read_artifact(existing["ontology_id"])
+                        # Identical uploads need no additional parsing or costly
+                        # blank-node graph canonicalization. Keep semantic comparison
+                        # for equivalent artifacts with different serialization.
+                        if retained != kwargs['content']:
+                            current = Graph().parse(data=retained, format=existing["validation"]["rdf_format"])
+                            proposed = Graph().parse(data=kwargs["content"], format=parsed["rdf_format"])
+                            if not isomorphic(current, proposed):
+                                raise ValueError("Workflow registration identity conflicts with its artifact")
+                        additions = {key: value for key, value in (kwargs.get('extra_metadata') or {}).items()
+                                     if key in {'engineering_artifacts', 'data_product_draft', 'source_filename'} and key not in existing}
+                        if additions:
+                            existing = self._save_metadata({**existing, **additions})
+                        return existing
+                return self._register(**kwargs)
+
+    def _register(self, *, content: bytes, filename: str, ontology_name: str, prefix: str, description: str = "", source: str = "api", extra_metadata: dict[str, Any] | None = None, _validated: tuple | None = None) -> dict[str, Any]:
+        prefix, safe_filename, parse_result = _validated or self._validate_registration(
+            content=content, filename=filename, prefix=prefix, extra_metadata=extra_metadata)
+        ontology_id = f"{prefix.lower()}_{uuid.uuid4().hex[:16]}"
+        artifact_dir = self.root / ontology_id
+        artifact_dir.mkdir(parents=True, exist_ok=False)
+        artifact_path = artifact_dir / safe_filename
+        artifact_path.write_bytes(content)
+        shared_artifact = artifact_store.ingest(
+            artifact_path,
+            kind="ontology",
+            media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
+            provenance={"ontology_id": ontology_id, "source": source},
+        )
+        logging.getLogger(__name__).warning('Ontology registration artifact retention completed')
+        metadata = {
+            "ontology_id": ontology_id,
+            "ontology_name": str(ontology_name or prefix),
+            "prefix": prefix,
+            "description": str(description or ""),
+            "source": source,
+            "original_filename": safe_filename,
+            "artifact_path": str(artifact_path),
+            "artifact_id": shared_artifact["artifact_id"],
+            "created_at": _now(),
+            "status": "registered",
+            "lifecycle_status": "draft",
+            "validation": {"status": "passed", **{k: v for k, v in parse_result.items() if k != "semantic_inventory"}},
+            "lifecycle_events": [{"at": _now(), "actor": source, "from": None, "to": "draft", "reason": "artifact registered and syntax validated"}],
+        }
+        metadata.update(extra_metadata or {})
+        metadata["statistics"] = parse_result["semantic_inventory"]
+        metadata["semantic_inventory_version"] = 1
+        result = self._save_metadata(metadata)
+        logging.getLogger(__name__).warning('Ontology registration metadata persistence completed')
+        return result
+
+    @ontology_writer
+    def adopt_legacy(
+        self,
+        *,
+        ontology_id: str,
+        content: bytes,
+        filename: str,
+        ontology_name: str,
+        prefix: str,
+        description: str = "",
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Adopt a legacy-ingestion artifact without changing its stable ID.
+
+        The operation is additive and idempotent: the original ingestion
+        record remains available for rollback while the native catalog becomes
+        the canonical discovery boundary.
+        """
+        stable_id = _safe_token(ontology_id, field="ontology_id")
+        existing = self.get(stable_id)
+        if not content:
+            raise ValueError("A legacy ontology artifact is required")
+        normalized_prefix = _safe_token(prefix, field="prefix")
+        safe_filename = Path(filename or "ontology.artifact").name
+        if existing is not None:
+            # Early migrations did not preserve the original suffix.  Repair
+            # that metadata idempotently so catalog consumers can negotiate
+            # the correct artifact media type.
+            if existing.get("source") != "legacy_ingestion_migration" or existing.get("original_filename") == safe_filename:
+                return existing
+            artifact_dir = self.root / stable_id
+            artifact_path = artifact_dir / safe_filename
+            artifact_path.write_bytes(content)
+            shared_artifact = artifact_store.ingest(
+                artifact_path,
+                kind="ontology",
+                media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
+                provenance={"ontology_id": stable_id, "source": "legacy_ingestion_migration"},
+            )
+            existing.update({"original_filename": safe_filename, "artifact_path": str(artifact_path), "artifact_id": shared_artifact["artifact_id"]})
+            return self._save_metadata(existing)
+        artifact_dir = self.root / stable_id
+        artifact_dir.mkdir(parents=True, exist_ok=False)
+        artifact_path = artifact_dir / safe_filename
+        artifact_path.write_bytes(content)
+        shared_artifact = artifact_store.ingest(
+            artifact_path,
+            kind="ontology",
+            media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
+            provenance={"ontology_id": stable_id, "source": "legacy_ingestion_migration"},
+        )
+        metadata = {
+            "ontology_id": stable_id,
+            "ontology_name": str(ontology_name or normalized_prefix),
+            "prefix": normalized_prefix,
+            "description": str(description or ""),
+            "source": "legacy_ingestion_migration",
+            "original_filename": safe_filename,
+            "artifact_path": str(artifact_path),
+            "artifact_id": shared_artifact["artifact_id"],
+            "created_at": _now(),
+            "status": "registered",
+            "lifecycle_status": "draft",
+            "lifecycle_events": [{"at": _now(), "actor": "legacy_ingestion_migration", "from": None, "to": "draft", "reason": "legacy artifact adopted; review required"}],
+        }
+        metadata.update(extra_metadata or {})
+        return self._save_metadata(metadata)
+
+    def get(self, ontology_id: str) -> dict[str, Any] | None:
+        _safe_token(ontology_id, field="ontology_id")
+        if self._postgres_enabled:
+            # A missing authoritative row means unregistered, not restore from disk.
+            return self.registry.get(ontology_id)
+        metadata_path = self.root / ontology_id / "metadata.json"
+        if not metadata_path.exists():
+            return None
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        return metadata
+
+    def resolve_artifact_path(self, ontology_id: str, metadata: dict[str, Any] | None = None) -> Path:
+        """Recover only a catalog-owned copy from its verified immutable content address."""
+        _safe_token(ontology_id, field='ontology_id')
+        metadata = metadata if metadata is not None else self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f'Ontology artifact not found: {ontology_id}')
+        directory = (self.root / ontology_id).resolve()
+        if not directory.is_relative_to(self.root.resolve()):
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        declared = Path(str(metadata.get('artifact_path') or '')).resolve()
+        if declared.is_relative_to(directory) and declared.is_file():
+            return declared
+        if declared.is_file():
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        filename = Path(str(metadata.get('original_filename') or declared.name).replace('\\', '/')).name
+        if (not filename or filename in {'.', '..', 'metadata.json'} or
+                any(ord(char) < 32 or char in '<>:"|?*' for char in filename)):
+            raise ValueError('Retained ontology artifact filename is invalid')
+        destination = directory / filename
+        if not destination.resolve().is_relative_to(directory):
+            raise ValueError('Ontology artifact path is outside its catalog directory')
+        # The stable catalog identity survives relocation. Reuse its current
+        # owned copy rather than rewriting it on every taxonomy/status read.
+        if destination.is_file():
+            return destination
+        artifact_id = metadata.get('artifact_id')
+        if not isinstance(artifact_id, str) or not artifact_id:
+            raise ValueError(f'Ontology artifact is missing: {ontology_id}')
+        with self._operation_lock(str(directory)):
+            _, retained = artifact_store.resolve(artifact_id)
+            limit = ontology_upload_limit()
+            if retained.stat().st_size > limit:
+                raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+            with retained.open('rb') as source:
+                content = source.read(limit + 1)
+            if len(content) > limit or 'sha256:' + hashlib.sha256(content).hexdigest() != artifact_id:
+                raise ValueError('Retained ontology artifact content does not match its immutable identity')
+            directory.mkdir(parents=True, exist_ok=True)
+            if destination.is_file():
+                return destination
+            # Reuse the tested Windows sharing-violation retry and atomic replacement.
+            from backend.Services.import_task_persistence import atomic_bytes
+            atomic_bytes(destination, content)
+            logging.getLogger(__name__).info('Recovered retained ontology artifact ontology_id=%s', ontology_id)
+            return destination
+
+    def read_artifact(self, ontology_id: str) -> tuple[dict[str, Any], bytes]:
+        metadata = self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f"Ontology artifact not found: {ontology_id}")
+        path = self.resolve_artifact_path(ontology_id, metadata)
+        metadata = {**metadata, 'artifact_path': str(path)}
+        limit = ontology_upload_limit()
+        if path.stat().st_size > limit:
+            raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES; restore a sufficient limit before reading or publishing it')
+        with path.open('rb') as stream:
+            content = stream.read(limit + 1)
+        if len(content) > limit:
+            raise ValueError('Retained ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+        return metadata, content
+
+    def artifact_digest(self, ontology_id: str) -> str:
+        """Bounded verification cache; invalidate whenever artifact stat changes."""
+        metadata = self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f"Ontology artifact not found: {ontology_id}")
+        path = self.resolve_artifact_path(ontology_id, metadata)
+        with path.open('rb') as source:
+            before = os.fstat(source.fileno())
+            key = (str(path), before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+            with self._digest_lock:
+                if key in self._digest_cache:
+                    self._digest_cache.move_to_end(key)
+                    return self._digest_cache[key]
+            digest = hashlib.file_digest(source, 'sha256').hexdigest()
+            after = os.fstat(source.fileno())
+            if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                raise ValueError('Ontology artifact changed during verification')
+        with self._digest_lock:
+            self._digest_cache[key] = digest
+            while len(self._digest_cache) > 256:
+                self._digest_cache.popitem(last=False)
+        return digest
+
+    @ontology_writer
+    def mark_superseded(self, *, ontology_id: str, successor_id: str) -> dict[str, Any]:
+        """Retire an accidental or replaced catalog version without deleting it."""
+        return self.with_publication_lock(ontology_id, lambda: self._mark_superseded(ontology_id, successor_id))
+
+    def _mark_superseded(self, ontology_id: str, successor_id: str) -> dict[str, Any]:
+        metadata = self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f"Ontology artifact not found: {ontology_id}")
+        metadata.update({"status": "superseded", "superseded_by": _safe_token(successor_id, field="successor_id"), "superseded_at": _now()})
+        return self._save_metadata(metadata)
+
+    @ontology_writer
+    def with_publication_lock(self, ontology_id: str, operation):
+        """Keep approval transitions serialized with a complete publication."""
+        _safe_token(ontology_id, field='ontology_id')
+        with self._operation_lock(f'lifecycle:{ontology_id}'):
+            lock = self.registry.advisory_lock(f'lifecycle:{ontology_id}') if self._postgres_enabled else nullcontext(True)
+            with lock as acquired:
+                if not acquired:
+                    raise ValueError('Ontology lifecycle is being updated; retry')
+                return operation()
+
+    @ontology_writer
+    def transition(self, *, ontology_id: str, target: str, actor: str, reason: str = "") -> dict[str, Any]:
+        """Move an ontology through the minimal review lifecycle with evidence."""
+        _safe_token(ontology_id, field="ontology_id")
+        with self._operation_lock(f'lifecycle:{ontology_id}'):
+            if self._postgres_enabled:
+                with self.registry.advisory_lock(f"lifecycle:{ontology_id}") as acquired:
+                    if not acquired:
+                        raise ValueError("Ontology lifecycle is being updated; retry")
+                    return self._transition(ontology_id, target, actor, reason)
+            return self._transition(ontology_id, target, actor, reason)
+
+    def _transition(self, ontology_id: str, target: str, actor: str, reason: str) -> dict[str, Any]:
+        metadata = self.get(ontology_id)
+        if metadata is None:
+            raise LookupError(f"Ontology artifact not found: {ontology_id}")
+        transitions = {
+            "draft": {"in_review", "retired"},
+            "in_review": {"draft", "approved", "retired"},
+            "approved": {"deprecated", "retired"},
+            "deprecated": {"retired"},
+            "retired": set(),
+        }
+        current = str(metadata.get("lifecycle_status") or "draft")
+        normalized_target = str(target or "").strip().lower()
+        if normalized_target not in transitions.get(current, set()):
+            raise ValueError(f"Invalid lifecycle transition: {current} -> {normalized_target or 'missing'}")
+        if not str(actor or "").strip():
+            raise ValueError("A review identity is required")
+        if normalized_target == "approved":
+            _, content = self.read_artifact(ontology_id)
+            parsed = self._parse_ontology(content, metadata["original_filename"])
+            metadata["validation"] = {"status": "passed", **parsed}
+        metadata["lifecycle_status"] = normalized_target
+        metadata.setdefault("lifecycle_events", []).append({
+            "at": _now(), "actor": str(actor), "from": current,
+            "to": normalized_target, "reason": str(reason or ""),
+        })
+        return self._save_metadata(metadata)
+
+    @ontology_writer
+    def backfill_analytics(self, *, ontology_ids: list[str], actor: str) -> dict[str, Any]:
+        """Add missing draft metadata and RDF analytics to legacy catalog records.
+
+        This is intentionally additive: it cannot alter an approval state,
+        publish to Neo4j, or replace the immutable source artifact.
+        """
+        if not str(actor or "").strip():
+            raise ValueError("A review identity is required")
+        results: list[dict[str, Any]] = []
+        for ontology_id in ontology_ids:
+            safe_id = _safe_token(ontology_id, field="ontology_id")
+            with self._operation_lock(f'lifecycle:{safe_id}'):
+                lock = self.registry.advisory_lock(f"analytics-backfill:{safe_id}") if self._postgres_enabled else _null_lock()
+                with lock as acquired:
+                    if not acquired:
+                        raise ValueError(f"Ontology analytics is being updated; retry: {safe_id}")
+                    metadata = self.get(safe_id)
+                    if metadata is None:
+                        raise LookupError(f"Ontology artifact not found: {safe_id}")
+                    if metadata.get("statistics") and metadata.get("lifecycle_status") and metadata.get("semantic_inventory_version") == 1:
+                        results.append({"ontology_id": safe_id, "status": "unchanged"})
+                        continue
+                    _, content = self.read_artifact(safe_id)
+                    parsed = self._parse_ontology(content, str(metadata.get("original_filename") or "ontology.ttl"))
+                    analytics = parsed["semantic_inventory"]
+                    prior_status = metadata.get("lifecycle_status")
+                    metadata.setdefault("lifecycle_status", "draft")
+                    metadata.setdefault("semantic_completeness", "unknown")
+                    metadata["statistics"] = analytics
+                    metadata["semantic_inventory_version"] = 1
+                    metadata["validation"] = {"status": "passed", **{k: v for k, v in parsed.items() if k != "semantic_inventory"}}
+                    metadata.setdefault("lifecycle_events", []).append({
+                        "at": _now(), "actor": str(actor), "from": prior_status,
+                        "to": metadata["lifecycle_status"],
+                        "reason": "legacy catalog analytics backfill; no approval or publication performed",
+                    })
+                    self._save_metadata(metadata)
+                    results.append({"ontology_id": safe_id, "status": "updated", "statistics": analytics, "lifecycle_status": metadata["lifecycle_status"]})
+        return {"results": results, "updated": sum(item["status"] == "updated" for item in results)}
+
+    def clear_registration_metadata(self, ontology_ids=None) -> dict:
+        """Remove active registrations and their recovery mirrors, retaining artifacts."""
+        entries = self.list(include_superseded=True)
+        if ontology_ids is not None:
+            selected = set(ontology_ids)
+            entries = [entry for entry in entries if entry.get('ontology_id') in selected]
+        cleared, failed = 0, []
+        for entry in entries:
+            identifier = _safe_token(entry['ontology_id'], field='ontology_id')
+            try:
+                mirror = self.root / identifier / 'metadata.json'
+                if mirror.is_symlink() or not mirror.resolve().is_relative_to(self.root.resolve()):
+                    raise ValueError('Catalog metadata is outside storage boundary')
+                mirror.unlink(missing_ok=True)
+                if self._postgres_enabled:
+                    with self.registry._connect() as db, db.cursor() as cursor:
+                        cursor.execute('DELETE FROM depo_registry WHERE namespace=%s AND key=%s', ('ontology_catalog', identifier))
+                cleared += 1
+            except Exception:
+                logging.getLogger(__name__).exception('Could not clear ontology registration %s', identifier)
+                failed.append(identifier)
+        return {'status': 'partial' if failed else 'success', 'cleared': cleared, 'failed': failed}
+
+    def page(self, *, limit=100, offset=0):
+        if not 1 <= limit <= 1000 or offset < 0:
+            raise ValueError('Invalid ontology catalog page')
+        if self._postgres_enabled:
+            return self.registry.page(limit=limit, offset=offset, exclude_superseded=True, order_field='created_at')
+        rows = self.list()
+        return len(rows), rows[offset:offset + limit]
+
+    def list(self, *, include_superseded=False) -> list[dict[str, Any]]:
+        if self._postgres_enabled:
+            # Artifact mirrors are retained evidence, never an implicit restore.
+            entries = list(self.registry.all().values())
+            return sorted(
+                (entry for entry in entries if include_superseded or entry.get('status') != 'superseded'),
+                key=lambda item: item.get('created_at', ''), reverse=True)
+        entries = []
+        known = {str(item.get("ontology_id") or "") for item in entries}
+        for metadata_path in self.root.glob("*/metadata.json"):
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if not isinstance(metadata, dict) or metadata.get('ontology_id') != metadata_path.parent.name or not isinstance(metadata.get('created_at'), str) or not metadata['created_at']:
+                    raise ValueError('Invalid catalog metadata')
+                _safe_token(metadata['ontology_id'], field='ontology_id')
+            except (OSError, ValueError, UnicodeError):
+                logging.getLogger(__name__).warning('Skipping unreadable or invalid ontology catalog mirror; restore it from authoritative storage')
+                continue
+            if metadata.get("ontology_id") not in known:
+                entries.append(metadata)
+                known.add(metadata['ontology_id'])
+        active_entries = [entry for entry in entries if include_superseded or entry.get("status") != "superseded"]
+        return sorted(active_entries, key=lambda item: item["created_at"], reverse=True)
+
+
+catalog = OntologyCatalog()
+
+
+class _null_lock:
+    def __enter__(self) -> bool: return True
+    def __exit__(self, *_: Any) -> None: return None

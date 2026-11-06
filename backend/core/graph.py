@@ -3,15 +3,10 @@ import time
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from neo4j import Query
+from backend.depo_platform.graph_access import graph_operation
 
 logger = logging.getLogger(__name__)
-
-# Optional imports - gracefully handle missing modules
-try:
-    from llama_index.graph_stores.neo4j import Neo4jGraphStore
-except ImportError:
-    logger.warning("llama_index.graph_stores.neo4j not available - Neo4jGraphStore will be unavailable")
-    Neo4jGraphStore = None
 
 try:
     from langchain_neo4j import Neo4jGraph
@@ -21,7 +16,7 @@ except ImportError:
 
 # ✅ Import centralized database configuration
 try:
-    from .db_config import get_config
+    from .db_config import get_config, get_driver
     CENTRALIZED_CONFIG_AVAILABLE = True
     logger.info("Using centralized Neo4j configuration from db_config.py")
 except ImportError:
@@ -36,7 +31,12 @@ except ImportError:
         return None
     
     env_path = Path(__file__).resolve().parents[1] / ".env"
-    load_dotenv(env_path)
+    # Managed deployments use only the injected root configuration.
+    if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+        os.getenv(key, '').lower() in {'prod', 'production'}
+        for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+    ):
+        load_dotenv(env_path, override=False)
     
     uri = _first_env("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
     username = _first_env("NEO4J_USER", "NEO4J_USERNAME", "Neo4j_user")
@@ -64,9 +64,9 @@ if CENTRALIZED_CONFIG_AVAILABLE:
     try:
         NEO4J_QUERY_TIMEOUT = get_config().query_timeout
     except Exception:
-        NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))
+        NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", os.getenv("NEO4J_IMPORT_QUERY_TIMEOUT", "300")))
 else:
-    NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))
+    NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", os.getenv("NEO4J_IMPORT_QUERY_TIMEOUT", "300")))
 
 NEO4J_DRIVER_TIMEOUT = 60  # Connection timeout (seconds)
 
@@ -76,6 +76,7 @@ _graph_last_failed_at: float = 0.0
 _GRAPH_RETRY_COOLDOWN = 60.0  # seconds between reconnect attempts
 
 
+@graph_operation
 def get_graph():
     """Get or create the Neo4j graph connection (lazy initialization).
 
@@ -106,12 +107,10 @@ def get_graph():
         # Try to use centralized configuration
         if CENTRALIZED_CONFIG_AVAILABLE:
             config = get_config()
-            _graph = Neo4jGraph(
-                url=config.uri,
-                username=config.username,
-                password=config.password,
-                database=config.database,
-            )
+            graph_kwargs = {"url": config.uri, "database": config.database}
+            if config.auth_mode != "none":
+                graph_kwargs.update(username=config.username, password=config.password)
+            _graph = Neo4jGraph(**graph_kwargs)
             logger.info(
                 f"Neo4j graph connection established using centralized config "
                 f"(deployment: {config.deployment_type.value})"
@@ -126,6 +125,8 @@ def get_graph():
             )
             logger.info("Neo4j graph connection established (legacy configuration)")
         
+        from backend.depo_platform.graph_access import guard_driver
+        _graph._driver = guard_driver(_graph._driver)
         _graph_last_failed_at = 0.0
     except Exception as exc:
         _graph = None
@@ -139,6 +140,10 @@ def get_graph():
 
 # Provide a property-like access for backward compatibility
 class GraphProxy:
+    def query(self, query_text: str, params: dict = None, timeout: int = None):
+        """Execute every application query through the timed driver gateway."""
+        return query_with_timeout(query_text, params=params, timeout=timeout)
+
     def __getattr__(self, name):
         return getattr(get_graph(), name)
 
@@ -147,51 +152,78 @@ graph = GraphProxy()
 # 🔒 SECURITY: Query timeout wrapper
 def query_with_timeout(query_text: str, params: dict = None, timeout: int = None):
     """
-    Execute a Cypher query with timeout protection.
-    
+    Execute a Cypher query with server-side timeout protection when the
+    centralized Neo4j driver is available.
+
     Args:
         query_text: Cypher query string
         params: Query parameters
         timeout: Timeout in seconds (defaults to NEO4J_QUERY_TIMEOUT)
-    
+
     Returns:
-        Query results
-    
+        Query results as a list of dictionaries
+
     Raises:
         TimeoutError: If query exceeds timeout
         Exception: Any Neo4j or other errors
     """
     if timeout is None:
         timeout = NEO4J_QUERY_TIMEOUT
-    
+
+    from backend.depo_platform.operations import current_operation
+    from backend.depo_platform.execution_guard import ensure_execution_allowed
+    ensure_execution_allowed()
+    operation = current_operation()
+    if operation:
+        timeout = operation.timeout(timeout)
+    start_time = time.time()
+    query_params = params or {}
+
     try:
-        # For synchronous queries, we use a simple approach:
-        # Let the query run but log if it takes too long
-        start_time = time.time()
-        
-        if params:
-            result = graph.query(query_text, params=params)
+        if CENTRALIZED_CONFIG_AVAILABLE:
+            config = get_config()
+            driver = get_driver()
+            if operation:
+                timeout = operation.timeout(timeout)
+            cypher = Query(query_text, timeout=float(timeout))
+            with driver.session(database=config.database) as session:
+                result = session.run(cypher, query_params)
+                rows = result.data()
         else:
-            result = graph.query(query_text)
-        
+            legacy_graph = get_graph()
+            # The compatibility wrapper does not consistently preserve Query
+            # metadata. Dispatch through its native driver to retain the limit.
+            legacy_driver = getattr(legacy_graph, '_driver', None)
+            if legacy_driver is None:
+                raise RuntimeError('Neo4j compatibility driver cannot enforce query deadlines')
+            with legacy_driver.session(database=database) as session:
+                if operation:
+                    timeout = operation.timeout(timeout)
+                rows = session.run(Query(query_text, timeout=float(timeout)), query_params).data()
+
         elapsed = time.time() - start_time
         if elapsed > timeout:
             logger.warning(
                 f"Query exceeded timeout threshold: {elapsed:.2f}s > {timeout}s. "
                 f"Query: {query_text[:100]}..."
             )
-        
-        return result
-        
+
+        return rows
+
     except TimeoutError:
         logger.error(f"Query timeout after {timeout}s: {query_text[:100]}...", exc_info=True)
         raise
     except Exception as e:
-        logger.error(f"Query execution error: {type(e).__name__}: {str(e)}", exc_info=True)
+        elapsed = time.time() - start_time
+        logger.error(
+            f"Query execution error after {elapsed:.2f}s: {type(e).__name__}: {str(e)}",
+            exc_info=True,
+        )
         raise
 
 # ── Schema cache ──────────────────────────────────────────────────────────
 _SCHEMA_CACHE_TTL = 600  # seconds (10 min)
+_EMPTY_SCHEMA_CACHE_TTL = 5  # connection/startup failures must recover quickly
 _schema_cache: dict | None = None
 _schema_cache_ts: float = 0.0
 
@@ -203,8 +235,16 @@ def get_graph_schema() -> dict:
     global _schema_cache, _schema_cache_ts
 
     now = time.time()
-    if _schema_cache is not None and (now - _schema_cache_ts) < _SCHEMA_CACHE_TTL:
-        return _schema_cache
+    if _schema_cache is not None:
+        has_schema = bool(
+            _schema_cache.get("nodeLabels")
+            or _schema_cache.get("relationshipTypes")
+            or _schema_cache.get("node_labels")
+            or _schema_cache.get("rel_types")
+        )
+        cache_ttl = _SCHEMA_CACHE_TTL if has_schema else _EMPTY_SCHEMA_CACHE_TTL
+        if (now - _schema_cache_ts) < cache_ttl:
+            return _schema_cache
 
     # Graceful fallback when Neo4j is not available
     if Neo4jGraph is None:

@@ -1,0 +1,8 @@
+{
+  "id": "depo-mbse", "version": "0.1.0",
+  "api": {"entrypoint": "mbse_plugin.app:app", "openapi": "/openapi.json"},
+  "visualization": "/",
+  "tools": {"entrypoint": "mbse_plugin.registration:invoke", "registration": "mbse_plugin.registration:register", "discovery": "/tools"},
+  "upstream": "DEPO_INGESTION_URL",
+  "external_integrations": [{"id": "cameo-mdk", "status": "reference-only", "source": "https://github.com/Open-MBEE/exec-cameo-mdk"}]
+}

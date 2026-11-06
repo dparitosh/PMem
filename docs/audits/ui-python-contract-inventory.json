@@ -1,0 +1,5235 @@
+{
+  "scope": "Static inventory; no live acceptance certification",
+  "services": 10,
+  "routes": [
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/health",
+      "file": "backend/qif/router.py",
+      "line": 51
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/catalog",
+      "file": "backend/qif/router.py",
+      "line": 56
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/schema-sets/standards",
+      "file": "backend/qif/router.py",
+      "line": 62
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/agents",
+      "file": "backend/qif/router.py",
+      "line": 67
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/agents/refresh",
+      "file": "backend/qif/router.py",
+      "line": 73
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/tasks/reference",
+      "file": "backend/qif/router.py",
+      "line": 79
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/schema-sets/upload",
+      "file": "backend/qif/router.py",
+      "line": 87
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/tasks/upload",
+      "file": "backend/qif/router.py",
+      "line": 115
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/tasks",
+      "file": "backend/qif/router.py",
+      "line": 140
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/tasks/{task_id}",
+      "file": "backend/qif/router.py",
+      "line": 145
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/tasks/{task_id}/preview",
+      "file": "backend/qif/router.py",
+      "line": 150
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/tasks/{task_id}/commit",
+      "file": "backend/qif/router.py",
+      "line": 155
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/tasks/{task_id}/cancel",
+      "file": "backend/qif/router.py",
+      "line": 161
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/tasks/{task_id}/retry-graph",
+      "file": "backend/qif/router.py",
+      "line": 166
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/api/v1/qif/tasks/{task_id}/artifacts/{artifact_path:path}",
+      "file": "backend/qif/router.py",
+      "line": 172
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/ontology/reference",
+      "file": "backend/qif/router.py",
+      "line": 182
+    },
+    {
+      "service": "schema-sets",
+      "method": "POST",
+      "path": "/api/v1/qif/ontology/upload",
+      "file": "backend/qif/router.py",
+      "line": 187
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "schema-sets",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/health",
+      "file": "backend/ontology_service/router.py",
+      "line": 36
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/capabilities",
+      "file": "backend/ontology_service/router.py",
+      "line": 41
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/generate",
+      "file": "backend/ontology_service/router.py",
+      "line": 46
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/validate-graph",
+      "file": "backend/ontology_service/router.py",
+      "line": 60
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/namespaces",
+      "file": "backend/ontology_service/router.py",
+      "line": 69
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/namespaces",
+      "file": "backend/ontology_service/router.py",
+      "line": 74
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/alignments",
+      "file": "backend/ontology_service/router.py",
+      "line": 83
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/alignments",
+      "file": "backend/ontology_service/router.py",
+      "line": 92
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/reason",
+      "file": "backend/ontology_service/router.py",
+      "line": 97
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/quality-gate",
+      "file": "backend/ontology_service/router.py",
+      "line": 105
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/versions",
+      "file": "backend/ontology_service/router.py",
+      "line": 116
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/versions",
+      "file": "backend/ontology_service/router.py",
+      "line": 125
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/versions/compare",
+      "file": "backend/ontology_service/router.py",
+      "line": 130
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/analytics",
+      "file": "backend/ontology_service/router.py",
+      "line": 138
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/policies",
+      "file": "backend/ontology_service/router.py",
+      "line": 146
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/policies",
+      "file": "backend/ontology_service/router.py",
+      "line": 151
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/policies/evaluate",
+      "file": "backend/ontology_service/router.py",
+      "line": 159
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/merges/preview",
+      "file": "backend/ontology_service/router.py",
+      "line": 167
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/merges/{preview_id}/apply",
+      "file": "backend/ontology_service/router.py",
+      "line": 175
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/business-context",
+      "file": "backend/ontology_service/router.py",
+      "line": 184
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/business-context/objects",
+      "file": "backend/ontology_service/router.py",
+      "line": 189
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/business-context/objects/{object_id}",
+      "file": "backend/ontology_service/router.py",
+      "line": 200
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/business-context/objects/{object_id}/where-used",
+      "file": "backend/ontology_service/router.py",
+      "line": 208
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/business-context/search",
+      "file": "backend/ontology_service/router.py",
+      "line": 216
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/mcp",
+      "file": "backend/ontology_service/router.py",
+      "line": 224
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/vocabularies",
+      "file": "backend/ontology_service/router.py",
+      "line": 233
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/vocabularies",
+      "file": "backend/ontology_service/router.py",
+      "line": 239
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/vocabularies/{scheme_id}/{version}",
+      "file": "backend/ontology_service/router.py",
+      "line": 250
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/vocabularies/{scheme_id}/{version}/transition",
+      "file": "backend/ontology_service/router.py",
+      "line": 258
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/vocabularies/{scheme_id}/{version}/publish",
+      "file": "backend/ontology_service/router.py",
+      "line": 269
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies",
+      "file": "backend/ontology_service/router.py",
+      "line": 299
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/migrations/legacy",
+      "file": "backend/ontology_service/router.py",
+      "line": 305
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/migrations/legacy/analytics",
+      "file": "backend/ontology_service/router.py",
+      "line": 343
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontologies/{ontology_id}",
+      "file": "backend/ontology_service/router.py",
+      "line": 357
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/register",
+      "file": "backend/ontology_service/router.py",
+      "line": 365
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontologies/{ontology_id}/transition",
+      "file": "backend/ontology_service/router.py",
+      "line": 393
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/metamodel",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 35
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/indexes",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 38
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/graph",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 41
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/tree",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 45
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/search",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 48
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/context/{element_id}",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 52
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/nodes",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 56
+    },
+    {
+      "service": "ontology",
+      "method": "PUT",
+      "path": "/api/v1/modeling/nodes/{element_id}",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 59
+    },
+    {
+      "service": "ontology",
+      "method": "DELETE",
+      "path": "/api/v1/modeling/nodes/{element_id}",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 62
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/links",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 65
+    },
+    {
+      "service": "ontology",
+      "method": "PUT",
+      "path": "/api/v1/modeling/links/{element_id}",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 68
+    },
+    {
+      "service": "ontology",
+      "method": "DELETE",
+      "path": "/api/v1/modeling/links/{element_id}",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 71
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/validation",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 74
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/seed",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 77
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/agent/proposals",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 81
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/modeling/agent/proposals",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 84
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/agent/proposals/{proposal_id}/approve",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 88
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/modeling/agent/proposals/{proposal_id}/reject",
+      "file": "backend/ontology_service/modeling_router.py",
+      "line": 93
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/ap239/data-dictionary",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 107
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/ap239/mappings/{source_format}",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 136
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/ap242/data-dictionary",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 142
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/ap242/mappings/{source_format}",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 171
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/skos/validate",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 195
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/skos/search",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 218
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/skos/traverse",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 232
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/skos/storage-plan",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 255
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/rules/validate",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 273
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/rules/execute-preview",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 286
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/semantic/rules/materialization-plan",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 312
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/{prefix}/data-dictionary",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 435
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/{prefix}/mappings/{source_format}",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 741
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/ap239/map-entity",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 836
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/{prefix}/map-entity",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 875
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/ap239/domain-pipelines",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 918
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/pipelines/domains",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 950
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/ontology/pipelines/domain/{domain_name}",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 976
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/ontology/pipelines/process",
+      "file": "backend/routes/ontology_routes.py",
+      "line": 1019
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/admin/health",
+      "file": "backend/routes/admin_routes.py",
+      "line": 500
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/admin/registry",
+      "file": "backend/routes/admin_routes.py",
+      "line": 506
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/admin/clean-schema",
+      "file": "backend/routes/admin_routes.py",
+      "line": 604
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/admin/delete-data",
+      "file": "backend/routes/admin_routes.py",
+      "line": 672
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/admin/schema-stats",
+      "file": "backend/routes/admin_routes.py",
+      "line": 758
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/admin/ontology-duplicate-audit",
+      "file": "backend/routes/admin_routes.py",
+      "line": 810
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/admin/reset-database",
+      "file": "backend/routes/admin_routes.py",
+      "line": 873
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/admin/clear-cache",
+      "file": "backend/routes/admin_routes.py",
+      "line": 905
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/metadata-registry/assets",
+      "file": "backend/routes/metadata_registry_routes.py",
+      "line": 229
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/metadata-registry/assets/{asset_id}",
+      "file": "backend/routes/metadata_registry_routes.py",
+      "line": 252
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/metadata-registry/assets",
+      "file": "backend/routes/metadata_registry_routes.py",
+      "line": 295
+    },
+    {
+      "service": "ontology",
+      "method": "PATCH",
+      "path": "/api/v1/metadata-registry/assets/{asset_id}",
+      "file": "backend/routes/metadata_registry_routes.py",
+      "line": 321
+    },
+    {
+      "service": "ontology",
+      "method": "POST",
+      "path": "/api/v1/metadata-registry/assets/{asset_id}/transition",
+      "file": "backend/routes/metadata_registry_routes.py",
+      "line": 360
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/api/v1/metadata-registry/assets/{asset_id}/history",
+      "file": "backend/routes/metadata_registry_routes.py",
+      "line": 406
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ontology",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/agents",
+      "file": "backend/agentic_service/router.py",
+      "line": 120
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/agent-architecture",
+      "file": "backend/agentic_service/router.py",
+      "line": 126
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/tools",
+      "file": "backend/agentic_service/router.py",
+      "line": 130
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/mcp-servers",
+      "file": "backend/agentic_service/router.py",
+      "line": 132
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflows",
+      "file": "backend/agentic_service/router.py",
+      "line": 134
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/integrations/dt-requirements-design/compatibility",
+      "file": "backend/agentic_service/router.py",
+      "line": 138
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/integrations/dt-requirements-design/capabilities",
+      "file": "backend/agentic_service/router.py",
+      "line": 147
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/integrations/dt-requirements-design/runs",
+      "file": "backend/agentic_service/router.py",
+      "line": 152
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/integrations/dt-requirements-design/runs/{run_id}",
+      "file": "backend/agentic_service/router.py",
+      "line": 193
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/oslc/graph-rag",
+      "file": "backend/agentic_service/router.py",
+      "line": 205
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflows/options",
+      "file": "backend/agentic_service/router.py",
+      "line": 222
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflows/execute",
+      "file": "backend/agentic_service/router.py",
+      "line": 229
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/ontology-agents/orchestrate",
+      "file": "backend/agentic_service/router.py",
+      "line": 244
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/ontology-agents/intake",
+      "file": "backend/agentic_service/router.py",
+      "line": 265
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/ontology-agents/review",
+      "file": "backend/agentic_service/router.py",
+      "line": 271
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/ontology-agents/bridge-plan",
+      "file": "backend/agentic_service/router.py",
+      "line": 277
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/chat/sample-queries",
+      "file": "backend/agentic_service/router.py",
+      "line": 290
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/chat/validate",
+      "file": "backend/agentic_service/router.py",
+      "line": 295
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/chat",
+      "file": "backend/agentic_service/router.py",
+      "line": 304
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/chat/jobs",
+      "file": "backend/agentic_service/router.py",
+      "line": 367
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/chat/jobs/{job_id}",
+      "file": "backend/agentic_service/router.py",
+      "line": 378
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/chat/health",
+      "file": "backend/agentic_service/router.py",
+      "line": 390
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/chat/status",
+      "file": "backend/agentic_service/router.py",
+      "line": 390
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/llm/health",
+      "file": "backend/agentic_service/router.py",
+      "line": 395
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/chat/capabilities",
+      "file": "backend/agentic_service/router.py",
+      "line": 401
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/chat-stream",
+      "file": "backend/agentic_service/router.py",
+      "line": 406
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/agents/{agent_id}/suggest",
+      "file": "backend/agentic_service/router.py",
+      "line": 444
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/agent-recommendations/{recommendation_id}",
+      "file": "backend/agentic_service/router.py",
+      "line": 469
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/plans",
+      "file": "backend/agentic_service/router.py",
+      "line": 481
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-plans",
+      "file": "backend/agentic_service/router.py",
+      "line": 490
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/llm/probe",
+      "file": "backend/agentic_service/router.py",
+      "line": 589
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/mcp-servers/{server_id}/tools",
+      "file": "backend/agentic_service/router.py",
+      "line": 636
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/runs",
+      "file": "backend/agentic_service/router.py",
+      "line": 717
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/runs/{run_id}",
+      "file": "backend/agentic_service/router.py",
+      "line": 750
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs",
+      "file": "backend/agentic_service/router.py",
+      "line": 760
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs/{run_id}/reconcile",
+      "file": "backend/agentic_service/router.py",
+      "line": 911
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs/{run_id}/reconcile-receipt",
+      "file": "backend/agentic_service/router.py",
+      "line": 928
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflow-runs/{run_id}/compensation-plan",
+      "file": "backend/agentic_service/router.py",
+      "line": 945
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs/{run_id}/compensate",
+      "file": "backend/agentic_service/router.py",
+      "line": 953
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs/{run_id}/recover",
+      "file": "backend/agentic_service/router.py",
+      "line": 988
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs/{run_id}/control",
+      "file": "backend/agentic_service/router.py",
+      "line": 1013
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflow-runs/{run_id}",
+      "file": "backend/agentic_service/router.py",
+      "line": 1036
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflow-runs",
+      "file": "backend/agentic_service/router.py",
+      "line": 1055
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/observability/summary",
+      "file": "backend/agentic_service/router.py",
+      "line": 1074
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/observability/runs",
+      "file": "backend/agentic_service/router.py",
+      "line": 1079
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/metrics",
+      "file": "backend/agentic_service/router.py",
+      "line": 1085
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/catalog/validate",
+      "file": "backend/agentic_service/router.py",
+      "line": 1090
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/code-audit",
+      "file": "backend/agentic_service/router.py",
+      "line": 1124
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflows/bridge/previews",
+      "file": "backend/agentic_service/bridge_router.py",
+      "line": 40
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflows/bridge/jobs/{job_id}",
+      "file": "backend/agentic_service/bridge_router.py",
+      "line": 45
+    },
+    {
+      "service": "agentic",
+      "method": "POST",
+      "path": "/api/v1/workflows/bridge/previews/{preview_id}/publish",
+      "file": "backend/agentic_service/bridge_router.py",
+      "line": 50
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflows/bridge/jobs/{job_id}/artifact",
+      "file": "backend/agentic_service/bridge_router.py",
+      "line": 56
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/api/v1/workflows/artifacts/{task_id}/{artifact_path:path}",
+      "file": "backend/agentic_service/bridge_router.py",
+      "line": 64
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "agentic",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/health",
+      "file": "backend/graph_service/router.py",
+      "line": 14
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/access",
+      "file": "backend/graph_service/router.py",
+      "line": 19
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/graph/ontologies/publish",
+      "file": "backend/graph_service/router.py",
+      "line": 24
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/ontologies/{ontology_id}/publications/{publication_id}",
+      "file": "backend/graph_service/router.py",
+      "line": 45
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/overview",
+      "file": "backend/graph_service/router.py",
+      "line": 58
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/metrics",
+      "file": "backend/graph_service/router.py",
+      "line": 66
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/mapping-terms",
+      "file": "backend/graph_service/router.py",
+      "line": 79
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/search",
+      "file": "backend/graph_service/router.py",
+      "line": 89
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/ontologies/{ontology_id}/projection",
+      "file": "backend/graph_service/router.py",
+      "line": 99
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/traversal/{iri:path}",
+      "file": "backend/graph_service/router.py",
+      "line": 107
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/ontologies/{ontology_id}/analytics",
+      "file": "backend/graph_service/router.py",
+      "line": 115
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/ontologies/{ontology_id}/neighborhood",
+      "file": "backend/graph_service/router.py",
+      "line": 123
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/contextual-subgraph",
+      "file": "backend/graph_service/context_router.py",
+      "line": 50
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/requirements",
+      "file": "backend/graph_service/context_router.py",
+      "line": 91
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/recommendations/health",
+      "file": "backend/graph_service/context_router.py",
+      "line": 107
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/change-impact",
+      "file": "backend/graph_service/context_router.py",
+      "line": 121
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/similar-parts",
+      "file": "backend/graph_service/context_router.py",
+      "line": 153
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/recommendations/manufacturing",
+      "file": "backend/graph_service/context_router.py",
+      "line": 185
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/graphql",
+      "file": "backend/graph_service/graphql_router.py",
+      "line": 122
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/sparql",
+      "file": "backend/graph_service/sparql_router.py",
+      "line": 15
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/sparql/federation/peers",
+      "file": "backend/graph_service/federation_router.py",
+      "line": 11
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/sparql/federation/peers",
+      "file": "backend/graph_service/federation_router.py",
+      "line": 14
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/sparql/federation/peers/{peer_id}/approve",
+      "file": "backend/graph_service/federation_router.py",
+      "line": 21
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/sparql/federation/peers/{peer_id}/query",
+      "file": "backend/graph_service/federation_router.py",
+      "line": 27
+    },
+    {
+      "service": "graph",
+      "method": "POST",
+      "path": "/api/v1/graph/bridge/publications",
+      "file": "backend/graph_service/bridge_router.py",
+      "line": 22
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/api/v1/graph/bridge/publications/{publication_id}",
+      "file": "backend/graph_service/bridge_router.py",
+      "line": 31
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "graph",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/reports/xsd-relational",
+      "file": "backend/ingestion_service/router.py",
+      "line": 51
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/sysml-v2/import-commit",
+      "file": "backend/ingestion_service/router.py",
+      "line": 104
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ingestion/health",
+      "file": "backend/ingestion_service/router.py",
+      "line": 128
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ingestion/graph-store",
+      "file": "backend/ingestion_service/router.py",
+      "line": 133
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/import/formats",
+      "file": "backend/ingestion_service/router.py",
+      "line": 138
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/governed-import/profiles",
+      "file": "backend/ingestion_service/router.py",
+      "line": 149
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/governed-import",
+      "file": "backend/ingestion_service/router.py",
+      "line": 157
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/import/tasks",
+      "file": "backend/ingestion_service/router.py",
+      "line": 183
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/schema-conversions/inspect",
+      "file": "backend/ingestion_service/router.py",
+      "line": 194
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ap242/inspect",
+      "file": "backend/ingestion_service/router.py",
+      "line": 221
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ap242/reference/validation",
+      "file": "backend/ingestion_service/router.py",
+      "line": 234
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ap242/mbd/extract",
+      "file": "backend/ingestion_service/router.py",
+      "line": 249
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ap242/mbd/export-part28",
+      "file": "backend/ingestion_service/router.py",
+      "line": 258
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/engineering-workflows",
+      "file": "backend/ingestion_service/router.py",
+      "line": 269
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/source-profiles/inspect",
+      "file": "backend/ingestion_service/router.py",
+      "line": 294
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/source-profiles",
+      "file": "backend/ingestion_service/router.py",
+      "line": 305
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/source-profiles",
+      "file": "backend/ingestion_service/router.py",
+      "line": 311
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/source-profiles/{profile_id}/normalize",
+      "file": "backend/ingestion_service/router.py",
+      "line": 319
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/source-profiles/{profile_id}/execute",
+      "file": "backend/ingestion_service/router.py",
+      "line": 327
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/source-profiles/{profile_id}/workflow",
+      "file": "backend/ingestion_service/router.py",
+      "line": 348
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ingest-data",
+      "file": "backend/ingestion_service/router.py",
+      "line": 390
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/{ontology_id}/export",
+      "file": "backend/ingestion_service/api/ontology_browser.py",
+      "line": 18
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/{ontology_id}/reason",
+      "file": "backend/ingestion_service/api/ontology_browser.py",
+      "line": 60
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ontology/{ontology_id}/inference/preview",
+      "file": "backend/ingestion_service/api/ontology_browser.py",
+      "line": 70
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/{ontology_id}/data-dictionary",
+      "file": "backend/ingestion_service/api/ontology_browser.py",
+      "line": 163
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/{ontology_id}/taxonomy",
+      "file": "backend/ingestion_service/api/ontology_browser.py",
+      "line": 220
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/{ontology_id}/retained-inventory",
+      "file": "backend/ingestion_service/api/ontology_browser.py",
+      "line": 241
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ontology/upload",
+      "file": "backend/Services/unified_import_router.py",
+      "line": 176
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/registered",
+      "file": "backend/Services/unified_import_router.py",
+      "line": 334
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/ontology/{ontology_id}",
+      "file": "backend/Services/unified_import_router.py",
+      "line": 358
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ontology/merge",
+      "file": "backend/Services/unified_import_router.py",
+      "line": 405
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/ontology/cleanup-old-xsd",
+      "file": "backend/Services/unified_import_router.py",
+      "line": 557
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/documents/plan",
+      "file": "backend/Services/documents_api.py",
+      "line": 310
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/documents/jobs",
+      "file": "backend/Services/documents_api.py",
+      "line": 336
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/documents/jobs/{task_id}",
+      "file": "backend/Services/documents_api.py",
+      "line": 403
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/documents/jobs/{task_id}/cancel",
+      "file": "backend/Services/documents_api.py",
+      "line": 413
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/documents/jobs/{task_id}/artifacts",
+      "file": "backend/Services/documents_api.py",
+      "line": 423
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/documents/jobs/{task_id}/artifacts/{artifact_path:path}",
+      "file": "backend/Services/documents_api.py",
+      "line": 433
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/documents/supported-formats",
+      "file": "backend/Services/documents_api.py",
+      "line": 442
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/documents/upload",
+      "file": "backend/Services/documents_api.py",
+      "line": 487
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/documents/upload-single",
+      "file": "backend/Services/documents_api.py",
+      "line": 614
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/documents/health",
+      "file": "backend/Services/documents_api.py",
+      "line": 702
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/sysml-v2/status",
+      "file": "backend/routes/sysml_v2_routes.py",
+      "line": 12
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/sysml-v2/integration-plan",
+      "file": "backend/routes/sysml_v2_routes.py",
+      "line": 20
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/import/upload",
+      "file": "backend/ingestion_service/tracked_import.py",
+      "line": 20
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/import/status/{task_id}",
+      "file": "backend/ingestion_service/tracked_import.py",
+      "line": 41
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/import/preview/{task_id}",
+      "file": "backend/ingestion_service/tracked_import.py",
+      "line": 45
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/api/v1/import/pre-commit/{task_id}",
+      "file": "backend/ingestion_service/tracked_import.py",
+      "line": 50
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/import/commit/{task_id}",
+      "file": "backend/ingestion_service/tracked_import.py",
+      "line": 63
+    },
+    {
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/api/v1/import/cancel/{task_id}",
+      "file": "backend/ingestion_service/tracked_import.py",
+      "line": 73
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/catalog",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 16
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/providers/{provider_id}",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 25
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/shapes",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 35
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/shapes/{shape_id}",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 45
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/query/{resource_type}",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 65
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/resources/{element_id:path}",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 80
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/trs",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 93
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/trs/base",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 103
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/trs/changelog",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 113
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/dictionaries/{prefix}",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 123
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/taxonomies",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 145
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/taxonomies/{ontology_id}",
+      "file": "backend/routes/oslc_routes.py",
+      "line": 155
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/lifecycle",
+      "file": "backend/oslc_service/lifecycle.py",
+      "line": 34
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/lifecycle/shapes/{kind}",
+      "file": "backend/oslc_service/lifecycle.py",
+      "line": 42
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/lifecycle/{kind}/{identifier}",
+      "file": "backend/oslc_service/lifecycle.py",
+      "line": 58
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/lifecycle/{kind}",
+      "file": "backend/oslc_service/lifecycle.py",
+      "line": 96
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/api/v1/oslc/health",
+      "file": "backend/oslc_service/router.py",
+      "line": 26
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/api/v1/oslc/remote/catalog",
+      "file": "backend/oslc_service/router.py",
+      "line": 31
+    },
+    {
+      "service": "oslc",
+      "method": "POST",
+      "path": "/api/v1/oslc/remote/query/{resource_type}",
+      "file": "backend/oslc_service/router.py",
+      "line": 39
+    },
+    {
+      "service": "oslc",
+      "method": "POST",
+      "path": "/api/v1/oslc/remote/sync/{resource_type}",
+      "file": "backend/oslc_service/router.py",
+      "line": 48
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/api/v1/oslc/remote/sync",
+      "file": "backend/oslc_service/router.py",
+      "line": 59
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/api/v1/oslc/remote/sync/{sync_id}",
+      "file": "backend/oslc_service/router.py",
+      "line": 66
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "oslc",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/api/v1/catalog/products",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 47
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/api/v1/catalog/products/{product_id}",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 58
+    },
+    {
+      "service": "catalog",
+      "method": "PUT",
+      "path": "/api/v1/catalog/products/{product_id}/versions/{version}",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 68
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/api/v1/catalog/artifacts/retention",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 106
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/api/v1/catalog/artifacts/retention/due",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 112
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/api/v1/catalog/artifacts/{artifact_id:path}/retention/history",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 118
+    },
+    {
+      "service": "catalog",
+      "method": "POST",
+      "path": "/api/v1/catalog/artifacts/{artifact_id:path}/retention",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 124
+    },
+    {
+      "service": "catalog",
+      "method": "POST",
+      "path": "/api/v1/catalog/artifacts/{artifact_id:path}/purge",
+      "file": "backend/data_catalog_service/router.py",
+      "line": 133
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "catalog",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "data-products",
+      "method": "POST",
+      "path": "/api/v1/data-products/preview",
+      "file": "backend/data_product_service/router.py",
+      "line": 190
+    },
+    {
+      "service": "data-products",
+      "method": "POST",
+      "path": "/api/v1/data-products/publish",
+      "file": "backend/data_product_service/router.py",
+      "line": 196
+    },
+    {
+      "service": "data-products",
+      "method": "POST",
+      "path": "/api/v1/data-products/{product_version}/retry-catalog",
+      "file": "backend/data_product_service/router.py",
+      "line": 231
+    },
+    {
+      "service": "data-products",
+      "method": "POST",
+      "path": "/api/v1/data-products/reconcile",
+      "file": "backend/data_product_service/router.py",
+      "line": 245
+    },
+    {
+      "service": "data-products",
+      "method": "POST",
+      "path": "/api/v1/data-products/{product_version}/revoke",
+      "file": "backend/data_product_service/router.py",
+      "line": 254
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/api/v1/data-products",
+      "file": "backend/data_product_service/router.py",
+      "line": 277
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/api/v1/data-products/{product_version}/manifest",
+      "file": "backend/data_product_service/router.py",
+      "line": 287
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/api/v1/data-products/{product_version}/download",
+      "file": "backend/data_product_service/router.py",
+      "line": 295
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/api/v1/data-products/{product_version}",
+      "file": "backend/data_product_service/router.py",
+      "line": 306
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "data-products",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ceim",
+      "method": "GET",
+      "path": "/api/v1/ceim/contract",
+      "file": "backend/ceim_service/router.py",
+      "line": 31
+    },
+    {
+      "service": "ceim",
+      "method": "GET",
+      "path": "/api/v1/ceim/mapping-packs/{standard}",
+      "file": "backend/ceim_service/router.py",
+      "line": 41
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/normalize/entity",
+      "file": "backend/ceim_service/router.py",
+      "line": 49
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/normalize/relationship",
+      "file": "backend/ceim_service/router.py",
+      "line": 57
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/normalize/batch",
+      "file": "backend/ceim_service/router.py",
+      "line": 65
+    },
+    {
+      "service": "ceim",
+      "method": "GET",
+      "path": "/api/v1/ceim/entity-resolution/cases",
+      "file": "backend/ceim_service/router.py",
+      "line": 98
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/entity-resolution/cases/{case_id}/resolve",
+      "file": "backend/ceim_service/router.py",
+      "line": 103
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/validate/batch",
+      "file": "backend/ceim_service/router.py",
+      "line": 114
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/adapters/reqif/normalize",
+      "file": "backend/ceim_service/router.py",
+      "line": 123
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/adapters/qif/normalize",
+      "file": "backend/ceim_service/router.py",
+      "line": 141
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/adapters/plmxml/normalize",
+      "file": "backend/ceim_service/router.py",
+      "line": 167
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/adapters/qif/validate",
+      "file": "backend/ceim_service/router.py",
+      "line": 185
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/projection/turtle",
+      "file": "backend/ceim_service/router.py",
+      "line": 196
+    },
+    {
+      "service": "ceim",
+      "method": "POST",
+      "path": "/api/v1/ceim/publications/graph",
+      "file": "backend/ceim_service/router.py",
+      "line": 229
+    },
+    {
+      "service": "ceim",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ceim",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "ceim",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/health",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 50
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/execution-ready",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 55
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/telemetry",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 64
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/transform",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 75
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/workflows/document-evidence/run",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 88
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/jobs/definitions",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 224
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/jobs/definitions/{job_id}/{version}",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 232
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/definitions",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 243
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/approve",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 256
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/disable",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 269
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/schedule",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 282
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/schedule/disable",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 299
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 312
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/jobs/runs",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 338
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/jobs/runs/{run_id}",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 353
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/runs/{run_id}/publish",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 364
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/jobs/runs/{run_id}/replay",
+      "file": "backend/data_pipeline_service/router.py",
+      "line": 452
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/speed/sources",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 17
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/speed/sources",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 20
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/speed/sources/{source_id}/approve",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 27
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/api/v1/pipeline/speed/events",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 33
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/speed/events",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 36
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/speed/reconciliations",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 42
+    },
+    {
+      "service": "data-pipeline",
+      "method": "POST",
+      "path": "/api/v1/pipeline/speed/reconciliations/{reconciliation_id}/publish",
+      "file": "backend/data_pipeline_service/speed_router.py",
+      "line": 49
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/healthz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/readyz",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    },
+    {
+      "service": "data-pipeline",
+      "method": "GET",
+      "path": "/openapi.json",
+      "file": "backend/depo_platform/service_runtime.py",
+      "line": 0
+    }
+  ],
+  "ui_defaults": [
+    {
+      "path": "/health",
+      "line": 178,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ready",
+      "line": 179,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/graph-metrics",
+      "line": 180,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ontologies/available",
+      "line": 181,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/health/neo4j",
+      "line": 182,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ap242/rotor-shaft-pmi",
+      "line": 192,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ap242/search",
+      "line": 193,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/reports",
+      "line": 194,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/chat",
+      "line": 203,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat-stream",
+      "line": 204,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/validate",
+      "line": 205,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/jobs",
+      "line": 206,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/jobs/{job_id}",
+      "line": 207,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/health",
+      "line": 208,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/status",
+      "line": 209,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/capabilities",
+      "line": 210,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/chat/sample-queries",
+      "line": 211,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/upload",
+      "line": 218,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/registered",
+      "line": 219,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}",
+      "line": 220,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/taxonomy",
+      "line": 221,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/reason",
+      "line": 222,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/inference/preview",
+      "line": 223,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/skos/validate",
+      "line": 224,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/skos/search",
+      "line": 225,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/skos/traverse",
+      "line": 226,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/skos/storage-plan",
+      "line": 227,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/rules/validate",
+      "line": 228,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/rules/execute-preview",
+      "line": 229,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/semantic/rules/materialization-plan",
+      "line": 230,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/data-dictionary",
+      "line": 231,
+      "owners": [
+        "ingestion",
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{prefix}/data-dictionary",
+      "line": 232,
+      "owners": [
+        "ingestion",
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/mappings/{type}",
+      "line": 233,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{prefix}/mappings/{source_format}",
+      "line": 234,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/map-entity",
+      "line": 235,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{prefix}/map-entity",
+      "line": 236,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/ap239/data-dictionary",
+      "line": 237,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/ap239/mappings/{source_format}",
+      "line": 238,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/ap239/map-entity",
+      "line": 239,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/ap239/domain-pipelines",
+      "line": 240,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/ap242/data-dictionary",
+      "line": 241,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/ap242/mappings/{source_format}",
+      "line": 242,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/pipelines/domains",
+      "line": 243,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/pipelines/domain/{domain_name}",
+      "line": 244,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/pipelines/process",
+      "line": 245,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/extract-3dxml",
+      "line": 246,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/ontology/3dxml/status/{task_id}",
+      "line": 247,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/ontology/3dxml/formats",
+      "line": 248,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ontology-mappings",
+      "line": 249,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/ontology/merge",
+      "line": 250,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontologies/merges/preview",
+      "line": 251,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontologies/merges/{preview_id}/apply",
+      "line": 252,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/cleanup-old-xsd",
+      "line": 253,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology/{ontology}/export",
+      "line": 254,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/upload",
+      "line": 261,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/status/{task_id}",
+      "line": 262,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/preview/{task_id}",
+      "line": 263,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/commit/{task_id}",
+      "line": 264,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/pre-commit/{task_id}",
+      "line": 265,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/cancel/{task_id}",
+      "line": 266,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/owl/{task_id}",
+      "line": 267,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/import/owl/{task_id}/export",
+      "line": 268,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/import/artifacts/{task_id}",
+      "line": 269,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/import/formats",
+      "line": 270,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/import/tasks",
+      "line": 271,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/governed-import",
+      "line": 272,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/data-import/upload",
+      "line": 273,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/data-import/status/{task_id}",
+      "line": 274,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/data-import/preview/{task_id}",
+      "line": 275,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/data-import/pre-commit/{task_id}",
+      "line": 276,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/data-import/commit/{task_id}",
+      "line": 277,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/data-import/cancel/{task_id}",
+      "line": 278,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/data-import/tasks",
+      "line": 279,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/workflows/options",
+      "line": 283,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/workflows/execute",
+      "line": 284,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/workflows/artifacts/{task_id}/{artifact_path}",
+      "line": 285,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ingest-data",
+      "line": 292,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ingest-data",
+      "line": 293,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/supported-formats",
+      "line": 300,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/upload",
+      "line": 301,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/upload-single",
+      "line": 302,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/jobs",
+      "line": 303,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/jobs/{task_id}",
+      "line": 304,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/jobs/{task_id}/cancel",
+      "line": 305,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/jobs/{task_id}/artifacts",
+      "line": 306,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/documents/health",
+      "line": 307,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/health",
+      "line": 314,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/registry",
+      "line": 315,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/clean-schema",
+      "line": 316,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/clear-cache",
+      "line": 317,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/delete-data",
+      "line": 318,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/schema-stats",
+      "line": 319,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/admin/reset-database",
+      "line": 320,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/metadata-registry/assets",
+      "line": 324,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/metadata-registry/assets/{asset_id}",
+      "line": 325,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/metadata-registry/assets/{asset_id}/transition",
+      "line": 326,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/metadata-registry/assets/{asset_id}/history",
+      "line": 327,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/recommendations/change-impact",
+      "line": 334,
+      "owners": [
+        "graph"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/recommendations/similar-parts",
+      "line": 335,
+      "owners": [
+        "graph"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/recommendations/manufacturing",
+      "line": 336,
+      "owners": [
+        "graph"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/recommendations/health",
+      "line": 337,
+      "owners": [
+        "graph"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/requirements",
+      "line": 345,
+      "owners": [
+        "graph"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/ontology-mapper/options",
+      "line": 352,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ontology-mapper/{mapping_type}/mappings",
+      "line": 353,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ontology-mapper/{mapping_type}/data-dictionary",
+      "line": 354,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ontology-mapper/{mapping_type}/vocabulary",
+      "line": 355,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/ontology-mapper/{mapping_type}/stats",
+      "line": 356,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/modeling/metamodel",
+      "line": 364,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/indexes",
+      "line": 365,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/graph",
+      "line": 366,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/tree",
+      "line": 367,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/search",
+      "line": 368,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/context/{element_id}",
+      "line": 369,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/nodes",
+      "line": 370,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/nodes/{element_id}",
+      "line": 371,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "DELETE",
+        "PUT"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/links",
+      "line": 372,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/links/{element_id}",
+      "line": 373,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "DELETE",
+        "PUT"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/validation",
+      "line": 374,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/seed",
+      "line": 375,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/agent/proposals",
+      "line": 376,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/agent/proposals/{proposal_id}/approve",
+      "line": 377,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/modeling/agent/proposals/{proposal_id}/reject",
+      "line": 378,
+      "owners": [
+        "ontology"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/embeddings/build",
+      "line": 385,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/webhooks/neo4j",
+      "line": 386,
+      "owners": [],
+      "methods": [],
+      "status": "unresolved"
+    },
+    {
+      "path": "/api/v1/reports/xsd-relational",
+      "line": 390,
+      "owners": [
+        "ingestion"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/catalog",
+      "line": 394,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/health",
+      "line": 395,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/agents",
+      "line": 396,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/reference",
+      "line": 397,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/upload",
+      "line": 398,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks",
+      "line": 399,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/{task_id}",
+      "line": 400,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/{task_id}/preview",
+      "line": 401,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/{task_id}/artifacts/{artifact_path}",
+      "line": 402,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/{task_id}/commit",
+      "line": 403,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/{task_id}/cancel",
+      "line": 404,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/qif/tasks/{task_id}/retry-graph",
+      "line": 405,
+      "owners": [
+        "schema-sets"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/healthz",
+      "line": 410,
+      "owners": [
+        "agentic",
+        "catalog",
+        "ceim",
+        "data-pipeline",
+        "data-products",
+        "graph",
+        "ingestion",
+        "ontology",
+        "oslc",
+        "schema-sets"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/agents",
+      "line": 411,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/tools",
+      "line": 412,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/runs",
+      "line": 413,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/workflow-runs",
+      "line": 414,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/ontology-agents/orchestrate",
+      "line": 415,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/observability/summary",
+      "line": 416,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    },
+    {
+      "path": "/api/v1/observability/runs",
+      "line": 417,
+      "owners": [
+        "agentic"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "status": "static-path-match"
+    }
+  ],
+  "network_callers": [
+    {
+      "file": "frontend/src/SchemaContext.js",
+      "calls": [
+        {
+          "line": 51,
+          "source": "const res = await apiClient.get(buildUrl(schemaEndpoint), { timeout: 10000, signal: controller.signal });"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/AgentControlPanel.js",
+      "calls": [
+        {
+          "line": 45,
+          "source": "const response = await agenticClient.get(buildSemanticServiceUrl('agentic', `/api/v1/${runKind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(runId.trim())}`),"
+        },
+        {
+          "line": 60,
+          "source": "agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/workflow-runs?limit=50'), {...options, headers:supervisor ? {Authorization:`Bearer ${supervisor}`} : {}}),"
+        },
+        {
+          "line": 61,
+          "source": "agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/observability/runs?limit=50'), options),"
+        },
+        {
+          "line": 86,
+          "source": "const result = await agenticClient.post(`${url}/control`, { action }, options);"
+        },
+        {
+          "line": 89,
+          "source": "const response = await agenticClient.get(url, options);"
+        },
+        {
+          "line": 114,
+          "source": "await agenticClient.post(`${url}/${outcome === 'receipt' ? 'reconcile-receipt' : outcome ? 'reconcile' : 'recover'}`, payload,"
+        },
+        {
+          "line": 116,
+          "source": "const response = await agenticClient.get(url, { signal: controller.signal, headers: { Authorization: `Bearer ${supervisor}` } });"
+        },
+        {
+          "line": 131,
+          "source": "const response = await agenticClient.get(`${url}/compensation-plan`,options);"
+        },
+        {
+          "line": 134,
+          "source": "const response = await agenticClient.post(`${url}/compensate`,{sequence,reason:compensationReason.trim(),approved_by:'agent-supervisor',approval_token:supervisor},options);"
+        },
+        {
+          "line": 151,
+          "source": "const response = await agenticClient.get(buildSemanticServiceUrl('agentic', '/api/v1/llm/health'), { signal: controller.signal, timeout: 10000 });"
+        },
+        {
+          "line": 162,
+          "source": "const response = await agenticClient.post(buildSemanticServiceUrl('agentic', '/api/v1/llm/probe'),"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/AgentProposalPanel.js",
+      "calls": [
+        {
+          "line": 28,
+          "source": "response = await agenticClient.get(url('agents'), options);"
+        },
+        {
+          "line": 33,
+          "source": "response = await agenticClient.post(url(`agents/${encodeURIComponent(agent)}/suggest`), { task: task.trim() }, options);"
+        },
+        {
+          "line": 40,
+          "source": "response = await agenticClient.get(url(`agent-recommendations/${encodeURIComponent(savedId.trim())}`), options);"
+        },
+        {
+          "line": 53,
+          "source": "response = await agenticClient.post(url('runs'), { ...command, approved_by: actor.trim(), approval_token: token, wait_for_completion: false }, options);"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/Chatbot.js",
+      "calls": [
+        {
+          "line": 139,
+          "source": "return fetch(buildUrl(API.chat.chatStream), {"
+        },
+        {
+          "line": 319,
+          "source": "const response = await fetch(buildUrl(API.chat.sampleQueries), {"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/CredentialSettings.js",
+      "calls": [
+        {
+          "line": 42,
+          "source": "const response = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint), Authorization: `Bearer ${token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });"
+        },
+        {
+          "line": 76,
+          "source": "const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ include_writes: includeWrites }), signal: controller.signal, credentials: 'omit', redirect: 'error' });"
+        },
+        {
+          "line": 86,
+          "source": "const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });"
+        },
+        {
+          "line": 107,
+          "source": "try { await fetch(sessionUrl, { method: 'DELETE', headers: { ...serviceAuthHeaders(sessionUrl, 'delete', subscription), Authorization: `Bearer ${pendingSession}` }, signal: cleanup.signal, credentials: 'omit', redirect: 'error' }); }"
+        },
+        {
+          "line": 130,
+          "source": "const response = await fetch(url, { headers, signal: controller.signal, credentials: 'omit', redirect: 'error' });"
+        },
+        {
+          "line": 159,
+          "source": "const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ key: values[profile].trim(), actor: actor.trim(), expires_at: expiry.trim() || null }), signal: controller.signal, credentials: 'omit', redirect: 'error' });"
+        },
+        {
+          "line": 177,
+          "source": "const response = await fetch(url, { method: 'DELETE', headers, signal: controller.signal, credentials: 'omit', redirect: 'error' });"
+        },
+        {
+          "line": 222,
+          "source": "try { await fetch(url, { method: 'DELETE', headers: { ...serviceAuthHeaders(url, 'delete'), Authorization: `Bearer ${token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' }); }"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/DataImportPipeline.js",
+      "calls": [
+        {
+          "line": 580,
+          "source": "uploadData = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/engineering-workflows'), form, {"
+        },
+        {
+          "line": 832,
+          "source": "const response = await apiClient.post(buildUrl(API.import.governed), formData, {"
+        },
+        {
+          "line": 868,
+          "source": "const uploadData = await apiClient.post(API.import.upload, formData, {"
+        },
+        {
+          "line": 950,
+          "source": "const res = await apiClient.get(statusUrl, { signal });"
+        },
+        {
+          "line": 1054,
+          "source": "const previewRes = await apiClient.get(previewUrl, { signal });"
+        },
+        {
+          "line": 1310,
+          "source": "const checkRes = await apiClient.get("
+        },
+        {
+          "line": 1373,
+          "source": "fetch(commitUrl, {"
+        },
+        {
+          "line": 1502,
+          "source": ": apiClient.post(replaceParams(API.import.cancel, { task_id: fileStatus.taskId }), {});"
+        },
+        {
+          "line": 3315,
+          "source": "apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: status.taskId })), { timeout: 300000 })"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/GraphHEB.js",
+      "calls": [
+        {
+          "line": 858,
+          "source": "apiClient.post(buildUrl(endpoint), body)"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/ReportsTab.js",
+      "calls": [
+        {
+          "line": 378,
+          "source": "apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology }, signal: controller.signal })"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/SchemaProductPublisher.js",
+      "calls": [
+        {
+          "line": 52,
+          "source": "const response = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/schema-conversions/inspect'), body,"
+        },
+        {
+          "line": 63,
+          "source": "const response = await apiClient.post(buildSemanticServiceUrl('dataProducts', `/api/v1/data-products/${action === 'publish' ? 'publish' : 'preview'}`), payload,"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/Components/ServiceIntegrationPanel.js",
+      "calls": [
+        {
+          "line": 41,
+          "source": "Promise.resolve().then(() => apiClient.get(serviceUrl('oslc', '/api/v1/oslc/health'), { signal: controller.signal, timeout: 15000 })),"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/contexts/OntologyContext.js",
+      "calls": [
+        {
+          "line": 57,
+          "source": "apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 }))));"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/pages/CodeAuditPage.js",
+      "calls": [
+        {
+          "line": 74,
+          "source": "const response = await apiClient.get('/api/v1/code-audit', { params: { refresh }, signal: controller.signal });"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/pages/DataProductsPage.js",
+      "calls": [
+        {
+          "line": 111,
+          "source": "const response = await apiClient.get(buildSemanticServiceUrl(service, `${path}/${encodeURIComponent(key)}`), { signal: controller.signal, timeout: 15000 });"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/pages/QifPage.js",
+      "calls": [
+        {
+          "line": 125,
+          "source": "const response = await apiClient.get(qifAPI.artifactUrl(task.task_id, artifact.path), { responseType: 'blob' });"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/pages/SysmlRepositoryImport.js",
+      "calls": [
+        {
+          "line": 17,
+          "source": "try { const response = await apiClient.get(url('status')); if (mounted.current) setConfiguration(response.data); }"
+        },
+        {
+          "line": 26,
+          "source": "const response = await apiClient.post(url('import-commit'), {}, { headers: { Authorization: `Bearer ${key}` }, timeout: 300000 });"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/services/agenticApi.js",
+      "calls": [
+        {
+          "line": 36,
+          "source": "getRun: (id, kind = 'workflow') => agenticClient.get(agenticUrl(`/api/v1/${kind === 'dt' ? 'integrations/dt-requirements-design/runs' : kind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(id)}`)),"
+        },
+        {
+          "line": 39,
+          "source": "health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),"
+        },
+        {
+          "line": 40,
+          "source": "listAgents: (options = {}) => agenticClient.get(agenticUrl(API.agentic.agents), options),"
+        },
+        {
+          "line": 41,
+          "source": "listTools: (options = {}) => agenticClient.get(agenticUrl(API.agentic.tools), options),"
+        },
+        {
+          "line": 42,
+          "source": "runAgent: (agentId, toolId, inputs = {}, approval = {}, options = {}) => agenticClient.post("
+        },
+        {
+          "line": 48,
+          "source": "runWorkflow: (workflowId, inputs = {}, execution = {}, options = {}) => agenticClient.post("
+        },
+        {
+          "line": 54,
+          "source": "orchestrateOntology: (payload = {}, options = {}) => agenticClient.post("
+        },
+        {
+          "line": 59,
+          "source": "observabilitySummary: (options = {}) => agenticClient.get(agenticUrl(API.agentic.observabilitySummary), options),"
+        },
+        {
+          "line": 60,
+          "source": "observabilityRuns: (limit = 20, options = {}) => agenticClient.get("
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/services/apiClient.js",
+      "calls": [
+        {
+          "line": 256,
+          "source": "check: (options = {}) => apiClient.get(buildUrl(API.health.health), options),"
+        },
+        {
+          "line": 257,
+          "source": "ready: (options = {}) => apiClient.get(buildUrl(API.health.ready), options),"
+        },
+        {
+          "line": 258,
+          "source": "graphMetrics: () => apiClient.get(buildUrl(API.health.graphMetrics)),"
+        },
+        {
+          "line": 259,
+          "source": "ontologiesAvailable: () => apiClient.get(buildUrl(API.health.ontologiesAvailable)),"
+        },
+        {
+          "line": 264,
+          "source": "getSchema: () => apiClient.get(buildUrl(API.schema.schema)),"
+        },
+        {
+          "line": 265,
+          "source": "getAP242RotorPmi: () => apiClient.get(buildUrl(API.schema.ap242RotorPmi)),"
+        },
+        {
+          "line": 267,
+          "source": "apiClient.post(buildUrl(API.schema.ap242Search), { query }),"
+        },
+        {
+          "line": 269,
+          "source": "apiClient.post(buildUrl(API.schema.reports), { type, page, page_size: pageSize }),"
+        },
+        {
+          "line": 275,
+          "source": "apiClient.post(buildUrl(API.chat.chat), { message, session_id: sessionId, graph_context: graphContext }),"
+        },
+        {
+          "line": 277,
+          "source": "apiClient.post(buildUrl(API.chat.chatStream), { message, session_id: sessionId, graph_context: graphContext }),"
+        },
+        {
+          "line": 279,
+          "source": "apiClient.post(buildUrl(API.chat.validate), { message, session_id: sessionId, graph_context: graphContext }),"
+        },
+        {
+          "line": 281,
+          "source": "apiClient.post(buildUrl(API.chat.jobs), { message, session_id: sessionId, graph_context: graphContext }),"
+        },
+        {
+          "line": 282,
+          "source": "getJob: (jobId) => apiClient.get(buildUrl(replaceParams(API.chat.jobStatus, { job_id: jobId }))),"
+        },
+        {
+          "line": 283,
+          "source": "health: () => apiClient.get(buildUrl(API.chat.health)),"
+        },
+        {
+          "line": 284,
+          "source": "status: () => apiClient.get(buildUrl(API.chat.status)),"
+        },
+        {
+          "line": 285,
+          "source": "capabilities: () => apiClient.get(buildUrl(API.chat.capabilities)),"
+        },
+        {
+          "line": 286,
+          "source": "sampleQueries: () => apiClient.get(buildUrl(API.chat.sampleQueries)),"
+        },
+        {
+          "line": 307,
+          "source": "return apiClient.post(buildUrl(API.ontology.upload), formData, {"
+        },
+        {
+          "line": 313,
+          "source": "apiClient.get(buildUrl(API.ontology.registered), options),"
+        },
+        {
+          "line": 315,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.get, { ontology: ontologyId }))),"
+        },
+        {
+          "line": 317,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId })), options),"
+        },
+        {
+          "line": 319,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId })), options),"
+        },
+        {
+          "line": 321,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId })), options),"
+        },
+        {
+          "line": 323,
+          "source": "apiClient.post(buildUrl(replaceParams(API.ontology.inferencePreview, { ontology: ontologyId })), payload, options),"
+        },
+        {
+          "line": 324,
+          "source": "validateSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosValidate), payload),"
+        },
+        {
+          "line": 325,
+          "source": "searchSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosSearch), payload),"
+        },
+        {
+          "line": 326,
+          "source": "traverseSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosTraverse), payload),"
+        },
+        {
+          "line": 327,
+          "source": "skosStoragePlan: (payload) => apiClient.post(buildUrl(API.ontology.skosStoragePlan), payload),"
+        },
+        {
+          "line": 328,
+          "source": "validateRule: (payload, options = {}) => apiClient.post(buildUrl(API.ontology.ruleValidate), payload, options),"
+        },
+        {
+          "line": 329,
+          "source": "executeRulePreview: (payload) => apiClient.post(buildUrl(API.ontology.ruleExecutePreview), payload),"
+        },
+        {
+          "line": 330,
+          "source": "ruleMaterializationPlan: (payload) => apiClient.post(buildUrl(API.ontology.ruleMaterializationPlan), payload),"
+        },
+        {
+          "line": 332,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.mappings, {"
+        },
+        {
+          "line": 337,
+          "source": "apiClient.post(buildUrl(replaceParams(API.ontology.mapEntity, { ontology: ontologyId })), mappingData),"
+        },
+        {
+          "line": 340,
+          "source": "return apiClient.get(buildUrl(`${API.ontology.alignmentOptions}${suffix}`));"
+        },
+        {
+          "line": 343,
+          "source": "apiClient.post(buildUrl(API.ontology.merge), {"
+        },
+        {
+          "line": 349,
+          "source": "apiClient.post(buildUrl(API.ontology.governedMergePreview), {"
+        },
+        {
+          "line": 354,
+          "source": "apiClient.post(buildUrl(replaceParams(API.ontology.governedMergeApply, { preview_id: previewId })), {"
+        },
+        {
+          "line": 358,
+          "source": "cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),"
+        },
+        {
+          "line": 361,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId })), { params: { format }, responseType: 'blob' }),"
+        },
+        {
+          "line": 368,
+          "source": "return apiClient.post(buildUrl(API.ontology.extract3dxml), formData, {"
+        },
+        {
+          "line": 374,
+          "source": "apiClient.get(buildUrl(replaceParams(API.ontology.threeDxmlStatus, { task_id: taskId }))),"
+        },
+        {
+          "line": 375,
+          "source": "get3dxmlFormats: () => apiClient.get(buildUrl(API.ontology.threeDxmlFormats)),"
+        },
+        {
+          "line": 404,
+          "source": "return apiClient.get(buildSemanticServiceUrl(service, path), options);"
+        },
+        {
+          "line": 417,
+          "source": "catalog: () => apiClient.get(buildUrl(API.qif.catalog)),"
+        },
+        {
+          "line": 418,
+          "source": "health: () => apiClient.get(buildUrl(API.qif.health)),"
+        },
+        {
+          "line": 419,
+          "source": "agents: () => apiClient.get(buildUrl(API.qif.agents)),"
+        },
+        {
+          "line": 423,
+          "source": "return apiClient.post(buildUrl(API.qif.startReferenceTask), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });"
+        },
+        {
+          "line": 429,
+          "source": "return apiClient.post(buildUrl(API.qif.startUploadTask), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });"
+        },
+        {
+          "line": 431,
+          "source": "listTasks: () => apiClient.get(buildUrl(API.qif.tasks)),"
+        },
+        {
+          "line": 432,
+          "source": "getTask: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.task, { task_id: taskId }))),"
+        },
+        {
+          "line": 433,
+          "source": "getPreview: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.preview, { task_id: taskId }))),"
+        },
+        {
+          "line": 439,
+          "source": "commit: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.commit, { task_id: taskId })), {}, options),"
+        },
+        {
+          "line": 440,
+          "source": "cancel: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.cancel, { task_id: taskId })), {}, options),"
+        },
+        {
+          "line": 441,
+          "source": "retryGraph: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.retryGraph, { task_id: taskId })), {}, options),"
+        },
+        {
+          "line": 449,
+          "source": "health: () => apiClient.get(buildUrl('/api/v1/pipeline/health')),"
+        },
+        {
+          "line": 450,
+          "source": "telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),"
+        },
+        {
+          "line": 451,
+          "source": "definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),"
+        },
+        {
+          "line": 452,
+          "source": "runs: (limit = 100, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { ...options, params: { ...options.params, limit } }),"
+        },
+        {
+          "line": 453,
+          "source": "getRun: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}`), options),"
+        },
+        {
+          "line": 454,
+          "source": "approveDefinition: (jobId, version, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 459,
+          "source": "disableDefinition: (jobId, version, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 464,
+          "source": "scheduleDefinition: (jobId, version, schedule, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 469,
+          "source": "disableSchedule: (jobId, version, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 474,
+          "source": "replay: (runId, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 479,
+          "source": "runDefinition: (jobId, version, payload = {}, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 484,
+          "source": "publishRun: (runId, payload = {}, approval = {}) => apiClient.post("
+        },
+        {
+          "line": 499,
+          "source": "return apiClient.post(buildUrl(API.import.upload), formData, {"
+        },
+        {
+          "line": 505,
+          "source": "apiClient.get(buildUrl(replaceParams(API.import.status, { task_id: taskId }))),"
+        },
+        {
+          "line": 507,
+          "source": "apiClient.get(buildUrl(replaceParams(API.import.preview, { task_id: taskId }))),"
+        },
+        {
+          "line": 509,
+          "source": "apiClient.get(buildUrl(API.import.tasks)),"
+        },
+        {
+          "line": 511,
+          "source": "apiClient.post(buildUrl(replaceParams(API.import.commit, { task_id: taskId })), options, {"
+        },
+        {
+          "line": 515,
+          "source": "apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 300000 }),"
+        },
+        {
+          "line": 517,
+          "source": "apiClient.post(buildUrl(replaceParams(API.import.cancel, { task_id: taskId }))),"
+        },
+        {
+          "line": 519,
+          "source": "apiClient.get(buildUrl(replaceParams(API.import.owl, { task_id: taskId }))),"
+        },
+        {
+          "line": 521,
+          "source": "apiClient.get(buildUrl(replaceParams(API.import.owlExport, { task_id: taskId })), { params: { format }, responseType: 'blob' }),"
+        },
+        {
+          "line": 522,
+          "source": "getFormats: () => apiClient.get(buildUrl(API.import.formats)),"
+        },
+        {
+          "line": 528,
+          "source": "getOptions: () => apiClient.get(buildUrl(API.workflow.options)),"
+        },
+        {
+          "line": 530,
+          "source": "apiClient.post(buildUrl(API.workflow.execute), {"
+        },
+        {
+          "line": 546,
+          "source": "apiClient.post(buildUrl(API.ingestion.ingestData), data),"
+        },
+        {
+          "line": 551,
+          "source": "getSupportedFormats: () => apiClient.get(buildUrl(API.document.formats)),"
+        },
+        {
+          "line": 562,
+          "source": "return apiClient.post(buildUrl(API.document.upload), formData, {"
+        },
+        {
+          "line": 572,
+          "source": "return apiClient.post(buildUrl(API.document.uploadSingle), formData, {"
+        },
+        {
+          "line": 580,
+          "source": "return apiClient.post(buildUrl(API.document.jobs), formData, {"
+        },
+        {
+          "line": 584,
+          "source": "getJob: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.job, { task_id: taskId }))),"
+        },
+        {
+          "line": 585,
+          "source": "cancelJob: (taskId, writeToken = '') => apiClient.post(buildUrl(replaceParams(API.document.cancelJob, { task_id: taskId })), undefined,"
+        },
+        {
+          "line": 587,
+          "source": "getJobArtifacts: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.jobArtifacts, { task_id: taskId }))),"
+        },
+        {
+          "line": 588,
+          "source": "checkHealth: () => apiClient.get(buildUrl(API.document.health)),"
+        },
+        {
+          "line": 593,
+          "source": "health: (options = {}) => apiClient.get(buildUrl(API.admin.health), options),"
+        },
+        {
+          "line": 594,
+          "source": "registry: (options = {}) => apiClient.get(buildUrl(API.admin.registry), options),"
+        },
+        {
+          "line": 596,
+          "source": "apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),"
+        },
+        {
+          "line": 597,
+          "source": "clearCache: () => apiClient.post(buildUrl(API.admin.clearCache)),"
+        },
+        {
+          "line": 599,
+          "source": "apiClient.post(buildUrl(API.admin.deleteData), {"
+        },
+        {
+          "line": 610,
+          "source": "schemaStats: (options = {}) => apiClient.get(buildUrl(API.admin.schemaStats), options),"
+        },
+        {
+          "line": 612,
+          "source": "apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),"
+        },
+        {
+          "line": 616,
+          "source": "list: (params = {}, options = {}) => apiClient.get(buildUrl(API.metadataRegistry.assets), { ...options, params }),"
+        },
+        {
+          "line": 617,
+          "source": "get: (assetId) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId }))),"
+        },
+        {
+          "line": 618,
+          "source": "create: (payload, options = {}) => apiClient.post(buildUrl(API.metadataRegistry.assets), payload, options),"
+        },
+        {
+          "line": 619,
+          "source": "update: (assetId, payload) => apiClient.patch(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId })), payload),"
+        },
+        {
+          "line": 620,
+          "source": "transition: (assetId, payload, options = {}) => apiClient.post(buildUrl(replaceParams(API.metadataRegistry.transition, { asset_id: assetId })), payload, options),"
+        },
+        {
+          "line": 621,
+          "source": "history: (assetId, params = {}) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.history, { asset_id: assetId })), { params }),"
+        },
+        {
+          "line": 627,
+          "source": "list: (params = {}) => apiClient.get(buildUrl(API.requirements.list), { params }),"
+        },
+        {
+          "line": 633,
+          "source": "metamodel: () => apiClient.get(buildUrl(API.modeling.metamodel)),"
+        },
+        {
+          "line": 634,
+          "source": "ensureIndexes: () => apiClient.post(buildUrl(API.modeling.indexes)),"
+        },
+        {
+          "line": 635,
+          "source": "graph: (params = {}, signal) => apiClient.get(buildUrl(API.modeling.graph), { params, signal }),"
+        },
+        {
+          "line": 636,
+          "source": "tree: (params = {}) => apiClient.get(buildUrl(API.modeling.tree), { params }),"
+        },
+        {
+          "line": 637,
+          "source": "search: (params = {}) => apiClient.get(buildUrl(API.modeling.search), { params }),"
+        },
+        {
+          "line": 638,
+          "source": "context: (elementId, params = {}) => apiClient.get(buildUrl(replaceParams(API.modeling.context, { element_id: elementId })), { params }),"
+        },
+        {
+          "line": 639,
+          "source": "createNode: (payload) => apiClient.post(buildUrl(API.modeling.nodes), payload),"
+        },
+        {
+          "line": 640,
+          "source": "updateNode: (elementId, payload) => apiClient.put(buildUrl(replaceParams(API.modeling.node, { element_id: elementId })), payload),"
+        },
+        {
+          "line": 641,
+          "source": "deleteNode: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.node, { element_id: elementId }))),"
+        },
+        {
+          "line": 642,
+          "source": "createLink: (payload) => apiClient.post(buildUrl(API.modeling.links), payload),"
+        },
+        {
+          "line": 643,
+          "source": "updateLink: (elementId, payload) => apiClient.put(buildUrl(replaceParams(API.modeling.link, { element_id: elementId })), payload),"
+        },
+        {
+          "line": 644,
+          "source": "deleteLink: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.link, { element_id: elementId }))),"
+        },
+        {
+          "line": 645,
+          "source": "validation: (params = {}) => apiClient.get(buildUrl(API.modeling.validation), { params }),"
+        },
+        {
+          "line": 646,
+          "source": "seed: (payload = {}) => apiClient.post(buildUrl(API.modeling.seed), payload),"
+        },
+        {
+          "line": 647,
+          "source": "createAgentProposal: (payload) => apiClient.post(buildUrl(API.modeling.agentProposals), payload),"
+        },
+        {
+          "line": 648,
+          "source": "listAgentProposals: (params = {}) => apiClient.get(buildUrl(API.modeling.agentProposals), { params }),"
+        },
+        {
+          "line": 649,
+          "source": "approveAgentProposal: (proposalId, payload = {}) => apiClient.post(buildUrl(replaceParams(API.modeling.agentProposalApprove, { proposal_id: proposalId })), payload),"
+        },
+        {
+          "line": 650,
+          "source": "rejectAgentProposal: (proposalId, payload = {}) => apiClient.post(buildUrl(replaceParams(API.modeling.agentProposalReject, { proposal_id: proposalId })), payload),"
+        },
+        {
+          "line": 656,
+          "source": "apiClient.post(buildUrl(API.recommendations.changeImpact), {"
+        },
+        {
+          "line": 661,
+          "source": "apiClient.post(buildUrl(API.recommendations.similarParts), {"
+        },
+        {
+          "line": 667,
+          "source": "apiClient.post(buildUrl(API.recommendations.manufacturing), {"
+        },
+        {
+          "line": 671,
+          "source": "health: (options = {}) => apiClient.get(buildUrl(API.recommendations.health), options),"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/services/graphApi.js",
+      "calls": [
+        {
+          "line": 14,
+          "source": "return apiClient.get(graphUrl('/api/v1/graph/metrics'), {"
+        },
+        {
+          "line": 20,
+          "source": "return apiClient.get(graphUrl('/api/v1/graph/access'), {"
+        },
+        {
+          "line": 26,
+          "source": "return apiClient.get(graphUrl('/api/v1/graph/overview'), {"
+        },
+        {
+          "line": 33,
+          "source": "return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {"
+        },
+        {
+          "line": 40,
+          "source": "return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {"
+        },
+        {
+          "line": 64,
+          "source": "return apiClient.post(graphUrl('/api/v1/graphql'), { query, variables, operationName: 'ContextualSubgraph' }, { signal, headers: readHeaders() })"
+        },
+        {
+          "line": 75,
+          "source": "return apiClient.get(graphUrl(`/api/v1/graph/traversal/${encodeURIComponent(nodeId)}`), {"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/services/productService.js",
+      "calls": [
+        {
+          "line": 17,
+          "source": "return await loadProductCollection(params => apiClient.get(buildSemanticServiceUrl(service, paths[service]),"
+        }
+      ]
+    },
+    {
+      "file": "frontend/src/pages/qif/QifAp242Mapping.js",
+      "calls": [
+        {
+          "line": 40,
+          "source": "const results = await Promise.all([qif, ap242].map(id => apiClient.get(buildSemanticServiceUrl('ingestion', `/api/v1/ontology/${encodeURIComponent(id)}/retained-inventory`), { signal: controller.signal, timeout: 30000 })));"
+        }
+      ]
+    }
+  ],
+  "unresolved_router_factories": [
+    {
+      "service": "schema-sets",
+      "file": "backend/qif/app.py",
+      "line": 10,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "ontology",
+      "file": "backend/ontology_service/app.py",
+      "line": 16,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "agentic",
+      "file": "backend/agentic_service/app.py",
+      "line": 33,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "graph",
+      "file": "backend/graph_service/app.py",
+      "line": 16,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "ingestion",
+      "file": "backend/ingestion_service/app.py",
+      "line": 13,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "oslc",
+      "file": "backend/oslc_service/app.py",
+      "line": 11,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "catalog",
+      "file": "backend/data_catalog_service/app.py",
+      "line": 5,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "data-products",
+      "file": "backend/data_product_service/app.py",
+      "line": 5,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "ceim",
+      "file": "backend/ceim_service/app.py",
+      "line": 12,
+      "kind": "factory-generated router"
+    },
+    {
+      "service": "data-pipeline",
+      "file": "backend/data_pipeline_service/app.py",
+      "line": 29,
+      "kind": "factory-generated router"
+    }
+  ],
+  "pages": {
+    "home": {
+      "entry": "frontend/src/Components/LandingPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/Chatbot.js",
+        "frontend/src/Components/ErrorBoundary.js",
+        "frontend/src/Components/LandingPage.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/graphApi.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/chatMarkdown.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/utils/validation.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "import": {
+      "entry": "frontend/src/pages/ImportPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/DataImportPipeline.js",
+        "frontend/src/Components/OntologyMetadataForm.js",
+        "frontend/src/Components/ontology/SemanticBridgeJobs.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/hooks/useMountedRef.js",
+        "frontend/src/hooks/usePollerRegistry.js",
+        "frontend/src/pages/ImportPage.js",
+        "frontend/src/pages/QifPage.js",
+        "frontend/src/pages/SysmlRepositoryImport.js",
+        "frontend/src/pages/qif/QifAp242Mapping.js",
+        "frontend/src/pages/qif/QifDigitalThreadOverview.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/bridgeApi.js",
+        "frontend/src/services/ontologyMergeAgent.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/ui/IxIcons.js",
+        "frontend/src/ui/ixIconRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/widgets/KpiStrip.js",
+        "frontend/src/workflows/importPresentation.js",
+        "frontend/src/workflows/runTracking.js",
+        "frontend/src/workflows/workflowEngine.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "data-flow": {
+      "entry": "frontend/src/pages/DataFlowPage.js",
+      "relative_import_closure": [
+        "frontend/src/config.js",
+        "frontend/src/pages/DataFlowPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/analyticsProductDraft.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/workflows/runTracking.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "ontology": {
+      "entry": "frontend/src/pages/OntologyJunctionPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/ErrorBoundary.js",
+        "frontend/src/Components/OntologyMapper.js",
+        "frontend/src/Components/WorkspaceTabs.js",
+        "frontend/src/Components/ontology/OntologyInferenceWorkbench.js",
+        "frontend/src/Components/ontology/SemanticBridgeJobs.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/hooks/useRuleValidation.js",
+        "frontend/src/pages/OntologyJunctionPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/bridgeApi.js",
+        "frontend/src/services/ontologyMergeAgent.js",
+        "frontend/src/services/ontologyPayload.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyPresentation.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/utils/taxonomyHierarchy.js",
+        "frontend/src/widgets/DataGridWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "catalog": {
+      "entry": "frontend/src/pages/DataProductsPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/FirstProductGuide.js",
+        "frontend/src/Components/SchemaProductPublisher.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/pages/DataProductsPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/analyticsProductDraft.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/productCollection.js",
+        "frontend/src/services/productService.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/widgets/DataGridWidget.js",
+        "frontend/src/widgets/RegistryWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "data-products": {
+      "entry": "frontend/src/pages/DataProductsPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/FirstProductGuide.js",
+        "frontend/src/Components/SchemaProductPublisher.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/pages/DataProductsPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/analyticsProductDraft.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/productCollection.js",
+        "frontend/src/services/productService.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/widgets/DataGridWidget.js",
+        "frontend/src/widgets/RegistryWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "registry": {
+      "entry": "frontend/src/pages/MetadataRegistryPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/WorkspaceTabs.js",
+        "frontend/src/Components/registry/RegistryAssetsSection.js",
+        "frontend/src/Components/registry/RegistrySummaryCards.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/pages/MetadataRegistryPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/ontologyPayload.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "graph": {
+      "entry": "frontend/src/pages/GraphExplorerPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/GraphExplorerToolbar.js",
+        "frontend/src/Components/GraphHEB.js",
+        "frontend/src/Components/tooltipBuilder.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/hooks/useMountedRef.js",
+        "frontend/src/pages/GraphExplorerPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/graphApi.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/graphDisplayPolicy.js",
+        "frontend/src/utils/graphInteractionState.js",
+        "frontend/src/utils/graphUtils.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/utils/safeAccess.js",
+        "frontend/src/widgets/GraphWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "code-audit": {
+      "entry": "frontend/src/pages/CodeAuditPage.js",
+      "relative_import_closure": [
+        "frontend/src/config.js",
+        "frontend/src/pages/CodeAuditPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/graphInteractionState.js",
+        "frontend/src/utils/graphUtils.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "modeling": {
+      "entry": "frontend/src/pages/ModelWorkbenchPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/DiagramCanvas/ReactFlowDiagramCanvas.js",
+        "frontend/src/Components/GraphMiner/D3NetworkGraph.js",
+        "frontend/src/Components/GraphMiner/GraphVisualizationWidget.js",
+        "frontend/src/adapters/reactFlowAdapter.js",
+        "frontend/src/config.js",
+        "frontend/src/config/diagramTypes/index.js",
+        "frontend/src/diagram/engine/diagramEngine.js",
+        "frontend/src/diagram/layouts/basicLayouts.js",
+        "frontend/src/diagram/registry/diagramRegistry.js",
+        "frontend/src/graphMiner/graphMiner.js",
+        "frontend/src/pages/ModelWorkbenchPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/graphApi.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/types/commonGraph.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/validation/diagramValidation.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "requirements": {
+      "entry": "frontend/src/pages/RequirementsPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/ErrorBoundary.js",
+        "frontend/src/Components/OntologyMapper.js",
+        "frontend/src/Components/WorkspaceTabs.js",
+        "frontend/src/Components/ontology/OntologyInferenceWorkbench.js",
+        "frontend/src/Components/ontology/SemanticBridgeJobs.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/hooks/useRuleValidation.js",
+        "frontend/src/pages/RequirementsPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/bridgeApi.js",
+        "frontend/src/services/ontologyMergeAgent.js",
+        "frontend/src/services/ontologyPayload.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyPresentation.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/utils/taxonomyHierarchy.js",
+        "frontend/src/widgets/DataGridWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "qif": {
+      "entry": "frontend/src/pages/QifPage.js",
+      "relative_import_closure": [
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/pages/QifPage.js",
+        "frontend/src/pages/qif/QifAp242Mapping.js",
+        "frontend/src/pages/qif/QifDigitalThreadOverview.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/ui/IxIcons.js",
+        "frontend/src/ui/ixIconRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/widgets/KpiStrip.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "whereused": {
+      "entry": "frontend/src/pages/WhereUsedPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/WhereUsedView.js",
+        "frontend/src/SchemaContext.js",
+        "frontend/src/config.js",
+        "frontend/src/pages/WhereUsedPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/graphApi.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/graphUtils.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/widgets/DataGridWidget.js",
+        "frontend/src/widgets/GraphWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "data-quality": {
+      "entry": "frontend/src/pages/QualityPage.js",
+      "relative_import_closure": [
+        "frontend/src/config.js",
+        "frontend/src/pages/QualityPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/workflows/runTracking.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "quality": {
+      "entry": "frontend/src/pages/RecommendationsPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/RecommendationsTab.js",
+        "frontend/src/config.js",
+        "frontend/src/pages/RecommendationsPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "reports": {
+      "entry": "frontend/src/pages/ReportsPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/EChartPanel.js",
+        "frontend/src/Components/ReportsAnalytics.js",
+        "frontend/src/Components/ReportsTab.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/pages/ReportsPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/graphApi.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/graphUtils.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/widgets/KpiStrip.js"
+      ],
+      "live_acceptance": "not_run"
+    },
+    "admin": {
+      "entry": "frontend/src/pages/AdminPage.js",
+      "relative_import_closure": [
+        "frontend/src/Components/AdminPanel.js",
+        "frontend/src/Components/AgentControlPanel.js",
+        "frontend/src/Components/AgentProposalPanel.js",
+        "frontend/src/Components/CredentialSettings.js",
+        "frontend/src/Components/FirstProductGuide.js",
+        "frontend/src/Components/ServiceIntegrationPanel.js",
+        "frontend/src/app/ServiceAccessDiscovery.js",
+        "frontend/src/config.js",
+        "frontend/src/contexts/OntologyContext.js",
+        "frontend/src/pages/AdminPage.js",
+        "frontend/src/services/agenticApi.js",
+        "frontend/src/services/apiClient.js",
+        "frontend/src/services/credentialProfiles.js",
+        "frontend/src/services/productCollection.js",
+        "frontend/src/services/productService.js",
+        "frontend/src/services/runRecovery.js",
+        "frontend/src/services/serviceAuth.js",
+        "frontend/src/services/serviceContractRegistry.js",
+        "frontend/src/services/serviceDiscovery.js",
+        "frontend/src/styles/uiTokens.js",
+        "frontend/src/utils/apiErrorMessage.js",
+        "frontend/src/utils/logger.js",
+        "frontend/src/utils/ontologyEvents.js",
+        "frontend/src/utils/ontologyRegistry.js",
+        "frontend/src/widgets/DataGridWidget.js",
+        "frontend/src/widgets/KpiStrip.js",
+        "frontend/src/widgets/RegistryWidget.js",
+        "frontend/src/widgets/widgetStyles.js"
+      ],
+      "live_acceptance": "not_run"
+    }
+  },
+  "limitations": [
+    "Route factory implementations are not expanded.",
+    "Static path matching does not validate request bodies, HTTP methods at every caller, authorization or dynamic paths.",
+    "External packages and live configuration are not certified.",
+    "API adapter references occur beyond the direct-network-site inventory."
+  ]
+}

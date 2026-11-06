@@ -1,0 +1,377 @@
+import {
+  BookOpen,
+  Boxes,
+  Database,
+  FileCode2,
+  GitMerge,
+  FileText,
+  Network,
+  Link2,
+  ShieldCheck,
+  Tags,
+} from 'lucide-react';
+
+export const pipelineStages = [
+  { id: 'upload', label: 'Upload', description: 'File validation and format detection' },
+  { id: 'convert', label: 'Convert', description: 'Parse to OWL2/Turtle' },
+  { id: 'map', label: 'Map', description: 'Ontology alignment' },
+  { id: 'validate', label: 'Validate', description: 'SHACL and quality check' },
+  { id: 'enrich', label: 'Enrich', description: 'Semantic enrichment' },
+  { id: 'load', label: 'Load', description: 'Ingest to knowledge graph' },
+  { id: 'verify', label: 'Verify', description: 'Post-load health check' },
+];
+
+export const backendToFrontendStage = {
+  upload: 'upload',
+  detect: 'upload',
+  parse: 'convert',
+  validate: 'validate',
+  transform: 'validate',
+  preview: 'validate',
+  map: 'map',
+  enrich: 'enrich',
+  ingest: 'load',
+  load: 'load',
+  verify: 'verify',
+};
+
+export const supportedFormats = [
+  { ext: '.csv', name: 'CSV' },
+  { ext: '.json', name: 'JSON' },
+  { ext: '.html', name: 'HTML' },
+  { ext: '.htm', name: 'HTML' },
+  { ext: '.owl', name: 'OWL' },
+  { ext: '.rdf', name: 'RDF' },
+  { ext: '.ttl', name: 'Turtle' },
+  { ext: '.plmxml', name: 'PLMXML' },
+  { ext: '.reqif', name: 'ReqIF' },
+  { ext: '.reqifz', name: 'ReqIFZ' },
+  { ext: '.3dxml', name: '3DXML (3DEXPERIENCE)' },
+  { ext: '.archimate', name: 'ArchiMate' },
+  { ext: '.step', name: 'STEP' },
+  { ext: '.stp', name: 'STEP' },
+  { ext: '.stpx', name: 'STEP XML' },
+  { ext: '.xls', name: 'Excel' },
+  { ext: '.xlsx', name: 'Excel' },
+  { ext: '.xmi', name: 'XMI' },
+  { ext: '.mdxml', name: 'MagicDraw' },
+  { ext: '.xml', name: 'XML' },
+  { ext: '.xsd', name: 'XSD' },
+  { ext: '.exp', name: 'EXPRESS' },
+  { ext: '.pdf', name: 'PDF' },
+  { ext: '.docx', name: 'Word' },
+  { ext: '.pptx', name: 'PowerPoint' },
+  { ext: '.txt', name: 'Text' },
+  { ext: '.md', name: 'Markdown' },
+];
+
+export const workflowCatalog = [
+  {
+    id: 'instance.import',
+    label: 'Import instance graph',
+    title: 'Import instance graph',
+    category: 'Import',
+    description: 'Parse product, tabular, or exchange files into inspectable instance entities, attributes, relationships, and metadata.',
+    inputs: 'STEP, STPX, CSV, Excel, JSON, XML, PLMXML, ReqIF, 3DXML',
+    outputs: ['Instance graph', 'Preview rows', 'Entity, attribute, relationship, and metadata counts'],
+    status: 'available',
+    execution: 'File upload',
+    prerequisite: 'Choose one or more files',
+    icon: Database,
+    stages: ['Upload files', 'Parse and preview', 'Validate structure', 'Load to knowledge graph'],
+    writes_to_neo4j: true,
+    retains_artifacts: true,
+  },
+  {
+    id: 'ontology.create',
+    label: 'Create ontology',
+    title: 'Create ontology',
+    category: 'Ontology',
+    description: 'Profile schema or ontology files, capture namespace and prefix metadata, preview the generated ontology, then register it.',
+    inputs: 'EXPRESS, OWL, RDF, TTL, XSD, XMI, MDXML',
+    outputs: ['Ontology preview', 'Prefix metadata', 'Schema classes'],
+    status: 'available',
+    execution: 'File upload',
+    prerequisite: 'Choose an ontology/schema file',
+    icon: FileCode2,
+    stages: ['Upload schema file', 'Read namespace and prefix', 'Generate ontology preview', 'Review and register ontology'],
+    writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+  {
+    id: 'document.unstructured',
+    label: 'Unstructured document pipeline',
+    title: 'Unstructured document pipeline',
+    category: 'AI Ingestion',
+    description: 'Retain source documents, extract traceable text chunks, generate embeddings and review-only semantic proposals, and index GraphRAG context.',
+    inputs: 'PDF, Word, PowerPoint, Text, Markdown, HTML',
+    outputs: ['Retained source artifact', 'Document chunks', 'Embedding index', 'Semantic proposals', 'GraphRAG retrieval context'],
+    status: 'available',
+    execution: 'Document upload',
+    prerequisite: 'Choose one or more documents',
+    icon: FileText,
+    stages: ['Retain source documents', 'Extract content', 'Chunk, embed, and propose semantics', 'Index and persist reports'],
+    writes_to_neo4j: true,
+    retains_artifacts: true,
+  },
+  {
+    id: 'architecture.archimate',
+    label: 'Import ArchiMate process model',
+    title: 'Import ArchiMate process model',
+    category: 'Architecture',
+    description: 'Parse ArchiMate Model Exchange XML into a typed process, application, data, and capability graph for process-reference analysis.',
+    inputs: 'ArchiMate Model Exchange XML',
+    outputs: ['Architecture/process graph', 'Typed ArchiMate relationships', 'Process-reference context'],
+    status: 'available',
+    execution: 'File upload',
+    prerequisite: 'Choose an ArchiMate Model Exchange XML file',
+    icon: Network,
+    stages: ['Upload model', 'Parse elements and relationships', 'Validate references', 'Load process graph'],
+    writes_to_neo4j: true,
+    retains_artifacts: true,
+  },
+  {
+    id: 'instance.link',
+    label: 'Instance Alignment',
+    title: 'Instance-to-Ontology Bridge',
+    category: 'Mapping',
+    description: 'Align imported instance data and metadata to ontology classes, data properties, object properties, and annotation properties. Use merge only for ontology-to-ontology consolidation.',
+    inputs: 'One imported instance artifact plus one ontology',
+    outputs: ['Entity-class mappings', 'Attribute-property mappings', 'Relationship-property mappings', 'Confidence and validation report'],
+    status: 'available',
+    execution: 'Artifact workflow',
+    prerequisite: 'Run an import first, then select the instance artifact and ontology',
+    icon: Link2,
+    stages: ['Select imported instance', 'Select ontology', 'Review bridge suggestions', 'Apply approved mappings'],
+    writes_to_neo4j: true,
+    retains_artifacts: true,
+  },
+  {
+    id: 'ontology.merge',
+    label: 'Merge ontologies',
+    title: 'Merge ontologies',
+    category: 'Ontology',
+    description: 'Compare two ontologies and produce a merge plan. Source ontology and target ontology are selected explicitly, then the merge can be reviewed and committed.',
+    inputs: 'Two ontology catalog entries',
+    outputs: ['Comparison report', 'Overlap report', 'Addition candidates', 'Separate governed merge review'],
+    status: 'available',
+    execution: 'Artifact workflow',
+    prerequisite: 'Select source and target ontologies',
+    icon: GitMerge,
+    stages: ['Select sources', 'Detect overlaps', 'Identify additions', 'Export merge plan'],
+    writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+  {
+    id: 'ontology.validate',
+    label: 'Validate ontology',
+    title: 'Validate ontology',
+    category: 'Quality',
+    description: 'Run quality, namespace, prefix, and consistency checks before publishing.',
+    inputs: 'Ontology catalog entry or file',
+    outputs: ['Validation report', 'Finding counts', 'Review suggestions'],
+    status: 'available',
+    execution: 'Artifact workflow',
+    prerequisite: 'Select ontology',
+    icon: ShieldCheck,
+    stages: ['Select ontology', 'Run checks', 'Review findings', 'Export report'],
+    writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+  {
+    id: 'dictionary.generate',
+    label: 'Build data dictionary',
+    title: 'Build data dictionary',
+    category: 'Governance',
+    description: 'Extract terms, fields, definitions, and source lineage for business review.',
+    inputs: 'Ontology, graph, CSV, Excel',
+    outputs: ['Data dictionary', 'Term lineage', 'Review queue'],
+    status: 'available',
+    execution: 'Artifact workflow',
+    prerequisite: 'Select ontology',
+    icon: BookOpen,
+    stages: ['Select source', 'Extract terms', 'Review definitions', 'Export dictionary'],
+    writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+  {
+    id: 'taxonomy.generate',
+    label: 'Build taxonomy',
+    title: 'Build taxonomy',
+    category: 'Ontology',
+    description: 'Export the declared class hierarchy from the selected retained ontology. This report does not infer new synonyms or approve changes.',
+    inputs: 'Ontology or graph',
+    outputs: ['Declared taxonomy tree', 'Term and relationship counts', 'Retained hierarchy report'],
+    status: 'available',
+    execution: 'Artifact workflow',
+    prerequisite: 'Select ontology',
+    icon: Tags,
+    stages: ['Select source', 'Read declared hierarchy', 'Review hierarchy', 'Export taxonomy'],
+    writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+  {
+    id: 'graph.chunk',
+    label: 'Export graph chunks',
+    title: 'Export graph chunks',
+    category: 'Graph',
+    description: 'Export ontology term chunks and a manifest for downstream indexing. This workflow does not create a retrieval index.',
+    inputs: 'Ontology or graph',
+    outputs: ['Chunk set', 'Index manifest', 'Coverage report'],
+    status: 'available',
+    execution: 'Artifact workflow',
+    prerequisite: 'Select ontology',
+    icon: Boxes,
+    stages: ['Select source', 'Choose chunking rule', 'Preview chunks', 'Export manifest'],
+    writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+];
+
+export const executableWorkflowIds = workflowCatalog.map(workflow => workflow.id);
+
+const normalizeWorkflowStatus = (status) => {
+  if (['available', 'existing_import_pipeline', 'existing_upload_pipeline', 'artifact_report'].includes(status)) {
+    return 'available';
+  }
+  return status || 'planned';
+};
+
+export const mergeWorkflowRuntimeOptions = (catalog, runtimeOptions = []) => {
+  const runtimeById = new Map((runtimeOptions || []).map((option) => [option.id, option]));
+  return (catalog || []).map((workflow) => {
+    const runtime = runtimeById.get(workflow.id);
+    if (!runtime) return workflow;
+    return {
+      ...workflow,
+      status: normalizeWorkflowStatus(runtime.status || workflow.status),
+      runtimeStatus: runtime.status || workflow.status,
+      label: runtime.label || runtime.title || workflow.label,
+      title: runtime.label || runtime.title || workflow.title,
+      category: runtime.category || workflow.category,
+      execution_surface: runtime.execution_surface || workflow.execution_surface,
+      execution: runtime.execution || workflow.execution,
+      prerequisite: runtime.prerequisite || workflow.prerequisite,
+    };
+  });
+};
+
+export const getWorkflowById = (workflowId) =>
+  workflowCatalog.find(workflow => workflow.id === workflowId) || null;
+
+export const getWorkflowMap = () =>
+  Object.fromEntries(workflowCatalog.map(workflow => [workflow.id, workflow]));
+
+export const resolveWorkflow = (workflowId, fallback = null) => {
+  const lookup = getWorkflowById(workflowId);
+  if (lookup) return lookup;
+  return fallback;
+};
+
+export const getWorkflowDisplayName = (workflowId) => {
+  const workflow = getWorkflowById(workflowId);
+  return workflow?.title || workflow?.label || String(workflowId || 'Selected workflow');
+};
+
+export const isImportWorkflow = (workflowId) =>
+  workflowId === 'instance.import'
+  || workflowId === 'ontology.create'
+  || workflowId === 'document.unstructured'
+  || workflowId === 'architecture.archimate';
+
+export const getFileExtension = (fileName) =>
+  `.${String(fileName || '').split('.').pop().toLowerCase()}`;
+
+export const inferFileTypeFromExtension = (fileName) => {
+  const ext = getFileExtension(fileName);
+  if (['.stp', '.step', '.stpx'].includes(ext)) return 'step';
+  if (['.csv'].includes(ext)) return 'csv';
+  if (['.xls', '.xlsx'].includes(ext)) return 'excel';
+  if (['.json'].includes(ext)) return 'json';
+  if (['.3dxml'].includes(ext)) return '3dxml';
+  if (['.reqif', '.reqifz'].includes(ext)) return 'reqif';
+  if (['.archimate'].includes(ext)) return 'archimate';
+  if (['.xml'].includes(ext)) return 'xml';
+  if (['.owl', '.rdf', '.ttl'].includes(ext)) return 'ontology';
+  if (['.plmxml'].includes(ext)) return 'plmxml';
+  if (['.xmi', '.mdxml'].includes(ext)) return 'xmi';
+  if (['.xsd'].includes(ext)) return 'xsd';
+  if (['.exp'].includes(ext)) return 'express';
+  if (['.pdf', '.docx', '.pptx', '.txt', '.md', '.html', '.htm'].includes(ext)) return 'document';
+  return '';
+};
+
+export const recommendWorkflowForFile = (fileName) => {
+  const fileType = inferFileTypeFromExtension(fileName);
+  if (['ontology', 'xsd', 'xmi', 'express'].includes(fileType)) return 'ontology.create';
+  if (fileType === 'document') return 'document.unstructured';
+  if (fileType === 'archimate') return 'architecture.archimate';
+  return 'instance.import';
+};
+
+const toWorkflowStageId = (workflowId, stage, idx) =>
+  `${workflowId}-${idx}-${String(stage).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+export const buildWorkflowStages = (workflow) =>
+  (workflow?.stages || []).map((stage, idx) => ({
+    id: toWorkflowStageId(workflow.id, stage, idx),
+    label: stage,
+    description: workflow.id === 'document.unstructured'
+      ? [
+          'Attach one or more unstructured documents.',
+          'Extract text and document structure.',
+          'Create chunks and embeddings for retrieval.',
+          'Index the document context for GraphRAG and Knowledge Companion.',
+        ][idx]
+      : workflow.id === 'instance.import'
+      ? [
+          'Attach one or more source files for parsing.',
+          'Parse the file and review detected entities, attributes, relationships, and metadata.',
+          'Check structural quality and prepare the load package.',
+          'Commit the prepared graph to knowledge graph and verify the result.',
+        ][idx]
+      : workflow.id === 'ontology.create'
+        ? [
+            'Attach one ontology or schema source file.',
+            'Read namespace, prefix, and source metadata from the file.',
+            'Preview generated ontology classes, properties, and structure.',
+            'Approve registration and retain the ontology artifact.',
+          ][idx]
+        : workflow.id === 'instance.link'
+          ? [
+              'Choose one completed import artifact as the source instance graph.',
+              'Choose the ontology that should classify and validate the instance data.',
+              'Inspect suggested entity, property, and relationship mappings.',
+              'Approve mappings and write the bridge result.',
+            ][idx]
+          : idx === 0
+            ? workflow.inputs
+            : idx === (workflow.stages.length - 1)
+              ? workflow.outputs.join(', ')
+              : workflow.description,
+    backendIds: workflow.id === 'document.unstructured'
+      ? [
+          ['upload'],
+          ['extract', 'parse'],
+          ['chunk', 'embed'],
+          ['index', 'verify'],
+        ][idx] || []
+      : workflow.id === 'instance.import'
+      ? [
+          ['upload', 'detect'],
+          ['parse', 'convert', 'preview'],
+          ['map', 'validate', 'transform', 'enrich'],
+          ['ingest', 'load', 'verify'],
+        ][idx] || []
+      : workflow.id === 'ontology.create'
+        ? [
+            ['upload'],
+            ['detect', 'parse'],
+            ['preview', 'validate'],
+            ['verify', 'load', 'completed'],
+          ][idx] || []
+        : [],
+  }));
+
+export const getStageLabel = (stageId) =>
+  pipelineStages.find(stage => stage.id === stageId)?.label || stageId;

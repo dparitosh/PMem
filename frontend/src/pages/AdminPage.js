@@ -1,11 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import CredentialSettings from '../Components/CredentialSettings';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
+import AgentControlPanel from '../Components/AgentControlPanel';
+import AgentProposalPanel from '../Components/AgentProposalPanel';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
 import { API_METHODS } from '../services/apiClient';
+import agenticAPI from '../services/agenticApi';
 import KpiStrip from '../widgets/KpiStrip';
-import PageHeader from '../widgets/PageHeader';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
+import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
+import WorkspaceTabs from '../Components/WorkspaceTabs';
+import RestSourcesPanel from '../Components/RestSourcesPanel';
+import IngestorCapabilities from '../Components/IngestorCapabilities';
+import ConnectorSourcesPanel from '../Components/ConnectorSourcesPanel';
+
+const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
 
 const routeColumns = [
   { field: 'method', width: 100 },
@@ -64,56 +75,191 @@ const packageColumns = [
 ];
 
 export default function AdminPage({ onSchemaCleaned }) {
+  const [section, setSection] = useState(() => {
+    try { const saved = sessionStorage.getItem('depo:admin-tab'); return adminTabs.some(tab => tab.id === saved) ? saved : 'overview'; } catch { return 'overview'; }
+  });
+  useEffect(() => {
+    const select = event => { if (adminTabs.some(tab => tab.id === event.detail)) setSection(event.detail); };
+    window.addEventListener('depo:admin-section', select);
+    return () => window.removeEventListener('depo:admin-section', select);
+  }, []);
+  useEffect(() => { try { sessionStorage.setItem('depo:admin-tab', section); } catch {} }, [section]);
+  const agenticEnabled = agenticAPI.isEnabled();
+  const agenticConfigured = agenticAPI.isConfigured();
   const [registry, setRegistry] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [agenticCatalog, setAgenticCatalog] = useState(null);
+  const [agenticLoading, setAgenticLoading] = useState(false);
+  const [agenticError, setAgenticError] = useState('');
+  const [openApiCatalog, setOpenApiCatalog] = useState(null);
+  const [openApiLoading, setOpenApiLoading] = useState(false);
+  const registryControllerRef = useRef(null);
+  const agenticControllerRef = useRef(null);
 
   const loadRegistry = useCallback(async () => {
+    registryControllerRef.current?.abort();
+    const controller = new AbortController();
+    registryControllerRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const response = await API_METHODS.admin.registry();
+      const response = await API_METHODS.admin.registry({ signal: controller.signal });
+      if (controller.signal.aborted) return;
       setRegistry(response.data);
     } catch (err) {
-      const detail = err?.response?.data?.detail || err?.message || 'Admin registry is unavailable.';
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      if (controller.signal.aborted) return;
+      setRegistry(null);
+      setError(apiErrorMessage(err, 'Admin registry is unavailable.'));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+      if (registryControllerRef.current === controller) registryControllerRef.current = null;
     }
   }, []);
 
   useEffect(() => {
     loadRegistry();
+    return () => registryControllerRef.current?.abort();
   }, [loadRegistry]);
 
+  const loadAgenticCatalog = useCallback(async () => {
+    agenticControllerRef.current?.abort();
+    if (!agenticEnabled) {
+      setAgenticCatalog(null);
+      setAgenticError('');
+      return;
+    }
+    if (!agenticConfigured) {
+      setAgenticCatalog(null);
+      setAgenticError('Agentic components are enabled, but REACT_APP_AGENTIC_SERVICE_URL is not configured.');
+      return;
+    }
+    const controller = new AbortController();
+    agenticControllerRef.current = controller;
+    setAgenticLoading(true);
+    setAgenticError('');
+    try {
+      const [agentsResponse, toolsResponse] = await Promise.all([
+        agenticAPI.listAgents({ signal: controller.signal }),
+        agenticAPI.listTools({ signal: controller.signal }),
+      ]);
+      if (controller.signal.aborted) return;
+      setAgenticCatalog({
+        agents: agentsResponse.data?.agents || [],
+        tools: toolsResponse.data?.tools || [],
+        invalidExports: toolsResponse.data?.invalid_exports || [],
+      });
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setAgenticCatalog(null);
+      setAgenticError(apiErrorMessage(err, 'Agentic component catalog is unavailable.'));
+    } finally {
+      if (!controller.signal.aborted) setAgenticLoading(false);
+      if (agenticControllerRef.current === controller) agenticControllerRef.current = null;
+    }
+  }, [agenticConfigured, agenticEnabled]);
+
+  useEffect(() => {
+    loadAgenticCatalog();
+    window.addEventListener('depo:credentials-changed', loadAgenticCatalog);
+    window.addEventListener('depo:credentials-cleared', loadAgenticCatalog);
+    return () => {
+      agenticControllerRef.current?.abort();
+      window.removeEventListener('depo:credentials-changed', loadAgenticCatalog);
+      window.removeEventListener('depo:credentials-cleared', loadAgenticCatalog);
+    };
+  }, [loadAgenticCatalog]);
+
+  const importGeneration = useRef(0);
+  useEffect(() => () => { importGeneration.current += 1; }, []);
+  const importOpenApi = useCallback(async (event) => {
+    const generation = ++importGeneration.current;
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setOpenApiLoading(true);
+    setAgenticError('');
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error('OpenAPI JSON must be at most 5 MiB.');
+      const document = JSON.parse(await file.text());
+      const response = await agenticAPI.importOpenApi(document, file.name);
+      if (generation === importGeneration.current) setOpenApiCatalog(response.data);
+    } catch (err) {
+      if (generation === importGeneration.current) setAgenticError(apiErrorMessage(err, 'OpenAPI import failed.'));
+    } finally {
+      if (generation === importGeneration.current) setOpenApiLoading(false);
+    }
+  }, []);
+
   const counts = useMemo(() => ({
-    services: registry?.services?.length || 0,
-    routes: registry?.api_routes?.length || 0,
-    sources: registry?.data_sources?.length || 0,
-    workflows: registry?.workflows?.length || 0,
-    config: registry?.configuration?.length || 0,
-  }), [registry]);
+    services: !loading && !error ? registry?.services?.length ?? null : null,
+    routes: !loading && !error ? registry?.api_routes?.length ?? null : null,
+    sources: !loading && !error ? registry?.data_sources?.length ?? null : null,
+    agents: agenticEnabled ? (!agenticLoading && !agenticError ? agenticCatalog?.agents?.length ?? null : null) : registry?.agents?.length ?? null,
+    packages: !loading && !error ? registry?.packages?.length ?? null : null,
+    workflows: !loading && !error ? registry?.workflows?.length ?? null : null,
+    config: !loading && !error ? registry?.configuration?.length ?? null : null,
+  }), [registry, loading, error, agenticEnabled, agenticLoading, agenticError, agenticCatalog]);
+  const secondaryCatalogs = [
+    {
+      title: 'Agents',
+      count: counts.agents,
+      height: 220,
+      rows: registry?.agents || [],
+      columns: [
+        { field: 'id', flex: 1 },
+        { field: 'name', flex: 1.4 },
+        { field: 'family', flex: 1 },
+        { field: 'description', flex: 2 },
+        { field: 'status' },
+        { field: 'execution_boundary', flex: 1.4 },
+        { field: 'config_source', flex: 1 },
+      ],
+    },
+    {
+      title: 'Runtime Configuration',
+      count: counts.config,
+      height: 300,
+      rows: registry?.configuration || [],
+      columns: configColumns,
+    },
+    {
+      title: 'Workflow Registry',
+      count: counts.workflows,
+      height: 280,
+      rows: registry?.workflows || [],
+    },
+    {
+      title: 'API Route Registry',
+      count: counts.routes,
+      height: 360,
+      rows: registry?.api_routes || [],
+      columns: routeColumns,
+    },
+    {
+      title: 'Package Rationalization',
+      count: counts.packages,
+      height: 360,
+      rows: registry?.packages || [],
+      columns: packageColumns,
+    },
+  ];
 
   return (
     <div className="depo-page">
-      <PageHeader
-        eyebrow="Operations and platform registry"
-        title="Operate services, datasources, agents, and workflow capabilities from one catalog"
-        summary="Admin is the control room for runtime health and governed capabilities. Destructive actions stay isolated in Operations; registry data remains read-only for this phase."
-        insights={[
-          { label: 'Service standard', value: 'Every runtime has owner, endpoint, status, and health path' },
-          { label: 'Governance rule', value: 'Frontend never connects directly to Neo4j' },
-          { label: 'Change scope', value: 'Read-only registry first; config writes stay deferred' },
-        ]}
-      />
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <WorkspaceTabs label="Admin sections" tabs={adminTabs} value={section} onChange={setSection} idPrefix="depo-admin" />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: widgetColors.muted, lineHeight: 1.4, maxWidth: 720 }}>
+          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', sources:'Register REST sources, preview records and submit approved acquisition jobs.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current knowledge graph schema status.'}[section]}
+        </div>
         <button
           type="button"
+          hidden={!['overview', 'services'].includes(section)}
           onClick={loadRegistry}
           disabled={loading}
           style={{
             border: `1px solid ${widgetColors.blue}`,
-            background: '#fff',
+            background: 'var(--ui-surface, #fff)',
             color: widgetColors.blue,
             borderRadius: 5,
             fontSize: 12,
@@ -126,53 +272,145 @@ export default function AdminPage({ onSchemaCleaned }) {
         </button>
       </div>
 
-      {error && (
+      {error && ['overview', 'services'].includes(section) && (
         <div style={{ ...widgetCardStyle, padding: 10, color: widgetColors.danger, fontSize: 12, fontWeight: 700 }}>
           {error}
         </div>
       )}
+
+      <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
+      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /></>}
+      <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip
         items={[
           { label: 'Services', value: counts.services },
           { label: 'API routes', value: counts.routes },
           { label: 'Datasources', value: counts.sources },
+          { label: 'Agents', value: counts.agents },
           { label: 'Configuration', value: counts.config },
-          { label: 'Workflow capabilities', value: counts.workflows },
+          { label: 'Workflows', value: counts.workflows },
         ]}
       />
+      </div>
 
-      <div className="depo-two-column">
-        <section className="depo-panel">
+      <div hidden={section !== 'agents'} role="tabpanel" id="depo-admin-panel-agents" aria-labelledby="depo-admin-tab-agents">
+      {section === 'agents' && agenticConfigured && <AgentProposalPanel />}
+      {section === 'agents' && agenticConfigured && <AgentControlPanel />}
+
+      <section className="depo-panel depo-agentic-catalog" style={{ marginBottom: 12 }}>
+        <div className="depo-panel__header">
+          <div>
+            <div className="depo-panel__title">Agentic Components</div>
+            <div className="depo-panel__meta">
+              {agenticEnabled
+                ? 'Tool contracts and agent specifications available to a low-code/no-code orchestrator.'
+                : 'Disabled. Set VITE_AGENTIC_ENABLED=true and rebuild the frontend to enable this optional service.'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <label className="depo-button depo-button--secondary" style={{ cursor: openApiLoading ? 'wait' : 'pointer' }}>
+              {openApiLoading ? 'Importing OpenAPI...' : 'Import OpenAPI JSON'}
+              <input type="file" accept="application/json,.json" onChange={importOpenApi} disabled={openApiLoading} style={{ display: 'none' }} />
+            </label>
+            <button type="button" className="depo-button depo-button--secondary" onClick={loadAgenticCatalog} disabled={agenticLoading || !agenticConfigured}>
+              {agenticLoading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+        {agenticError && <div className="depo-alert depo-alert--warning">{agenticError}</div>}
+        {agenticCatalog && (
+          <div className="depo-agentic-catalog__grids">
+            <RegistryWidget
+              title={`Agents (${agenticCatalog.agents.length})`}
+              rows={agenticCatalog.agents}
+              columns={[{ field: 'name', flex: 1.2 }, { field: 'id', headerName: 'Agent ID', flex: 1 }, { field: 'tools', headerName: 'Allowed tools', flex: 1.5, valueFormatter: params => Array.isArray(params.value) ? params.value.join(', ') : (params.value || '—') }]}
+              height={250}
+            />
+            <RegistryWidget
+              title={`Tools (${agenticCatalog.tools.length})`}
+              rows={agenticCatalog.tools}
+              columns={[{ field: 'id', headerName: 'Tool ID', flex: 1.5 }, { field: 'service', headerName: 'Service', width: 120 }, { field: 'method', width: 100 }, { field: 'path', headerName: 'Endpoint', flex: 2 }, { field: 'mutates', headerName: 'Writes data', width: 120, valueFormatter: params => params.value === true ? 'Yes' : params.value === false ? 'No' : 'Not specified' }]}
+              height={250}
+            />
+          </div>
+        )}
+        {openApiCatalog && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+            <span className="depo-badge">
+              {openApiCatalog.title} · {openApiCatalog.summary?.operations || 0} operations · {openApiCatalog.summary?.schemas || 0} schemas · metadata preview; routes and keys unchanged
+            </span>
+          </div>
+        )}
+        {openApiCatalog?.operations?.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <RegistryWidget
+              title="Imported OpenAPI operations"
+              rows={openApiCatalog.operations}
+              columns={[{ field: 'method', width: 90 }, { field: 'path', flex: 1.4 }, { field: 'operation_id', flex: 1 }, { field: 'summary', flex: 2 }]}
+              height={240}
+            />
+          </div>
+        )}
+      </section>
+      </div>
+
+      <div>
+        <section className="depo-panel" hidden={section !== 'maintenance'} role="tabpanel" id="depo-admin-panel-maintenance" aria-labelledby="depo-admin-tab-maintenance">
           <div className="depo-panel__header">
             <div>
               <div className="depo-panel__title">Operations</div>
-              <div className="depo-panel__meta">Controlled cleanup and current Neo4j schema status.</div>
+              <div className="depo-panel__meta">Controlled cleanup and current knowledge graph schema status.</div>
             </div>
           </div>
-          <AdminPanel onSchemaCleaned={onSchemaCleaned} />
+          {section === 'maintenance' && <AdminPanel onSchemaCleaned={onSchemaCleaned} />}
         </section>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div hidden={section !== 'services'} style={section === 'services' ? { display: 'flex', flexDirection: 'column', gap: 12 } : undefined} role="tabpanel" id="depo-admin-panel-services" aria-labelledby="depo-admin-tab-services">
           <RegistryWidget title="Service Catalog" rows={registry?.services || []} columns={serviceColumns} height={320} />
           <RegistryWidget title="Data Sources" rows={registry?.data_sources || []} columns={dataSourceColumns} height={250} />
-          <RegistryWidget title="Agents" rows={registry?.agents || []} height={220} columns={[
-            { field: 'id', flex: 1 },
-            { field: 'name', flex: 1.4 },
-            { field: 'provider' },
-            { field: 'model', flex: 1.2 },
-            { field: 'status' },
-            { field: 'health_endpoint', flex: 1.4 },
-            { field: 'config_source', flex: 1 },
-          ]} />
         </div>
       </div>
 
-      <RegistryWidget title="Runtime Configuration" rows={registry?.configuration || []} columns={configColumns} height={300} />
-      <RegistryWidget title="Workflow Registry" rows={registry?.workflows || []} height={280} />
-      <RegistryWidget title="API Route Registry" rows={registry?.api_routes || []} columns={routeColumns} height={360} />
-      <RegistryWidget title="Package Rationalization" rows={registry?.packages || []} columns={packageColumns} height={360} />
+      <details hidden={section !== 'services'} style={{ ...widgetCardStyle, padding: 12 }}>
+        <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 14, fontWeight: 800 }}>
+          Additional catalogs
+        </summary>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 12 }}>
+          {secondaryCatalogs.map((catalog) => (
+            <div
+              key={`summary-${catalog.title}`}
+              style={{
+                border: `1px solid ${widgetColors.border}`,
+                borderRadius: 10,
+                padding: '10px 12px',
+                background: 'var(--ui-surface, #f8fafc)',
+              }}
+            >
+              <div style={{ fontSize: 11, color: widgetColors.muted, marginBottom: 4 }}>{catalog.title}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: widgetColors.text }}>{catalog.count}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+          {secondaryCatalogs.map((catalog) => (
+            <details key={catalog.title} style={{ border: `1px solid ${widgetColors.border}`, borderRadius: 10, padding: 10, background: 'var(--ui-surface, #fff)' }}>
+              <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 13, fontWeight: 800 }}>
+                {catalog.title} ({catalog.count})
+              </summary>
+              <div style={{ marginTop: 10 }}>
+                <RegistryWidget
+                  title={catalog.title}
+                  rows={catalog.rows}
+                  columns={catalog.columns}
+                  height={catalog.height}
+                />
+              </div>
+            </details>
+          ))}
+        </div>
+      </details>
 
-      <div style={{ ...widgetCardStyle, padding: 10, display: 'flex', gap: 8, alignItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
+      <div hidden={section !== 'services'} style={{ ...widgetCardStyle, padding: 10, ...(section === 'services' ? {display:'flex'} : {}), gap: 8, alignItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
         <Bot size={14} color={widgetColors.blue} />
         Configuration editing APIs are intentionally deferred; this version is a read-only operational catalog.
       </div>

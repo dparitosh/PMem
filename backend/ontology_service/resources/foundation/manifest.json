@@ -1,0 +1,15 @@
+{
+  "id": "ido-core",
+  "version": "4.2",
+  "ontology_iri": "http://rds.posccaesar.org/ontology/lis14/ont/core",
+  "version_iri": "http://rds.posccaesar.org/ontology/lis14/ont/core/4.2",
+  "file": "ido-core-4.2.ttl",
+  "sha256": "0eca08766b53c0f49eeba705d6f90479ae12f9997b2ef8f6821db4082fd2b3fd",
+  "source": "https://rds.posccaesar.org/ontology/lis14/ont/core",
+  "retrieved": "2026-10-28",
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "copyright": "Copyright POSC Caesar Association",
+  "modifications": "None; original Turtle bytes retained",
+  "status": "Public PCA 4.2 FDIS proposal; embedding is not ISO certification",
+  "depo_module_sha256": "d63da333fb5db12eb093d75b37d1a8fb15b5f3dadc9ea196b7aaf128b4fc269c"
+}

@@ -1,6 +1,5 @@
 """
-Ontology Mapping Service - Integrates PLMXML → AP242, STEP → AP242, and Windchill → AP242 mappings
-with support for data dictionary generation and vocabulary mapping.
+Legacy ontology mapping seed service - provides built-in PLMXML -> AP242, STEP -> AP242, and Windchill -> AP242 templates for compatibility. The primary Semantic Bridge flow is SemanticWorkflowService.instance.link, which aligns imported instances and metadata to loaded ontology classes/properties.
 """
 
 from dataclasses import dataclass
@@ -226,42 +225,90 @@ class STEPtoAP242Mapper:
     
     MAPPINGS: List[MappingEntry] = [
         MappingEntry(
-            source_entity="step:Product",
+            source_entity="step:PRODUCT",
             target_entity="ap242:Part",
             mapping_confidence=MappingConfidence.HIGH,
-            rationale="STEP Product directly represents engineered entities equivalent to AP242 Part",
+            rationale="STEP PRODUCT carries the engineered item identity and aligns to the AP242 MBD Part business object.",
             key_attribute_mappings={
-                "entity_id": "Part.uid",
-                "name": "Part.name",
-                "description": "Part.description",
+                "step_id": "Part.uid",
+                "external_id": "Part.id",
+                "name": "Part.Name",
+                "description": "Part.Description",
             },
             relationship_mappings={
-                "shape_representation": "Part.REPRESENTED_BY.ShapeRepresentation",
+                "PRODUCT_DEFINITION_FORMATION": "Part.HAS_VERSION.PartVersion",
             },
         ),
         MappingEntry(
-            source_entity="step:ProductDefinition",
+            source_entity="step:PRODUCT_DEFINITION_FORMATION",
             target_entity="ap242:PartVersion",
             mapping_confidence=MappingConfidence.HIGH,
-            rationale="ProductDefinition captures the design intent and lifecycle state matching AP242 PartVersion",
+            rationale="PRODUCT_DEFINITION_FORMATION is the revision/version formation for a PRODUCT and aligns to AP242 PartVersion.",
             key_attribute_mappings={
-                "entity_id": "PartVersion.uid",
-                "description": "PartVersion.description",
+                "step_id": "PartVersion.uid",
+                "external_id": "PartVersion.Id",
+                "description": "PartVersion.Description",
             },
             relationship_mappings={
-                "formation": "PartVersion.HAS_FORMATION.ProductDefinitionFormation",
+                "#product": "PartVersion.IS_VERSION_OF.Part",
+                "PRODUCT_DEFINITION": "PartVersion.HAS_VIEW.PartView",
             },
         ),
         MappingEntry(
-            source_entity="step:ShapeRepresentation",
-            target_entity="ap242:GeometricRepresentation",
+            source_entity="step:PRODUCT_DEFINITION",
+            target_entity="ap242:PartView",
             mapping_confidence=MappingConfidence.HIGH,
-            rationale="ShapeRepresentation in STEP corresponds to geometric representation concepts in AP242",
+            rationale="PRODUCT_DEFINITION captures a design/manufacturing view of a versioned part and aligns to AP242 PartView.",
             key_attribute_mappings={
-                "entity_id": "GeometricRepresentation.uid",
-                "name": "GeometricRepresentation.name",
+                "step_id": "PartView.uid",
+                "description": "PartView.Description",
             },
-            relationship_mappings={},
+            relationship_mappings={
+                "#formation": "PartView.IS_VIEW_OF.PartVersion",
+                "PRODUCT_DEFINITION_SHAPE": "PartView.ShapeElement",
+                "SHAPE_REPRESENTATION": "PartView.GeometricModel",
+            },
+        ),
+        MappingEntry(
+            source_entity="step:PRODUCT_DEFINITION_SHAPE",
+            target_entity="ap242:PartShapeElement",
+            mapping_confidence=MappingConfidence.MEDIUM,
+            rationale="PRODUCT_DEFINITION_SHAPE links product definition context to shape semantics and aligns to AP242 PartShapeElement.",
+            key_attribute_mappings={
+                "step_id": "PartShapeElement.uid",
+                "name": "PartShapeElement.Name",
+                "description": "PartShapeElement.Description",
+            },
+            relationship_mappings={
+                "#definition": "PartShapeElement.DESCRIBES.PartView",
+            },
+        ),
+        MappingEntry(
+            source_entity="step:SHAPE_REPRESENTATION",
+            target_entity="ap242:GeometricModel",
+            mapping_confidence=MappingConfidence.HIGH,
+            rationale="SHAPE_REPRESENTATION carries the geometric model representation associated with a PartView in AP242 MBD.",
+            key_attribute_mappings={
+                "step_id": "GeometricModel.uid",
+                "name": "GeometricModel.Name",
+            },
+            relationship_mappings={
+                "#context": "GeometricModel.HAS_CONTEXT.GeometricContext",
+            },
+        ),
+        MappingEntry(
+            source_entity="step:NEXT_ASSEMBLY_USAGE_OCCURRENCE",
+            target_entity="ap242:PartViewRelationship",
+            mapping_confidence=MappingConfidence.HIGH,
+            rationale="NEXT_ASSEMBLY_USAGE_OCCURRENCE represents assembly usage between product definitions and aligns to AP242 PartViewRelationship.",
+            key_attribute_mappings={
+                "step_id": "PartViewRelationship.uid",
+                "name": "PartViewRelationship.Name",
+            },
+            relationship_mappings={
+                "#relating_product_definition": "PartViewRelationship.RELATING.PartView",
+                "#related_product_definition": "PartViewRelationship.RELATED.PartView",
+            },
         ),
     ]
     
@@ -322,7 +369,7 @@ class WindchilltoAP242Mapper:
 
 
 class OntologyMapperService:
-    """Main service for ontology mapping operations"""
+    """Legacy seed mapper. Prefer SemanticWorkflowService for instance-to-ontology bridge mappings."""
     
     MAPPERS = {
         "plmxml": PLMXMLtoAP242Mapper,
@@ -331,9 +378,9 @@ class OntologyMapperService:
     }
     
     MAPPING_OPTIONS = [
-        {"value": "plmxml", "label": "PLMXML → AP242"},
-        {"value": "step", "label": "STEP → AP242"},
-        {"value": "windchill", "label": "Windchill → AP242"},
+        {"value": "plmxml", "label": "PLMXML → AP242 seed profile", "legacy": True},
+        {"value": "step", "label": "STEP → AP242 seed profile", "legacy": True},
+        {"value": "windchill", "label": "Windchill → AP242 seed profile", "legacy": True},
     ]
     
     MAPPING_TYPES = [
@@ -366,16 +413,36 @@ class OntologyMapperService:
         elif mapping_type.lower() == "step":
             return [
                 DataDictionaryEntry(
-                    term_id="step:Product",
-                    label="Product",
-                    definition="STEP Product entity",
+                    term_id="step:PRODUCT",
+                    label="PRODUCT",
+                    definition="STEP/AP242 product identity entity mapped to AP242 Part",
                     ontology_prefix="step",
+                    synonyms=["Product", "Part"],
+                    related_terms=["step:PRODUCT_DEFINITION_FORMATION", "ap242:Part"],
                 ).to_dict(),
                 DataDictionaryEntry(
-                    term_id="step:ProductDefinition",
-                    label="Product Definition",
-                    definition="STEP ProductDefinition entity",
+                    term_id="step:PRODUCT_DEFINITION_FORMATION",
+                    label="PRODUCT DEFINITION FORMATION",
+                    definition="STEP/AP242 version or formation entity mapped to AP242 PartVersion",
                     ontology_prefix="step",
+                    synonyms=["ProductDefinitionFormation", "Revision", "Version"],
+                    related_terms=["step:PRODUCT", "step:PRODUCT_DEFINITION", "ap242:PartVersion"],
+                ).to_dict(),
+                DataDictionaryEntry(
+                    term_id="step:PRODUCT_DEFINITION",
+                    label="PRODUCT DEFINITION",
+                    definition="STEP/AP242 product definition entity mapped to AP242 PartView",
+                    ontology_prefix="step",
+                    synonyms=["ProductDefinition", "View"],
+                    related_terms=["step:PRODUCT_DEFINITION_FORMATION", "step:PRODUCT_DEFINITION_SHAPE", "ap242:PartView"],
+                ).to_dict(),
+                DataDictionaryEntry(
+                    term_id="step:SHAPE_REPRESENTATION",
+                    label="SHAPE REPRESENTATION",
+                    definition="STEP/AP242 shape representation entity mapped to AP242 GeometricModel",
+                    ontology_prefix="step",
+                    synonyms=["ShapeRepresentation", "Geometry"],
+                    related_terms=["step:PRODUCT_DEFINITION_SHAPE", "ap242:GeometricModel"],
                 ).to_dict(),
             ]
         elif mapping_type.lower() == "windchill":

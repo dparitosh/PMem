@@ -1,0 +1,60 @@
+"""Read-only examples; prompts request evidence rather than assert data exists."""
+HOME_PROMPTS = ['Show AP242 product and CAD part details: part number, revision, description, shape and geometry, with source references.', 'Which parts have recorded PMI dimensions, tolerances and datums? Show the part-to-PMI links and values.', 'Show requirement specifications, their descriptions and recorded links to parts and MBSE elements.', 'Show MBSE blocks, functions, interfaces and their recorded requirement relationships.', 'Show the manufacturing BOM: parent assemblies, child parts, recorded quantities and manufacturing process links.', 'Show the selected CAD part’s recorded links to design files, assemblies, simulation datasets and requirements.']
+PAGE_PROMPTS = {
+    'recommendations': [
+        'Compare the selected part with alternatives using recorded dimensions, materials and units; identify conflicts and missing evidence.',
+        'Trace the selected changed item to affected assemblies, requirements and processes; cite recorded paths and configuration limitations.',
+        'Explain the selected part or assembly process context from recorded business relationships; distinguish missing links from verified absence.',
+    ],
+    'catalog': [
+        'Which data products are listed in the catalog, and what status is recorded?',
+        'Show source and lineage evidence available for cataloged data.',
+        'What catalog information is missing or cannot be verified?',
+    ],
+    'data-products': [
+        'Summarize retained data products and their recorded publication status.',
+        'What evidence is available for product versions and source provenance?',
+        'Are analytics schemas, dimensions or KPIs documented in the available evidence?',
+    ],
+    'data-flow': [
+        'Summarize retained processing jobs and their recorded status.',
+        'Which returned jobs need attention, and what failure evidence is available?',
+        'What validation or quality evidence is available from processing jobs?',
+    ],
+    'ontology': [
+        'Explain the selected ontology’s classes, subclasses and properties using source evidence.',
+        'Summarize saved mapping reviews, confidence evidence and unresolved conflicts.',
+        'What evidence distinguishes proposed mappings from approved or published results?',
+    ],
+    'modeling': [
+        'Find MBSE functions, system components and their recorded relationships.',
+        'Find requirement-to-model links and identify missing traceability evidence.',
+        'What provenance supports the available model relationships?',
+    ],
+    'requirements': [
+        'Find requirements and their recorded links to models or product objects.',
+        'What verification or satisfaction evidence is recorded for requirements?',
+        'Identify missing traceability evidence without assuming a requirement is satisfied.',
+    ],
+    'qif': [
+        'Find QIF measurement and inspection evidence with source references.',
+        'Summarize saved AP242–QIF mapping reviews and unresolved mappings.',
+        'What evidence connects measurements to product features?',
+    ],
+    'whereused': [
+        'Find recorded assembly and component usage relationships.',
+        'Show source evidence for available dependency links.',
+        'Which dependency or impact questions cannot be answered from the retained evidence?',
+    ],
+    'data-quality': [
+        'Find quality and measurement evidence, and explain what is missing.',
+        'What recorded validation findings need review?',
+        'Which source references support the available quality findings?',
+    ],
+}
+
+
+def sample_queries(page='home'):
+    page={'data-catalog':'catalog','quality':'data-quality'}.get(page,page)
+    return {'queries':list(PAGE_PROMPTS.get(page, HOME_PROMPTS)),
+            'data_available':None,'mode':'evidence-grounded','page':page}

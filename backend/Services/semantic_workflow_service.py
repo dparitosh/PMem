@@ -7,18 +7,34 @@ operation is introduced.
 """
 
 import json
+import csv
+import io
+import logging
 import re
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
 from .ontology_upload_manager import OntologyUploadManager
+from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
+from .oslc_trs_service import OSLCTRSService
+from .workflow_boundaries import chunk_size as validate_chunk_size, taxonomy_forest
+from .workflow_validation import validate_semantic_artifact
+
+try:
+    from .agent_memory_service import AgentMemoryService
+except Exception:
+    AgentMemoryService = None
+
+logger = logging.getLogger(__name__)
 
 
 def _tokenize(value: str) -> List[str]:
-    return [t for t in re.split(r"[^a-zA-Z0-9]+", value.lower()) if len(t) > 1]
+    normalized = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(value or ""))
+    return [t for t in re.split(r"[^a-zA-Z0-9]+", normalized.lower()) if len(t) > 1]
 
 
 def _jaccard(left: List[str], right: List[str]) -> float:
@@ -28,7 +44,37 @@ def _jaccard(left: List[str], right: List[str]) -> float:
     return len(lset & rset) / len(lset | rset)
 
 
+GENERIC_ONTOLOGY_TERMS = {
+    "class",
+    "entity",
+    "item",
+    "object",
+    "part",
+    "product",
+    "resource",
+    "thing",
+    "type",
+    "value",
+}
+
+
 class SemanticWorkflowService:
+    AUTO_APPLY_CONFIDENCE = 0.82
+    REVIEW_CONFIDENCE = 0.55
+    AMBIGUITY_DELTA = 0.08
+    TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "source_element_name")
+    FALLBACK_FIELDS = ("name",)
+    METADATA_FIELDS = (
+        ("manifest.filename", "filename", 0.55),
+        ("manifest.file_type", "file_type", 0.45),
+        ("manifest.workflow_id", "workflow_id", 0.3),
+        ("manifest.ontology_mapping", "stats.ontology_mapping", 0.4),
+        ("manifest.ontology_prefix", "stats.ontology_prefix", 0.5),
+        ("manifest.ontology_name", "stats.ontology_name", 0.45),
+        ("manifest.namespace", "stats.namespace", 0.42),
+        ("manifest.source_ontology", "stats.source_ontology", 0.35),
+    )
+
     @staticmethod
     def _new_task(workflow_id: str, source_filename: str = "") -> str:
         task_id = f"{workflow_id.replace('.', '-')}-{uuid.uuid4()}"
@@ -37,15 +83,46 @@ class SemanticWorkflowService:
 
     @staticmethod
     def _ontology_metadata(ontology_id: str) -> Dict[str, Any]:
-        result = OntologyUploadManager.get_ontology(ontology_id)
-        if result.get("status") != "success":
-            raise ValueError(result.get("error") or f"Ontology not found: {ontology_id}")
-        return result["metadata"]
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        meta = dict(OntologyTaxonomyService._resolve_metadata(ontology_id))
+        # Existing workflows consume file_path; native catalogs use artifact_path.
+        meta["file_path"] = meta.get("file_path") or meta.get("artifact_path") or ""
+        return meta
+
+    @staticmethod
+    def _resolve_ontology_id(ontology_ref: str) -> str:
+        """Resolve a user-selected ontology reference to a stored ontology_id."""
+        ref = str(ontology_ref or "").strip()
+        if not ref:
+            return ""
+        # Include ontologies created through the governed PostgreSQL catalog,
+        # not just older upload-manager records.
+        try:
+            from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+            metadata = OntologyTaxonomyService._resolve_metadata(ref)
+            if metadata.get('ontology_id'):
+                return str(metadata['ontology_id'])
+        except (ImportError, ValueError):
+            pass
+        direct = OntologyUploadManager.get_ontology(ref)
+        if direct.get("status") == "success":
+            return ref
+
+        registry = OntologyUploadManager.list_ontologies()
+        if registry.get("status") != "success":
+            return ref
+
+        for meta in registry.get("ontologies", []):
+            ontology_id = str(meta.get("ontology_id") or "").strip()
+            prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or "").strip()
+            if ref in {ontology_id, prefix}:
+                return ontology_id or ref
+        return ref
 
     @staticmethod
     def _read_ontology_file(meta: Dict[str, Any]) -> str:
         path = Path(meta.get("file_path", ""))
-        if not path.exists():
+        if not path.is_file():
             return ""
         try:
             return path.read_text(encoding="utf-8-sig", errors="replace")
@@ -71,6 +148,772 @@ class SemanticWorkflowService:
         return terms[:500]
 
     @classmethod
+    def _semantic_terms_for_ontology(cls, ontology_id: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Prefer asserted semantic terms over raw ontology text scanning."""
+        try:
+            reasoning = OntologyReasoningService.get_reasoning(ontology_id)
+            terms: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            for item in OntologyReasoningService.iter_semantic_terms(reasoning):
+                term = str(item.get("label") or item.get("name") or "").strip()
+                if not term:
+                    continue
+                normalized = cls._normalized_key(term)
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                terms.append({
+                    "term": term,
+                    "normalized": normalized,
+                    "frequency": 1,
+                    "tokens": _tokenize(term),
+                    "semantic_type": item.get("target_ontology_type") or "OntologyTerm",
+                    "iri": item.get("element_id") or item.get("iri") or item.get("uri"),
+                    "domain": item.get("domain") or [],
+                    "range": item.get("range") or [],
+                    "definition": item.get("definition") or item.get("comment") or "",
+                    "source": reasoning.get("engine") or "asserted_rdf",
+                })
+            if terms:
+                return sorted(terms, key=lambda item: (item.get("semantic_type", ""), item["term"].lower()))[:500]
+        except Exception as exc:
+            logger.info("semantic runtime term extraction fallback for %s: %s", ontology_id, exc)
+
+        terms = cls._extract_terms(cls._read_ontology_file(meta))
+        for term in terms:
+            term.setdefault("semantic_type", "RawTerm")
+            term.setdefault("source", "text_fallback")
+        return terms
+    @classmethod
+    def _write_ontology_graph_exports(cls, task_id: str, source_id: str, target_id: str) -> None:
+        """Pre-generate merged ontology export artifacts to avoid request-time serialization timeouts."""
+        try:
+            from rdflib import Graph as RDFGraph, URIRef, Literal
+            from rdflib.namespace import DCTERMS, OWL, RDF, RDFS
+            graph = RDFGraph()
+            loaded = []
+            target_ontology_iris = []
+            imported_iris = set()
+            # These namespaces belong to the application/runtime, not to an
+            # ontology export. Keep the source files authoritative and prevent
+            # agent/graph/bridge implementation triples leaking into the file.
+            application_markers = (
+                "/agentic", "#agentic", "/agents", "#agents", "/graph", "#graph",
+                "/knowledge", "#knowledge", "/semantic-bridge", "#semantic-bridge",
+            )
+            for ontology_id in (source_id, target_id):
+                context = OntologyReasoningService.semantic_context(ontology_id)
+                path = Path(context.get("file_path") or context.get("source_file_path") or "")
+                if not path.exists():
+                    continue
+                formats = ["turtle", "xml", "n3"] if path.suffix.lower() == ".ttl" else ["xml", "turtle", "n3"]
+                for fmt in formats:
+                    try:
+                        source_graph = RDFGraph()
+                        source_graph.parse(str(path), format=fmt)
+                        source_headers = set(source_graph.subjects(RDF.type, OWL.Ontology))
+                        if ontology_id == target_id:
+                            target_ontology_iris.extend(source_headers)
+                        for header in source_headers:
+                            imported_iris.update(source_graph.objects(header, OWL.imports))
+                        for subject, predicate, obj in source_graph:
+                            uri_values = [value for value in (subject, predicate, obj) if isinstance(value, URIRef)]
+                            if any(
+                                any(marker in str(uri).lower() for marker in application_markers)
+                                for uri in uri_values
+                            ):
+                                continue
+                            graph.add((subject, predicate, obj))
+                        loaded.append(path.name)
+                        break
+                    except Exception:
+                        continue
+            if not graph:
+                return
+
+            # A graph union can contain multiple owl:Ontology subjects. Make
+            # the exported artifact a single logical ontology while retaining
+            # source provenance and external vocabulary imports.
+            primary_iri = next(iter(target_ontology_iris), None)
+            if primary_iri is None:
+                primary_iri = URIRef(f"http://depo-onto.local/merged/{task_id}#")
+            ontology_subjects = set(graph.subjects(RDF.type, OWL.Ontology))
+            for header in ontology_subjects:
+                for triple in list(graph.triples((header, None, None))):
+                    graph.remove(triple)
+            graph.add((primary_iri, RDF.type, OWL.Ontology))
+            graph.add((primary_iri, RDFS.label, Literal(f"Merged ontology: {target_id}")))
+            graph.add((primary_iri, DCTERMS.source, Literal(f"source ontology: {source_id}")))
+            graph.add((primary_iri, DCTERMS.source, Literal(f"target ontology: {target_id}")))
+            for imported_iri in imported_iris:
+                graph.add((primary_iri, OWL.imports, imported_iri))
+            for filename, fmt, artifact_type in (
+                ("merged_ontology.ttl", "turtle", "ontology_export_ttl"),
+                ("merged_ontology.rdf", "xml", "ontology_export_rdf"),
+                ("merged_ontology.owl", "pretty-xml", "ontology_export_owl"),
+                ("merged_ontology.jsonld", "json-ld", "ontology_export_jsonld"),
+            ):
+                WorkflowArtifactService.write_text(task_id, "ontology", filename, str(graph.serialize(format=fmt)), artifact_type, {"source_ontology_id": source_id, "target_ontology_id": target_id, "source_files": loaded})
+        except Exception as exc:
+            logger.warning("Merged ontology export generation failed: %s", exc)
+
+    @classmethod
+    def _write_bridge_mapping_exports(cls, task_id: str, report: Dict[str, Any]) -> None:
+        """Write Semantic Bridge mapping exports as JSON-LD and Turtle artifacts."""
+        try:
+            candidates = report.get("candidate_mappings") or report.get("candidates") or []
+            if not candidates:
+                return
+            graph_jsonld = {"@context": {"bridge": "http://depo-onto.local/semantic-bridge#", "skos": "http://www.w3.org/2004/02/skos/core#"}, "@graph": []}
+            ttl_lines = ["@prefix bridge: <http://depo-onto.local/semantic-bridge#> .", "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .", ""]
+            for idx, row in enumerate(candidates[:5000], start=1):
+                source = str(row.get("source_name") or row.get("source_field") or row.get("import_row_key") or "").replace('"', '\\"')
+                target = str(row.get("ontology_term") or "").replace('"', '\\"')
+                target_iri = str(row.get("target_ontology_iri") or row.get("ontology_class_element_id") or "").replace('"', '\\"')
+                source_type = str(row.get("source_type") or "Entity")
+                target_type = str(row.get("target_ontology_type") or "Class")
+                confidence = float(row.get("confidence") or 0)
+                validation = str(row.get("validation_status") or "unknown")
+                mapping_type = str(row.get("mapping_type") or "relatedMatch")
+                subject = f"bridge:mapping_{idx:06d}"
+                graph_jsonld["@graph"].append({"@id": subject, "@type": "bridge:SemanticBridgeMapping", "bridge:sourceField": source, "bridge:targetOntologyIRI": target_iri, "bridge:targetOntologyType": target_type, "bridge:confidenceScore": confidence, "bridge:validationStatus": validation, "bridge:mappingType": mapping_type})
+                ttl_lines.extend([f"{subject} a bridge:SemanticBridgeMapping ;", f"  bridge:sourceField \"{source}\" ;", f"  bridge:sourceType \"{source_type}\" ;", f"  bridge:targetOntologyIRI \"{target_iri}\" ;", f"  bridge:targetOntologyType \"{target_type}\" ;", f"  bridge:targetLabel \"{target}\" ;", f"  bridge:confidenceScore \"{confidence:.4f}\"^^xsd:decimal ;", f"  bridge:validationStatus \"{validation}\" ;", f"  bridge:mappingType \"{mapping_type}\" .", ""])
+            WorkflowArtifactService.write_json(task_id, "ontology", "semantic_bridge_mappings.jsonld", graph_jsonld, "semantic_bridge_jsonld")
+            WorkflowArtifactService.write_text(task_id, "ontology", "semantic_bridge_mappings.ttl", "\n".join(ttl_lines), "semantic_bridge_ttl")
+        except Exception as exc:
+            logger.warning("Semantic Bridge export generation failed: %s", exc)
+    @staticmethod
+    def _load_import_task(import_manifest: Dict[str, Any]) -> Dict[str, Any]:
+        import_task_id = str((import_manifest or {}).get("task_id") or "").strip()
+        if not import_task_id:
+            raise ValueError("Import artifact manifest does not include a task_id")
+
+        task = UnifiedDataImportService._restore_task(import_task_id)
+        if not task:
+            raise ValueError(f"Import task not found: {import_task_id}")
+
+        if not task.get("parsed_rows"):
+            path = UnifiedDataImportService._task_snapshot_path(import_task_id)
+            parsed_name = task.get('_parsed_rows_file') or (path.name + '.parsed_rows.json')
+            parsed_path = path.parent / parsed_name
+            if not parsed_path.exists():
+                raise ValueError(f"Parsed rows snapshot not found for import task: {import_task_id}")
+            parsed_text = parsed_path.read_text(encoding='utf-8')
+            task["parsed_rows"] = json.loads(parsed_text)
+
+        return task
+
+    @staticmethod
+    def _candidate_display_value(row: Dict[str, Any]) -> str:
+        for key in ("name", "entity_type", "element_type", "type", "part_type", "id"):
+            value = row.get(key)
+            if value:
+                return str(value)
+        return "Imported entity"
+
+    @classmethod
+    def _classify_source_row(cls, row: Dict[str, Any]) -> str:
+        """Infer a bridge source kind from the imported row shape."""
+        keys = {str(key).lower() for key in (row or {}).keys()}
+        values = [
+            str(row.get(key) or "").strip().lower()
+            for key in ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "name")
+            if row.get(key)
+        ]
+        # Imported XML entities carry provenance and reference-valued attributes.
+        # Those fields do not turn the entity itself into a relationship or
+        # metadata record. Explicit edge rows still take precedence.
+        if any(value in {"relationship", "relations", "edge", "link"} for value in values):
+            return "Relationship"
+        if row.get("source_element_name") and (row.get("import_row_key") or row.get("id")):
+            return "Entity"
+        relationship_markers = (
+            "ref",
+            "refs",
+            "href",
+            "idref",
+            "instance",
+            "related",
+            "source",
+            "target",
+            "parent",
+            "child",
+        )
+        metadata_markers = (
+            "filename",
+            "workflow_id",
+            "namespace",
+            "ontology_prefix",
+            "ontology_name",
+            "source_ontology",
+            "manifest",
+            "provenance",
+        )
+        attribute_markers = (
+            "value",
+            "text",
+            "description",
+            "comment",
+            "label",
+            "datatype",
+        )
+
+        if any(any(marker in key for marker in relationship_markers) for key in keys):
+            return "Relationship"
+        if any(any(marker in key for marker in metadata_markers) for key in keys):
+            return "Metadata"
+        if any(any(marker in key for marker in attribute_markers) for key in keys):
+            return "Attribute"
+        if any(value in {"relationship", "relations", "edge", "link"} for value in values):
+            return "Relationship"
+        if any(value in {"attribute", "datatype", "property", "value"} for value in values):
+            return "Attribute"
+        return "Entity"
+
+    @classmethod
+    def _load_ontology_term_lookup(cls, ontology_prefix: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Load ontology classes and properties into a bridge lookup table."""
+        # Mapping targets must resolve to current graph IDs, including property
+        # records from ingestion and declared types in a published projection.
+        graph_lookup = cls._load_graph_term_lookup(ontology_prefix)
+        if graph_lookup:
+            return graph_lookup
+        ontology_identifier = cls._resolve_ontology_id(ontology_prefix) or ontology_prefix
+        try:
+            lookup = OntologyReasoningService.build_term_lookup(
+                ontology_identifier,
+                normalizer=cls._normalized_key,
+                tokenizer=_tokenize,
+                generic_checker=cls._is_generic_term,
+            )
+            if lookup:
+                return lookup
+        except Exception as exc:
+            logger.info(f"Ontology reasoning lookup fallback for '{ontology_prefix}': {exc}")
+
+        try:
+            reasoning = OntologyReasoningService.get_reasoning(ontology_identifier)
+        except Exception as exc:
+            logger.info(f"Ontology term lookup fallback for '{ontology_prefix}': {exc}")
+            return {}
+
+        lookup: Dict[str, List[Dict[str, Any]]] = {}
+        for item in OntologyReasoningService.iter_semantic_terms(reasoning):
+            label = str(item.get("label") or "").strip()
+            normalized = cls._normalized_key(label)
+            if not normalized:
+                continue
+            entry = {
+                "element_id": item.get("element_id") or label,
+                "class_name": label,
+                "term_name": label,
+                "prefix": item.get("ontology_prefix") or reasoning.get("prefix") or ontology_prefix,
+                "normalized": normalized,
+                "tokens": _tokenize(label),
+                "is_generic": cls._is_generic_term(label),
+                "target_ontology_type": item.get("target_ontology_type") or "Class",
+                "domain": item.get("domain") or [],
+                "range": item.get("range") or [],
+            }
+            lookup.setdefault(normalized, []).append(entry)
+        return lookup
+
+    @classmethod
+    def _load_graph_term_lookup(cls, scope: str) -> Dict[str, List[Dict[str, Any]]]:
+        from backend.depo_platform.graph_data_client import graph_data_client
+        records = graph_data_client.mapping_terms(scope)
+        lookup = {}
+        for record in records:
+            label = str(record.get('name') or '').strip()
+            if not label or not record.get('element_id'):
+                continue
+            iri = record.get('iri') or ''
+            entry = {'element_id': record['element_id'], 'graph_element_id': record['element_id'],
+                'graph_linkable': True, 'class_name': label, 'term_name': label,
+                'target_ontology_type': record['kind'], 'target_ontology_iri': iri,
+                'iri': iri, 'domain': record.get('domains') or [], 'range': record.get('ranges') or [],
+                'prefix': scope, 'normalized': cls._normalized_key(label),
+                'tokens': _tokenize(label), 'is_generic': cls._is_generic_term(label)}
+            for alias in {label, str(iri).rsplit('#', 1)[-1].rsplit('/', 1)[-1]}:
+                key = cls._normalized_key(alias)
+                if key:
+                    lookup.setdefault(key, []).append(entry)
+        return lookup
+
+    @staticmethod
+    def _read_nested_value(payload: Dict[str, Any], dotted_key: str) -> Any:
+        current: Any = payload
+        for part in dotted_key.split("."):
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+        return current
+
+    @staticmethod
+    def _normalized_key(value: Any) -> str:
+        return UnifiedDataImportService._ontology_match_key(value)
+
+    @staticmethod
+    def _is_generic_term(value: str) -> bool:
+        normalized = str(value or "").strip().lower()
+        return normalized in GENERIC_ONTOLOGY_TERMS
+
+    @classmethod
+    def _collect_row_signals(cls, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        signals: List[Dict[str, Any]] = []
+        seen = set()
+
+        def add_signal(raw_value: Any, source_field: str, signal_type: str, weight: float) -> None:
+            value = str(raw_value or "").strip()
+            if not value:
+                return
+            variants = [value]
+            if ":" in value:
+                variants.append(value.split(":")[-1])
+            if "#" in value:
+                variants.append(value.split("#")[-1])
+
+            for variant in variants:
+                normalized = cls._normalized_key(variant)
+                if not normalized:
+                    continue
+                signature = (normalized, signal_type)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                signals.append({
+                    "raw": variant,
+                    "normalized": normalized,
+                    "tokens": _tokenize(variant),
+                    "source_field": source_field,
+                    "signal_type": signal_type,
+                    "weight": weight,
+                })
+
+        for field_name in cls.TYPE_FIELDS:
+            add_signal(row.get(field_name), field_name, "type", 1.0 if field_name != "category" else 0.9)
+
+        if not signals:
+            for field_name in cls.FALLBACK_FIELDS:
+                add_signal(row.get(field_name), field_name, "name", 0.6)
+
+        return signals
+
+    @classmethod
+    def _collect_manifest_signals(cls, import_task: Dict[str, Any]) -> List[Dict[str, Any]]:
+        signals: List[Dict[str, Any]] = []
+        seen = set()
+
+        def add_signal(raw_value: Any, source_field: str, signal_type: str, weight: float) -> None:
+            value = str(raw_value or "").strip()
+            if not value:
+                return
+            variants = [value]
+            if ":" in value:
+                variants.append(value.split(":")[-1])
+            if "#" in value:
+                variants.append(value.split("#")[-1])
+            if "/" in value or "\\" in value:
+                stem = Path(value).stem
+                if stem:
+                    variants.append(stem)
+
+            for variant in variants:
+                normalized = cls._normalized_key(variant)
+                if not normalized:
+                    continue
+                signature = (normalized, source_field)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                signals.append({
+                    "raw": variant,
+                    "normalized": normalized,
+                    "tokens": _tokenize(variant),
+                    "source_field": source_field,
+                    "signal_type": signal_type,
+                    "weight": weight,
+                })
+
+        for source_field, dotted_key, weight in cls.METADATA_FIELDS:
+            add_signal(cls._read_nested_value(import_task, dotted_key), source_field, "metadata", weight)
+
+        source_filename = (import_task.get("filename") or import_task.get("source_filename") or "").strip()
+        if source_filename:
+            add_signal(Path(source_filename).stem, "manifest.filename_stem", "metadata", 0.6)
+
+        preview = import_task.get("preview_data") or {}
+        sample_rows = preview.get("sample_rows") or []
+        if sample_rows:
+            first_row = sample_rows[0] if isinstance(sample_rows[0], dict) else {}
+            for key in cls.TYPE_FIELDS + cls.FALLBACK_FIELDS:
+                add_signal(first_row.get(key), f"preview.{key}", "preview", 0.5)
+
+        return signals
+
+    @classmethod
+    def _score_link_candidate(cls, signal: Dict[str, Any], match: Dict[str, Any], row: Dict[str, Any], source_type: str) -> float:
+        score = 0.0
+        signal_weight = float(signal.get("weight") or 0.0)
+        signal_type = signal.get("signal_type")
+        signal_tokens = signal.get("tokens") or []
+        class_tokens = match.get("tokens") or []
+        target_type = str(match.get("target_ontology_type") or "Class").strip()
+        source_type = str(source_type or "Entity").strip()
+
+        if signal.get("normalized") == match.get("normalized"):
+            score += 0.72 * signal_weight
+
+        overlap = _jaccard(signal_tokens, class_tokens)
+        if overlap:
+            score += 0.22 * overlap * signal_weight
+
+        if signal_type == "type":
+            score += 0.12
+        elif signal_type == "metadata":
+            score += 0.18
+        else:
+            score -= 0.08
+
+        if source_type == "Attribute" and target_type in {"DatatypeProperty", "DataProperty"}:
+            score += 0.2
+        elif source_type == "Relationship" and target_type == "ObjectProperty":
+            score += 0.2
+        elif source_type == "Entity" and target_type == "Class":
+            score += 0.16
+        elif source_type == "Metadata" and target_type in {"AnnotationProperty", "Class"}:
+            score += 0.1
+        else:
+            score -= 0.05
+
+        row_name = str(row.get("name") or "").strip()
+        class_name = str(match.get("class_name") or match.get("term_name") or "").strip()
+        if row_name and class_name and row_name.lower() == class_name.lower():
+            score += 0.08
+
+        if match.get("is_generic"):
+            score -= 0.28
+
+        return max(0.0, min(1.0, round(score, 4)))
+
+    @classmethod
+    def _validate_candidate_pair(cls, source_type: str, target_type: str, match: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
+        result = OntologyReasoningService.validate_mapping(source_type, target_type, match, row)
+        return {
+            "is_valid": result.get("status") != "invalid",
+            "status": result.get("status", "valid"),
+            "errors": result.get("errors", []),
+            "warnings": result.get("warnings", []),
+        }
+
+    @classmethod
+    def _build_link_candidates(
+        cls,
+        rows: List[Dict[str, Any]],
+        ontology_prefix: str,
+        import_task_id: str,
+        import_task: Optional[Dict[str, Any]] = None,
+        ontology_id: str = '',
+    ) -> List[Dict[str, Any]]:
+        class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
+        term_lookup = cls._load_ontology_term_lookup(ontology_prefix)
+        for key, values in class_lookup.items():
+            existing_values = term_lookup.setdefault(key, [])
+            existing_ids = {str(item.get("element_id") or item.get("iri") or item.get("class_name") or "") for item in existing_values}
+            for value in values:
+                value_id = str(value.get("element_id") or value.get("iri") or value.get("class_name") or "")
+                if value_id and value_id in existing_ids:
+                    continue
+                existing_values.append({
+                    **value,
+                    "target_ontology_type": value.get("target_ontology_type") or "Class",
+                    "graph_linkable": True,
+                    "graph_element_id": value.get("element_id"),
+                    "target_ontology_iri": value.get("iri") or value.get("uri"),
+                })
+        candidates: List[Dict[str, Any]] = []
+        metadata_signals = cls._collect_manifest_signals(import_task or {})
+        memory_facts_by_source: Dict[str, List[Dict[str, Any]]] = {}
+        if AgentMemoryService is not None:
+            try:
+                memory_ontology_id = ontology_id or cls._resolve_ontology_id(ontology_prefix)
+                for fact in AgentMemoryService.semantic_bridge_facts(memory_ontology_id, limit=1500):
+                    source_key = cls._normalized_key(fact.get("source"))
+                    if source_key:
+                        memory_facts_by_source.setdefault(source_key, []).append(fact)
+            except Exception as exc:
+                logger.info("Agent memory mapping reuse skipped: %s", exc)
+
+        for row in rows:
+            row_key = row.get("import_row_key") or row.get("id")
+            if not row_key:
+                continue
+
+            source_type = cls._classify_source_row(row)
+            scored_matches: Dict[str, Dict[str, Any]] = {}
+            row_signals = [*cls._collect_row_signals(row), *metadata_signals]
+            for signal in row_signals:
+                matches = term_lookup.get(signal["normalized"], [])
+                for match in matches:
+                    target_type = match.get("target_ontology_type") or "Class"
+                    graph_element_id = match.get("graph_element_id") or (match.get("element_id") if match.get("graph_linkable") else "")
+                    target_iri = match.get("target_ontology_iri") or match.get("iri") or match.get("uri")
+                    if not target_iri and not graph_element_id:
+                        target_iri = match.get("element_id")
+                    validation = cls._validate_candidate_pair(source_type, target_type, match, row)
+                    if not validation["is_valid"]:
+                        continue
+                    score = cls._score_link_candidate(signal, match, row, source_type)
+                    if score < cls.REVIEW_CONFIDENCE:
+                        continue
+                    match_key = graph_element_id or target_iri or match["element_id"]
+                    existing = scored_matches.get(match_key)
+                    if existing and existing["confidence"] >= score:
+                        continue
+                    scored_matches[match_key] = {
+                        "import_id": import_task_id,
+                        "import_row_key": row_key,
+                        "source_term": cls._candidate_display_value(row),
+                        "source_type": source_type,
+                        "ontology_term": match["class_name"],
+                        "ontology_class_element_id": graph_element_id,
+                        "target_ontology_iri": target_iri,
+                        "target_ontology_type": target_type,
+                        "graph_linkable": bool(graph_element_id),
+                        "mapping_type": "closeMatch" if score < cls.AUTO_APPLY_CONFIDENCE else "exactMatch",
+                        "validation_status": validation["status"],
+                        "validation_errors": validation["errors"],
+                        "validation_warnings": validation["warnings"],
+                        "confidence": score,
+                        "mapping": ontology_prefix,
+                        "match_source": signal["source_field"],
+                        "signal_type": signal["signal_type"],
+                        "generic_match": bool(match.get("is_generic")),
+                        "evidence": sorted({
+                            *(existing.get("evidence", []) if existing else []),
+                            signal["source_field"],
+                        }),
+                    }
+
+            for signal in row_signals:
+                for fact in memory_facts_by_source.get(signal["normalized"], []):
+                    if fact.get('source_type') != source_type:
+                        continue
+                    # Older name-only memories remain review evidence; they cannot
+                    # establish which graph resource was approved.
+                    fact_iri = fact.get('target_iri')
+                    target_key = cls._normalized_key(fact.get("target"))
+                    if not target_key:
+                        continue
+                    for match in term_lookup.get(target_key, []):
+                        target_type = str(match.get("target_ontology_type") or "Class").strip()
+                        fact_target_type = str(fact.get("target_type") or target_type).strip()
+                        if fact_target_type and fact_target_type != target_type:
+                            continue
+                        graph_element_id = match.get("graph_element_id") or (match.get("element_id") if match.get("graph_linkable") else "")
+                        if not graph_element_id:
+                            continue
+                        current_iri = match.get('target_ontology_iri') or match.get('iri') or match.get('uri')
+                        if fact_iri and fact_iri != current_iri:
+                            continue
+                        validation = cls._validate_candidate_pair(source_type, target_type, match, row)
+                        if not validation["is_valid"]:
+                            continue
+                        score = min(0.98, max(0.0, float(fact.get("confidence") or 0.0)))
+                        # Reuse is a recommendation. Validate the current instance
+                        # independently before granting automatic publication.
+                        memory_warnings = [*validation['warnings'], 'Remembered mapping requires validation against this instance.']
+                        match_key = graph_element_id or match.get("target_ontology_iri") or match.get("iri") or match.get("element_id")
+                        existing = scored_matches.get(match_key)
+                        if existing and existing["confidence"] >= score:
+                            continue
+                        scored_matches[match_key] = {
+                            "import_id": import_task_id,
+                            "import_row_key": row_key,
+                            "source_term": cls._candidate_display_value(row),
+                            "source_type": source_type,
+                            "ontology_term": match.get("class_name") or match.get("term_name") or fact.get("target"),
+                            "ontology_class_element_id": graph_element_id,
+                            "target_ontology_iri": match.get("target_ontology_iri") or match.get("iri") or match.get("uri"),
+                            "target_ontology_type": target_type,
+                            "graph_linkable": True,
+                            "mapping_type": fact.get("mapping_type") or "memoryReuse",
+                            "validation_status": validation["status"],
+                            "validation_errors": validation["errors"],
+                            "validation_warnings": memory_warnings,
+                            "confidence": round(score, 4),
+                            "mapping": ontology_prefix,
+                            "match_source": "agent_memory",
+                            "signal_type": "memory",
+                            "generic_match": bool(match.get('is_generic') or fact.get('generic_match')),
+                            "evidence": sorted({"agent-memory-approved-mapping", signal["source_field"]}),
+                        }
+
+            if not scored_matches:
+                continue
+
+            ranked = sorted(
+                scored_matches.values(),
+                key=lambda item: (-item["confidence"], not item.get("graph_linkable"), item["generic_match"], item["ontology_term"].lower()),
+            )
+            best_confidence = ranked[0]["confidence"]
+            best_is_graph_linkable = bool(ranked[0].get("graph_linkable"))
+            ambiguous_count = sum(
+                1 for item in ranked
+                if best_confidence - item["confidence"] <= cls.AMBIGUITY_DELTA
+                and bool(item.get("graph_linkable")) == best_is_graph_linkable
+            )
+
+            for idx, item in enumerate(ranked[:3]):
+                item["rank"] = idx + 1
+                item["ambiguous"] = ambiguous_count > 1 and item["rank"] <= ambiguous_count
+                eligible_for_auto_apply = (
+                    item.get("validation_status") in {"valid", "warning"}
+                    and idx == 0
+                    and not item["ambiguous"]
+                    and not item["generic_match"]
+                    and item.get("graph_linkable")
+                    and item["confidence"] >= cls.AUTO_APPLY_CONFIDENCE
+                )
+                item["validation_status"] = "auto_approved" if eligible_for_auto_apply else item.get("validation_status", "needs_review")
+                item["selected_for_apply"] = eligible_for_auto_apply
+                candidates.append(item)
+
+        return candidates
+
+    @classmethod
+    def _row_key_for_approved_mapping(cls, mapping: Dict[str, Any], rows_by_key: Dict[str, Dict[str, Any]]) -> str:
+        """Resolve a user-approved UI mapping to an import row key."""
+        for key in ("import_row_key", "source_term", "sourceField", "source_field", "source_instance_id"):
+            value = str(mapping.get(key) or "").strip()
+            if value and value in rows_by_key:
+                return value
+
+        source_label = str(mapping.get("source_label") or mapping.get("sourceLabel") or mapping.get("source_term") or "").strip()
+        if not source_label:
+            return ""
+        for row_key, row in rows_by_key.items():
+            if source_label in {str(row.get("name") or "").strip(), cls._candidate_display_value(row), str(row.get("id") or "").strip()}:
+                return row_key
+        return ""
+
+    @classmethod
+    def _target_for_approved_mapping(cls, mapping: Dict[str, Any], term_lookup: Dict[str, List[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+        """Resolve a user-approved target label/IRI/element id to an ontology term."""
+        target_values = [
+            mapping.get("target_term"),
+            mapping.get("targetTerm"),
+            mapping.get("target_label"),
+            mapping.get("targetLabel"),
+            mapping.get("targetOntologyIRI"),
+            mapping.get("target_ontology_iri"),
+            mapping.get("ontology_class_element_id"),
+        ]
+        requested_type = str(mapping.get("target_ontology_type") or mapping.get("targetOntologyType") or "").strip()
+        for raw_value in target_values:
+            normalized = cls._normalized_key(raw_value)
+            if not normalized:
+                continue
+            for match in term_lookup.get(normalized, []):
+                target_type = str(match.get("target_ontology_type") or "Class").strip()
+                if requested_type and requested_type != target_type:
+                    continue
+                return match
+
+        raw_text_values = {str(value or "").strip() for value in target_values if str(value or "").strip()}
+        for matches in term_lookup.values():
+            for match in matches:
+                target_type = str(match.get("target_ontology_type") or "Class").strip()
+                if requested_type and requested_type != target_type:
+                    continue
+                identifiers = {
+                    str(match.get("element_id") or "").strip(),
+                    str(match.get("graph_element_id") or "").strip(),
+                    str(match.get("iri") or match.get("uri") or match.get("target_ontology_iri") or "").strip(),
+                    str(match.get("class_name") or match.get("term_name") or "").strip(),
+                }
+                if identifiers & raw_text_values:
+                    return match
+        return None
+
+    @classmethod
+    def _approved_mappings_to_candidates(
+        cls,
+        approved_mappings: List[Dict[str, Any]],
+        rows: List[Dict[str, Any]],
+        ontology_prefix: str,
+        import_task_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Convert user-approved Semantic Bridge rows into applyable candidates."""
+        if not approved_mappings:
+            return []
+
+        rows_by_key = {
+            str(row.get("import_row_key") or row.get("id") or "").strip(): row
+            for row in rows
+            if str(row.get("import_row_key") or row.get("id") or "").strip()
+        }
+        class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
+        term_lookup = cls._load_ontology_term_lookup(ontology_prefix)
+        for key, values in class_lookup.items():
+            existing_values = term_lookup.setdefault(key, [])
+            existing_ids = {str(item.get("element_id") or item.get("iri") or item.get("class_name") or "") for item in existing_values}
+            for value in values:
+                value_id = str(value.get("element_id") or value.get("iri") or value.get("class_name") or "")
+                if value_id and value_id in existing_ids:
+                    continue
+                existing_values.append({
+                    **value,
+                    "target_ontology_type": value.get("target_ontology_type") or "Class",
+                    "graph_linkable": True,
+                    "graph_element_id": value.get("element_id"),
+                    "target_ontology_iri": value.get("iri") or value.get("uri"),
+                })
+
+        candidates: List[Dict[str, Any]] = []
+        for mapping in approved_mappings:
+            if not (mapping.get("selected_for_apply") or mapping.get("approvedByUser") or mapping.get("approved")):
+                continue
+            row_key = cls._row_key_for_approved_mapping(mapping, rows_by_key)
+            row = rows_by_key.get(row_key)
+            target = cls._target_for_approved_mapping(mapping, term_lookup)
+            if not row or not target:
+                continue
+            target_type = str(target.get("target_ontology_type") or mapping.get("target_ontology_type") or mapping.get("targetOntologyType") or "Class").strip()
+            graph_element_id = target.get("graph_element_id") or (target.get("element_id") if target.get("graph_linkable") else "")
+            target_iri = target.get("target_ontology_iri") or target.get("iri") or target.get("uri") or mapping.get("target_ontology_iri") or mapping.get("targetOntologyIRI")
+            if not graph_element_id:
+                continue
+            source_type = str(mapping.get("source_type") or mapping.get("sourceType") or cls._classify_source_row(row)).strip()
+            candidates.append({
+                "import_id": import_task_id,
+                "import_row_key": row_key,
+                "source_term": mapping.get("source_label") or mapping.get("source_term") or cls._candidate_display_value(row),
+                "source_type": source_type,
+                "ontology_term": target.get("class_name") or target.get("term_name") or mapping.get("target_label") or mapping.get("target_term"),
+                "ontology_class_element_id": graph_element_id,
+                "target_ontology_iri": target_iri,
+                "target_ontology_type": target_type,
+                "graph_linkable": True,
+                "mapping_type": mapping.get("mapping_type") or mapping.get("mappingType") or "userApproved",
+                "validation_status": "approved",
+                "validation_errors": [],
+                "validation_warnings": [],
+                "confidence": min(1.0, max(0.0, float(mapping.get("confidence") or mapping.get("confidenceScore") or 1.0))),
+                "mapping": ontology_prefix,
+                "match_source": "user_approved",
+                "signal_type": mapping.get("signal_type") or "user",
+                "generic_match": False,
+                "evidence": sorted(set([*(mapping.get("evidence") or []), "user-approved bridge"])),
+                "rank": 1,
+                "ambiguous": False,
+                "selected_for_apply": True,
+                "approvedByUser": True,
+                "user_comment": mapping.get("userComment") or mapping.get("user_comment") or "",
+            })
+        return candidates
+
+    @classmethod
     def execute(cls, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         payload = payload or {}
         handlers = {
@@ -81,6 +924,7 @@ class SemanticWorkflowService:
             "taxonomy.generate": cls.generate_taxonomy,
             "graph.chunk": cls.chunk_graph,
         }
+        workflow_id = str(workflow_id or "").strip()
         handler = handlers.get(workflow_id)
         if not handler:
             raise ValueError(f"Unsupported workflow: {workflow_id}")
@@ -88,7 +932,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def validate_ontology(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
@@ -107,6 +951,16 @@ class SemanticWorkflowService:
         if text and "http://" not in text and "https://" not in text and "xmlns" not in text:
             findings.append({"severity": "info", "message": "No namespace URI detected in source text"})
 
+        try:
+            semantic_checks = validate_semantic_artifact(meta)
+            if not semantic_checks["shacl"]["conforms"]:
+                findings.append({"severity": "error", "message": "SHACL constraints do not conform"})
+            if semantic_checks["consistency"]["status"] != "passed":
+                findings.append({"severity": "error", "message": "OWL consistency checks found conflicting individuals"})
+        except Exception as exc:
+            semantic_checks = {"status": "failed", "error_type": type(exc).__name__}
+            findings.append({"severity": "error", "message": "Semantic validation failed or is unavailable; review source syntax, shapes and installed validators"})
+
         report = {
             "workflow_id": "ontology.validate",
             "ontology_id": ontology_id,
@@ -114,6 +968,7 @@ class SemanticWorkflowService:
             "prefix": meta.get("prefix"),
             "file_type": meta.get("file_type"),
             "checked_at": datetime.now().isoformat(),
+            "semantic_checks": semantic_checks,
             "findings": findings,
             "summary": {
                 "errors": sum(1 for f in findings if f["severity"] == "error"),
@@ -122,26 +977,26 @@ class SemanticWorkflowService:
             },
         }
         WorkflowArtifactService.write_json(task_id, "validation", "ontology_validation_report.json", report, "validation_report")
-        return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
+        return {"task_id": task_id, "status": "quality_warning" if report["summary"]["errors"] else "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def generate_dictionary(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
-        text = cls._read_ontology_file(meta)
         task_id = cls._new_task("dictionary.generate", meta.get("original_filename", ""))
-        terms = cls._extract_terms(text)
+        terms = cls._semantic_terms_for_ontology(ontology_id, meta)
         dictionary = {
             "workflow_id": "dictionary.generate",
             "ontology_id": ontology_id,
             "prefix": meta.get("prefix"),
+            "term_source": terms[0].get("source") if terms else "empty",
             "generated_at": datetime.now().isoformat(),
             "terms": [
                 {
                     "term": t["term"],
-                    "definition": "",
+                    "definition": t.get("definition") or "",
                     "frequency": t["frequency"],
                     "source": meta.get("original_filename"),
                     "status": "needs_review",
@@ -150,59 +1005,140 @@ class SemanticWorkflowService:
             ],
         }
         WorkflowArtifactService.write_json(task_id, "reports", "data_dictionary.json", dictionary, "data_dictionary")
-        csv_lines = ["term,frequency,status,source"] + [
-            f"{json.dumps(t['term'])},{t['frequency']},needs_review,{json.dumps(meta.get('original_filename', ''))}"
-            for t in terms
-        ]
-        WorkflowArtifactService.write_text(task_id, "reports", "data_dictionary.csv", "\n".join(csv_lines), "data_dictionary_csv")
+        csv_output = io.StringIO(newline='')
+        writer = csv.writer(csv_output)
+        writer.writerow(['term', 'frequency', 'status', 'source'])
+        writer.writerows([t['term'], t['frequency'], 'needs_review', t.get('source') or meta.get('original_filename', '')] for t in terms)
+        WorkflowArtifactService.write_text(task_id, "reports", "data_dictionary.csv", csv_output.getvalue(), "data_dictionary_csv")
         return {"task_id": task_id, "status": "completed", "result": dictionary, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def generate_taxonomy(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
-        text = cls._read_ontology_file(meta)
         task_id = cls._new_task("taxonomy.generate", meta.get("original_filename", ""))
-        terms = cls._extract_terms(text)
-        groups: Dict[str, List[str]] = {}
-        for item in terms:
-            key = item["normalized"][0].upper()
-            groups.setdefault(key, []).append(item["term"])
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+
+        extracted = OntologyTaxonomyService.get_taxonomy(ontology_id)
+        nodes = extracted.get("nodes") or []
+        edges = extracted.get("edges") or []
+        root_ids, trees = taxonomy_forest(nodes, edges)
         taxonomy = {
             "workflow_id": "taxonomy.generate",
             "ontology_id": ontology_id,
             "root": meta.get("ontology_name") or meta.get("prefix") or ontology_id,
+            "term_source": extracted.get("extraction_source") or "empty",
             "generated_at": datetime.now().isoformat(),
-            "children": [
-                {"label": letter, "children": [{"label": term} for term in sorted(set(values))[:50]]}
-                for letter, values in sorted(groups.items())
-            ],
+            "children": trees,
+            "nodes": nodes,
+            "edges": edges,
+            "summary": {
+                **(extracted.get("summary") or {}),
+                "roots": len(root_ids),
+                "truncated": bool((extracted.get("summary") or {}).get("truncated", False)),
+            },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "taxonomy.json", taxonomy, "taxonomy")
         return {"task_id": task_id, "status": "completed", "result": taxonomy, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def merge_ontologies(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        source_id = payload.get("source_ontology_id") or payload.get("from_ontology_id")
-        target_id = payload.get("target_ontology_id") or payload.get("to_ontology_id")
+        source_id = cls._resolve_ontology_id(payload.get("source_ontology_id") or payload.get("from_ontology_id"))
+        target_id = cls._resolve_ontology_id(payload.get("target_ontology_id") or payload.get("to_ontology_id"))
         if not source_id or not target_id:
             raise ValueError("source_ontology_id and target_ontology_id are required")
         source = cls._ontology_metadata(source_id)
         target = cls._ontology_metadata(target_id)
-        source_terms = cls._extract_terms(cls._read_ontology_file(source))
-        target_terms = cls._extract_terms(cls._read_ontology_file(target))
+        source_reasoning = OntologyReasoningService.get_reasoning(source_id)
+        target_reasoning = OntologyReasoningService.get_reasoning(target_id)
         task_id = cls._new_task("ontology.merge", f"{source_id}__{target_id}")
 
-        target_by_norm = {t["normalized"]: t for t in target_terms}
-        overlaps = []
-        additions = []
-        for term in source_terms:
-            if term["normalized"] in target_by_norm:
-                overlaps.append({"term": term["term"], "target_term": target_by_norm[term["normalized"]]["term"], "confidence": 1.0})
-            else:
-                additions.append({"term": term["term"], "action": "add_candidate"})
+        def normalized_label(value: str) -> str:
+            return str(value or "").strip().lower()
+
+        def semantic_entries(reasoning: Dict[str, Any], key: str, entry_type: str) -> List[Dict[str, Any]]:
+            rows = []
+            for row in reasoning.get(key, []) or []:
+                label = str(row.get("label") or row.get("name") or row.get("iri") or "").strip()
+                iri = str(row.get("iri") or "").strip()
+                if not label and not iri:
+                    continue
+                rows.append({
+                    "type": entry_type,
+                    "label": label or iri,
+                    "normalized": normalized_label(label or iri),
+                    "iri": iri,
+                    "domain": sorted(item.get("label") or item.get("iri") or "" for item in row.get("domain", []) or []),
+                    "range": sorted(item.get("label") or item.get("iri") or "" for item in row.get("range", []) or []),
+                })
+            return rows
+
+        source_classes = semantic_entries(source_reasoning, "classes", "class")
+        target_classes = semantic_entries(target_reasoning, "classes", "class")
+        source_properties = semantic_entries(source_reasoning, "object_properties", "object_property") + semantic_entries(source_reasoning, "datatype_properties", "datatype_property")
+        target_properties = semantic_entries(target_reasoning, "object_properties", "object_property") + semantic_entries(target_reasoning, "datatype_properties", "datatype_property")
+
+        target_classes_by_norm = {entry["normalized"]: entry for entry in target_classes if entry["normalized"]}
+        target_properties_by_norm = {entry["normalized"]: entry for entry in target_properties if entry["normalized"]}
+
+        overlaps: List[Dict[str, Any]] = []
+        additions: List[Dict[str, Any]] = []
+        conflicts: List[Dict[str, Any]] = []
+
+        for source_entry in [*source_classes, *source_properties]:
+            target_entry = (
+                target_classes_by_norm.get(source_entry["normalized"])
+                if source_entry["type"] == "class"
+                else target_properties_by_norm.get(source_entry["normalized"])
+            )
+            if not target_entry:
+                additions.append({
+                    "label": source_entry["label"],
+                    "type": source_entry["type"],
+                    "action": "add_candidate",
+                })
+                continue
+
+            overlaps.append({
+                "label": source_entry["label"],
+                "type": source_entry["type"],
+                "source_iri": source_entry["iri"],
+                "target_iri": target_entry["iri"],
+                "match_basis": "iri" if source_entry["iri"] and source_entry["iri"] == target_entry["iri"] else "label",
+                "confidence": 1.0 if source_entry["iri"] and source_entry["iri"] == target_entry["iri"] else 0.82,
+            })
+
+            if source_entry["type"] != "class":
+                if source_entry["domain"] != target_entry["domain"] or source_entry["range"] != target_entry["range"]:
+                    conflicts.append({
+                        "label": source_entry["label"],
+                        "type": source_entry["type"],
+                        "issue": "domain_range_mismatch",
+                        "source_domain": source_entry["domain"],
+                        "target_domain": target_entry["domain"],
+                        "source_range": source_entry["range"],
+                        "target_range": target_entry["range"],
+                    })
+
+        source_subclasses = {
+            (
+                normalized_label(edge.get("source_label") or edge.get("source") or ""),
+                normalized_label(edge.get("target_label") or edge.get("target") or ""),
+            )
+            for edge in source_reasoning.get("subclass_edges", []) or []
+            if edge.get("source_label") or edge.get("source")
+        }
+        target_subclasses = {
+            (
+                normalized_label(edge.get("source_label") or edge.get("source") or ""),
+                normalized_label(edge.get("target_label") or edge.get("target") or ""),
+            )
+            for edge in target_reasoning.get("subclass_edges", []) or []
+            if edge.get("source_label") or edge.get("source")
+        }
+        missing_subclasses = sorted(source_subclasses - target_subclasses)[:100]
         report = {
             "workflow_id": "ontology.merge",
             "source_ontology_id": source_id,
@@ -210,48 +1146,111 @@ class SemanticWorkflowService:
             "generated_at": datetime.now().isoformat(),
             "overlaps": overlaps[:200],
             "additions": additions[:300],
-            "summary": {"overlap_count": len(overlaps), "addition_count": len(additions)},
+            "conflicts": conflicts[:200],
+            "subclass_gaps": [
+                {"child": child, "parent": parent, "issue": "missing_in_target"}
+                for child, parent in missing_subclasses
+            ],
+            "summary": {
+                "overlap_count": len(overlaps),
+                "addition_count": len(additions),
+                "conflict_count": len(conflicts),
+                "subclass_gap_count": len(source_subclasses - target_subclasses),
+                "details_truncated": len(overlaps) > 200 or len(additions) > 300 or len(conflicts) > 200 or len(source_subclasses - target_subclasses) > 100,
+                "source_classes": len(source_classes),
+                "target_classes": len(target_classes),
+                "source_properties": len(source_properties),
+                "target_properties": len(target_properties),
+            },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "merge_plan.json", report, "merge_plan")
+        cls._write_ontology_graph_exports(task_id, source_id, target_id)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def link_instances(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        apply_links = payload.get("apply_links", False)
+        if apply_links is not False:
+            raise ValueError('Direct instance.link publication is retired. Create a Bridge preview job and publish approved candidate IDs.')
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
         import_manifest = payload.get("import_artifact_manifest") or {}
+        import_task = cls._load_import_task(import_manifest)
+        import_task_id = str(import_task.get("task_id") or import_manifest.get("task_id") or "")
         task_id = cls._new_task("instance.link", meta.get("original_filename", ""))
-        ontology_terms = cls._extract_terms(cls._read_ontology_file(meta))
-        source_terms = cls._extract_terms(json.dumps(import_manifest)) if import_manifest else []
-        candidates = []
-        for src in source_terms[:100]:
-            scored = [
-                {"ontology_term": onto["term"], "confidence": round(_jaccard(src["tokens"], onto["tokens"]), 3)}
-                for onto in ontology_terms[:200]
-            ]
-            best = max(scored, key=lambda x: x["confidence"], default=None)
-            if best and best["confidence"] > 0:
-                candidates.append({"source_term": src["term"], **best})
+        rows = import_task.get("parsed_rows") or []
+        ontology_scope = ontology_id
+        candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id, import_task=import_task, ontology_id=ontology_id)
+        user_candidates = cls._approved_mappings_to_candidates(
+            payload.get("approved_mappings") or payload.get("approvedMappings") or [],
+            rows,
+            ontology_scope,
+            import_task_id,
+        )
+        candidate_keys = {
+            (
+                str(candidate.get("import_row_key") or ""),
+                str(candidate.get("ontology_class_element_id") or candidate.get("target_ontology_iri") or ""),
+                str(candidate.get("target_ontology_type") or ""),
+            )
+            for candidate in candidates
+        }
+        for candidate in user_candidates:
+            key = (
+                str(candidate.get("import_row_key") or ""),
+                str(candidate.get("ontology_class_element_id") or candidate.get("target_ontology_iri") or ""),
+                str(candidate.get("target_ontology_type") or ""),
+            )
+            if key not in candidate_keys:
+                candidates.append(candidate)
+                candidate_keys.add(key)
+        approved_candidates = [candidate for candidate in candidates if candidate.get("selected_for_apply")]
+        applied_links = 0  # Writes are owned exclusively by governed Bridge publication.
         report = {
             "workflow_id": "instance.link",
             "ontology_id": ontology_id,
+            "ontology_scope": ontology_scope,
+            "import_task_id": import_task_id,
             "generated_at": datetime.now().isoformat(),
             "candidates": sorted(candidates, key=lambda x: -x["confidence"])[:200],
-            "summary": {"candidate_count": len(candidates), "committed": False},
+            "summary": {
+                "candidate_count": len(candidates),
+                "retained_candidate_count": min(len(candidates), 200),
+                "candidates_truncated": len(candidates) > 200,
+                "selected_for_apply": len(approved_candidates),
+                "high_confidence_candidates": sum(1 for candidate in candidates if candidate["confidence"] >= cls.AUTO_APPLY_CONFIDENCE),
+                "ambiguous_candidates": sum(1 for candidate in candidates if candidate.get("ambiguous")),
+                "validation_warning_candidates": sum(1 for candidate in candidates if candidate.get("validation_status") == "warning"),
+                "auto_approved_candidates": sum(1 for candidate in candidates if candidate.get("validation_status") == "auto_approved"),
+                "user_approved_candidates": sum(1 for candidate in candidates if candidate.get("approvedByUser")),
+                "generic_matches_filtered": sum(1 for candidate in candidates if candidate.get("generic_match") and not candidate.get("selected_for_apply")),
+                "metadata_signals_used": sum(1 for candidate in candidates for source in candidate.get("evidence", []) if str(source).startswith("manifest.") or str(source).startswith("preview.")),
+                "source_kinds": {
+                    kind: sum(1 for candidate in candidates if candidate.get("source_type") == kind)
+                    for kind in ("Entity", "Attribute", "Relationship", "Metadata")
+                },
+                "target_kinds": {
+                    kind: sum(1 for candidate in candidates if candidate.get("target_ontology_type") == kind)
+                    for kind in ("Class", "ObjectProperty", "DatatypeProperty", "AnnotationProperty")
+                },
+                "applied_links": applied_links,
+                "committed": bool(apply_links and applied_links > 0),
+            },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
+        cls._write_bridge_mapping_exports(task_id, report)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def chunk_graph(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
-        chunk_size = int(payload.get("chunk_size") or 80)
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
+        chunk_size = validate_chunk_size(payload.get("chunk_size"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
-        terms = cls._extract_terms(cls._read_ontology_file(meta))
+        terms = cls._semantic_terms_for_ontology(ontology_id, meta)
         task_id = cls._new_task("graph.chunk", meta.get("original_filename", ""))
         chunks = []
         for idx in range(0, len(terms), chunk_size):

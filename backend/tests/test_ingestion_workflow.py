@@ -1,0 +1,89 @@
+import pytest
+
+from backend.ingestion_service.workflow import SemanticIngestionWorkflow
+from backend.ingestion_service.neo4j_writer import GraphStoreConfig
+
+
+@pytest.fixture(autouse=True)
+def service_credentials(monkeypatch):
+    monkeypatch.setattr('backend.ingestion_service.workflow.service_bearer_headers',lambda *a,**kw:{'Authorization':'Bearer test-only'})
+
+
+class _Response:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.payload
+
+
+class _Client:
+    def __init__(self, *args, **kwargs):
+        self.calls = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        if url.endswith("/ontologies/policies/evaluate"):
+            return _Response({"compliant": True, "checks": []})
+        if url.endswith("/ontologies/quality-gate"):
+            return _Response({"publish_recommended": True, "duplicates": [], "conflicts": []})
+        if url.endswith("/ontologies/generate"):
+            return _Response({"version_id": "parts:1", "artifacts": {"turtle": "@prefix ex: <urn:ex:> ."}})
+        return _Response({"status": "success", "resources": 2})
+
+
+@pytest.mark.asyncio
+async def test_workflow_registers_a_draft_and_never_publishes_directly(monkeypatch):
+    client = _Client()
+    monkeypatch.setattr("backend.ingestion_service.workflow.httpx.AsyncClient", lambda **kwargs: client)
+    runner = SemanticIngestionWorkflow()
+    runner.ontology_url = "http://ontology/api/v1"
+    normalized = {"entities": [{"id": "P-1", "type": "Part"}], "relationships": [], "records_processed": 1, "provenance": {"profile_id": "parts"}}
+
+    result = await runner.run(normalized=normalized, name="Parts", prefix="parts", base_uri="urn:parts", publish=True)
+
+    assert result["status"] == "awaiting_approval"
+    assert [call[0] for call in client.calls] == ["http://ontology/api/v1/ontologies/policies/evaluate", "http://ontology/api/v1/ontologies/quality-gate", "http://ontology/api/v1/ontologies/generate", "http://ontology/api/v1/ontologies/register"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_blocks_unapproved_publication(monkeypatch):
+    class _BlockedClient(_Client):
+        async def post(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            if url.endswith("/ontologies/policies/evaluate"):
+                return _Response({"compliant": True, "checks": []})
+            return _Response({"publish_recommended": False, "duplicates": [{"id": "duplicate"}]})
+
+    client = _BlockedClient()
+    monkeypatch.setattr("backend.ingestion_service.workflow.httpx.AsyncClient", lambda **kwargs: client)
+    runner = SemanticIngestionWorkflow()
+    result = await runner.run(
+        normalized={"entities": [{"id": "P-1", "type": "Part"}], "relationships": [], "records_processed": 1, "provenance": {}},
+        name="Parts", prefix="parts", base_uri="urn:parts", publish=True,
+    )
+
+    assert result["status"] == "quality_blocked"
+    assert len(client.calls) == 2
+
+
+def test_graph_store_configuration_selects_explicit_provider(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_GRAPH_PROVIDER", "oracle")
+    monkeypatch.setenv("ORACLE_SEMANTIC_GRAPH_DSN", "oracle.example.test/service")
+    monkeypatch.setenv("ORACLE_USER", "semantic")
+    monkeypatch.setenv("ORACLE_PASSWORD", "secret")
+    monkeypatch.setenv("ORACLE_SEMANTIC_GRAPH_MODEL", "DEPO_ONTOLOGY")
+
+    config = GraphStoreConfig.from_env()
+
+    assert config.provider == "oracle"
+    assert config.database == "DEPO_ONTOLOGY"

@@ -1,0 +1,377 @@
+"""Durable run manifests for configured data jobs.
+
+The registry retains hashes and reproducibility metadata, never arbitrary user
+payloads. Source bytes remain the responsibility of the immutable artifact
+store and are referenced by artifact id in production job definitions.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import socket
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from backend.artifact_store import ArtifactStore
+from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.ontology_maintenance import ontology_writer
+
+
+store = PostgresRegistry("data_job_runs")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def execution_deadline(record):
+    """Queueing and retries consume the original run budget; leases cannot extend it."""
+    from backend.depo_platform.network import bounded_timeout_seconds
+    started = datetime.fromisoformat(record['started_at'])
+    if started.tzinfo is None:
+        raise ValueError('Pipeline start time must include timezone')
+    return record.get('deadline_at') or (started + timedelta(seconds=bounded_timeout_seconds(
+        'DEPO_PIPELINE_JOB_TIMEOUT_SECONDS', default=900, maximum=86400))).isoformat()
+
+
+def _digest(value: Any) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _input_count(payload: dict[str, Any]) -> int:
+    if payload.get("artifact_id"):
+        return 1
+    if isinstance(payload.get("documents"), list):
+        return len(payload["documents"])
+    if isinstance(payload.get("records"), list):
+        return len(payload["records"])
+    return len(list(payload.get("entities") or [])) + len(list(payload.get("relationships") or []))
+
+
+@ontology_writer
+def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running", run_id: str | None = None) -> dict[str, Any]:
+    run_id = run_id or str(uuid.uuid4())
+    if definition['job_type'] == 'rdf-semantic-materialize':
+        from .semantic_configuration import pin_preparation_input
+        payload = pin_preparation_input(payload)
+    checkpoint = payload.get("checkpoint")
+    if checkpoint is not None and not isinstance(checkpoint, dict):
+        raise ValueError("checkpoint must be an object when supplied")
+    next_checkpoint = payload.get("next_checkpoint")
+    if next_checkpoint is not None and not isinstance(next_checkpoint, dict):
+        raise ValueError("next_checkpoint must be an object when supplied")
+    raw_payload = dict(payload)
+    replay_of = str(raw_payload.pop("replay_of", "") or "") or None
+    executed_by = str(raw_payload.pop("execution_actor", "") or "") or None
+    source_standard = str(payload.get("standard") or payload.get("source_standard") or "").strip().lower() or None
+    if source_standard is None:
+        records = payload.get("records")
+        if isinstance(records, list):
+            standards = {
+                str(item.get("source_standard") or "").strip().lower()
+                for item in records if isinstance(item, dict) and item.get("source_standard")
+            }
+            # A mixed-standard batch must remain visibly mixed instead of being
+            # mislabeled as whichever record happened to be first.
+            if len(standards) == 1:
+                source_standard = standards.pop()
+    source_system = str(payload.get("source_system") or "").strip() or None
+    supplied_artifact_ids = payload.get("artifact_ids") or []
+    if not isinstance(supplied_artifact_ids, list) or any(not isinstance(item, str) or not item.strip() for item in supplied_artifact_ids):
+        raise ValueError("artifact_ids must be a list of non-empty artifact identifiers")
+    raw_artifact = ArtifactStore().ingest_bytes(
+        json.dumps(raw_payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"),
+        filename=f"{definition['job_id']}-{definition['version']}-input.json",
+        kind="data-job-input",
+        media_type="application/json",
+        provenance={"job_id": definition["job_id"], "job_version": definition["version"], "correlation_id": correlation_id},
+    )
+    record = {
+        "run_id": run_id,
+        "job_id": definition["job_id"],
+        "job_version": definition["version"],
+        "job_type": definition["job_type"],
+        "quality_profile": definition.get("quality_profile"),
+        "status": status,
+        "correlation_id": correlation_id,
+        "replay_of": replay_of,
+        "executed_by": executed_by,
+        "source_standard": source_standard,
+        "source_system": source_system,
+        "started_at": _now(),
+        "input_manifest": {
+            "contract": definition["input_contract"],
+            "payload_digest": _digest(raw_payload),
+            "record_count": _input_count(payload),
+            "artifact_ids": sorted(set([*supplied_artifact_ids, raw_artifact["artifact_id"]])),
+            "raw_payload_artifact_id": raw_artifact["artifact_id"],
+            **({'configuration_id': payload['configuration_id']} if payload.get('configuration_id') else {}),
+        },
+        "checkpoint": checkpoint,
+        "output_manifest": None,
+    }
+    record["deadline_at"] = execution_deadline(record)
+    return store.put(run_id, record)
+
+
+def enqueue(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, run_id: str | None = None) -> dict[str, Any]:
+    """Persist work before acknowledging submission to the caller."""
+    return start(definition, payload, correlation_id=correlation_id, status="queued", **({'run_id':run_id} if run_id else {}))
+
+
+def claim_next(*, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | None:
+    """Atomically lease one queued or abandoned run across worker processes."""
+    if hasattr(store, "claim_next"):
+        return store.claim_next(worker_id=worker_id, lease_seconds=lease_seconds)
+    # Test doubles and legacy registry implementations remain deterministic.
+    now = datetime.now(timezone.utc)
+    for record in list_runs(limit=1000):
+        lease = record.get("lease") or {}
+        available_at = record.get("available_at")
+        try:
+            if available_at and datetime.fromisoformat(available_at) > now:
+                continue
+        except ValueError:
+            pass
+        expired = not lease.get("expires_at")
+        try:
+            if lease.get("expires_at"):
+                expired = datetime.fromisoformat(lease["expires_at"]) <= now
+        except ValueError:
+            expired = True
+        if record.get("status") == "queued" or (record.get("status") == "running" and expired):
+            claimed = {**record, "status": "running", "worker_id": worker_id, "attempt": int(record.get("attempt") or 0) + 1,
+                       "lease": {"claimed_at": _now(), "heartbeat_at": _now(), "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}}
+            return store.put(record["run_id"], claimed)
+    return None
+
+
+def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 300) -> dict[str, Any]:
+    if record.get("worker_id") != worker_id or record.get("status") != "running":
+        raise ValueError("Worker no longer owns this run lease")
+    from backend.depo_platform.operations import remaining_seconds
+    remaining_seconds(execution_deadline(record))
+    now = datetime.now(timezone.utc)
+    lease = {**(record.get("lease") or {}), "heartbeat_at": now.isoformat(),
+             "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}
+    if hasattr(store, "heartbeat"):
+        updated = store.heartbeat(key=record["run_id"], worker_id=worker_id, attempt=int(record.get("attempt") or 0), lease=lease)
+        if not updated:
+            raise ValueError("Worker no longer owns this run lease")
+        return updated
+    return store.put(record["run_id"], {**record, "lease": lease})
+
+
+def _persist_execution(record: dict[str, Any], updated: dict[str, Any]) -> dict[str, Any]:
+    if record.get("worker_id") and hasattr(store, "transition_owned"):
+        return store.transition_owned(record["run_id"], record, updated)
+    return store.put(record["run_id"], updated)
+
+
+def requeue(record: dict[str, Any], *, message: str, backoff_seconds: int) -> dict[str, Any]:
+    available = datetime.now(timezone.utc) + timedelta(seconds=max(1, min(int(backoff_seconds), 3600)))
+    return _persist_execution(record, {**record, "status": "queued", "available_at": available.isoformat(),
+                                         "last_error": message, "worker_id": None, "lease": None})
+
+
+def worker_identity() -> str:
+    return os.getenv("DEPO_PIPELINE_WORKER_ID", "").strip() or f"{socket.gethostname()}:{os.getpid()}"
+
+
+def replay_payload(record: dict[str, Any]) -> dict[str, Any]:
+    """Load the exact retained input used by a prior run for deterministic replay."""
+    artifact_id = str((record.get("input_manifest") or {}).get("raw_payload_artifact_id") or "")
+    if not artifact_id:
+        raise ValueError("Run does not retain a replayable input artifact")
+    _, path = ArtifactStore().resolve(artifact_id)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("Retained run input is unreadable") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Retained run input must be an object")
+    if record.get('job_type') == 'rdf-semantic-materialize':
+        identifier = (record.get('input_manifest') or {}).get('configuration_id')
+        identifier = identifier or (record.get('output_manifest') or {}).get('configuration_id')
+        identifier = identifier or ((record.get('output_manifest') or {}).get('semantic_dataset') or {}).get('configuration_id')
+        if payload.get('configuration_id') and identifier and payload['configuration_id'] != identifier:
+            raise ValueError('Retained input and manifest configuration bindings disagree')
+        identifier = payload.get('configuration_id') or identifier
+        if not identifier:
+            raise ValueError('This legacy preparation has no verified baseline binding; submit a new preparation after reviewing its sources')
+        payload = {**payload, 'configuration_id': identifier}
+        payload.pop('configuration_inputs', None)
+    return {**payload, "replay_of": record["run_id"]}
+
+
+def _retain_analytics_evidence_pending(record, result):
+    from backend.depo_platform.execution_guard import ensure_execution_allowed
+    ensure_execution_allowed()
+    receipt = result.get('ods_receipt')
+    if record.get('job_type') != 'xml-analytics-materialize' or not isinstance(receipt, dict) or receipt.get('status') != 'completed':
+        raise ValueError('A committed analytics receipt is required for evidence recovery')
+    output = {'contract': 'postgres-xml-load-v1', 'counts': dict(receipt.get('counts') or {}),
+              'result_artifact_id': None, 'partition_artifacts': {}, 'evidence_status': 'pending',
+              'load_status': 'completed', 'ods_receipt': receipt, 'recovery_action': 'rebuild_evidence'}
+    return _persist_execution(record, {**record, 'status': 'completed', 'completed_at': _now(), 'output_manifest': output})
+
+
+@ontology_writer
+def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    if record.get('job_type') == 'xml-analytics-materialize' and result.get('evidence_status') == 'pending':
+        return _retain_analytics_evidence_pending(record, result)
+    try:
+        return _complete_with_evidence(record, result)
+    except Exception:
+        if record.get('job_type') != 'xml-analytics-materialize' or not result.get('ods_receipt'):
+            raise
+        return _retain_analytics_evidence_pending(record, result)
+
+
+def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    result_artifact = ArtifactStore().ingest_bytes(
+        json.dumps(result, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"),
+        filename=f"{record['job_id']}-{record['job_version']}-{record['run_id']}-result.json",
+        kind="data-job-output",
+        media_type="application/json",
+        provenance={"run_id": record["run_id"], "job_id": record["job_id"], "job_version": record["job_version"], "correlation_id": record.get("correlation_id")},
+    )
+    contracts = {
+        "rest-source-ingest": "rest-source-records-v1",
+        "registered-source-ingest": "connector-records-v1",
+        "connector-ceim-normalize": "semantic-validation-report-v1",
+        "normalize-ceim": "normalized-ceim-batch-v1",
+        "data-quality-assessment": "data-quality-report-v1",
+        "schema-analytics-product": "schema-analytics-data-product-draft-v1",
+        "xml-analytics-materialize": "postgres-xml-load-v1",
+        "validate-semantic-batch": "semantic-validation-report-v1",
+        "normalize-unstructured-ceim": "semantic-validation-report-v1",
+        "validate-unstructured-evidence": "validated-unstructured-evidence-v1",
+        "enrich-document-evidence": "document-graph-proposal-v1",
+        "rdf-semantic-materialize":"semantic-dataset-v1",
+        "semantic-dataset-analysis":"semantic-analysis-v1",
+        "semantic-business-mart":"semantic-analysis-v1",
+        "graph-source-snapshot":"semantic-analysis-v1",
+        "semantic-source-review":"semantic-refresh-assessment-v1",
+        "rdf-quality-statistics": "rdf-quality-report-v1",
+        "rdf-deduplicate-serialize": "canonical-ntriples-v1",
+    }
+    output = {
+        "contract": contracts.get(record["job_type"], "quality-summary-v1"),
+        "result_digest": _digest(result),
+        "result_artifact_id": result_artifact["artifact_id"],
+        "result_artifact_usage_id": result_artifact.get("usage_id"),
+        "counts": dict(result.get("counts") or result.get("quality") or {}),
+        "partition_artifacts": dict(result.get("partition_artifacts") or {}),
+    }
+    if record.get('job_type') == 'xml-analytics-materialize' and result.get('ods_receipt'):
+        output.update(ods_receipt=result['ods_receipt'], evidence_status='available', load_status='completed')
+    if isinstance(result.get("semantic_dataset"),dict):output["semantic_dataset"]=result["semantic_dataset"]
+    if result.get("configuration_id"):output["configuration_id"]=result["configuration_id"]
+    if result.get('assessment_status'):output['assessment_status']=result['assessment_status']
+    source_standard = result.get("standard") or record.get("source_standard")
+    if source_standard:
+        output["source_standard"] = str(source_standard)
+    if record.get("source_system"):
+        output["source_system"] = record["source_system"]
+    if result.get("mapping"):
+        output["mapping_digest"] = result["mapping"]
+    if isinstance(result.get("validation"), dict):
+        output["validation_status"] = "conforms" if result["validation"].get("conforms") else "nonconformant"
+    if isinstance(result.get("data_product_draft"), dict):
+        draft = result["data_product_draft"]
+        output["data_product_draft"] = {
+            **{key: draft.get(key) for key in ('product_kind', 'analytics_readiness', 'domain')},
+            **{key: draft[key] for key in ('configuration_id', 'configuration_context') if key in draft},
+            "contract": draft.get("contract"), "name": draft.get("name"),
+            "artifacts": list(draft.get("artifacts") or []),
+            "quality_status": draft.get("quality_status"),
+            "publication_requirements": list(draft.get("publication_requirements") or []),
+            "sources": list(draft.get("sources") or []),
+        }
+    retained_payload = replay_payload(record)
+    next_checkpoint = retained_payload.get("next_checkpoint")
+    if next_checkpoint is not None:
+        output["checkpoint_candidate"] = next_checkpoint
+        output["checkpoint_state"] = "awaiting_approved_publication"
+    completed = {**record, "status": result.get("status", "completed"), "completed_at": _now(), "output_manifest": output}
+    return _persist_execution(record, completed)
+
+
+def failed(record: dict[str, Any], message: str) -> dict[str, Any]:
+    return _persist_execution(record, {**record, "status": "failed", "completed_at": _now(), "failure": {"message": message}})
+
+
+def publication_succeeded(record: dict[str, Any], publication: dict[str, Any]) -> dict[str, Any]:
+    """Record a canonical publication and advance a candidate checkpoint when present.
+
+    Semantic batch jobs do not all consume an ordered event stream.  A batch
+    without ``next_checkpoint`` is still publishable, so treating the absent
+    checkpoint as an error after the remote graph commit would leave the UI
+    reporting a failure for a successfully published batch.
+    """
+    output = dict(record.get("output_manifest") or {})
+    if output.get("publication"):
+        if output["publication"] != publication:
+            raise ValueError("Run already has a different publication receipt")
+        return record
+    if publication.get("status") != "published":
+        raise ValueError("Canonical publication did not report success")
+    advanced_at = _now()
+    candidate = output.get("checkpoint_candidate")
+    output.update({
+        "checkpoint_state": "advanced" if candidate is not None else "not_applicable",
+        "publication_digest": _digest(publication),
+        "publication": publication,
+    })
+    if candidate is not None:
+        output["checkpoint_advanced_at"] = advanced_at
+        return store.put(record["run_id"], {
+            **record, "checkpoint": candidate, "checkpoint_advanced_at": advanced_at,
+            "output_manifest": output,
+        })
+    return store.put(record["run_id"], {**record, "output_manifest": output})
+
+
+def get(run_id: str) -> dict[str, Any] | None:
+    return store.get(run_id)
+
+
+def list_runs(*, limit: int = 100) -> list[dict[str, Any]]:
+    if hasattr(store, 'page'):
+        return store.page(limit=max(1, min(limit, 1000)), order_field='started_at')[1]
+    records = sorted(store.all().values(), key=lambda item: item.get("started_at", ""), reverse=True)
+    return records[:max(1, min(limit, 1000))]
+
+
+def telemetry_summary(*, limit: int = 100) -> dict[str, Any]:
+    """Return UI-ready, durable evidence for data-processing job telemetry.
+
+    This intentionally reports job execution and data-quality outcomes only.
+    It is not browser or application usage telemetry, and it never exposes an
+    artifact payload or grants publication authority.
+    """
+    runs = list_runs(limit=limit)
+
+    def count(record: dict[str, Any], *names: str) -> int:
+        values = (record.get("output_manifest") or {}).get("counts") or {}
+        return next((int(values[name]) for name in names if values.get(name) is not None), 0)
+
+    return {
+        "scope": "recent_runs",
+        "limit": limit,
+        "runs": len(runs),
+        "completed_runs": sum(1 for run in runs if run.get("status") == "completed"),
+        "failed_runs": sum(1 for run in runs if run.get("status") == "failed"),
+        "queued_runs": sum(1 for run in runs if run.get("status") == "queued"),
+        "running_runs": sum(1 for run in runs if run.get("status") == "running"),
+        "records_input": sum(int((run.get("input_manifest") or {}).get("record_count") or 0) for run in runs),
+        "records_accepted": sum(count(run, "accepted_records", "records_accepted", "normalized_entities", "accepted_documents", "valid_ntriples") for run in runs),
+        "records_rejected": sum(count(run, "rejected_records", "records_rejected", "rejected_documents", "malformed_lines") for run in runs),
+        "runs_with_checkpoint": sum(1 for run in runs if run.get("checkpoint") is not None),
+        "runs_with_lineage": sum(1 for run in runs if run.get("correlation_id")),
+        "recent_runs": runs,
+    }

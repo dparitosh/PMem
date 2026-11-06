@@ -1,0 +1,602 @@
+"""Ontology taxonomy extraction for Ontology Studio.
+
+The service prefers RDF/OWL/SKOS hierarchy triples and falls back to lightweight
+XML/schema term extraction for uploaded models that are not RDF serializations.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import copy
+import hashlib
+import rdflib
+from collections import Counter
+from functools import lru_cache
+from threading import RLock
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from xml.etree import ElementTree as ET
+
+from rdflib import BNode, Graph, Literal, URIRef
+from rdflib.namespace import OWL, RDF, RDFS, SKOS
+
+from backend.Services.ontology_semantic_runtime import OntologySemanticRuntime
+from .reasoning import OntologyReasoningService
+from .taxonomy_cache import cache_identity, read_cache, write_cache
+from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+
+RDF_FORMAT_BY_EXT = {
+    ".ttl": ["turtle", "xml", "n3"],
+    ".nt": ["nt"],
+    ".n3": ["n3", "turtle"],
+    ".rdf": ["xml", "turtle"],
+    ".owl": ["xml", "turtle", "n3", "nt"],
+    ".xml": ["xml", "turtle"],
+    ".jsonld": ["json-ld"],
+}
+_BROWSE_CODE_DIGEST = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def _local_name(value: Any) -> str:
+    raw = str(value or "")
+    if "#" in raw:
+        raw = raw.rsplit("#", 1)[-1]
+    elif "/" in raw:
+        raw = raw.rstrip("/").rsplit("/", 1)[-1]
+    return raw or str(value or "")
+
+
+def _term_id(prefix: str, value: Any) -> str:
+    local = _local_name(value)
+    return f"{prefix}:{local}" if prefix and ":" not in local else local
+
+
+def _label(graph: Graph, uri: URIRef) -> str:
+    for predicate in (RDFS.label, SKOS.prefLabel):
+        for value in graph.objects(uri, predicate):
+            text = str(value).strip()
+            if text:
+                return text
+    return _local_name(uri)
+
+
+def _definition(graph: Graph, uri: URIRef) -> str:
+    # Do not surface provenance/scope notes as functional definitions. A blank
+    # value is intentional when the source ontology has no business definition.
+    for predicate in (SKOS.definition, RDFS.comment):
+        for value in graph.objects(uri, predicate):
+            text = str(value).strip()
+            if text:
+                return text
+    return ""
+
+
+class OntologyTaxonomyService:
+    # Stripe locks bound coordination memory and coalesce concurrent cold reads.
+    _browse_locks = tuple(RLock() for _ in range(16))
+    @staticmethod
+    def _cache_key_for_path(file_path: Path) -> Tuple[str, float, int]:
+        path = file_path.resolve()
+        try:
+            stat = path.stat()
+            return (str(path), float(stat.st_mtime), int(stat.st_size))
+        except Exception:
+            return (str(path), 0.0, 0)
+
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def _cached_reasoning(file_path_str: str, mtime: float, size: int, prefix: str) -> Dict[str, Any]:
+        return OntologySemanticRuntime.inspect_ontology(Path(file_path_str), prefix)
+
+    @staticmethod
+    @lru_cache(maxsize=4)
+    def _cached_taxonomy_payload(
+        file_path_str: str,
+        mtime: float,
+        size: int,
+        source_file_path_str: str,
+        source_mtime: float,
+        source_size: int,
+        prefix: str,
+        ontology_id: str,
+        ontology_name: str,
+        source_filename: str,
+    ) -> Dict[str, Any]:
+        file_path = Path(file_path_str)
+        source_file_path = Path(source_file_path_str)
+        cache_path = file_path.parent / ('.' + file_path.name + '.taxonomy-v1.json.gz')
+        try:
+            identity = cache_identity([file_path, source_file_path],
+                [prefix, ontology_id, ontology_name, source_filename, _BROWSE_CODE_DIGEST, rdflib.__version__])
+            cached = read_cache(cache_path, identity)
+            if cached is not None:
+                return cached
+        except OSError:
+            identity = None
+        meta = {
+            "ontology_id": ontology_id,
+            "ontology_name": ontology_name,
+            "prefix": prefix,
+            "ontology_prefix": prefix,
+            "original_filename": source_filename,
+            "stored_filename": source_filename,
+        }
+
+        parsed = OntologyTaxonomyService._parse_rdf(meta, file_path)
+        if not parsed:
+            parsed = OntologyTaxonomyService._xml_terms(source_file_path, prefix)
+        if not parsed.get("nodes") and parsed.get("source") != "rdf_parse_error":
+            parsed = OntologyTaxonomyService._text_terms(meta, source_file_path)
+
+        # RDFLib already supplies the typed graph structure for RDF/OWL/Turtle.
+        # Avoid a second semantic inspection here: large AP242 MIM artifacts otherwise
+        # block the browse request while no additional taxonomy data is gained.
+        reasoning_summary = (
+            parsed.get('reasoning_summary', {})
+            if parsed.get("source") == "rdf"
+            else OntologyTaxonomyService._cached_reasoning(file_path_str, mtime, size, prefix).get("summary", {})
+        )
+        payload = {
+            "ontology_id": ontology_id,
+            "ontology_name": ontology_name,
+            "prefix": prefix,
+            "source_filename": source_filename,
+            "extraction_source": parsed.get("source"),
+            "nodes": parsed.get("nodes", []),
+            "edges": parsed.get("edges", []),
+            "reasoning_summary": reasoning_summary,
+            "diagnostics": parsed.get("diagnostics", []),
+            "summary": {
+                "terms": len(parsed.get("nodes", [])),
+                "taxonomy_links": len(parsed.get("edges", [])),
+                "triple_count": parsed.get("triple_count", 0),
+                "total_terms": parsed.get("total_nodes", len(parsed.get("nodes", []))),
+                "total_taxonomy_links": parsed.get("total_edges", len(parsed.get("edges", []))),
+                "truncated": bool(parsed.get("truncated", False)),
+            },
+        }
+        if identity is not None:
+            write_cache(cache_path, identity, payload)
+        return payload
+
+    @staticmethod
+    def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
+        meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
+        # Engineering workflows register generated RDF/Turtle as ``artifact_path``;
+        # older upload flows use ``file_path``. Both are first-class ontology
+        # sources and must produce the same typed taxonomy.
+        source_path = meta.get("file_path") or meta.get("artifact_path") or ""
+        source_file_path = Path(source_path)
+        semantic_file_path = Path(meta.get("artifact_path") or meta.get("owl_file_path") or source_path)
+        if not semantic_file_path.is_file() and (not str(source_path).strip() or not source_file_path.is_file()):
+            raise ValueError(f"Ontology file is missing: {ontology_identifier}")
+        if not semantic_file_path.is_file():
+            semantic_file_path = source_file_path
+        if not source_file_path.is_file():
+            source_file_path = semantic_file_path
+
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
+        return {
+            "meta": meta,
+            "file_path": semantic_file_path,
+            "source_file_path": source_file_path,
+            "prefix": prefix,
+        }
+
+    @staticmethod
+    def _resolve_metadata(identifier: str) -> Dict[str, Any]:
+        # Newer engineering conversions (including AP242 EXPRESS -> Turtle)
+        # are registered in the ontology-service catalog, not the legacy
+        # upload manager.  Resolve those artifacts first so their RDF/OWL
+        # semantics are preserved instead of falling back to a dictionary.
+        native = None
+        try:
+            from backend.ontology_service.catalog import catalog as ontology_catalog
+
+            native = ontology_catalog.get(identifier)
+            if native is not None:
+                path = ontology_catalog.resolve_artifact_path(identifier, native)
+                return {**native, 'artifact_path': str(path)}
+
+            lookup = str(identifier or "").strip().lower()
+            for meta in ontology_catalog.list():
+                candidates = {
+                    str(meta.get("ontology_id") or "").lower(),
+                    str(meta.get("prefix") or "").lower(),
+                    str(meta.get("ontology_prefix") or "").lower(),
+                }
+                if lookup in candidates:
+                    native = meta
+                    path = ontology_catalog.resolve_artifact_path(meta['ontology_id'], meta)
+                    return {**meta, 'artifact_path': str(path)}
+        except (ImportError, ValueError):
+            if native is not None:
+                raise  # Registered identity exists; do not hide its artifact failure with a legacy fallback.
+            # A staged legacy deployment or an invalid native identifier can
+            # still resolve an existing upload. Do not disguise DB failures.
+            pass
+        except Exception as exc:
+            raise RuntimeError('Native ontology catalog is unavailable; check its PostgreSQL configuration and service logs') from exc
+
+        direct = OntologyUploadManager.get_ontology(identifier)
+        if direct.get("status") == "success":
+            return direct["metadata"]
+
+        listed = OntologyUploadManager.list_ontologies()
+        if listed.get("status") != "success":
+            raise ValueError(listed.get("error") or f"Ontology not found: {identifier}")
+
+        lookup = str(identifier or "").strip().lower()
+        for meta in listed.get("ontologies", []):
+            candidates = {
+                str(meta.get("ontology_id") or "").lower(),
+                str(meta.get("prefix") or "").lower(),
+                str(meta.get("ontology_prefix") or "").lower(),
+            }
+            if lookup in candidates:
+                return meta
+        raise ValueError(f"Ontology not found: {identifier}")
+
+    @staticmethod
+    def _parse_rdf(meta: Dict[str, Any], file_path: Path) -> Optional[Dict[str, Any]]:
+        ext = file_path.suffix.lower()
+        rdf_formats = RDF_FORMAT_BY_EXT.get(ext)
+        if not rdf_formats:
+            return None
+
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
+        graph = Graph()
+        parsed_ok = False
+        parse_errors: List[str] = []
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        from backend.ontology_service.catalog import validate_rdf_input
+        try:
+            with file_path.open('rb') as source:
+                content = source.read(ontology_upload_limit() + 1)
+        except OSError as exc:
+            return {'source': 'rdf_parse_error', 'nodes': [], 'edges': [], 'triple_count': 0,
+                    'diagnostics': [{'severity': 'error', 'message': f'Artifact read failed: {type(exc).__name__}'}]}
+        for rdf_format in rdf_formats:
+            try:
+                validate_rdf_input(content, rdf_format)
+                graph = Graph()
+                graph.parse(data=content, format=rdf_format)
+                parsed_ok = True
+                break
+            except Exception as exc:
+                parse_errors.append(f"{rdf_format}: {type(exc).__name__}: {exc}")
+                continue
+        if not parsed_ok:
+            if ext == ".xml":
+                return None
+            return {
+                "source": "rdf_parse_error",
+                "nodes": [],
+                "edges": [],
+                "triple_count": 0,
+                "diagnostics": [{"severity": "error", "message": message} for message in parse_errors],
+            }
+
+        class_uris: Set[URIRef] = set()
+        property_uris: Dict[URIRef, str] = {}
+        hierarchy_edges: List[Tuple[URIRef, URIRef, str]] = []
+        property_edges: List[Tuple[URIRef, URIRef, str]] = []
+
+        for subject in graph.subjects(RDF.type, OWL.Class):
+            if isinstance(subject, URIRef):
+                class_uris.add(subject)
+        for subject in graph.subjects(RDF.type, RDFS.Class):
+            if isinstance(subject, URIRef):
+                class_uris.add(subject)
+        for subject in graph.subjects(RDF.type, SKOS.Concept):
+            if isinstance(subject, URIRef):
+                class_uris.add(subject)
+        for subject, parent in graph.subject_objects(RDFS.subClassOf):
+            if isinstance(subject, URIRef) and isinstance(parent, URIRef):
+                class_uris.add(subject)
+                class_uris.add(parent)
+                hierarchy_edges.append((subject, parent, "subClassOf"))
+
+        property_types = (
+            (OWL.ObjectProperty, "rdf-object-property"),
+            (OWL.DatatypeProperty, "rdf-datatype-property"),
+            (OWL.AnnotationProperty, "rdf-annotation-property"),
+            (RDF.Property, "rdf-property"),
+        )
+        for property_type, source in property_types:
+            for subject in graph.subjects(RDF.type, property_type):
+                if isinstance(subject, URIRef):
+                    property_uris.setdefault(subject, source)
+        for subject, domain in graph.subject_objects(RDFS.domain):
+            if isinstance(subject, URIRef) and isinstance(domain, URIRef):
+                property_uris.setdefault(subject, "rdf-property")
+                class_uris.add(domain)
+                property_edges.append((subject, domain, "DOMAIN"))
+        for subject, range_value in graph.subject_objects(RDFS.range):
+            if isinstance(subject, URIRef) and isinstance(range_value, URIRef):
+                property_uris.setdefault(subject, "rdf-property")
+                class_uris.add(range_value)
+                property_edges.append((subject, range_value, "RANGE"))
+        for subject, parent in graph.subject_objects(SKOS.broader):
+            if isinstance(subject, URIRef) and isinstance(parent, URIRef):
+                class_uris.add(subject)
+                class_uris.add(parent)
+                hierarchy_edges.append((subject, parent, "broader"))
+        for parent, subject in graph.subject_objects(SKOS.narrower):
+            if isinstance(subject, URIRef) and isinstance(parent, URIRef):
+                class_uris.add(subject)
+                class_uris.add(parent)
+                hierarchy_edges.append((subject, parent, "narrower"))
+
+        # Retain named OWL axiom relationships beyond domain/range and hierarchy.
+        for predicate, edge_type in ((OWL.equivalentClass, 'equivalentClass'), (OWL.disjointWith, 'disjointWith')):
+            for subject, target in graph.subject_objects(predicate):
+                if isinstance(subject, URIRef) and isinstance(target, URIRef):
+                    class_uris.update((subject, target))
+                    hierarchy_edges.append((subject, target, edge_type))
+        for predicate, edge_type in ((RDFS.subPropertyOf, 'subPropertyOf'), (OWL.equivalentProperty, 'equivalentProperty'), (OWL.inverseOf, 'inverseOf')):
+            for subject, target in graph.subject_objects(predicate):
+                if isinstance(subject, URIRef) and isinstance(target, URIRef):
+                    property_uris.setdefault(subject, 'rdf-property')
+                    property_uris.setdefault(target, 'rdf-property')
+                    property_edges.append((subject, target, edge_type))
+
+        from backend.depo_platform.ontology_semantics import is_individual, kind
+        individual_uris = {s for s in graph.subjects() if isinstance(s, URIRef) and is_individual(graph, s)}
+        datatype_uris = {s for s in class_uris if kind(graph, s) == 'datatype'}
+        class_uris -= datatype_uris
+        node_uris = set(class_uris) | set(property_uris) | individual_uris | datatype_uris
+        base_id_counts = Counter(_term_id(prefix, uri) for uri in node_uris)
+        duplicate_ids = {term_id for term_id, count in base_id_counts.items() if count > 1}
+        nodes = [
+            {
+                "term_id": str(uri) if _term_id(prefix, uri) in duplicate_ids else _term_id(prefix, uri),
+                "uri": str(uri),
+                "label": _label(graph, uri),
+                "definition": _definition(graph, uri),
+                "ontology_prefix": prefix,
+                "source": property_uris.get(uri, "rdf-individual" if uri in individual_uris else "rdf-datatype" if uri in datatype_uris else "rdf-class"),
+                "kind": kind(graph, uri),
+                "rdf_types": sorted(str(t) for t in graph.objects(uri, RDF.type)),
+            }
+            for uri in sorted(node_uris, key=lambda item: str(item))
+        ]
+        node_by_uri = {node["uri"]: node for node in nodes}
+        edges = [
+            {
+                "source_term": node_by_uri[str(child)]["term_id"],
+                "source_label": node_by_uri[str(child)]["label"],
+                "target_term": node_by_uri[str(parent)]["term_id"],
+                "target_label": node_by_uri[str(parent)]["label"],
+                "mapping_type": edge_type,
+            }
+            for child, parent, edge_type in hierarchy_edges
+            if str(child) in node_by_uri and str(parent) in node_by_uri
+        ]
+        edges.extend(
+            {
+                "source_term": node_by_uri[str(subject)]["term_id"],
+                "source_label": node_by_uri[str(subject)]["label"],
+                "target_term": node_by_uri[str(target)]["term_id"],
+                "target_label": node_by_uri[str(target)]["label"],
+                "mapping_type": edge_type,
+            }
+            for subject, target, edge_type in property_edges
+            if str(subject) in node_by_uri and str(target) in node_by_uri
+        )
+
+        # Keep anonymous OWL expressions visible without pretending they are
+        # named classes. Cardinality values are expression terms, not entities.
+        expression_edges = []
+        pending = []
+        for predicate, relation in ((RDFS.subClassOf, 'subClassOf'), (OWL.equivalentClass, 'equivalentClass'), (OWL.disjointWith, 'disjointWith')):
+            for subject, target in graph.subject_objects(predicate):
+                if isinstance(subject, URIRef) and isinstance(target, BNode):
+                    expression_edges.append((subject, target, relation))
+                    pending.append(target)
+        # Root otherwise disconnected axioms, property chains, rule lists and
+        # anonymous domains/ranges. Traverse blank nodes with cycle protection.
+        semantic_roots = {subject for subject in graph.subjects() if kind(graph, subject) in {'axiom', 'rule', 'restriction'}}
+        for subject, predicate, target in graph:
+            if isinstance(subject, BNode) or isinstance(target, BNode) or subject in individual_uris or subject in semantic_roots:
+                expression_edges.append((subject, target, _local_name(predicate)))
+                if isinstance(subject, BNode): pending.append(subject)
+                if isinstance(target, BNode): pending.append(target)
+        visited = set()
+        while pending:
+            expression = pending.pop()
+            if expression in visited:
+                continue
+            visited.add(expression)
+            for predicate, target in graph.predicate_objects(expression):
+                if predicate == RDF.type:
+                    continue
+                if not (str(predicate).startswith(str(OWL)) or predicate in {RDF.first, RDF.rest}):
+                    continue
+                expression_edges.append((expression, target, _local_name(predicate)))
+                if isinstance(target, BNode):
+                    pending.append(target)
+        def expression_node(value):
+            key = str(value) if not isinstance(value, Literal) else 'literal:' + value.n3()
+            if key not in node_by_uri:
+                identifier = '_:' + str(value) if isinstance(value, BNode) else key
+                label = 'OWL restriction' if (value, RDF.type, OWL.Restriction) in graph else 'OWL expression' if isinstance(value, BNode) else str(value)
+                row = {'term_id': identifier, 'uri': key, 'label': label, 'ontology_prefix': prefix,
+                       'source': 'rdf-expression', 'definition': '',
+                       'kind': 'literal' if isinstance(value, Literal) else kind(graph, value),
+                       'rdf_types': [] if isinstance(value, Literal) else sorted(str(t) for t in graph.objects(value, RDF.type)),
+                       **({'datatype': str(value.datatype) if value.datatype else None, 'language': value.language} if isinstance(value, Literal) else {})}
+                node_by_uri[key] = row
+                nodes.append(row)
+            return node_by_uri[key]
+        edge_keys = {(row['source_term'], row['target_term'], row['mapping_type']) for row in edges}
+        for subject, target, relation in expression_edges:
+            left, right = expression_node(subject), expression_node(target)
+            row = {'source_term': left['term_id'], 'source_label': left['label'],
+                   'target_term': right['term_id'], 'target_label': right['label'], 'mapping_type': relation}
+            key = (row['source_term'], row['target_term'], row['mapping_type'])
+            if key not in edge_keys:
+                edges.append(row)
+                edge_keys.add(key)
+
+        return {
+            "source": "rdf",
+            "nodes": nodes,
+            "edges": edges,
+            "triple_count": len(graph),
+            "reasoning_summary": {
+                "classes": len(set(graph.subjects(RDF.type, OWL.Class)) | set(graph.subjects(RDF.type, RDFS.Class))),
+                "object_properties": len(set(graph.subjects(RDF.type, OWL.ObjectProperty))),
+                "datatype_properties": len(set(graph.subjects(RDF.type, OWL.DatatypeProperty))),
+                "annotation_properties": len(set(graph.subjects(RDF.type, OWL.AnnotationProperty))),
+                "individuals": len(individual_uris),
+                "subclass_edges": len(set(graph.triples((None, RDFS.subClassOf, None)))),
+                "triple_count": len(graph),
+            },
+        }
+
+    @staticmethod
+    def _xml_terms(file_path: Path, prefix: str) -> Dict[str, Any]:
+        try:
+            root = ET.parse(file_path).getroot()
+        except Exception:
+            return {"source": "text", "nodes": [], "edges": []}
+
+        raw_terms: List[Tuple[str, str]] = []
+        parent_stack: List[str] = []
+        edges: List[Dict[str, str]] = []
+
+        def visit(element: ET.Element) -> None:
+            attributes = {
+                (key.rsplit("}", 1)[-1] if "}" in key else key.rsplit(":", 1)[-1]): value
+                for key, value in element.attrib.items()
+            }
+            name = attributes.get("name") or attributes.get("id")
+            type_name = attributes.get("type") or ""
+            local_tag = element.tag.rsplit("}", 1)[-1]
+            current_id = ""
+            if name:
+                current_id = _term_id(prefix, name)
+                raw_terms.append((name, local_tag))
+                if parent_stack:
+                    edges.append({
+                        "source_term": current_id,
+                        "source_label": name,
+                        "target_term": parent_stack[-1],
+                        "target_label": parent_stack[-1].split(":", 1)[-1],
+                        "mapping_type": "containedBy",
+                    })
+            if type_name and ":" in type_name:
+                raw_terms.append((type_name.split(":", 1)[-1], "type"))
+
+            if current_id:
+                parent_stack.append(current_id)
+            for child in list(element):
+                visit(child)
+            if current_id:
+                parent_stack.pop()
+
+        visit(root)
+
+        seen: Set[str] = set()
+        nodes = []
+        for name, source_type in raw_terms:
+            key = _term_id(prefix, name)
+            if key in seen:
+                continue
+            seen.add(key)
+            nodes.append({
+                "term_id": key,
+                "uri": key,
+                "label": name,
+                "definition": "",
+                "ontology_prefix": prefix,
+                "source": source_type,
+            })
+
+        retained_nodes = nodes[:1000]
+        retained_ids = {node["term_id"] for node in retained_nodes}
+        retained_edges = [
+            edge for edge in edges
+            if edge.get("source_term") in retained_ids and edge.get("target_term") in retained_ids
+        ][:1500]
+        return {
+            "source": "xml",
+            "nodes": retained_nodes,
+            "edges": retained_edges,
+            "truncated": len(nodes) > len(retained_nodes) or len(edges) > len(retained_edges),
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+        }
+
+    @staticmethod
+    def _text_terms(meta: Dict[str, Any], file_path: Path) -> Dict[str, Any]:
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
+        try:
+            text = file_path.read_text(encoding="utf-8-sig", errors="replace")
+        except Exception:
+            text = file_path.read_bytes().decode("utf-8", errors="replace")
+
+        candidates = re.findall(r"\b[A-Z][A-Za-z0-9_]{2,}\b|\b[a-z][a-z0-9_]{3,}\b", text or "")
+        seen: Set[str] = set()
+        nodes = []
+        for term in candidates:
+            normalized = term.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            nodes.append({
+                "term_id": _term_id(prefix, term),
+                "uri": _term_id(prefix, term),
+                "label": term,
+                "definition": "",
+                "ontology_prefix": prefix,
+                "source": "text",
+            })
+            if len(nodes) >= 500:
+                break
+        return {"source": "text", "nodes": nodes, "edges": []}
+
+    @classmethod
+    def get_taxonomy(cls, ontology_identifier: str, *, project=None) -> Dict[str, Any]:
+        context = cls._semantic_context(ontology_identifier)
+        meta = context["meta"]
+        file_path = context["file_path"]
+        source_file_path = context.get("source_file_path") or file_path
+        file_key = cls._cache_key_for_path(file_path)
+        source_key = cls._cache_key_for_path(source_file_path)
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
+
+        lock = cls._browse_locks[hash(file_key) % len(cls._browse_locks)]
+        with lock:
+            payload = cls._cached_taxonomy_payload(
+                file_key[0], file_key[1], file_key[2],
+                source_key[0], source_key[1], source_key[2],
+                prefix,
+                str(meta.get("ontology_id") or ""),
+                str(meta.get("ontology_name") or ""),
+                str(meta.get("original_filename") or meta.get("stored_filename") or ""),
+            )
+            # Browser projections trim the cached inventory before defensive copying.
+            # Other consumers continue to receive the complete independent payload.
+            return copy.deepcopy(project(payload) if project is not None else payload)
+
+
+    @classmethod
+    def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
+        """Return cached semantic runtime-backed ontology semantics for the registered ontology."""
+        context = cls._semantic_context(ontology_identifier)
+        meta = context["meta"]
+        file_path = context["file_path"]
+        prefix = str(context.get("prefix") or "").strip()
+        file_key = cls._cache_key_for_path(file_path)
+        result = copy.deepcopy(cls._cached_reasoning(file_key[0], file_key[1], file_key[2], prefix))
+        result.update({
+            "ontology_id": meta.get("ontology_id"),
+            "ontology_name": meta.get("ontology_name"),
+            "prefix": prefix,
+            "source_filename": meta.get("original_filename") or meta.get("stored_filename"),
+        })
+        return result

@@ -1,0 +1,30 @@
+<#
+.SYNOPSIS
+Tests the application PostgreSQL URL without creating or checking tables.
+.DESCRIPTION
+Loads the root environment file and uses the same psycopg driver and URL as
+the DEPO services. Safe to run before the first schema migration.
+#>
+[CmdletBinding()]
+param([string]$EnvFile = '.env.local', [switch]$NetworkCheck)
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $root 'infra\windows\runtime-config.ps1')
+$databaseSettings = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+if (-not $databaseSettings['DEPO_DATABASE_URL'] -and -not $databaseSettings['DATABASE_URL']) {
+  throw 'The selected environment file must configure DEPO_DATABASE_URL (or DATABASE_URL); inherited shell connection settings are not used for this diagnostic.'
+}
+Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+$python = Join-Path $root 'backend\.dt_venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+  throw 'Backend Python runtime is missing. Run install-depo.ps1 before the connectivity test.'
+}
+Push-Location $root
+try {
+  if ($NetworkCheck) {
+    & $python -m backend.depo_platform.database_setup --network-check
+    if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL TCP check failed. Correct the endpoint or network before retrying login.' }
+  }
+  & $python -m backend.depo_platform.database_setup --connection-only
+  if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL connectivity failed. Follow the structured error immediately above.' }
+} finally { Pop-Location }

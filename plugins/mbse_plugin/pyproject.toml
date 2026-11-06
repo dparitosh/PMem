@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "depo-mbse-plugin"
+version = "0.1.0"
+description = "Standalone MBSE agent API and visualization gateway"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "pydantic>=2,<3", "httpx>=0.27,<0.29", "uvicorn>=0.30,<1"]
+
+[project.entry-points."depo.plugins"]
+mbse = "mbse_plugin.registration:register"
+
+[tool.setuptools.data-files]
+"share/depo-mbse" = ["plugin.json", "README.md"]
+"share/depo-mbse/scripts" = ["scripts/manage-plugin.ps1"]
+"share/depo-mbse/agents" = ["agents/mbse_agent.yaml"]
+"share/depo-mbse/AgentsRegistry/CodedTools" = ["AgentsRegistry/CodedTools/mbse_tools.py"]
+
+[tool.setuptools.package-data]
+mbse_plugin = ["*.html"]
+"mbse_plugin.teamcenter_smw" = ["*.json"]
+
+[tool.setuptools.packages.find]
+include = ["mbse_plugin*"]

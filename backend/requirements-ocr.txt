@@ -1,0 +1,4 @@
+# Optional scanned-PDF OCR providers; install alongside the base runtime.
+PyMuPDF>=1.26,<2
+pytesseract>=0.3.13,<1
+easyocr>=1.7,<2

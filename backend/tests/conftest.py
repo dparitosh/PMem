@@ -4,27 +4,28 @@ Some historical files in this folder are manual live-environment scripts. They
 perform HTTP calls, wait for services, or mutate Neo4j at module import time.
 Keeping them out of default collection makes `pytest backend/tests` reliable
 while preserving the scripts for explicit acceptance runs.
+
+The maintained Neo4j connectivity/schema diagnostic is
+infra/windows/test-depo-neo4j.ps1; superseded one-off diagnostics were removed.
 """
 
 from __future__ import annotations
 
 import os
+import sys
+
+import pytest
 
 
 _MANUAL_LIVE_TESTS = [
-    "customer_acceptance_test.py",
     "integration_test.py",
     "test_api_smoke.py",
     "test_e2e_ontology.py",
     "test_end_to_end_integration.py",
-    "test_neo4j_connection.py",
-    "test_neo4j_diagnostic.py",
     "test_ontology_corrected.py",
     "test_ontology_creation.py",
     "test_ontology_e2e.py",
-    "test_ontology_final_report.py",
     "test_ontology_upload.py",
-    "tests_comprehensive.py",
 ]
 
 
@@ -33,3 +34,37 @@ collect_ignore = (
     if os.getenv("RUN_MANUAL_INTEGRATION_TESTS") == "1"
     else _MANUAL_LIVE_TESTS
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_agent_telemetry(monkeypatch):
+    """Keep unit tests independent of the customer PostgreSQL instance."""
+    try:
+        from backend.agentic_service.telemetry import telemetry
+        from backend.mesh_store import InMemoryRegistry
+        from backend.agentic_service import sessions
+    except ImportError:
+        yield
+        return
+    monkeypatch.setattr(telemetry, "store", InMemoryRegistry("agent-telemetry-test"))
+    monkeypatch.setattr(sessions, 'store', InMemoryRegistry('agent-session-test'))
+    monkeypatch.setattr(sessions, 'prune', lambda: None)
+    yield
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Always release test-created Spark JVMs before the CI Python process exits.
+
+    Spark is optional in DEPO, but a locally initialized JVM can otherwise keep
+    pytest alive after its final assertion. This is test infrastructure only;
+    production shutdown remains owned by the data-pipeline service lifespan.
+    """
+    try:
+        module = sys.modules.get("backend.data_pipeline_service.runner")
+        runner = getattr(module, "runner", None)
+        if runner is not None:
+            runner.shutdown()
+    except Exception:
+        # A Spark import/runtime may be intentionally absent from a unit-test
+        # environment. Never turn test cleanup into a false failure.
+        pass

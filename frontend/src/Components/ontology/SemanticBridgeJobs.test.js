@@ -1,0 +1,267 @@
+import { setCredentialProfile, getCredentialProfile } from '../../services/serviceAuth';
+import React from 'react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import SemanticBridgeJobs from './SemanticBridgeJobs';
+import agenticAPI from '../../services/agenticApi';
+
+const preview = { job_id: 'preview-1', publication_job_id: 'publish-1', kind: 'preview', ontology_id: 'ontology', import_task_id: 'import', candidates: [
+  { candidate_id: 'valid', source_term: 'part', ontology_term: 'Part', eligible: true },
+  { candidate_id: 'invalid', source_term: 'bad', ontology_term: 'Unknown', eligible: false },
+] };
+let api;
+beforeEach(() => {
+  sessionStorage.clear();
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'supervisor');
+  setCredentialProfile('GRAPH_READ_TOKEN', 'reader');
+  api = { preview: vi.fn().mockResolvedValue({ data: preview }), status: vi.fn(), publish: vi.fn().mockResolvedValue({ data: { job_id: 'publish-1', status: 'published', receipt: { applied_links: 1, approved_by: 'reviewer' } } }) };
+});
+afterEach(cleanup);
+
+test('saved workflow automatically resumes status checks after remount', async () => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'retained-run',status:'queued'}});
+  api.automationStatus = vi.fn().mockResolvedValue({data:{run_id:'retained-run',status:'running',traces:[]}});
+  const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText(/Workflow: retained-run/);
+  view.unmount();
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  await waitFor(() => expect(api.automationStatus).toHaveBeenCalledWith('retained-run'), {timeout:4500});
+  expect(api.automate).toHaveBeenCalledTimes(1);
+});
+const mount = () => {
+  const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  view.container.querySelector('details').open = true;
+  fireEvent.change(screen.getByLabelText('Approver'), {target: {value: 'reviewer'}});
+  return view;
+};
+test('rejected workflow access explains reconnection without suggesting another run', async () => {
+  api.automate = vi.fn().mockRejectedValue({response:{status:403,data:{detail:'Required API key is missing or invalid'}}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  expect(await screen.findByText(/Access to this workflow was rejected/)).toHaveTextContent('not a model-provider key');
+  expect(api.automate).toHaveBeenCalledTimes(1);
+});
+async function create() { fireEvent.click(screen.getByText('Create preview')); await screen.findByLabelText('Approve part to Part'); }
+
+test('automated workflow publishes validated results without individual approval clicks', async () => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'workflow-1',status:'completed',traces:[
+    {tool_id:'bridge.mapping.preview',status:'completed',result:preview},
+    {tool_id:'bridge.mapping.evaluate',status:'completed',result:{accepted_ids:['valid'],held_count:1,decisions:[{candidate_id:'invalid',decision:'hold',reasons:['invalid_target_or_source']}]}},
+    {tool_id:'bridge.mapping.publish_automatic',status:'completed',result:{job_id:'publish-1',status:'published',approved_ids:['valid'],receipt:{applied_links:1}}},
+  ]}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText(/1 mappings published to knowledge graph/);
+  expect(api.automate).toHaveBeenCalledTimes(1);
+  expect(api.publish).not.toHaveBeenCalled();
+  expect(Object.keys(sessionStorage).some(key => key.startsWith('bridge-workflow:') && sessionStorage.getItem(key) === 'workflow-1')).toBe(true);
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+});
+
+test('lost automation response blocks duplicate publication and exposes recovery instructions', async () => {
+  api.automate = vi.fn().mockRejectedValue(new Error('network'));
+  const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText(/Inspect recent workflows in agent telemetry/);
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+  expect(screen.getByText('Refresh automation result')).toBeDisabled();
+  view.unmount();
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+  expect(screen.getByLabelText('Recover mapping workflow ID')).toBeVisible();
+});
+
+test('malformed steward decisions produce a recovery message without crashing the page', async () => {
+  api.automate=vi.fn().mockResolvedValue({data:{run_id:'bad-policy',status:'completed',traces:[
+    {tool_id:'bridge.mapping.evaluate',status:'completed',result:{accepted_ids:[],held_count:1,decisions:[{candidate_id:'invalid',decision:'hold',reasons:'invalid'}]}}
+  ]}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText('Invalid steward evidence. Refresh the retained workflow before retrying.');
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+});
+
+test('running instance workflows refresh automatically and display server-supported controls', async () => {
+  api.automate=vi.fn().mockResolvedValue({data:{run_id:'poll-run',status:'running',allowed_actions:['pause','cancel'],traces:[]}});
+  api.automationStatus=vi.fn().mockResolvedValue({data:{run_id:'poll-run',status:'completed',traces:[]}});
+  const view=render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByRole('button',{name:'pause'});
+  await waitFor(() => expect(api.automationStatus).toHaveBeenCalledWith('poll-run'),{timeout:4500});
+  await screen.findByText('Prepare another mapping run');
+  view.unmount();
+});
+
+test('saves manual drafts as visible recommendations without selecting publication', async () => {
+  const manual = [{ source_term: 'part', source_type: 'Entity', target_term: 'Part', target_ontology_type: 'Class' }];
+  api.preview.mockResolvedValue({ data: { ...preview, agent_run_id: 'agent-run-1',
+    recommendation_summary: { total: 2, eligible: 1 }, candidates: [
+      { ...preview.candidates[0], evidence: ['server-resolved source and target'] }, preview.candidates[1],
+    ] } });
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" manualMappings={manual} api={api} />);
+  fireEvent.change(screen.getByLabelText('Approver'), { target: { value: 'reviewer' } });
+  await create();
+  expect(api.preview).toHaveBeenCalledWith('ontology', 'import', { approved_by: 'reviewer', approval_token: 'supervisor' }, manual, 0);
+  expect(screen.getByText(/2 mapping recommendations; 1 eligible/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name:/Evidence for part to Part/}));
+  expect(screen.getByText('server-resolved source and target')).toBeInTheDocument();
+  expect(screen.getByText('Preview agent run: agent-run-1')).toBeInTheDocument();
+  expect(screen.getByLabelText('Approve part to Part')).not.toBeChecked();
+  expect(api.publish).not.toHaveBeenCalled();
+});
+
+test('structured validation errors do not crash or echo submitted credentials', async () => {
+  api.preview.mockRejectedValue({ response: { status: 422, data: { detail: [{ msg: 'invalid', input: 'private-credential' }] } } });
+  mount(); fireEvent.click(screen.getByText('Create preview'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Invalid request');
+  expect(document.body.textContent).not.toContain('private-credential');
+});
+
+test('malformed saved preview is rejected without rendering a broken table', async () => {
+  api.preview.mockResolvedValue({ data: { ...preview, candidates: null } });
+  mount(); fireEvent.click(screen.getByText('Create preview'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Saved preview is incomplete');
+  expect(screen.queryByText('Publish approved mappings')).toBeNull();
+});
+
+test('credential changes discard recommendations and late responses', async () => {
+  let resolve;
+  api.preview.mockReturnValue(new Promise(done => { resolve = done; }));
+  mount(); fireEvent.click(screen.getByText('Create preview'));
+  fireEvent(window, new Event('depo:credentials-cleared'));
+  resolve({ data: preview });
+  await waitFor(() => expect(screen.getByText('Create preview')).not.toBeDisabled());
+  expect(screen.queryByLabelText('Approve part to Part')).toBeNull();
+});
+
+test('failed publication recovery keeps selection locked until status is recovered', async () => {
+  api.status.mockResolvedValueOnce({ data: preview }).mockRejectedValueOnce(new Error('network'))
+    .mockResolvedValueOnce({ data: { job_id: 'publish-1', status: 'retryable', approved_ids: ['valid'] } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  await screen.findByRole('alert');
+  expect(screen.getByLabelText('Approve part to Part')).toBeDisabled();
+  expect(screen.getByText('Retry same publication')).toBeDisabled();
+  fireEvent.click(screen.getByText('Refresh publication status'));
+  await screen.findByText('Publication: retryable');
+  expect(screen.getByLabelText('Approve part to Part')).toBeChecked();
+});
+
+test('refresh of an absent publication unlocks review', async () => {
+  api.status.mockResolvedValueOnce({ data: preview }).mockRejectedValueOnce(new Error('network'))
+    .mockRejectedValueOnce({ response: { status: 404 } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByText('Refresh publication status'));
+  await screen.findByText('No publication exists yet. Select and review mappings before publishing.');
+  expect(screen.getByLabelText('Approve part to Part')).not.toBeDisabled();
+  expect(screen.getByText('Publish approved mappings')).toBeDisabled();
+});
+
+test('wrong-source preview explains how to recover', async () => {
+  api.status.mockResolvedValueOnce({ data: { ...preview, ontology_id: 'different' } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Preview belongs to another source or ontology');
+  expect(screen.queryByLabelText('Approve part to Part')).toBeNull();
+});
+
+test('requires explicit eligible selection and review confirmation', async () => {
+  mount(); await create();
+  expect(screen.getByLabelText('Approve part to Part')).not.toBeChecked();
+  expect(screen.getByLabelText('Approve bad to Unknown')).toBeDisabled();
+  expect(screen.getByText('Publish approved mappings')).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('Approve part to Part'));
+  expect(screen.getByText('Publish approved mappings')).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('Confirm reviewed mappings'));
+  fireEvent.click(screen.getByText('Publish approved mappings'));
+  await screen.findByText('Publication: published');
+  expect(api.publish).toHaveBeenCalledWith('preview-1', ['valid'], { approved_by: 'reviewer', approval_token: 'supervisor' });
+});
+
+test('response loss freezes selection and preserves same publication retry', async () => {
+  api.publish.mockRejectedValueOnce(new Error('network'));
+  api.status.mockResolvedValueOnce({data: {job_id: 'publish-1', status: 'retryable', approved_ids: ['valid']}});
+  mount(); await create();
+  fireEvent.click(screen.getByLabelText('Approve part to Part'));
+  fireEvent.click(screen.getByLabelText('Confirm reviewed mappings'));
+  fireEvent.click(screen.getByText('Publish approved mappings'));
+  await screen.findByRole('alert');
+  expect(screen.getByLabelText('Approve part to Part')).toBeDisabled();
+  expect(screen.getByText('Retry same publication')).toBeDisabled();
+  fireEvent.click(screen.getByText('Refresh publication status'));
+  await screen.findByText('Publication: retryable');
+  fireEvent.click(screen.getByText('Retry same publication'));
+  await screen.findByText('Publication: published');
+  expect(api.publish).toHaveBeenCalledTimes(2);
+  expect(api.publish.mock.calls[0][1]).toEqual(api.publish.mock.calls[1][1]);
+});
+
+test('resume restores publication selection and status', async () => {
+  api.status.mockResolvedValueOnce({ data: preview }).mockResolvedValueOnce({ data: { job_id: 'publish-1', status: 'published', approved_ids: ['valid'] } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  await screen.findByText('Publication: published');
+  expect(screen.getByLabelText('Approve part to Part')).toBeChecked();
+  expect(screen.getByLabelText('Approve part to Part')).toBeDisabled();
+});
+
+test('changing inputs discards old preview and credentials are not persisted', async () => {
+  const view = mount();
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'secret-test-value');
+  await create();
+  expect(JSON.stringify(sessionStorage)).not.toContain('secret-test-value');
+  view.rerender(<SemanticBridgeJobs ontologyId="other" importTaskId="import" api={api} />);
+  await waitFor(() => expect(screen.queryByLabelText('Approve part to Part')).toBeNull());
+  expect(screen.queryByLabelText('Approval token')).toBeNull();
+});
+
+
+test('ontology review displays structured evidence citations and limitations', async () => {
+  const configured=vi.spyOn(agenticAPI,'isConfigured').mockReturnValue(true);
+  const review=vi.spyOn(agenticAPI,'runWorkflow').mockResolvedValue({data:{run_id:'review-run'}});
+  const status=vi.spyOn(agenticAPI,'getRun').mockResolvedValue({data:{run_id:'review-run',workflow_id:'ontology-review-and-bridge-plan',status:'completed',traces:[{result:{llm:{enabled:true,text:'Review only',review:{questions:[{question:'Is the domain compatible?',evidence_iris:['urn:Part']}],limitations:'No formal reasoner was run.'}}}}]}});
+  try {
+    mount();
+    fireEvent.click(screen.getByText('Run ontology agent review'));
+    await screen.findByText('Evidence IRIs: urn:Part');
+    expect(screen.getByText('Limitations: No formal reasoner was run.')).toBeVisible();
+    expect(api.publish).not.toHaveBeenCalled();
+  } finally {configured.mockRestore();review.mockRestore();status.mockRestore();}
+});
+
+test.each(['failed', 'cancelled', 'timed_out'])('terminal %s workflow permits a fresh mapping run', async status => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'terminal-run',status,traces:[],reconciliation_required:false}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  fireEvent.click(await screen.findByText('Prepare another mapping run'));
+  expect(screen.getByText('Run automated mapping and publish')).not.toBeDisabled();
+});
+
+test('unavailable session storage still submits and retains the workflow in memory', async () => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'memory-run',status:'queued',traces:[]}});
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+  try {
+    render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+    fireEvent.click(screen.getByText('Run automated mapping and publish'));
+    await screen.findByText(/Workflow: memory-run/);
+    expect(api.automate).toHaveBeenCalledTimes(1);
+  } finally { storage.mockRestore(); }
+});
+
+
+test('mapping guidance remains visible when manual approval controls are collapsed', async () => {
+ const view=mount();await create();
+ const manual=screen.getByText('Advanced: manual review, approval and saved-preview recovery').closest('details');
+ manual.open=false;
+ expect(screen.getByRole('region',{name:'Mapping guidance'})).toBeVisible();
+ expect(screen.getByText('Mapping review')).toBeVisible();
+ expect(screen.getAllByText('No supporting rationale recorded')[0]).toBeVisible();
+ expect(screen.queryByText('What is being mapped')).not.toBeInTheDocument();
+ expect(api.publish).not.toHaveBeenCalled();
+});

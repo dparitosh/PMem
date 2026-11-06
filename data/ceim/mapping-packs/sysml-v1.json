@@ -1,0 +1,8 @@
+{
+  "id": "sysml-v1-core", "version": "0.1.0", "ceim_version": "0.1.0",
+  "entities": {
+    "Element": {"ceim_type": "Resource", "properties": {"name": "name", "model_type": "model_type", "source_payload": "source_payload", "$source_id": "external_id"}},
+    "Requirement": {"ceim_type": "Requirement", "properties": {"name": "name", "model_type": "model_type", "source_payload": "source_payload", "$source_id": "external_id"}}
+  },
+  "relationships": {"CONTAINS": {"relationship": "HAS_PART"}, "TRACE": {"relationship": "TRACE_TO"}, "SATISFIES": {"relationship": "SATISFIES"}, "VERIFIED_BY": {"relationship": "VERIFIED_BY"}, "DERIVED_FROM": {"relationship": "DERIVED_FROM"}}
+}

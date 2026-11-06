@@ -1,0 +1,1 @@
+"""Data-mesh catalog service."""

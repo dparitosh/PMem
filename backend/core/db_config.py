@@ -31,9 +31,10 @@ from functools import lru_cache
 from dataclasses import dataclass
 from enum import Enum
 import atexit
+import threading
 
 from dotenv import load_dotenv
-from neo4j import GraphDatabase, Driver, Session
+from neo4j import GraphDatabase, Driver, Session, TrustAll, TrustCustomCAs, TrustSystemCAs
 import socket
 from urllib.parse import urlparse
 
@@ -53,6 +54,7 @@ class Neo4jConfig:
     uri: str
     username: str
     password: str
+    auth_mode: str = "token"
     database: str = "neo4j"
     deployment_type: Neo4jDeploymentType = Neo4jDeploymentType.AURA
     
@@ -64,10 +66,11 @@ class Neo4jConfig:
     socket_connection_timeout: float = 15.0
     
     # Query settings
-    query_timeout: int = 30  # seconds
+    query_timeout: int = 300  # seconds
     
     # SSL/TLS
     encrypted: bool = True
+    tls_verify: bool = True
     trust_system_ca_signed_certificates: bool = True
     trust_custom_ca_signed_certificates: Optional[str] = None
     
@@ -103,20 +106,32 @@ def _has_placeholder_neo4j_uri() -> bool:
 
 
 def _detect_deployment_type(uri: str) -> Neo4jDeploymentType:
-    """Detect deployment type from URI scheme"""
-    if uri.startswith("neo4j+s://"):
+    """Detect deployment type from URI scheme.
+
+    Neo4j URI schemes encode both routing and TLS. `neo4j://` is a routed
+    non-TLS URI and is common for local/on-prem databases, while `neo4j+s://`
+    is the Aura/TLS form.
+    """
+    normalized = str(uri or "").lower()
+    if normalized.startswith("neo4j+s://"):
         return Neo4jDeploymentType.AURA
-    elif uri.startswith("bolt+s://"):
+    if normalized.startswith("neo4j+ssc://"):
         return Neo4jDeploymentType.ENTERPRISE
-    elif uri.startswith("bolt://"):
+    if normalized.startswith("bolt+s://") or normalized.startswith("bolt+ssc://"):
+        return Neo4jDeploymentType.ENTERPRISE
+    if normalized.startswith("bolt://") or normalized.startswith("neo4j://"):
         return Neo4jDeploymentType.ON_PREMISES
-    else:
-        # Default to Aura for neo4j+s if scheme not recognized
-        return Neo4jDeploymentType.AURA
+    return Neo4jDeploymentType.ON_PREMISES
 
 
 def _load_environment() -> None:
-    """Load environment variables from backend/.env as the runtime source of truth."""
+    """Load legacy defaults without replacing deployment-injected settings."""
+    # A managed deployment must never fill missing settings from old files.
+    managed = os.getenv('DEPO_ENV_INJECTED', '').lower() == 'true'
+    production = any(os.getenv(key, '').lower() in {'prod', 'production'}
+                     for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV'))
+    if managed or production:
+        return
     project_root = Path(__file__).resolve().parents[2]
     possible_paths = [
         project_root / "backend" / ".env",
@@ -129,14 +144,15 @@ def _load_environment() -> None:
     
     for env_path in possible_paths:
         if env_path.exists():
-            load_dotenv(env_path, override=True)
+            load_dotenv(env_path, override=False)
             logger.debug(f"Loaded environment from {env_path}")
             return
     
     logger.warning(
         "No .env file found in standard locations. "
         "Using environment variables or defaults. "
-        "Recommended: Set environment variables or create requirements/.env"
+        "Recommended: inject environment variables through the deployment "
+        "lifecycle launcher using root .env.local"
     )
 
 
@@ -162,6 +178,9 @@ def get_config() -> Neo4jConfig:
     
     # Get configuration values with fallbacks
     uri = _get_env("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
+    if uri and "your-neo4j-instance" in uri.lower():
+        uri = None
+    auth_mode = (_get_env("NEO4J_AUTH_MODE") or "token").lower()
     username = _get_env("NEO4J_USER", "NEO4J_USERNAME", "Neo4j_user")
     password = _get_env("NEO4J_PASS", "NEO4J_PASSWORD", "Neo4j_password")
     database = _get_env("NEO4J_DATABASE", "Neo4j_database") or "neo4j"
@@ -170,9 +189,11 @@ def get_config() -> Neo4jConfig:
     missing = []
     if not uri:
         missing.append("NEO4J_URI (or NEO4J_URL)")
-    if not username:
+    if auth_mode not in {"token", "none"}:
+        raise Neo4jConfigError("NEO4J_AUTH_MODE must be 'token' or 'none'")
+    if auth_mode == "token" and not username:
         missing.append("NEO4J_USER (or NEO4J_USERNAME)")
-    if not password:
+    if auth_mode == "token" and not password:
         missing.append("NEO4J_PASS (or NEO4J_PASSWORD)")
     
     if missing:
@@ -182,17 +203,22 @@ def get_config() -> Neo4jConfig:
     
     # Detect deployment type from URI
     deployment_type = _detect_deployment_type(uri)
+    if auth_mode == "none" and deployment_type != Neo4jDeploymentType.ON_PREMISES:
+        raise Neo4jConfigError("NEO4J_AUTH_MODE=none is supported only for on-premises bolt:// or neo4j:// deployments")
     
     # Optional: Custom SSL configuration
     custom_ca = os.getenv("NEO4J_CUSTOM_CA_PATH")
     
-    default_encrypted = deployment_type != Neo4jDeploymentType.ON_PREMISES
+    sandbox_mode = os.getenv("SANDBOX_MODE", "false").lower() == "true"
+    default_encrypted = False if sandbox_mode else deployment_type != Neo4jDeploymentType.ON_PREMISES
     encrypted_env = os.getenv("NEO4J_ENCRYPTED")
+    tls_verify_env = os.getenv("NEO4J_TLS_VERIFY")
 
     config = Neo4jConfig(
         uri=uri,
         username=username,
         password=password,
+        auth_mode=auth_mode,
         database=database,
         deployment_type=deployment_type,
         # Connection pool settings
@@ -208,21 +234,79 @@ def get_config() -> Neo4jConfig:
             os.getenv("NEO4J_SOCKET_CONNECTION_TIMEOUT", "15")
         ),
         # Query settings
-        query_timeout=int(os.getenv("NEO4J_QUERY_TIMEOUT", "30")),
+        query_timeout=int(os.getenv("NEO4J_QUERY_TIMEOUT", "300")),
         # SSL settings
         encrypted=(
             encrypted_env.lower() == "true"
             if encrypted_env is not None
             else default_encrypted
         ),
+        tls_verify=(
+            tls_verify_env.lower() == "true"
+            if tls_verify_env is not None
+            else not sandbox_mode
+        ),
         trust_system_ca_signed_certificates=os.getenv(
             "NEO4J_TRUST_SYSTEM_CA", "true"
         ).lower() == "true",
         trust_custom_ca_signed_certificates=custom_ca,
     )
+    if auth_mode == "none" and config.encrypted:
+        raise Neo4jConfigError("NEO4J_AUTH_MODE=none requires NEO4J_ENCRYPTED=false for a non-TLS on-premises connection")
     
     logger.info(f"Neo4j configuration loaded: {config}")
     return config
+
+
+def _float_environment(name: str, default: float) -> float:
+    """Read a positive float setting without silently accepting invalid input."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r; using %s", name, raw, default)
+        return default
+    if value < 0:
+        logger.warning("Ignoring negative %s=%r; using %s", name, raw, default)
+        return default
+    return value
+
+
+def _is_host_resolvable(uri: str, timeout: float = 3.0) -> bool:
+    """Check URI host resolution while restoring the process socket timeout."""
+    host = urlparse(uri).hostname or uri
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(timeout)
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except (OSError, ValueError):
+        return False
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
+
+
+def _driver_kwargs(config: Neo4jConfig) -> Dict[str, Any]:
+    """Build version-compatible Neo4j driver options from validated config."""
+    options: Dict[str, Any] = {
+        "max_connection_pool_size": config.max_connection_pool_size,
+        "connection_acquisition_timeout": config.connection_acquisition_timeout,
+        "connection_timeout": config.connection_timeout,
+        "user_agent": config.user_agent,
+    }
+    if config.deployment_type != Neo4jDeploymentType.AURA and (
+        config.encrypted or config.deployment_type == Neo4jDeploymentType.ENTERPRISE
+    ):
+        options["encrypted"] = config.encrypted
+        if config.trust_custom_ca_signed_certificates:
+            options["trusted_certificates"] = TrustCustomCAs(config.trust_custom_ca_signed_certificates)
+        elif not config.tls_verify:
+            options["trusted_certificates"] = TrustAll()
+        elif config.trust_system_ca_signed_certificates:
+            options["trusted_certificates"] = TrustSystemCAs()
+    return options
 
 
 class Neo4jDriverPool:
@@ -241,6 +325,7 @@ class Neo4jDriverPool:
     _config: Optional[Neo4jConfig] = None
     _last_connection_error_time: float = 0.0
     _RECONNECTION_COOLDOWN: float = 60.0  # seconds
+    _creation_lock = threading.Lock()
     
     def __new__(cls) -> "Neo4jDriverPool":
         """Singleton pattern"""
@@ -265,12 +350,21 @@ class Neo4jDriverPool:
         # Return existing driver if available
         if self._driver is not None:
             return self._driver
+
+        # Driver creation is lazy and can be reached concurrently by the first
+        # API requests. Only one thread should create and publish the singleton.
+        with self._creation_lock:
+            if self._driver is not None:
+                return self._driver
+            return self._create_driver()
+
+    def _create_driver(self) -> Driver:
+        """Create and verify the singleton driver while holding the creation lock."""
         
         # Allow override of cooldown via env for easier debugging
-        try:
-            self._RECONNECTION_COOLDOWN = float(os.getenv("NEO4J_RECONNECTION_COOLDOWN", str(self._RECONNECTION_COOLDOWN)))
-        except Exception:
-            pass
+        self._RECONNECTION_COOLDOWN = _float_environment(
+            "NEO4J_RECONNECTION_COOLDOWN", self._RECONNECTION_COOLDOWN
+        )
 
         # Check cooldown to prevent repeated connection attempts
         current_time = time.time()
@@ -292,40 +386,11 @@ class Neo4jDriverPool:
             self._config = config
 
             # Helper: check DNS resolution for the host portion of the URI
-            def _is_host_resolvable(uri: str, timeout: float = 3.0) -> bool:
-                try:
-                    host = urlparse(uri).hostname or uri
-                    # Temporarily set default timeout for resolution
-                    old = socket.getdefaulttimeout()
-                    socket.setdefaulttimeout(timeout)
-                    try:
-                        socket.getaddrinfo(host, None)
-                        return True
-                    finally:
-                        socket.setdefaulttimeout(old)
-                except Exception:
-                    return False
-            
             # ✅ FIXED: Build driver kwargs based on deployment type
             # neo4j+s:// and bolt+s:// handle encryption automatically
             # Don't pass encryption settings for these schemes
             # Note: socket_keep_alive and socket_connection_timeout are not valid Neo4j driver params
-            driver_kwargs = {
-                'max_connection_pool_size': config.max_connection_pool_size,
-                'connection_acquisition_timeout': config.connection_acquisition_timeout,
-                'connection_timeout': config.connection_timeout,
-                'user_agent': config.user_agent,
-            }
-            
-            # Only add encryption settings for schemes that support them
-            # neo4j+s:// and bolt+s:// handle encryption automatically
-            if config.deployment_type != Neo4jDeploymentType.AURA:
-                # For on-premises (bolt:// or bolt+s://), add encryption settings
-                if config.encrypted or config.deployment_type == Neo4jDeploymentType.ENTERPRISE:
-                    driver_kwargs['encrypted'] = config.encrypted
-                    driver_kwargs['trust_system_ca_signed_certificates'] = config.trust_system_ca_signed_certificates
-                    if config.trust_custom_ca_signed_certificates:
-                        driver_kwargs['custom_trust'] = config.trust_custom_ca_signed_certificates
+            driver_kwargs = _driver_kwargs(config)
             
             # Create driver with appropriate settings
             # Defensive: ensure unsupported keys are not passed to the neo4j driver.
@@ -357,10 +422,10 @@ class Neo4jDriverPool:
             # kwarg names and will raise ConfigurationError for unknown keys.
             # Be defensive: if we ever hit that, drop the unexpected keys and retry.
             try:
+                auth = None if config.auth_mode == "none" else (config.username, config.password)
                 self._driver = GraphDatabase.driver(
                     config.uri,
-                    auth=(config.username, config.password),
-                    database=config.database,
+                    auth=auth,
                     **driver_kwargs,
                 )
             except Exception as create_exc:
@@ -381,8 +446,7 @@ class Neo4jDriverPool:
                                     driver_kwargs.pop(k, None)
                             self._driver = GraphDatabase.driver(
                                 config.uri,
-                                auth=(config.username, config.password),
-                                database=config.database,
+                                auth=auth,
                                 **driver_kwargs,
                             )
                         else:
@@ -488,7 +552,8 @@ def get_driver() -> Driver:
         with driver.session() as session:
             result = session.run("MATCH (n) RETURN count(n)")
     """
-    return _pool.get_driver()
+    from backend.depo_platform.graph_access import guard_driver
+    return guard_driver(_pool.get_driver())
 
 
 def close_driver() -> None:
@@ -521,14 +586,14 @@ class Neo4jConnection:
     def __enter__(self) -> Session:
         """Enter context - create session"""
         driver = get_driver()
-        self.session = driver.session(database=self.database or "neo4j")
-        return self.session
+        self.session = driver.session(database=self.database or get_config().database)
+        return self.session.__enter__()
     
     def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         """Exit context - close session"""
         if self.session:
             try:
-                self.session.close()
+                self.session.__exit__(_exc_type, _exc_val, _exc_tb)
             except Exception as exc:
                 logger.error(f"Error closing session: {exc}")
 

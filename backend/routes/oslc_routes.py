@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
+
+from backend.depo_platform.authorization import graph_read_identity
+
+from ..Services.oslc_query_service import OSLCQueryService, OSLCQueryValidationError
+from ..Services.oslc_service import OSLCService
+from ..Services.oslc_trs_service import OSLCTRSService
+from backend.oslc_service.representation import represent
+from backend.oslc_service.media import REPRESENTATION_RESPONSES
+
+
+router = APIRouter(prefix="/oslc", tags=["OSLC"])
+
+
+@router.get("/catalog", responses=REPRESENTATION_RESPONSES)
+def get_service_provider_catalog(request: Request):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    result = OSLCService.service_provider_catalog()
+    result["lifecycleProvider"] = OSLCService.config().base_url + "/oslc/lifecycle"
+    return represent(result, request)
+
+
+@router.get("/providers/{provider_id}", responses=REPRESENTATION_RESPONSES)
+def get_service_provider(provider_id: str, request: Request):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    service_provider = OSLCService.service_provider()
+    if provider_id != OSLCService.config().provider_id:
+        raise HTTPException(status_code=404, detail="OSLC service provider not found.")
+    return represent(service_provider, request)
+
+
+@router.get("/shapes", responses=REPRESENTATION_RESPONSES)
+def list_resource_shapes(request: Request):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    try:
+        return represent(OSLCService.list_shapes(), request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to list OSLC resource shapes") from exc
+
+
+@router.get("/shapes/{shape_id}", responses=REPRESENTATION_RESPONSES)
+def get_resource_shape(shape_id: str, request: Request):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    # Built-in public shapes are static; ontology shapes carry restricted
+    # customer metadata and require the same grant on every resolution path.
+    if shape_id not in {OSLCService.DEFAULT_RESOURCE_TYPE, *OSLCService.DOMAIN_SHAPES}:
+        from backend.oslc_service.access import authorize
+        identity = graph_read_identity(request)
+        authorize(identity, 'ontologies', shape_id)
+    try:
+        return represent(OSLCService.resource_shape(shape_id), request)
+    except ValueError as exc:
+        from backend.oslc_service.access import authorize
+        from backend.oslc_service.ontology_shapes import catalog_shape
+        identity = graph_read_identity(request)
+        authorize(identity, "ontologies", shape_id)
+        try:
+            return represent(catalog_shape(shape_id, OSLCService.config().base_url), request)
+        except ValueError as missing:
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC resource shape") from exc
+
+
+@router.get("/query/{resource_type}", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
+def query_resources(resource_type: str, request: Request,
+                    where: str | None = Query(default=None, alias='oslc.where'),
+                    select: str | None = Query(default=None, alias='oslc.select'),
+                    order_by: str | None = Query(default=None, alias='oslc.orderBy'),
+                    search_terms: str | None = Query(default=None, alias='oslc.searchTerms'),
+                    paging: bool = Query(default=False, alias='oslc.paging'),
+                    page_size: int = Query(default=50, ge=1, le=200, alias='oslc.pageSize'),
+                    page_num: int = Query(default=1, ge=1, le=10000, alias='oslc.pageNum')):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    try:
+        raw = {'oslc.where': where, 'oslc.select': select, 'oslc.orderBy': order_by,
+               'oslc.searchTerms': search_terms, 'oslc.paging': str(paging).lower(),
+               'oslc.pageSize': page_size, 'oslc.pageNum': page_num}
+        params = OSLCQueryService.parse(raw, max_page_size=OSLCService.config().max_page_size)
+        return represent(OSLCService.query_resources(resource_type, params), request)
+    except OSLCQueryValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+
+
+@router.get("/resources/{element_id:path}", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
+def get_resource(element_id: str, request: Request, include_links: bool = Query(default=True)):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    payload = OSLCService.get_resource(element_id)
+    if not payload:
+        raise HTTPException(status_code=404, detail="OSLC resource not found.")
+    if not include_links:
+        payload = dict(payload)
+        payload.pop("outgoingLinks", None)
+    return represent(payload, request)
+
+
+@router.get("/trs", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
+def get_trs_descriptor(request: Request):
+    if not OSLCTRSService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
+    try:
+        return represent(OSLCTRSService.tracked_resource_set(), request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+
+
+@router.get("/trs/base", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
+def get_trs_base(request: Request, limit: int = Query(default=200, ge=1, le=1000), snapshot_id: str | None = None, offset: int = Query(default=0, ge=0)):
+    if not OSLCTRSService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
+    try:
+        return represent(OSLCTRSService.base_resources(limit=limit, snapshot_id=snapshot_id, offset=offset), request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+
+
+@router.get("/trs/changelog", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
+def get_trs_changelog(request: Request, after: int = Query(default=0, ge=0), limit: int = Query(default=200, ge=1, le=1000)):
+    if not OSLCTRSService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
+    try:
+        return represent(OSLCTRSService.change_log(after=after, limit=limit), request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+
+
+@router.get("/dictionaries/{prefix}", dependencies=[Depends(graph_read_identity)])
+def get_oslc_dictionary(
+    prefix: str,
+    instance_limit: int = Query(default=2000, ge=100, le=20000),
+    relationship_limit: int = Query(default=500, ge=50, le=5000),
+    fallback_limit: int = Query(default=200, ge=50, le=2000),
+):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    try:
+        return OSLCService.get_dictionary(
+            prefix=prefix,
+            instance_limit=instance_limit,
+            relationship_limit=relationship_limit,
+            fallback_limit=fallback_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC dictionary") from exc
+
+
+@router.get("/taxonomies", dependencies=[Depends(graph_read_identity)])
+def list_oslc_taxonomies():
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    try:
+        return OSLCService.list_taxonomies()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to list OSLC taxonomies") from exc
+
+
+@router.get("/taxonomies/{ontology_id}", dependencies=[Depends(graph_read_identity)])
+def get_oslc_taxonomy(ontology_id: str):
+    if not OSLCService.is_enabled():
+        raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
+    try:
+        return OSLCService.get_taxonomy(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC taxonomy") from exc

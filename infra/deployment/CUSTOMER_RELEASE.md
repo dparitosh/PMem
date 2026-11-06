@@ -1,0 +1,62 @@
+# Customer setup and release acceptance
+
+Latest local checks and pending integration work are recorded in [the current audit index](../../docs/audits/README.md). Passing local tests do not satisfy the target-server gates below.
+
+This is the release handoff record. Do not mark a delivery accepted until its
+checks have run on the target Windows server. Repository syntax tests and
+configuration mocks are not production certification.
+
+## Installation order
+
+1. Record the Windows version, service account, approved Python/Node/npm versions,
+   network endpoints, storage locations and API-key access design.
+2. Provision [PostgreSQL](../../INSTALLATION.md) and [Neo4j](../../INSTALLATION.md). Record database owners,
+   TLS trust, app-role privileges, backup and restore evidence.
+3. If Spark is part of this delivery, provision the approved Spark/JDK/Hadoop
+   runtime using the [Spark guide](../../INSTALLATION.md). PySpark comes from that
+   Spark distribution; do not install a second unrelated PySpark version.
+4. Follow the [application installation guide](../../INSTALLATION.md): configure server and
+   browser settings, run prerequisite checks, install/build, then validate.
+5. Run Spark smoke testing when enabled. Start with `-EnableSpark`; add the
+   scheduler/Neo4j connector switches only when their features are required.
+6. Configure the customer's process supervisor for ten APIs, the outbox
+   worker, data-pipeline worker and agentic-workflow worker in `services.json`. Demonstrate queued
+   job lease recovery after a worker failure, recovery after an API failure, and
+   server reboot. The supplied direct-process launcher is not a Windows service
+   manager and does not by itself provide those guarantees.
+7. Serve `frontend/dist` through the customer's HTTPS web server/gateway. Run
+   Production endpoint validation, ReleasePreflight and an authorized browser
+   workflow. Record a rollback point before opening access.
+
+## Acceptance evidence
+
+| Evidence | Required result |
+| --- | --- |
+| Release identity | Application archive hash/version and exact approved dependency inventory |
+| Runtime supply chain | PostgreSQL/Spark/JDK/helper package sources, versions, signatures or approved hashes |
+| Application install | Successful installer log, Python dependency resolution and frontend build |
+| Automated tests | Local backend and frontend suites pass on the release build |
+| Data stores | PostgreSQL/Neo4j live checks and backup/restore drill pass |
+| Spark when included | Smoke job returns four expected records; enabled service reports configured runtime |
+| API readiness | All ten service readiness/OpenAPI/OData checks pass |
+| Authentication | Valid API keys permit authorized operations; missing/invalid keys are denied |
+| Browser | Correct customer URLs and representative governed import/publication workflow |
+| Operations | Reboot/crash recovery, log rotation, disk capacity/retention and monitoring exercised |
+| Rollback | Previous build/configuration available; database recovery approved and rehearsed |
+
+## Current release gates
+
+Production installation uses `backend/requirements-lock.txt` or the selected isolated-service locks under `backend/dependency-profiles/` (including `platform-tools.txt`), resolved for
+CPython 3.12 on Windows x64. Every distribution is exact-version and SHA-256
+pinned, and the installer invokes pip with `--require-hashes`. Retain the
+approved matching package artifacts and dependency/license review with the
+customer release evidence.
+
+Local PostgreSQL snapshot/restore and earlier graph restore evidence, together with their remaining cross-store limits, are recorded in [the 29 October recovery qualification](../../docs/audits/recovery-qualification-2026-10-29.md). Repeat the drill on customer infrastructure; independent database checks do not prove coordinated artifact and graph recovery.
+
+Target-server provisioning, full installed-runtime integration tests, Spark execution, gateway and
+supervisor recovery have not been performed in this workspace. Customer-specific
+endpoints, approved binaries, credentials and host administration are required.
+The destructive cleanup utility is an explicit operator tool, not a service
+startup step. It requires an existing selected environment file, displays the
+non-secret target, and requires destructive confirmation before changing Neo4j.

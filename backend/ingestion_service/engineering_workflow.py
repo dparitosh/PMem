@@ -1,0 +1,245 @@
+"""Service-to-service workflow for engineering schema and exchange conversion."""
+from __future__ import annotations
+from backend.depo_platform.ontology_maintenance import ontology_writer
+
+import hashlib
+import json
+import asyncio
+import logging
+import time
+from contextlib import contextmanager
+from starlette.concurrency import run_in_threadpool
+from backend.depo_platform.service_urls import service_url
+from typing import Any
+
+import httpx
+
+from backend.depo_platform.network import service_bearer_headers
+from .schema_conversion import EngineeringSchemaConverter
+
+logger = logging.getLogger(__name__)
+
+
+class EngineeringDependencyFailure(RuntimeError):
+    def __init__(self, stage, failure_kind, upstream_status=None):
+        super().__init__('Engineering workflow dependency failed')
+        self.stage = stage
+        self.failure_kind = failure_kind
+        self.upstream_status = upstream_status
+
+
+@contextmanager
+def dependency_stage(stage, request_id=None):
+    started = time.perf_counter()
+    try:
+        yield
+    except (httpx.HTTPError, RuntimeError) as exc:
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        kind = 'upstream_timeout' if isinstance(exc, httpx.TimeoutException) else 'upstream_http_error' if status else 'dependency_unavailable'
+        logger.error('Engineering workflow failure stage=%s kind=%s upstream_status=%s elapsed_seconds=%.2f request_id=%s',
+                     stage, kind, status, time.perf_counter()-started, request_id or '')
+        raise EngineeringDependencyFailure(stage, kind, status) from exc
+    else:
+        logger.info('Engineering workflow stage=%s elapsed_seconds=%.2f request_id=%s',
+                    stage, time.perf_counter()-started, request_id or '')
+
+
+class EngineeringWorkflow:
+    """Convert an engineering file and register the resulting Turtle by API.
+
+    The ingestion service owns format parsing. The ontology service owns
+    artifact registration.  Publication is opt-in and is gated by the ontology
+    service's policy and quality APIs before the graph service is contacted.
+    """
+
+    def __init__(self, converter: EngineeringSchemaConverter | None = None) -> None:
+        self.converter = converter or EngineeringSchemaConverter()
+        self._isolated_conversion = converter is None
+        self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
+        self.graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
+        from backend.depo_platform.network import service_request_timeout_seconds
+        self.timeout = service_request_timeout_seconds()
+
+    @ontology_writer
+    async def run(
+        self, **kwargs,
+    ) -> dict[str, Any]:
+        from backend.depo_platform.network import engineering_workflow_timeout_seconds
+        deadline = engineering_workflow_timeout_seconds()
+        async with asyncio.timeout(deadline):
+            return await self._run(**kwargs)
+
+    async def _run(
+        self, *, filename: str, content: bytes, ontology_name: str = "", prefix: str = "",
+        description: str = "", register: bool = True, publish: bool = False,
+        enforce_quality: bool = True, policy_exception_ids: list[str] | None = None,
+        request_id: str | None = None,
+        schema_files: dict[str, bytes] | None = None,
+    ) -> dict[str, Any]:
+        from pathlib import Path
+        if publish and not register:
+            raise ValueError("Graph publication requires ontology registration")
+        with dependency_stage('conversion', request_id):
+            if Path(filename).suffix.lower() in {'.ttl', '.rdf', '.owl'}:
+                from .rdf_conversion import convert_rdf
+                conversion = await run_in_threadpool(convert_rdf, filename=filename, content=content)
+            else:
+                if self._isolated_conversion:
+                    from .conversion_process import convert_engineering
+                    convert = convert_engineering
+                else:
+                    convert = self.converter.convert
+                conversion = await run_in_threadpool(convert, filename=filename, content=content,
+                    **({'schema_files': schema_files} if schema_files else {}))
+        if not register:
+            return {"status": "converted", "conversion": conversion}
+        ontology = conversion["ontology"]
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        turtle_bytes = ontology['turtle'].encode('utf-8')
+        if len(turtle_bytes) > ontology_upload_limit():
+            raise ValueError(f'Generated ontology is {len(turtle_bytes)} bytes and exceeds ONTOLOGY_MAX_UPLOAD_BYTES={ontology_upload_limit()}. Increase that setting consistently in ingestion, ontology and graph services and restart them, or narrow the schema set. No ontology registration or publication was requested.')
+        with dependency_stage('ontology_credentials', request_id):
+            headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
+        if request_id:
+            headers['X-Request-ID'] = request_id
+        data = {
+            "ontology_name": ontology_name or ontology["name"],
+            "prefix": prefix or ontology["prefix"],
+            "description": description,
+            "extra_metadata": json.dumps({
+                'engineering_artifacts': conversion.get('artifacts') or {},
+                'data_product_draft': conversion.get('data_product_draft') or {},
+                'source_filename': filename,
+            }),
+            "source": "engineering-workflow:" + hashlib.sha256(
+                json.dumps([filename, ontology_name, prefix, description], ensure_ascii=False).encode("utf-8") + b"\0" + content
+                + (json.dumps([(path, hashlib.sha256(data).hexdigest()) for path, data in sorted(schema_files.items())]).encode('utf-8') if schema_files else b'')
+            ).hexdigest(),
+        }
+        async with httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
+            from backend.depo_platform.decision_policy import decision, policy_blocks
+            policy_response = await self._request(client, 'policy_evaluation', request_id,
+                f"{self.ontology_url}/ontologies/policies/evaluate",
+                json={"decision": decision(operation="ontology_import", decision_maker="engineering-ingestion",
+                      artifact_sha256=hashlib.sha256(turtle_bytes).hexdigest(),
+                      source_sha256=hashlib.sha256(content).hexdigest(),
+                      reasoning="Engineering import evidence; lifecycle approval remains required."),
+                      "exception_policy_ids": policy_exception_ids or []},
+            )
+            policy_response.raise_for_status()
+            policy = policy_response.json()
+            if publish and policy_blocks(policy):
+                return {"status": "policy_blocked", "conversion": conversion, "policy": policy,
+                        "message": "Publication was blocked by policy checks."}
+            quality_response = await self._request(client, 'quality_gate', request_id,
+                f"{self.ontology_url}/ontologies/quality-gate",
+                json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True,
+                      "deduplication_mode": "resource_identity"},
+            )
+            quality_response.raise_for_status()
+            quality = quality_response.json()
+            if publish and not quality.get("publish_recommended", False):
+                return {"status": "quality_blocked", "conversion": conversion, "policy": policy,
+                        "quality": quality, "message": self._quality_block_message(quality)}
+            response = await self._request(client, 'ontology_registration', request_id,
+                f"{self.ontology_url}/ontologies/register",
+                data=data,
+                files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", turtle_bytes, "text/turtle")},
+            )
+            response.raise_for_status()
+            registration = response.json()
+            result: dict[str, Any] = {"status": "registered", "conversion": conversion,
+                                      "policy": policy, "quality": quality,
+                                      "ontology_registration": registration}
+            if not publish:
+                return result
+            # Re-read authoritative state: registration may have reused an artifact
+            # whose lifecycle was changed after the original request.
+            with dependency_stage("publication_lifecycle_check", request_id):
+                current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}",
+                    headers=service_bearer_headers("GRAPH_READ_TOKEN", service_name="ontology metadata", endpoint=self.ontology_url))
+                current.raise_for_status()
+                metadata = current.json()
+                if metadata.get("lifecycle_status") in {"draft", "in_review"}:
+                    return {**result, "status": "approval_required",
+                            "message": "Ontology registered. Review and approve it using the import row publication controls."}
+                self._require_publishable(metadata)
+            # The ontology service holds the lifecycle lock and publishes the retained
+            # artifact. Never bypass that lock with a direct graph write.
+            published = await self._request(client, 'graph_publication', request_id,
+                f"{self.ontology_url}/ontologies/{registration['ontology_id']}/publish",
+                json={"approved_by": "engineering-ingestion"},
+                params={'background': True},
+                timeout=self.timeout,
+            )
+            published.raise_for_status()
+            publication = published.json()
+            if published.status_code == 202:
+                if (not isinstance(publication, dict) or not publication.get('job_id')
+                        or publication.get('ontology_id') != registration['ontology_id']
+                        or publication.get('status') not in {'queued', 'running', 'published', 'reconciliation_required'}):
+                    raise RuntimeError('Invalid publication job response; verify retained ontology status before retrying.')
+                return {**result, 'status': 'publication_queued', 'publication_job': publication,
+                        'message': 'Ontology registered; graph publication is running in the background. Open publication status to follow progress.'}
+            receipt = publication.get("receipt") if isinstance(publication, dict) else None
+            if (not isinstance(receipt, dict)
+                    or publication.get("status") != "published"
+                    or publication.get("ontology_id") != registration["ontology_id"]
+                    or receipt.get("status") not in {"success", "published"}
+                    or receipt.get("ontology_id") != registration["ontology_id"]
+                    or not publication.get("publication_id")
+                    or receipt.get("publication_id") != publication["publication_id"]
+                    or receipt.get("current") is False
+                    or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships'))):
+                raise RuntimeError("Graph publication outcome is unverified: receipt identity did not match. Reconcile publication before retrying.")
+            result["status"] = "published"
+            result["graph_publication"] = receipt
+            return result
+
+    @staticmethod
+    async def _request(client, stage, request_id, url, **kwargs):
+        with dependency_stage(stage, request_id):
+            response = await client.post(url, **kwargs)
+            response.raise_for_status()
+            return response
+
+    @staticmethod
+    def _require_publishable(metadata: dict[str, Any]) -> None:
+        if (metadata.get("lifecycle_status") != "approved"
+                or metadata.get("status") == "superseded"):
+            raise ValueError("Ontology publication is blocked by its current lifecycle state")
+
+    @staticmethod
+    def _quality_block_message(quality: dict[str, Any]) -> str:
+        # Explain the retained assessment without echoing resource contents or
+        # claiming that similarity candidates are confirmed duplicate identities.
+        counts = []
+        for key, label in (('duplicates', 'duplicate candidates'), ('conflicts', 'conflicts')):
+            items = quality.get(key)
+            if isinstance(items, list) and items:
+                counts.append(f'{len(items)} {label}')
+        findings = ', '.join(counts) if counts else 'the assessment did not recommend publication'
+        return ('Publication was blocked by quality checks: ' + findings +
+                '. Review the quality assessment before retrying; no graph publication was requested.')
+
+    @staticmethod
+    def _governance_entities(turtle: str) -> list[dict[str, str]]:
+        """Supply stable resource identities to Semantica's quality gate."""
+        from rdflib import Graph, URIRef
+        graph = Graph()
+        graph.parse(data=turtle, format="turtle")
+        return [{"id": str(subject), "name": str(subject), "type": "resource"}
+                for subject in sorted(set(graph.subjects()), key=str) if isinstance(subject, URIRef)]
+
+
+class PathName:
+    """Minimal filename normalization for generated service-to-service artifacts."""
+
+    @staticmethod
+    def safe_stem(filename: str) -> str:
+        from pathlib import Path
+        stem = Path(filename).stem or "ontology"
+        return "".join(character if character.isalnum() or character in {"-", "_"} else "_" for character in stem)
+
+
+workflow = EngineeringWorkflow()

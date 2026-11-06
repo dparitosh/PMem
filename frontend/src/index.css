@@ -3,8 +3,169 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
+  background: var(--ui-page);
+  color: var(--ui-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html { color-scheme: light; }
+html[data-ix-color-schema='dark'] { color-scheme: dark; }
+
+:root {
+  --ui-primary: #005a9c;
+  --ui-primary-dark: #003f73;
+  --ui-primary-soft: #e8f1fc;
+  --ui-on-primary: #ffffff;
+  --ui-success: #176b45;
+  --ui-success-soft: #e5f3eb;
+  --ui-danger-soft: #fcebea;
+  --ui-warning-soft: #fff3d6;
+  --ui-surface-alt: #edf2f7;
+  --ui-selected: var(--ui-primary-soft);
+  --ui-warning-text: var(--ui-warning);
+  --ui-danger: #b42318;
+  --ui-warning: #8a5a00;
+  --ui-surface: #ffffff;
+  --ui-page: #f4f8fb;
+  --ui-border: #d9e2ec;
+  --ui-text: #1f2933;
+  --ui-muted: #66788a;
+  --ui-radius: 8px;
+  --ui-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+html[data-ix-color-schema='dark'] {
+  --ui-primary: #4db3ff;
+  --ui-primary-dark: #8acbff;
+  --ui-primary-soft: #203b50;
+  --ui-on-primary: #102330;
+  --ui-success: #8cddb5;
+  --ui-success-soft: #193e30;
+  --ui-danger-soft: #492b30;
+  --ui-warning-soft: #43381e;
+  --ui-surface-alt: #263441;
+  --ui-danger: #ff8a80;
+  --ui-warning: #ffd166;
+  --ui-surface: #1f2933;
+  --ui-page: #111820;
+  --ui-border: #44515e;
+  --ui-text: #f1f5f9;
+  --ui-muted: #b9c4cf;
+  --ui-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+}
+
+/* The skip target remains available to keyboard users but must never appear
+   during normal pointer interaction or Siemens IX menu expansion. */
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link:focus-visible {
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  padding: 8px 12px;
+  overflow: visible;
+  clip-path: none;
+  border-radius: 4px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow);
+}
+
+html[data-ix-color-schema='dark'] body,
+html[data-ix-color-schema='dark'] #root,
+html[data-ix-color-schema='dark'] .depo-ix-page,
+html[data-ix-color-schema='dark'] .depo-ix-page__body {
+  background: var(--ui-page);
+  color: var(--ui-text);
+}
+
+html[data-ix-color-schema='dark'] input,
+html[data-ix-color-schema='dark'] select,
+html[data-ix-color-schema='dark'] textarea {
+  background-color: var(--ui-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+html[data-ix-color-schema='dark'] .chat-messages {
+  background-color: var(--ui-page) !important;
+  color: var(--ui-text) !important;
+}
+
+/* Native option popups need explicit foreground/background colors; inherited
+   field colors alone can produce unreadable options in the other theme. */
+#root select {
+  max-width: 100%;
+  min-height: 36px;
+  font: inherit;
+  color: var(--ui-text);
+  background-color: var(--ui-surface);
+  border-color: var(--ui-border);
+}
+#root select option,
+#root select optgroup {
+  color: var(--ui-text);
+  background-color: var(--ui-surface);
+}
+#root select:focus-visible {
+  outline: 2px solid var(--ui-accent, #005a9c);
+  outline-offset: 2px;
+}
+html[data-ix-color-schema='dark'] #root select { color-scheme: dark; }
+html[data-ix-color-schema='light'] #root select { color-scheme: light; }
+
+/* Slotted IX content inherits from the custom-element host. Keep every card
+   bounded by its grid cell and make foreground colors follow the active IX
+   schema, including legacy pages that still emit common light-theme inline
+   colors. */
+ix-card,
+ix-card-content,
+ix-card-title {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
+}
+
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(82, 96, 109)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(51, 78, 104)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(31, 41, 51)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(44, 44, 44)'] {
+  color: var(--ui-text) !important;
+}
+
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, small, label)[style*='color: rgb(127, 140, 141)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, small, label)[style*='color: rgb(149, 165, 166)'] {
+  color: var(--ui-muted) !important;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+#root {
+  min-height: 100%;
 }
 
 code {

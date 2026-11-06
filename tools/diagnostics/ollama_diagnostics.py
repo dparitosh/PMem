@@ -12,17 +12,22 @@ from __future__ import annotations
 import argparse
 import os
 import socket
+import sys
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from backend.core.ollama_auth import ollama_base_url, ollama_headers
+
 
 def _base_url(raw_url: str) -> str:
-    return raw_url.rstrip("/").removesuffix("/api/generate").removesuffix("/api/chat")
+    return ollama_base_url(raw_url)
 
 
 def _headers(api_key: str | None) -> dict[str, str]:
-    return {"api-key": api_key} if api_key else {}
+    return ollama_headers('', api_key or '')
 
 
 def _require_key_for_remote(base_url: str, api_key: str | None) -> None:
@@ -36,9 +41,9 @@ def _require_key_for_remote(base_url: str, api_key: str | None) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+    parser.add_argument("--base-url", default=ollama_base_url())
     parser.add_argument("--api-key", default=os.getenv("OLLAMA_API_KEY"))
-    parser.add_argument("--llm-model", default=os.getenv("LLM_MODEL_NAME", "llama2:latest"))
+    parser.add_argument("--llm-model", default=os.getenv("LLM_MODEL_NAME") or os.getenv('OLLAMA_MODEL') or 'llama3:latest')
     parser.add_argument("--embed-model", default=os.getenv("EMBED_MODEL_NAME", "nomic-embed-text:latest"))
     parser.add_argument("--timeout", type=int, default=15)
     args = parser.parse_args()
@@ -108,4 +113,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

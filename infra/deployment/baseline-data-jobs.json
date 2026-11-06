@@ -1,0 +1,41 @@
+{
+  "definitions": [
+    {
+      "job_id": "semantic-source-validation",
+      "name": "Governed engineering-source semantic validation",
+      "version": "1.0.0",
+      "owner": "semantic-platform",
+      "job_type": "validate-semantic-batch",
+      "quality_profile": "semantic-core-v1",
+      "allowed_standards": ["ap242", "plmxml", "qif", "reqif"],
+      "retry_policy": {"max_attempts": 2, "backoff_seconds": 30}
+    },
+    {
+      "job_id": "rdf-quality-statistics",
+      "name": "Distributed RDF quality statistics",
+      "version": "1.0.0",
+      "owner": "semantic-platform",
+      "job_type": "rdf-quality-statistics",
+      "quality_profile": "semantic-core-v1",
+      "retry_policy": {"max_attempts": 2, "backoff_seconds": 30}
+    },
+    {
+      "job_id": "rdf-deduplicate-serialize",
+      "name": "Distributed RDF deduplication and canonical serialization",
+      "version": "1.0.0",
+      "owner": "semantic-platform",
+      "job_type": "rdf-deduplicate-serialize",
+      "quality_profile": "semantic-core-v1",
+      "retry_policy": {"max_attempts": 2, "backoff_seconds": 30}
+    },
+    {
+      "job_id": "document-evidence-enrichment",
+      "name": "Document evidence enrichment",
+      "version": "1.0.0",
+      "owner": "semantic-platform",
+      "job_type": "enrich-document-evidence",
+      "quality_profile": "unstructured-evidence-v1",
+      "retry_policy": {"max_attempts": 2, "backoff_seconds": 30}
+    }
+  ]
+}

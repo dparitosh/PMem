@@ -1,0 +1,25 @@
+@prefix ap242: <https://depo.example.org/ontology/ap242/> .
+@prefix boc: <https://depo.example.org/ontology/bill-of-characteristics/1.0/> .
+@prefix qif: <https://depo.example.org/ontology/qif/3.0/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+<https://depo.example.org/ontology/qif-ap242-boc-alignment/1.0/> a owl:Ontology ;
+  owl:imports <https://depo.example.org/ontology/bill-of-characteristics/1.0/> ;
+  rdfs:label "QIF and AP242 Bill of Characteristics Alignment" ;
+  owl:versionInfo "1.0.0" .
+
+qif:CharacteristicDefinition rdfs:subClassOf boc:Characteristic .
+qif:CharacteristicNominal rdfs:subClassOf boc:NominalCharacteristic ; skos:closeMatch ap242:GeometricDimension .
+qif:FeatureNominal rdfs:subClassOf boc:Characteristic .
+qif:DatumDefinition rdfs:subClassOf boc:DatumCharacteristic ; skos:closeMatch ap242:GeneralDatumReference .
+qif:DatumReferenceFrame rdfs:subClassOf boc:DatumCharacteristic ; skos:closeMatch ap242:DatumReferenceFrame .
+qif:InspectionPlan rdfs:subClassOf boc:BillOfCharacteristics .
+qif:MeasurementResults rdfs:subClassOf boc:Characteristic .
+
+ap242:GeometricDimension rdfs:subClassOf boc:DimensionalCharacteristic .
+ap242:GeometricTolerance rdfs:subClassOf boc:TolerancedCharacteristic .
+ap242:GeneralDatumReference rdfs:subClassOf boc:DatumCharacteristic .
+ap242:DatumReferenceFrame rdfs:subClassOf boc:DatumCharacteristic .
+ap242:PartShapeElement rdfs:subClassOf boc:Characteristic .

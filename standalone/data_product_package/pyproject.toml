@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "depo-data-product-package"
+version = "0.1.0"
+description = "Standalone governed engineering data-product package builder"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+depo-data-product = "data_product_package.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["data_product_package*"]

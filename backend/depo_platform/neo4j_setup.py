@@ -1,0 +1,156 @@
+"""Apply and verify the idempotent Neo4j publication schema."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+
+SCHEMA_FILE = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "neo4j-publication-index.cypher"
+REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id", "uq_ontologystagedresource_identity"}
+CONSTRAINT_DEFINITIONS = {
+    'uq_ontologyresource_identity': ('OntologyResource', ['ontology_id', 'iri']),
+    'uq_ontologypublication_identity': ('OntologyPublication', ['ontology_id', 'publication_id']),
+    'depo_bridge_publication_id': ('DepoBridgePublication', ['publication_id']),
+    'uq_ontologystagedresource_identity': ('StagedOntologyResource', ['ontology_id', 'publication_id', 'iri']),
+}
+REQUIRED_INDEXES = {
+    'idx_depo_resource_search_label': ('OntologyResource', ['search_label']),
+    'idx_depo_resource_search_iri': ('OntologyResource', ['search_iri']),
+    'idx_depo_retained_ontology_identity': ('RetainedOntologyIdentity', ['ontology_id', 'iri']),
+    'idx_depo_ontologyresource_scope': ('OntologyResource', ['ontology_id']),
+    'idx_depo_ontologyresource_source_scope': ('OntologyResource', ['source_ontology']),
+    'idx_depo_context_evidence': (('GraphChunk', 'DatasheetChunk'), ['content']),
+}
+
+
+def verify_constraints(records, *, allow_missing=False):
+    rows = {row['name']:row for row in records}
+    missing = REQUIRED_CONSTRAINTS - rows.keys()
+    if missing and not allow_missing:
+        raise RuntimeError('Missing Neo4j publication constraints: ' + ', '.join(sorted(missing)))
+    invalid = []
+    for name, (label, properties) in CONSTRAINT_DEFINITIONS.items():
+        if name not in rows:
+            continue
+        row = rows[name]
+        # Cypher 25 renamed node UNIQUENESS in SHOW CONSTRAINTS output.
+        # Both names describe the same enforcement; relationship uniqueness
+        # and other constraint kinds must still fail validation.
+        if (row.get('type') not in {'UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS'} or row.get('entityType') != 'NODE'
+                or row.get('labelsOrTypes') != [label] or row.get('properties') != properties):
+            invalid.append(name)
+    if invalid:
+        raise RuntimeError('Incompatible Neo4j publication constraints: ' + ', '.join(sorted(invalid)))
+    return sorted(REQUIRED_CONSTRAINTS & rows.keys())
+
+
+def verify_indexes(records, *, allow_missing=False):
+    indexed = {row['name']: row for row in records}
+    invalid = []
+    for name, (label, properties) in REQUIRED_INDEXES.items():
+        row = indexed.get(name)
+        if row is None and allow_missing:
+            continue
+        labels = list(label) if isinstance(label, tuple) else [label]
+        index_type = 'FULLTEXT' if isinstance(label, tuple) else ('TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE')
+        if not row or row.get('type') != index_type or row.get('state') != 'ONLINE' or sorted(row.get('labelsOrTypes') or []) != sorted(labels) or row.get('properties') != properties:
+            invalid.append(name)
+    if invalid:
+        raise RuntimeError('Missing or unavailable Neo4j performance indexes: ' + ', '.join(sorted(invalid)))
+    return sorted(indexed)
+
+
+def failure_details(exc: Exception) -> dict:
+    result = {'status': 'failed', 'error_type': type(exc).__name__,
+              'action': 'Check Neo4j connectivity, database selection and schema privileges.'}
+    # Only expose allowlisted, DEPO-authored messages, never driver text or URIs.
+    reason = str(exc)
+    if type(exc) is RuntimeError:
+        if reason.startswith('Missing Neo4j publication constraints: '):
+            missing = reason.removeprefix('Missing Neo4j publication constraints: ').split(', ')
+            if set(missing) <= REQUIRED_CONSTRAINTS:
+                result['missing_constraints'] = missing
+                result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap with schema creation privileges, then rerun -Production.'
+        elif reason.startswith('Missing or unavailable Neo4j performance indexes: '):
+            result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap to apply the matching release indexes, then rerun -Production.'
+        elif reason.startswith('Incompatible Neo4j publication constraints: '):
+            names = reason.removeprefix('Incompatible Neo4j publication constraints: ').split(', ')
+            if set(names) <= REQUIRED_CONSTRAINTS:
+                result['action'] = 'Have the database administrator reconcile the named publication constraints with infra/deployment/neo4j-publication-index.cypher; IF NOT EXISTS does not repair incompatible definitions.'
+                result['reason'] = reason
+        elif reason in {'NEO4J_AUTH_MODE must be token or none',
+                        'Neo4j credentials are required when NEO4J_AUTH_MODE=token', 'NEO4J_URI is required'}:
+            result['reason'] = reason
+    code = getattr(exc, 'code', '')
+    actions = {
+        'Neo.ClientError.Security.Unauthorized': 'Correct Neo4j username/password in root .env.local.',
+        'Neo.ClientError.Security.Forbidden': 'Grant the Neo4j role access to the configured database and required schema operations.',
+        'Neo.ClientError.Database.DatabaseNotFound': 'Set NEO4J_DATABASE to an existing Neo4j database; verify the name in Neo4j Browser.',
+    }
+    if code in actions:
+        result['code'] = code
+        result['action'] = actions[code]
+    return result
+
+
+def _statements(text: str) -> list[str]:
+    lines = [line for line in text.splitlines() if not line.lstrip().startswith("//")]
+    return [statement.strip() for statement in "\n".join(lines).split(";") if statement.strip()]
+
+
+def _auth():
+    mode = os.getenv("NEO4J_AUTH_MODE", "token").strip().lower()
+    if mode == "none":
+        return None
+    if mode != "token":
+        raise RuntimeError("NEO4J_AUTH_MODE must be token or none")
+    user, password = os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME"), os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD")
+    if not user or not password:
+        raise RuntimeError("Neo4j credentials are required when NEO4J_AUTH_MODE=token")
+    return user, password
+
+
+def provision(*, check_only: bool = False, upgrade_preflight: bool = False) -> dict:
+    from neo4j import GraphDatabase
+
+    uri, database = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL"), os.getenv("NEO4J_DATABASE", "neo4j")
+    if not uri:
+        raise RuntimeError("NEO4J_URI is required")
+    with GraphDatabase.driver(uri, auth=_auth(), connection_timeout=10, max_transaction_retry_time=0) as driver:
+        driver.verify_connectivity()
+        if not check_only and not upgrade_preflight:
+            for statement in _statements(SCHEMA_FILE.read_text(encoding="utf-8")):
+                driver.execute_query(statement, database_=database)
+            # Backfill in bounded transactions; original labels and IRIs stay intact.
+            while True:
+                updated, _, _ = driver.execute_query(
+                    "MATCH (n:OntologyResource) WHERE n.search_label IS NULL OR n.search_iri IS NULL "
+                    "WITH n LIMIT 5000 SET n.search_label=toLower(coalesce(n.label,'')), n.search_iri=toLower(coalesce(n.iri,'')) "
+                    "RETURN count(n) AS updated", database_=database)
+                if not updated or updated[0]['updated'] == 0:
+                    break
+        records, _, _ = driver.execute_query(
+            "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties WHERE name IN $names RETURN name, type, entityType, labelsOrTypes, properties ORDER BY name",
+            names=sorted(REQUIRED_CONSTRAINTS), database_=database, routing_="r",
+        )
+        index_records, _, _ = driver.execute_query(
+            'SHOW INDEXES YIELD name, type, state, labelsOrTypes, properties WHERE name IN $names RETURN name, type, state, labelsOrTypes, properties',
+            names=sorted(REQUIRED_INDEXES), database_=database, routing_='r')
+    verified_indexes = verify_indexes([dict(row) for row in index_records], allow_missing=upgrade_preflight)
+    verified_constraints = verify_constraints([dict(row) for row in records], allow_missing=upgrade_preflight)
+    return {"status": "ok", "database": database, "constraints": verified_constraints, "indexes": verified_indexes}
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check-only", action="store_true")
+    parser.add_argument('--upgrade-preflight', action='store_true')
+    args = parser.parse_args()
+    try:
+        print(json.dumps(provision(check_only=args.check_only, upgrade_preflight=args.upgrade_preflight)))
+    except Exception as exc:
+        print(json.dumps(failure_details(exc)))
+        raise SystemExit(1) from None

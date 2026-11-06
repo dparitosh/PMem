@@ -36,7 +36,19 @@ venv.bak/
 .dt_venv/
 
 # Local environment
+.env.*
+**/.env.*
+*.env
+!*.env.example
+!.env.example
+!**/.env.example
 .env
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+service-boundaries.env
 
 # IDE
 .vscode/
@@ -46,6 +58,8 @@ venv.bak/
 *~
 .DS_Store
 Thumbs.db
+__MACOSX/
+._*
 
 # Node
 node_modules/
@@ -54,6 +68,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Logs
+.codex/
 logs/
 *.log
 
@@ -61,17 +76,70 @@ logs/
 uploads/
 ontology_uploads/
 outputs/
+data/ontology_service/
 
 # OS
 .DS_Store
 Thumbs.db
 
 # Build
+infra/reasoner/target/
+backend/ontology_service/resources/reasoner/*.jar
 .dist/
 build/
 dist/
 
 # Cache
+.vite*/
+frontend/.vite-*/
+frontend/.depo-build-*/
 .cache/
 .npm/
 *.cache
+
+# Reference/vendor clones not packaged with DEPO runtime
+external/
+
+# Local audit/runtime artifacts
+audit-shots/
+_restore_ingest/
+data/artifacts/
+data/code_audit/
+.release-test-tmp/
+release-evidence/
+
+# Local Codex presentation/build intermediates (final decks belong in deliverables/)
+.codex-build/
+.codex-pptx-build/
+*.pptx.inspect.ndjson
+DEPO_Component_Interaction_Architecture/
+Semantic_Integration_Lambda_Architecture/
+
+# Generated verification results (source fixtures are retained)
+frontend/test-results/
+frontend/playwright-report/
+backend/tests/cat_test_results/
+backend/test_data/integration_test_results.json
+.mypy_cache/
+.ruff_cache/
+
+# Local presentation review intermediates and accidental editor copies
+.pptx-review-build/
+**/* - Copy.*
+backend/ttl_cache/
+backend/.dt_venv-*/
+deliverables/.env-reference-review/
+release-dist/
+
+# Optional AOI gateway private runtime and unchanged licensed wrapper copies
+.aoi_venv/
+data/aoi-gateway/
+
+# Generated local audit evidence; maintained regression fixtures live in tests.
+docs/audits/**/*.json
+docs/audits/**/*.xml
+docs/audits/**/*.png
+docs/audits/**/*.jpg
+docs/audits/**/*.jpeg
+docs/audits/**/*.webp
+docs/audits/**/*.html

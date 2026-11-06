@@ -1,11 +1,79 @@
-from typing import Dict, Any
+from __future__ import annotations
+
+from typing import Dict, Any, Optional
 from loguru import logger
 import rdflib
+from rdflib import Graph
+from rdflib.namespace import RDF, SH
 try:
     from pyshacl import validate
 except ImportError:
     validate = None
     logger.warning("pyshacl library not found. SHACL validation disabled.")
+
+def _summarize_shapes_graph(shacl_graph: Optional[rdflib.Graph]) -> Dict[str, int]:
+    """Return a small structural summary of the active SHACL shapes graph."""
+    if shacl_graph is None:
+        return {
+            "node_shapes": 0,
+            "property_shapes": 0,
+            "shape_nodes": 0,
+        }
+    try:
+        node_shape_nodes = set(shacl_graph.subjects(RDF.type, SH.NodeShape))
+        property_shape_nodes = (set(shacl_graph.subjects(RDF.type, SH.PropertyShape))
+                                | set(shacl_graph.subjects(SH.path, None)))
+        node_shapes = len(node_shape_nodes)
+        property_shapes = len(property_shape_nodes)
+        shape_nodes = len(node_shape_nodes | property_shape_nodes)
+        return {
+            "node_shapes": node_shapes,
+            "property_shapes": property_shapes,
+            "shape_nodes": shape_nodes,
+        }
+    except Exception:
+        return {
+            "node_shapes": 0,
+            "property_shapes": 0,
+            "shape_nodes": 0,
+        }
+
+
+def _summarize_report_graph(report_graph: Optional[Graph]) -> Dict[str, int]:
+    """Count pySHACL validation results by severity."""
+    if report_graph is None:
+        return {
+            "result_count": 0,
+            "violation_count": 0,
+            "warning_count": 0,
+            "info_count": 0,
+        }
+    try:
+        result_nodes = list(report_graph.subjects(RDF.type, SH.ValidationResult))
+        violation_count = 0
+        warning_count = 0
+        info_count = 0
+        for node in result_nodes:
+            severity = next(report_graph.objects(node, SH.resultSeverity), SH.Violation)
+            if severity == SH.Violation:
+                violation_count += 1
+            elif severity == SH.Warning:
+                warning_count += 1
+            elif severity == SH.Info:
+                info_count += 1
+        return {
+            "result_count": len(result_nodes),
+            "violation_count": violation_count,
+            "warning_count": warning_count,
+            "info_count": info_count,
+        }
+    except Exception:
+        return {
+            "result_count": 0,
+            "violation_count": 0,
+            "warning_count": 0,
+            "info_count": 0,
+        }
 
 class ShaclValidationService:
     """
@@ -16,23 +84,30 @@ class ShaclValidationService:
         if not validate:
             logger.warning("SHACL validation service initialized without pyshacl library.")
 
-    def validate_graph(self, data_graph: rdflib.Graph, shacl_graph: rdflib.Graph = None, shacl_graph_str: str = None) -> Dict[str, Any]:
+    def validate_graph(
+        self,
+        data_graph: rdflib.Graph,
+        shacl_graph: rdflib.Graph = None,
+        shacl_graph_str: str = None,
+        *,
+        ontology_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Validate a data graph against a SHACL shapes graph.
         Returns a dictionary with validation results.
         """
         if not validate:
-            return {"conforms": False, "error": "pyshacl library missing"}
+            return {"conforms": False, "status": "unavailable", "error": "pyshacl library missing"}
 
         try:
             # Prepare SHACL graph
             if shacl_graph is None and shacl_graph_str:
                 shacl_graph = rdflib.Graph().parse(data=shacl_graph_str, format="turtle")
             
-            if not shacl_graph:
-                # If no shapes provided, maybe check if data graph has shapes?
-                # Sometimes shapes are included in data.
-                pass
+            if shacl_graph is None:
+                shacl_graph = rdflib.Graph().parse(data=self.create_default_shapes(), format="turtle")
+            if len(shacl_graph) == 0:
+                return {"conforms": False, "status": "validation_error", "error": "SHACL shapes graph is empty", "validation_engine": "pyshacl"}
 
             conforms, report_graph, report_text = validate(
                 data_graph,
@@ -41,17 +116,23 @@ class ShaclValidationService:
                 inference='rdfs',
                 serialize_report_graph=False
             )
-            
-            # Parse report graph for structured response
-            return {
+
+            report: Dict[str, Any] = {
                 "conforms": conforms,
+                "status": "conformant" if conforms else "nonconformant",
                 "report_text": report_text,
-                "report_graph": report_graph.serialize(format="turtle") if report_graph is not None else ""
+                "report_graph": report_graph.serialize(format="turtle") if report_graph is not None else "",
+                "validation_engine": "pyshacl",
+                "shape_summary": _summarize_shapes_graph(shacl_graph),
+                **_summarize_report_graph(report_graph),
             }
-            
+            if ontology_context:
+                report["ontology_context"] = ontology_context
+            return report
+
         except Exception as e:
             logger.error(f"SHACL Validation error: {e}")
-            return {"conforms": False, "error": str(e)}
+            return {"conforms": False, "status": "validation_error", "error": "SHACL validation could not be completed", "validation_engine": "pyshacl"}
 
     def create_default_shapes(self) -> str:
         """
@@ -82,7 +163,7 @@ iae:ClassShape a sh:NodeShape ;
     sh:property [
         sh:path        rdfs:label ;
         sh:minCount    1 ;
-        sh:datatype    xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message     "Every owl:Class must have at least one rdfs:label." ;
     ] ;
     sh:property [
@@ -111,7 +192,7 @@ iae:ObjectPropertyShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "Every owl:ObjectProperty must have rdfs:label." ;
     ] ;
     sh:property [
@@ -144,6 +225,7 @@ iae:ObjectPropertyShape a sh:NodeShape ;
     ] ;
     sh:property [
         sh:path        dc:source ;
+        sh:minCount    1 ;
         sh:severity    sh:Warning ;
         sh:message     "ObjectProperty should specify provenance via dc:source." ;
     ] .
@@ -155,7 +237,7 @@ iae:DatatypePropertyShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "Every owl:DatatypeProperty must have rdfs:label." ;
     ] ;
     sh:property [
@@ -174,6 +256,7 @@ iae:DatatypePropertyShape a sh:NodeShape ;
         sh:path     rdfs:range ;
         sh:minCount 1 ;
         sh:nodeKind sh:IRI ;
+        sh:pattern  "^http://www.w3.org/2001/XMLSchema#" ;
         sh:message  "Every owl:DatatypeProperty must specify rdfs:range as XSD datatype." ;
     ] .
 
@@ -184,7 +267,7 @@ iae:AnnotationPropertyShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "owl:AnnotationProperty must have rdfs:label." ;
     ] ;
     sh:property [
@@ -201,7 +284,7 @@ iae:IndividualShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "Every owl:NamedIndividual must have rdfs:label." ;
     ] ;
     sh:property [
@@ -270,6 +353,7 @@ iae:FunctionalPropertyShape a sh:NodeShape ;
 # ── 8. Inverse property validation ─────────────────────────────────────────
 iae:InversePropertyShape a sh:PropertyShape ;
     sh:name    "Inverse Property Validation" ;
+    sh:targetSubjectsOf owl:inverseOf ;
     sh:path    owl:inverseOf ;
     sh:class   owl:ObjectProperty ;
     sh:message "owl:inverseOf must reference another owl:ObjectProperty." .
@@ -277,6 +361,7 @@ iae:InversePropertyShape a sh:PropertyShape ;
 # ── 9. Class disjointness validation ───────────────────────────────────────
 iae:DisjointClassShape a sh:PropertyShape ;
     sh:name    "Disjoint Class Validation" ;
+    sh:targetSubjectsOf owl:disjointWith ;
     sh:path    owl:disjointWith ;
     sh:class   owl:Class ;
     sh:message "owl:disjointWith must reference owl:Class." .

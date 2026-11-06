@@ -1,0 +1,48 @@
+export const COMMON_GRAPH_SCHEMA = {
+  node: ['id', 'label', 'type', 'properties', 'metadata', 'style'],
+  link: ['id', 'source', 'target', 'type', 'properties', 'metadata'],
+};
+
+export function normalizeCommonNode(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const properties = raw.properties && typeof raw.properties === 'object' ? raw.properties : {};
+  const metadata = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
+  const style = raw.style && typeof raw.style === 'object' ? raw.style : {};
+  const id = String(raw.id || raw.elementId || raw.uid || properties.uid || properties.id || properties.name || '');
+  if (!id) return null;
+  const label = String(raw.label || raw.name || properties.label || properties.name || properties.title || id);
+  const type = String(raw.type || raw.element_type || properties.type || properties.element_type || 'Element');
+  return { id, label, type, properties, metadata, style, x: raw.x ?? properties.x, y: raw.y ?? properties.y };
+}
+
+function endpointId(value) {
+  const id = value && typeof value === 'object' ? (value.id ?? value.elementId ?? value.uid) : value;
+  return id == null ? '' : String(id);
+}
+
+export function normalizeCommonLink(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const properties = raw.properties && typeof raw.properties === 'object' ? raw.properties : {};
+  const metadata = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
+  const source = endpointId(raw.source ?? raw.start ?? properties.source);
+  const target = endpointId(raw.target ?? raw.end ?? properties.target);
+  if (!source || !target) return null;
+  const type = String(raw.type || raw.relationship_type || properties.type || 'RELATED_TO');
+  const id = String(raw.id || raw.elementId || properties.id || `${source}:${type}:${target}`);
+  return { id, source, target, type, properties, metadata };
+}
+
+export function normalizeCommonGraph(input = {}) {
+  if (!input || typeof input !== 'object') return { nodes: [], links: [] };
+  const nodesById = new Map();
+  const linksById = new Map();
+  (Array.isArray(input.nodes) ? input.nodes : []).forEach((item) => {
+    const node = normalizeCommonNode(item);
+    if (node) nodesById.set(node.id, node);
+  });
+  (Array.isArray(input.links) ? input.links : Array.isArray(input.relationships) ? input.relationships : []).forEach((item) => {
+    const link = normalizeCommonLink(item);
+    if (link && nodesById.has(link.source) && nodesById.has(link.target)) linksById.set(link.id, link);
+  });
+  return { nodes: [...nodesById.values()], links: [...linksById.values()] };
+}

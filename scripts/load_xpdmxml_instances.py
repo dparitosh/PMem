@@ -45,7 +45,7 @@ NEO4J_PASS = _NEO4J_CONFIG.password
 NEO4J_DB   = _NEO4J_CONFIG.database
 
 # ── Source files ───────────────────────────────────────────────────────────────
-SOURCE_DIR = Path(os.getenv("XPDMXML_SOURCE_DIR", r"C:\Users\895428\Depo\SPLM_Folder\Motor 2"))
+SOURCE_DIR = Path(os.getenv("XPDMXML_SOURCE_DIR", str(ROOT / "data" / "xpdmxml")))
 FILES = {
     "motor_bop":      SOURCE_DIR / "Motor_BOP.xml",
     "motor_workplan": SOURCE_DIR / "Motor_WorkPlan.xml",

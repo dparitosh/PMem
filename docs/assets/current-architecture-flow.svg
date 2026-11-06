@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title description">
+  <title id="title">PMem governed semantic data flow</title>
+  <desc id="description">Engineering data is ingested into immutable evidence, processed by governed data jobs, validated and published only through CEIM and the graph publication service. Agents read graph context through the graph service. Data product registration is an explicit optional lifecycle.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0L10 4L0 8Z" fill="#006487"/></marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #152a3a; }
+      .heading { font-size: 24px; font-weight: 700; }
+      .subheading { font-size: 15px; fill: #496273; }
+      .box { fill: #f7fafc; stroke: #9eb5c4; stroke-width: 1.5; }
+      .primary { fill: #e2f2f8; stroke: #006487; stroke-width: 2; }
+      .optional { fill: #fff8e4; stroke: #b78200; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .label { font-size: 16px; font-weight: 700; }
+      .detail { font-size: 13px; fill: #496273; }
+      .flow { fill: none; stroke: #006487; stroke-width: 2.5; marker-end: url(#arrow); }
+      .optional-flow { fill: none; stroke: #b78200; stroke-width: 2; stroke-dasharray: 6 4; marker-end: url(#arrow); }
+      .note { font-size: 13px; fill: #496273; }
+    </style>
+  </defs>
+  <rect width="1400" height="760" fill="#ffffff"/>
+  <text x="48" y="52" class="heading">PMem — current governed semantic data flow</text>
+  <text x="48" y="78" class="subheading">Implemented service boundaries and explicit approval points</text>
+
+  <rect x="48" y="130" width="155" height="84" rx="6" class="box"/>
+  <text x="125" y="163" class="label" text-anchor="middle">Engineering user</text><text x="125" y="187" class="detail" text-anchor="middle">Siemens IX SPA</text>
+  <rect x="250" y="130" width="180" height="84" rx="6" class="box"/>
+  <text x="340" y="163" class="label" text-anchor="middle">API gateway</text><text x="340" y="187" class="detail" text-anchor="middle">or local OpenAPI routing</text>
+  <rect x="480" y="130" width="185" height="84" rx="6" class="primary"/>
+  <text x="572" y="158" class="label" text-anchor="middle">Ingestion service</text><text x="572" y="181" class="detail" text-anchor="middle">artifact + provenance</text><text x="572" y="199" class="detail" text-anchor="middle">profile selection</text>
+  <rect x="720" y="130" width="205" height="84" rx="6" class="primary"/>
+  <text x="822" y="158" class="label" text-anchor="middle">Data pipeline service</text><text x="822" y="181" class="detail" text-anchor="middle">approved job + quality run</text><text x="822" y="199" class="detail" text-anchor="middle">durable manifest</text>
+  <rect x="980" y="130" width="175" height="84" rx="6" class="primary"/>
+  <text x="1067" y="163" class="label" text-anchor="middle">PySpark plane</text><text x="1067" y="187" class="detail" text-anchor="middle">batch execution</text>
+  <rect x="1200" y="130" width="155" height="84" rx="6" class="box"/>
+  <text x="1277" y="158" class="label" text-anchor="middle">Artifact store</text><text x="1277" y="179" class="detail" text-anchor="middle">source + Turtle</text><text x="1277" y="198" class="detail" text-anchor="middle">analytics profile</text>
+  <path d="M203 172H250M430 172H480M665 172H720M925 172H980M1155 172H1200" class="flow"/>
+
+  <path d="M822 214V286" class="flow"/>
+  <rect x="645" y="300" width="355" height="105" rx="6" class="primary"/>
+  <text x="822" y="335" class="label" text-anchor="middle">Quality and semantic gate</text>
+  <text x="822" y="359" class="detail" text-anchor="middle">completeness · validity · uniqueness · provenance</text>
+  <text x="822" y="381" class="detail" text-anchor="middle">CEIM normalization and SHACL validation</text>
+  <path d="M1000 352H1080" class="flow"/>
+  <rect x="1080" y="300" width="225" height="105" rx="6" class="box"/>
+  <text x="1192" y="335" class="label" text-anchor="middle">Quarantine evidence</text>
+  <text x="1192" y="359" class="detail" text-anchor="middle">failed records retained</text><text x="1192" y="381" class="detail" text-anchor="middle">no graph mutation</text>
+
+  <path d="M822 405V475" class="flow"/>
+  <rect x="620" y="490" width="190" height="92" rx="6" class="primary"/>
+  <text x="715" y="524" class="label" text-anchor="middle">CEIM service</text><text x="715" y="548" class="detail" text-anchor="middle">explicit approval</text><text x="715" y="566" class="detail" text-anchor="middle">revalidation + RDF</text>
+  <rect x="860" y="490" width="205" height="92" rx="6" class="primary"/>
+  <text x="962" y="524" class="label" text-anchor="middle">Graph publication</text><text x="962" y="548" class="detail" text-anchor="middle">only graph write boundary</text><text x="962" y="566" class="detail" text-anchor="middle">publication evidence</text>
+  <rect x="1115" y="490" width="160" height="92" rx="6" class="box"/>
+  <text x="1195" y="524" class="label" text-anchor="middle">Neo4j graph</text><text x="1195" y="548" class="detail" text-anchor="middle">published context</text><text x="1195" y="566" class="detail" text-anchor="middle">provenance</text>
+  <path d="M810 536H860M1065 536H1115" class="flow"/>
+
+  <rect x="48" y="490" width="420" height="92" rx="6" class="box"/>
+  <text x="258" y="524" class="label" text-anchor="middle">Agentic / GraphRAG service</text><text x="258" y="548" class="detail" text-anchor="middle">read-only bounded retrieval via Graph service</text><text x="258" y="566" class="detail" text-anchor="middle">evidence-grounded response</text>
+  <path d="M468 536H620" class="flow"/>
+  <text x="500" y="521" class="note">read only</text>
+
+  <rect x="48" y="650" width="310" height="68" rx="6" class="box"/>
+  <text x="203" y="680" class="label" text-anchor="middle">PostgreSQL control plane</text><text x="203" y="702" class="detail" text-anchor="middle">jobs · runs · checkpoints · catalog</text>
+  <path d="M693 214V628H358" class="flow"/>
+  <text x="470" y="620" class="note" text-anchor="middle">durable control-plane evidence</text>
+  <rect x="420" y="650" width="330" height="68" rx="6" class="optional"/>
+  <text x="585" y="680" class="label" text-anchor="middle">Data product service</text><text x="585" y="702" class="detail" text-anchor="middle">explicit package and approval lifecycle</text>
+  <rect x="840" y="650" width="280" height="68" rx="6" class="optional"/>
+  <text x="980" y="680" class="label" text-anchor="middle">Data catalog service</text><text x="980" y="702" class="detail" text-anchor="middle">explicit version registration</text>
+  <path d="M750 684H840" class="optional-flow"/>
+  <text x="700" y="635" class="note" text-anchor="middle">Separate from pipeline publication today</text>
+</svg>

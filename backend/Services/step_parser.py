@@ -10,8 +10,12 @@ import functools
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional
+import logging
+import math
 import re
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 try:
     from .ap242_domain_model import (
@@ -74,7 +78,55 @@ def normalize_ap242_entity_type(entity_type: str) -> str:
     squashed = upper.replace("_", "")
     return _AP242_ENTITY_ALIASES.get(squashed, upper)
 
+def _extract_compound_entity_types(inner: str) -> List[str]:
+    """Return top-level entity names from a Part 21 compound entity instance."""
+    types: List[str] = []
+    depth = 0
+    token_start: Optional[int] = None
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "'":
+            i += 1
+            while i < len(inner):
+                if inner[i] == "'":
+                    if i + 1 < len(inner) and inner[i + 1] == "'":
+                        i += 2
+                        continue
+                    break
+                i += 1
+        elif ch == "(":
+            if depth == 0 and token_start is not None:
+                raw_name = inner[token_start:i].strip()
+                if raw_name:
+                    normalized = normalize_ap242_entity_type(raw_name)
+                    if normalized:
+                        types.append(normalized)
+                token_start = None
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if token_start is None and (ch.isalpha() or ch == "_"):
+                token_start = i
+            elif token_start is not None and not (ch.isalnum() or ch == "_"):
+                token_start = None
+        i += 1
 
+    return types
+
+
+def _entity_type_candidates(entity: "StepP21Entity") -> List[str]:
+    """Primary plus compound AP242 entity types, preserving order and uniqueness."""
+    candidates = [entity.entity_type, *getattr(entity, "compound_entity_types", [])]
+    seen = set()
+    ordered: List[str] = []
+    for candidate in candidates:
+        normalized = normalize_ap242_entity_type(candidate)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            ordered.append(normalized)
+    return ordered
 @dataclass
 class StepFileMeta:
     format: str
@@ -91,6 +143,13 @@ class StepP21Entity:
     entity_type: str
     raw_args: str
     ref_ids: List[int] = field(default_factory=list)
+    compound_entity_types: List[str] = field(default_factory=list)
+    attributes: Dict[str, str] = field(default_factory=dict)
+    text_value: str = ""
+    source_identifier: str = ""
+    source_identifier_kind: str = ""
+    unresolved_refs: List[str] = field(default_factory=list)
+    parent_step_id: Optional[int] = None
 
 
 @dataclass
@@ -135,6 +194,28 @@ class StepAnnotation:
     name: str = ""
     presentation_refs: List[int] = field(default_factory=list)
     leader_refs: List[int] = field(default_factory=list)
+    feature_refs: List[int] = field(default_factory=list)
+    view_refs: List[int] = field(default_factory=list)
+
+
+@dataclass
+class StepGraphicPresentation:
+    id: int
+    presentation_type: str = ""
+    annotation_refs: List[int] = field(default_factory=list)
+    geometry_refs: List[int] = field(default_factory=list)
+    view_refs: List[int] = field(default_factory=list)
+    style_refs: List[int] = field(default_factory=list)
+
+
+@dataclass
+class StepSavedView:
+    id: int
+    view_type: str = ""
+    name: str = ""
+    annotation_refs: List[int] = field(default_factory=list)
+    geometry_refs: List[int] = field(default_factory=list)
+    presentation_refs: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -167,6 +248,8 @@ class StepPMIDocument:
     datums: List[StepDatum] = field(default_factory=list)
     dimensions: List[StepDimension] = field(default_factory=list)
     annotations: List[StepAnnotation] = field(default_factory=list)
+    graphic_presentations: List[StepGraphicPresentation] = field(default_factory=list)
+    saved_views: List[StepSavedView] = field(default_factory=list)
     surface_finishes: List[StepSurfaceFinish] = field(default_factory=list)
     cad_products: List[StepCadEntity] = field(default_factory=list)
     cad_representations: List[StepCadEntity] = field(default_factory=list)
@@ -195,7 +278,14 @@ def detect_step_format(file_path: Path) -> str:
             text = file_path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             return "p21"
-        if "iso_10303_28" in text.lower():
+        text_lower = text.lower()
+        if (
+            "iso_10303_28" in text_lower
+            or "tech/xml-schema/domain_model" in text_lower
+            or "tech/xml-schema/bo_model" in text_lower
+            or "standards.iso.org/iso/ts/10303/" in text_lower
+            or "xmlns=\"urn:iso:std:iso:10303:" in text_lower
+        ):
             return "stpx"
     return "p21"
 
@@ -209,13 +299,21 @@ def parse_step_metadata(
     schema = None
     try:
         text = _text if _text is not None else file_path.read_text(encoding="utf-8", errors="ignore")
-        match = re.search(r"FILE_SCHEMA\s*\(\s*\('([^']+)'\)\s*\)", text, flags=re.IGNORECASE)
+        metadata_text = _strip_step_comments(text)
+        unquoted = re.sub(r"'(?:[^']|'')*'", lambda m: ' ' * len(m.group(0)), metadata_text)
+        marker = re.search(r'\bFILE_SCHEMA\b', unquoted, flags=re.IGNORECASE)
+        match = re.match(r"FILE_SCHEMA\s*\(\s*\((.*?)\)\s*\)", metadata_text[marker.start():], flags=re.IGNORECASE | re.DOTALL) if marker and fmt == 'p21' else None
         if match:
-            schema = match.group(1)
+            schema = ';'.join(extract_step_strings(match.group(1))) or None
         elif fmt == "stpx":
-            # ✅ SECURITY: use defusedxml for STPX schema extraction to prevent XXE
+            # ✅ SECURITY: use defusedxml iterparse for STPX schema extraction to prevent XXE
             import defusedxml.ElementTree as _DET
-            root = _DET.fromstring(text)
+            root = None
+            for _event, _elem in _DET.iterparse(str(file_path), events=("start",)):
+                root = _elem
+                break
+            if root is None:
+                raise ET.ParseError("STPX root element missing")
             namespace = _namespace_uri(root.tag)
             schema_location = (
                 root.attrib.get("{http://www.w3.org/2001/XMLSchema-instance}schemaLocation")
@@ -260,17 +358,27 @@ def _namespace_uri(tag: str) -> str:
     return ""
 
 
-def _extract_part21_data_records(text: str) -> List[str]:
-    cleaned = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+def _strip_step_comments(text: str) -> str:
+    # Match strings first: comment delimiters inside a literal are data.
+    return re.sub(r"'(?:[^']|'')*'|/\*.*?\*/", lambda m: m.group(0) if m.group(0).startswith("'") else ' ' * len(m.group(0)), text, flags=re.DOTALL)
 
-    upper = cleaned.upper()
+
+def _step_references(text: str) -> List[int]:
+    unquoted = re.sub(r"'(?:[^']|'')*'", ' ', text)
+    return [int(value) for value in _REF_RE.findall(unquoted)]
+
+
+def _extract_part21_data_records(text: str) -> List[str]:
+    cleaned = _strip_step_comments(text)
+
+    upper = re.sub(r"'(?:[^']|'')*'", lambda m: ' ' * len(m.group(0)), cleaned).upper()
     data_start = upper.find("DATA;")
     if data_start != -1:
         endsec = upper.find("ENDSEC;", data_start)
         if endsec != -1:
             cleaned = cleaned[data_start + len("DATA;"):endsec]
         else:
-            cleaned = cleaned[data_start + len("DATA;"):]
+            raise ValueError('STEP DATA section is missing ENDSEC')
 
     records: List[str] = []
     buf: List[str] = []
@@ -297,7 +405,9 @@ def _extract_part21_data_records(text: str) -> List[str]:
             if ch == "(":
                 depth += 1
             elif ch == ")":
-                depth = max(0, depth - 1)
+                depth -= 1
+                if depth < 0:
+                    raise ValueError('Unbalanced STEP parentheses')
             elif ch == ";" and depth == 0:
                 record = "".join(buf).strip()
                 if record:
@@ -309,6 +419,8 @@ def _extract_part21_data_records(text: str) -> List[str]:
         buf.append(ch)
         i += 1
 
+    if in_string or depth or ''.join(buf).strip():
+        raise ValueError('Unterminated STEP record or string')
     return records
 
 
@@ -322,21 +434,23 @@ def _iter_part21_entities(file_path: Path, _text: Optional[str] = None) -> Itera
             if m_compound:
                 step_id = int(m_compound.group(1))
                 inner = m_compound.group(2)
-                # Extract first entity type token from compound form
-                first_m = re.match(r'\s*([A-Z][A-Z0-9_]*)\s*\(', inner, re.IGNORECASE)
-                etype = normalize_ap242_entity_type(first_m.group(1)) if first_m else 'COMPOUND_ENTITY'
+                compound_types = _extract_compound_entity_types(inner)
+                etype = compound_types[0] if compound_types else 'COMPOUND_ENTITY'
                 yield StepP21Entity(
                     step_id=step_id,
                     entity_type=etype,
-                    raw_args=inner[:500],
-                    ref_ids=[int(v) for v in _REF_RE.findall(inner)],
+                    raw_args=inner,
+                    ref_ids=_step_references(inner),
+                    compound_entity_types=compound_types,
                 )
+            elif record.lstrip().startswith('#'):
+                raise ValueError('Malformed STEP entity record')
             continue
 
         step_id = int(match.group(1))
         entity_type = normalize_ap242_entity_type(match.group(2))
         raw_args = match.group(3).strip()
-        ref_ids = [int(v) for v in _REF_RE.findall(raw_args)]
+        ref_ids = _step_references(raw_args)
         yield StepP21Entity(
             step_id=step_id,
             entity_type=entity_type,
@@ -347,57 +461,100 @@ def _iter_part21_entities(file_path: Path, _text: Optional[str] = None) -> Itera
 
 def _iter_part28_entities(file_path: Path) -> Iterator[StepP21Entity]:
     import defusedxml.ElementTree as _DET   # ✅ SECURITY: XXE-safe replacement for stdlib ET
-    tree = _DET.parse(str(file_path))
-    root = tree.getroot()
 
-    id_to_step: Dict[str, int] = {}
+    def _tokenize_refs(value: str) -> List[str]:
+        return [token for token in re.split(r"[\s,]+", (value or "").strip()) if token]
+
+    def _is_ref_key(key: str) -> bool:
+        lower = key.lower()
+        return lower.endswith("ref") or lower.endswith("refs") or lower in {"href", "idref", "uidref", "idcontextref"}
+
+    alias_to_step: Dict[str, int] = {}
+
+    # First pass: assign deterministic synthetic step ids to every element in
+    # document order and collect all local aliases so forward refs resolve.
     next_step_id = 1
+    business_object_model = False
+    for event, elem in _DET.iterparse(str(file_path), events=("start",)):
+        if event != "start":
+            continue
+        current_step_id = next_step_id
+        if current_step_id == 1:
+            namespace = _namespace_uri(elem.tag).rstrip('/')
+            business_object_model = namespace.endswith('/bo_model') or is_ap242_domain_model_namespace(namespace)
+        next_step_id += 1
+        # BO/domain model `id` is a scoped business value (e.g. repeated Id/Identifier).
+        # Only uid is a document reference identity in these XML vocabularies.
+        alias_keys = ("uid",) if business_object_model else ("id", "uid")
+        for alias_key in alias_keys:
+            alias_value = (elem.attrib.get(alias_key) or "").strip()
+            if not alias_value:
+                continue
+            if alias_value in alias_to_step:
+                if alias_to_step[alias_value] != current_step_id:
+                    raise ValueError('Duplicate Part-28 identifier')
+            else:
+                alias_to_step[alias_value] = current_step_id
+        elem.clear()
 
-    for elem in root.iter():
-        elem_id = elem.attrib.get("id")
-        if elem_id and elem_id not in id_to_step:
-            id_to_step[elem_id] = next_step_id
+    next_step_id = 1
+    stack: List[int] = []
+
+    for event, elem in _DET.iterparse(str(file_path), events=("start", "end")):
+        if event == "start":
+            current_step_id = next_step_id
             next_step_id += 1
-
-    for elem in root.iter():
-        entity_type = normalize_ap242_entity_type(_local_name(elem.tag))
-        if not entity_type:
+            stack.append(current_step_id)
             continue
 
-        elem_id = elem.attrib.get("id")
-        if elem_id and elem_id in id_to_step:
-            step_id = id_to_step[elem_id]
-        else:
-            step_id = next_step_id
-            next_step_id += 1
+        step_id = stack.pop() if stack else next_step_id
+        entity_type = normalize_ap242_entity_type(_local_name(elem.tag))
+        if not entity_type:
+            elem.clear()
+            continue
 
+        attrs = {_local_name(key): value for key, value in elem.attrib.items()}
         raw_parts: List[str] = []
         ref_ids: List[int] = []
-
-        for key, value in elem.attrib.items():
-            local_key = _local_name(key)
-            raw_parts.append(f"{local_key}={value}")
-
-            tokens = re.split(r"[\s,]+", value.strip())
-            for token in tokens:
-                if not token:
-                    continue
-                if token in id_to_step:
-                    ref_ids.append(id_to_step[token])
-                    continue
-                if token.startswith("#") and token[1:].isdigit():
-                    ref_ids.append(int(token[1:]))
+        unresolved_refs: List[str] = []
+        for key, value in attrs.items():
+            raw_parts.append(f"{key}={value}")
+            if not _is_ref_key(key):
+                continue
+            for token in _tokenize_refs(value):
+                if token in alias_to_step:
+                    ref_ids.append(alias_to_step[token])
+                elif token.startswith('#') and token[1:] in alias_to_step:
+                    ref_ids.append(alias_to_step[token[1:]])
+                else:
+                    unresolved_refs.append(token)
 
         text_value = (elem.text or "").strip()
         if text_value and len(list(elem)) == 0:
             raw_parts.append(f"text={text_value[:200]}")
 
+        if business_object_model:
+            source_identifier = (attrs.get("uid") or "").strip()
+            source_identifier_kind = "uid" if source_identifier else "synthetic"
+        else:
+            source_identifier = (attrs.get("id") or attrs.get("uid") or "").strip()
+            source_identifier_kind = "id" if attrs.get("id") else ("uid" if attrs.get("uid") else "synthetic")
+        parent_step_id = stack[-1] if stack else None
+
         yield StepP21Entity(
             step_id=step_id,
             entity_type=entity_type,
             raw_args=", ".join(raw_parts),
-            ref_ids=sorted(set(ref_ids)),
+            ref_ids=ref_ids,
+            attributes=attrs,
+            text_value=text_value[:1000],
+            source_identifier=source_identifier,
+            source_identifier_kind=source_identifier_kind,
+            unresolved_refs=sorted(set(unresolved_refs)),
+            parent_step_id=parent_step_id,
         )
+        elem.clear()
+
 
 
 def iter_part21_entities(file_path: Path) -> Iterator[StepP21Entity]:
@@ -408,49 +565,267 @@ def iter_part21_entities(file_path: Path) -> Iterator[StepP21Entity]:
 
 
 def _classify_cad_entity(entity: StepP21Entity) -> Optional[str]:
-    et = entity.entity_type.upper()
-    if et.startswith("PRODUCT"):
-        return "product"
-    if "REPRESENTATION" in et:
-        return "representation"
-    if any(token in et for token in ("EDGE", "FACE", "SHELL", "TOPO")):
-        return "topology"
-    if any(token in et for token in ("POINT", "CURVE", "SURFACE", "GEOMETRIC")):
-        return "geometry"
+    for et in _entity_type_candidates(entity):
+        if (
+            "TOLERANCE" in et
+            or "DATUM" in et
+            or "DIMENSION" in et
+            or "ANNOTATION" in et
+            or "DRAUGHTING" in et
+            or "SURFACE_FINISH" in et
+            or "SURFACE_TEXTURE" in et
+            or "ROUGHNESS" in et
+        ):
+            continue
+        if et in {
+            "PRODUCT",
+            "PRODUCT_DEFINITION",
+            "PRODUCT_DEFINITION_FORMATION",
+            "PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE",
+            "PRODUCT_RELATED_PRODUCT_CATEGORY",
+            "PRODUCT_CATEGORY",
+            # AP242 Part28 / BO model tokens
+            "PART",
+            "PART_VERSION",
+        }:
+            return "product"
+        if et in {"PART_VIEW", "VIEW", "VIEWS", "GEOMETRIC_MODEL"} or "REPRESENTATION" in et:
+            return "representation"
+        if et in {"SHAPE_ASPECT", "SHAPE_ASPECT_RELATIONSHIP"} or "FEATURE" in et:
+            return "feature"
+        if "SHAPE" in et:
+            return "shape"
+        if et in {"OCCURRENCE", "VIEW_OCCURRENCE_RELATIONSHIP"} or any(token in et for token in ("EDGE", "FACE", "SHELL", "TOPO")):
+            return "topology"
+        if et in {"PLACEMENT", "CARTESIAN_TRANSFORMATION", "ROTATION_MATRIX", "TRANSLATION_VECTOR"} or any(token in et for token in ("POINT", "CURVE", "SURFACE", "GEOMETRIC")):
+            return "geometry"
     return None
 
 
 def _first_number(raw_args: str) -> Optional[float]:
-    match = re.search(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?", raw_args or "")
+    cleaned = re.sub(r"'(?:[^']|'')*'", " ", raw_args or "")
+    cleaned = re.sub(r"#\d+", " ", cleaned)
+    match = re.search(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?", cleaned)
     if not match:
         return None
     try:
-        return float(match.group(0))
-    except ValueError:
+        value = float(match.group(0))
+        if not math.isfinite(value):
+            raise ValueError('Non-finite STEP numeric value')
+        return value
+    except OverflowError as exc:
+        raise ValueError('Non-finite STEP numeric value') from exc
+
+
+def _measure_number(
+    entity: StepP21Entity,
+    entity_map: Dict[int, StepP21Entity],
+    visited: Optional[set[int]] = None,
+) -> Optional[float]:
+    """Return a real AP242 measure, avoiding quoted labels and STEP reference ids."""
+    visited = visited or set()
+    if entity.step_id in visited:
         return None
+    visited.add(entity.step_id)
+
+    direct = _first_number(entity.raw_args)
+    if direct is not None and (
+        "MEASURE" in entity.entity_type
+        or "VALUE" in entity.entity_type
+        or entity.entity_type in {"REAL", "INTEGER", "NUMBER"}
+    ):
+        return direct
+
+    for ref_id in entity.ref_ids:
+        ref = entity_map.get(ref_id)
+        if not ref:
+            continue
+        if (
+            "MEASURE" in ref.entity_type
+            or "VALUE" in ref.entity_type
+            or ref.entity_type in {"REAL", "INTEGER", "NUMBER"}
+        ):
+            resolved = _measure_number(ref, entity_map, visited)
+            if resolved is not None:
+                return resolved
+    return direct
+
+
+def _tolerance_bounds(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity]) -> tuple[Optional[float], Optional[float]]:
+    """Resolve AP242 TOLERANCE_VALUE lower/upper bounds from referenced measures."""
+    if entity.entity_type != "TOLERANCE_VALUE":
+        return None, None
+    values: List[float] = []
+    for ref_id in entity.ref_ids:
+        ref = entity_map.get(ref_id)
+        if not ref:
+            continue
+        value = _measure_number(ref, entity_map)
+        if value is not None:
+            values.append(value)
+    if not values:
+        return None, None
+    if len(values) == 1:
+        return values[0], values[0]
+    return values[0], values[1]
+
+
+def _measure_unit(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity]) -> str:
+    """Resolve explicitly referenced units without assuming a length unit."""
+    pending = [entity]
+    visited: set[int] = set()
+    units: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current.step_id in visited:
+            continue
+        visited.add(current.step_id)
+        types = _entity_type_candidates(current)
+        if 'SI_UNIT' in types:
+            tokens = re.findall(r'\.([A-Z_]+)\.', current.raw_args.upper())
+            symbols = {'METRE': 'm', 'RADIAN': 'rad', 'STERADIAN': 'sr'}
+            prefixes = {'EXA': 'E', 'PETA': 'P', 'TERA': 'T', 'GIGA': 'G', 'MEGA': 'M',
+                        'KILO': 'k', 'HECTO': 'h', 'DECA': 'da', 'DECI': 'd', 'CENTI': 'c',
+                        'MILLI': 'm', 'MICRO': 'u', 'NANO': 'n', 'PICO': 'p', 'FEMTO': 'f', 'ATTO': 'a'}
+            for name, symbol in symbols.items():
+                if name in tokens:
+                    prefix = next((token for token in tokens if token in prefixes), '')
+                    units.add(prefixes.get(prefix, '') + symbol)
+            if not units and tokens:
+                units.add(':'.join(tokens))
+        elif any('CONVERSION_BASED_UNIT' in value for value in types):
+            names = extract_step_strings(current.raw_args)
+            if names:
+                units.add(names[0])
+            continue  # Preserve the declared unit; do not substitute its conversion base.
+        for ref_id in current.ref_ids:
+            ref = entity_map.get(ref_id)
+            ref_types = _entity_type_candidates(ref) if ref else []
+            # A representation context declares several default unit dimensions;
+            # those are not the explicitly referenced unit of this measure.
+            if ref and not any('CONTEXT' in value for value in ref_types) and any('MEASURE' in value or 'UNIT' in value or 'VALUE' in value or value in {'REAL', 'NUMBER'} for value in ref_types):
+                pending.append(ref)
+    if len(units) > 1:
+        raise ValueError('Ambiguous STEP measure units')
+    return next(iter(units), '')
+
+
+def _apply_dimension_tolerances(dimensions: List[StepDimension], entity_map: Dict[int, StepP21Entity]) -> None:
+    """Attach PLUS_MINUS_TOLERANCE/TOLERANCE_VALUE bounds to the referenced dimension."""
+    dimensions_by_id = {dim.id: dim for dim in dimensions}
+    for entity in entity_map.values():
+        if entity.entity_type != "PLUS_MINUS_TOLERANCE":
+            continue
+        tolerance_ref = next((ref_id for ref_id in entity.ref_ids if entity_map.get(ref_id, None) and entity_map[ref_id].entity_type == "TOLERANCE_VALUE"), None)
+        dimension_ref = next((ref_id for ref_id in entity.ref_ids if ref_id in dimensions_by_id), None)
+        if tolerance_ref is None or dimension_ref is None:
+            continue
+        lower, upper = _tolerance_bounds(entity_map[tolerance_ref], entity_map)
+        dim = dimensions_by_id[dimension_ref]
+        if lower is not None:
+            dim.lower_tolerance = lower
+        if upper is not None:
+            dim.upper_tolerance = upper
+        unit = _measure_unit(entity_map[tolerance_ref], entity_map)
+        if unit:
+            if dim.unit and dim.unit != unit:
+                raise ValueError('Dimension and tolerance units differ; explicit conversion is required')
+            dim.unit = unit
+
+
+def _refs_matching(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity], markers: tuple[str, ...]) -> List[int]:
+    """Return references whose resolved STEP type matches semantic markers."""
+    matches: List[int] = []
+    for ref_id in entity.ref_ids:
+        ref = entity_map.get(ref_id)
+        ref_types = _entity_type_candidates(ref) if ref else []
+        if any(any(marker in ref_type for marker in markers) for ref_type in ref_types):
+            matches.append(ref_id)
+    return sorted(set(matches))
+
+
+def _typed_pmi_refs(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity]) -> Dict[str, List[int]]:
+    """Classify broad STEP references without pretending to fully infer EXPRESS positions."""
+    datum_refs = _refs_matching(entity, entity_map, ("DATUM",))
+    leader_refs = _refs_matching(entity, entity_map, ("LEADER",))
+    feature_refs = _refs_matching(entity, entity_map, (
+        "SHAPE_ASPECT", "FEATURE", "FACE", "EDGE", "VERTEX", "SURFACE", "CURVE", "POINT", "GEOMETRY",
+        "PRODUCT_DEFINITION", "PRODUCT", "REPRESENTATION_ITEM",
+    ))
+    return {
+        "datum": datum_refs,
+        "feature": [ref_id for ref_id in feature_refs if ref_id not in datum_refs and ref_id not in leader_refs],
+        "presentation": _refs_matching(entity, entity_map, (
+            "ANNOTATION", "DRAUGHTING", "PRESENTATION", "STYLED_ITEM", "TEXT_LITERAL", "GEOMETRIC_CURVE_SET",
+        )),
+        "leader": leader_refs,
+        "view": _refs_matching(entity, entity_map, (
+            "VIEW", "ANNOTATION_PLANE", "REPRESENTATION_CONTEXT", "CAMERA", "PRESENTATION_REPRESENTATION",
+        )),
+        "style": _refs_matching(entity, entity_map, ("STYLE", "PRESENTATION_LAYER", "PRESENTATION_STYLE")),
+    }
+
+
+def _is_graphic_presentation_entity(entity: StepP21Entity) -> bool:
+    return any(marker in entity_type for entity_type in _entity_type_candidates(entity) for marker in (
+        "ANNOTATION_OCCURRENCE", "DRAUGHTING_CALLOUT", "LEADER", "ANNOTATION_PLANE",
+        "PRESENTATION_REPRESENTATION", "PRESENTATION_LAYER", "PRESENTATION_STYLE",
+    ))
+
+
+def _is_saved_view_entity(entity: StepP21Entity) -> bool:
+    return any(entity_type in {"VIEW", "PRESENTATION_VIEW", "ANNOTATION_PLANE"} for entity_type in _entity_type_candidates(entity))
 
 
 def _classify_pmi_entity(entity: StepP21Entity) -> Optional[str]:
-    et = entity.entity_type.upper()
-    if "GEOMETRIC_TOLERANCE" in et or et.endswith("_TOLERANCE"):
-        return "geometric_tolerance"
-    if "DATUM" in et:
-        return "datum"
-    if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION"}:
-        return "dimension"
-    if "ANNOTATION" in et or "DRAUGHTING" in et:
-        return "annotation"
-    if "SURFACE_FINISH" in et or "SURFACE_TEXTURE" in et or "ROUGHNESS" in et:
-        return "surface_finish"
+    for et in _entity_type_candidates(entity):
+        if et == "PLUS_MINUS_TOLERANCE" or et == "TOLERANCE_VALUE":
+            return "dimension_tolerance"
+        if "GEOMETRIC_TOLERANCE" in et or (et.endswith("_TOLERANCE") and et != "PLUS_MINUS_TOLERANCE"):
+            return "geometric_tolerance"
+        if "DATUM" in et:
+            return "datum"
+        if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION", "ANGULAR_LOCATION"}:
+            return "dimension"
+        if (
+            "ANNOTATION" in et
+            or "DRAUGHTING" in et
+            or "CALLOUT" in et
+            or "TEXT_LITERAL" in et
+            or "LEADER" in et
+            or "STYLED_ITEM" in et
+            or et in {"PRESENTATION_STYLE_ASSIGNMENT", "PRESENTATION_LAYER_ASSIGNMENT"}
+        ):
+            return "annotation"
+        if "SURFACE_FINISH" in et or "SURFACE_TEXTURE" in et or "ROUGHNESS" in et:
+            return "surface_finish"
     return None
+
+
+def classify_step_semantic_role(entity: StepP21Entity) -> Optional[str]:
+    """Return the import-facing AP242 semantic role for STEP/STPX entities."""
+    return _classify_pmi_entity(entity) or _classify_cad_entity(entity)
 
 
 def _cad_name_fields(entity: StepP21Entity) -> tuple[str, str, str]:
     strings = extract_step_strings(entity.raw_args)
-    external_id = strings[0] if strings else ""
-    name = strings[1] if len(strings) > 1 else external_id
+    attrs = getattr(entity, "attributes", {}) or {}
+    source_identifier = getattr(entity, "source_identifier", "") or ""
+    external_id = strings[0] if strings else (source_identifier or attrs.get("id") or attrs.get("uid") or "")
+    name = strings[1] if len(strings) > 1 else (
+        attrs.get("name")
+        or attrs.get("Name")
+        or attrs.get("label")
+        or attrs.get("title")
+        or external_id
+    )
     description = strings[2] if len(strings) > 2 else ""
     return external_id, name, description
+
+
+def step_entity_display_fields(entity: StepP21Entity) -> tuple[str, str, str]:
+    """Return stable external id, display name, and description for import rows."""
+    return _cad_name_fields(entity)
 
 
 def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
@@ -465,6 +840,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
         else iter_part21_entities(file_path)
     )
     entity_map = {entity.step_id: entity for entity in entities}
+    if len(entity_map) != len(entities):
+        raise ValueError('Duplicate STEP entity identifier')
 
     cad_products: List[StepCadEntity] = []
     cad_representations: List[StepCadEntity] = []
@@ -474,6 +851,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
     datums: List[StepDatum] = []
     dimensions: List[StepDimension] = []
     annotations: List[StepAnnotation] = []
+    graphic_presentations: List[StepGraphicPresentation] = []
+    saved_views: List[StepSavedView] = []
     surface_finishes: List[StepSurfaceFinish] = []
 
     for entity in entities:
@@ -494,8 +873,29 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 cad_representations.append(cad)
             elif group == "topology":
                 cad_topology.append(cad)
-            elif group == "geometry":
+            elif group in {"geometry", "feature", "shape"}:
                 cad_geometry.append(cad)
+
+        typed_refs = _typed_pmi_refs(entity, entity_map)
+        if _is_graphic_presentation_entity(entity):
+            graphic_presentations.append(StepGraphicPresentation(
+                id=entity.step_id,
+                presentation_type=entity.entity_type,
+                annotation_refs=typed_refs["presentation"],
+                geometry_refs=typed_refs["feature"],
+                view_refs=typed_refs["view"],
+                style_refs=typed_refs["style"],
+            ))
+        if _is_saved_view_entity(entity):
+            strings_for_view = extract_step_strings(entity.raw_args)
+            saved_views.append(StepSavedView(
+                id=entity.step_id,
+                view_type=entity.entity_type,
+                name=strings_for_view[1] if len(strings_for_view) > 1 else (strings_for_view[0] if strings_for_view else ""),
+                annotation_refs=typed_refs["presentation"],
+                geometry_refs=typed_refs["feature"],
+                presentation_refs=typed_refs["presentation"] + typed_refs["style"],
+            ))
 
         pmi_group = _classify_pmi_entity(entity)
         if not pmi_group:
@@ -504,7 +904,7 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
         label = strings[0] if strings else ""
         name = strings[1] if len(strings) > 1 else label
         description = strings[2] if len(strings) > 2 else ""
-        number = _first_number(entity.raw_args)
+        number = _measure_number(entity, entity_map)
 
         if pmi_group == "geometric_tolerance":
             geometric_tolerances.append(StepGeometricTolerance(
@@ -513,14 +913,16 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 name=name,
                 description=description,
                 magnitude=number,
-                toleranced_feature_refs=list(entity.ref_ids),
+                unit=_measure_unit(entity, entity_map),
+                datum_system_refs=typed_refs["datum"],
+                toleranced_feature_refs=typed_refs["feature"],
             ))
         elif pmi_group == "datum":
             datums.append(StepDatum(
                 id=entity.step_id,
                 label=label,
                 datum_type=entity.entity_type,
-                feature_refs=list(entity.ref_ids),
+                feature_refs=typed_refs["feature"],
                 name=name,
             ))
         elif pmi_group == "dimension":
@@ -530,23 +932,32 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 name=name,
                 description=description,
                 nominal_value=number,
-                feature_refs=list(entity.ref_ids),
+                unit=_measure_unit(entity, entity_map),
+                feature_refs=typed_refs["feature"],
             ))
+        elif pmi_group == "dimension_tolerance":
+            continue
         elif pmi_group == "annotation":
             annotations.append(StepAnnotation(
                 id=entity.step_id,
                 annotation_type=entity.entity_type,
                 text=description or name or label,
                 name=name,
-                presentation_refs=list(entity.ref_ids),
+                presentation_refs=typed_refs["presentation"],
+                leader_refs=typed_refs["leader"],
+                feature_refs=typed_refs["feature"],
+                view_refs=typed_refs["view"],
             ))
         elif pmi_group == "surface_finish":
             surface_finishes.append(StepSurfaceFinish(
                 id=entity.step_id,
                 finish_type=entity.entity_type,
                 roughness_average=number,
-                feature_refs=list(entity.ref_ids),
+                unit=_measure_unit(entity, entity_map),
+                feature_refs=typed_refs["feature"],
             ))
+
+    _apply_dimension_tolerances(dimensions, entity_map)
 
     return StepPMIDocument(
         metadata=metadata,
@@ -556,6 +967,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
         datums=datums,
         dimensions=dimensions,
         annotations=annotations,
+        graphic_presentations=graphic_presentations,
+        saved_views=saved_views,
         surface_finishes=surface_finishes,
         cad_products=cad_products,
         cad_representations=cad_representations,
@@ -572,9 +985,12 @@ def get_pmi_summary(doc: StepPMIDocument) -> Dict[str, int | bool]:
         "datums": len(doc.datums),
         "dimensions": len(doc.dimensions),
         "annotations": len(doc.annotations),
+        "graphic_presentations": len(doc.graphic_presentations),
+        "saved_views": len(doc.saved_views),
         "cad_products": len(doc.cad_products),
         "cad_representations": len(doc.cad_representations),
         "cad_topology": len(doc.cad_topology),
         "cad_geometry": len(doc.cad_geometry),
         "has_cad_semantics": bool(doc.cad_products or doc.cad_representations or doc.cad_topology or doc.cad_geometry),
     }
+
