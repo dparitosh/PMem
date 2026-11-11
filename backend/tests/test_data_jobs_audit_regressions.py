@@ -66,6 +66,7 @@ class DataJobAudit(unittest.TestCase):
     def worker(self, attempt, telemetry_fails=False):
         tree = ast.parse(Path('backend/data_pipeline_service/worker.py').read_text())
         node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'run')
+        helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'log_run_event')
         stop = threading.Event()
         class Threads:
             calls = 0
@@ -84,11 +85,11 @@ class DataJobAudit(unittest.TestCase):
             if telemetry_fails and kw.get('status') == 'busy':
                 raise RuntimeError('telemetry offline')
         execute = Mock()
-        ns = {'os':os, 'logging':logging, 'bounded_timeout_seconds':bounded_timeout_seconds, 'signal':SimpleNamespace(SIGINT=signal.SIGINT, SIGTERM=signal.SIGTERM, signal=lambda *a:None),
+        ns = {'os':os, 'logging':logging, 'json':__import__('json'), 'bounded_timeout_seconds':bounded_timeout_seconds, 'signal':SimpleNamespace(SIGINT=signal.SIGINT, SIGTERM=signal.SIGTERM, signal=lambda *a:None),
               'threading':Threads, 'run_records':records, 'worker_status':SimpleNamespace(put=telemetry),
               'job_definitions':SimpleNamespace(get=lambda *a:{'enabled':True,'lifecycle_state':'approved','retry_policy':{'max_attempts':2}}),
               'runner':SimpleNamespace(health=lambda:{},shutdown=lambda:None), 'execute_claimed_job':execute}
-        exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual worker>','exec'),ns)
+        exec(compile(ast.Module(body=[helper,node],type_ignores=[]),'<actual worker>','exec'),ns)
         ns['run']()
         return records, execute
 

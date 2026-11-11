@@ -27,7 +27,7 @@ def actual_function(path,name,scope):
     tree=ast.parse(Path(path).read_text(encoding='utf-8'))
     node=next(item for item in tree.body if isinstance(item,(ast.FunctionDef,ast.AsyncFunctionDef)) and item.name==name)
     node.decorator_list=[]
-    scope.update(Any=object,Request=object,HTTPException=HttpError,__package__='backend.agentic_service')
+    scope.update(Any=object,Request=object,HTTPException=HttpError,__package__='backend.agentic_service',CompensationBody=object,ReasonApprovalBody=object)
     exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual service boundary>','exec'),scope)
     return scope[name]
 

@@ -264,10 +264,13 @@ def adopt_metadata_postgres(payload: MetadataMigrationBody, actor: str = Depends
 @router.get("/assets")
 def list_metadata_assets(
     status: Optional[str] = Query(default=None, max_length=50),
+    lifecycle_status: Optional[str] = Query(default=None, max_length=50),
     domain: Optional[str] = Query(default=None, max_length=200),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
+    # Clients filter by the asset's own field name (lifecycle_status); status remains accepted.
+    status = status or lifecycle_status
     if metadata_backend.enabled():
         return metadata_backend.repository().page(status=status,domain=domain,limit=limit,offset=offset)
     try:

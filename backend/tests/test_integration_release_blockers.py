@@ -38,7 +38,7 @@ class IntegrationBlockerTests(TestCase):
             self.assertEqual(kwargs['token_env'],'DATA_JOB_APPROVAL_TOKEN')
             if request!='authorized': raise PermissionError('rejected')
             return 'server-actor'
-        scope={'Any':object,'Request':object,'service_write_identity':authorize,'job_definitions':SimpleNamespace(create=lambda p:calls.append(p) or p)}
+        scope={'Any':object,'Request':object,'JobDefinitionBody':object,'service_write_identity':authorize,'job_definitions':SimpleNamespace(create=lambda p:calls.append(p) or p)}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'router','exec'),scope)
         with self.assertRaises(PermissionError): scope['create_job_definition']({'owner':'spoofed'},'anonymous')
         self.assertEqual(calls,[])

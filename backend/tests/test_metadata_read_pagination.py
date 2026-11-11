@@ -15,16 +15,17 @@ class MetadataReadTests(unittest.TestCase):
         scope = {'Request': object, 'Optional': __import__('typing').Optional,
                  'Dict': dict, 'Any': object, 'Query': lambda **kwargs: kwargs.get('default'),
                  'HTTPException': RuntimeError, 'graph': SimpleNamespace(query=Mock()),
-                 'graph_read_identity': Mock(return_value='reader'), 'service_write_identity': Mock(return_value='writer')}
+                 'graph_read_identity': Mock(return_value='reader'), 'service_write_identity': Mock(return_value='writer'),
+                 'metadata_backend': SimpleNamespace(enabled=lambda: False)}
         exec(compile(ast.Module(body=nodes, type_ignores=[]), '<metadata>', 'exec'), scope)
         return scope
 
     def test_reads_require_shared_identity_and_writes_keep_approval(self):
         scope = self.load()
-        read = SimpleNamespace(method='GET')
+        read = SimpleNamespace(method='GET', url=SimpleNamespace(path='/metadata-registry/assets'))
         self.assertEqual(scope['_metadata_registry_identity'](read), 'reader')
         scope['graph_read_identity'].assert_called_once_with(read)
-        self.assertEqual(scope['_metadata_registry_identity'](SimpleNamespace(method='POST')), 'writer')
+        self.assertEqual(scope['_metadata_registry_identity'](SimpleNamespace(method='POST', url=SimpleNamespace(path='/metadata-registry/assets'))), 'writer')
         scope['graph_read_identity'].side_effect = PermissionError('rejected')
         with self.assertRaises(PermissionError):
             scope['_metadata_registry_identity'](read)
