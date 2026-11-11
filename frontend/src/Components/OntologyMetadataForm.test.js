@@ -59,6 +59,8 @@ describe('OntologyMetadataForm Component', () => {
   describe('Form Validation', () => {
     it('should show error when ontology name is empty', async () => {
       renderForm();
+      // The name is offered from the file name; the user may clear it.
+      await userEvent.clear(screen.getByPlaceholderText(/e.g., Product Model/i));
 
       const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
       await userEvent.click(submitButton);
@@ -69,17 +71,14 @@ describe('OntologyMetadataForm Component', () => {
       expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
-    it('should derive a prefix when the field is empty', async () => {
+    it('should offer a prefix derived from the file name and submit it when untouched', async () => {
       renderForm();
-
-      const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await userEvent.type(ontologyNameInput, 'Test Ontology');
 
       const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
       await userEvent.click(submitButton);
 
       await waitFor(() => {
-        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ prefix: '' }));
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'domain_model' }));
       });
     });
 
@@ -113,6 +112,7 @@ describe('OntologyMetadataForm Component', () => {
       renderForm();
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
+      await userEvent.clear(ontologyNameInput);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
       expect(screen.getByPlaceholderText(/Automatic from source namespace/i)).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe('OntologyMetadataForm Component', () => {
         expect(mockOnSubmit).toHaveBeenCalledWith(
           expect.objectContaining({
             ontologyName: 'Domain Model',
-            prefix: '',
+            prefix: 'domain_model',
             generationType: 'shacl'
           })
         );
@@ -140,6 +140,7 @@ describe('OntologyMetadataForm Component', () => {
       renderForm({ selectedFile: new File([''], 'model.xmi') });
 
       const prefixInput = screen.getByPlaceholderText(/Automatic from source namespace/i);
+      await userEvent.clear(prefixInput);
       await userEvent.type(prefixInput, 'TestPrefix');
 
       expect(prefixInput.value).toBe('testprefix');
@@ -168,6 +169,7 @@ describe('OntologyMetadataForm Component', () => {
       renderForm();
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
+      await userEvent.clear(ontologyNameInput);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
       expect(screen.getByPlaceholderText(/Automatic from source namespace/i)).toBeInTheDocument();

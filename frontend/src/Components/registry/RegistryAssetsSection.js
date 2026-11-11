@@ -1,4 +1,17 @@
 import React from 'react';
+import { useOntologies } from '../../contexts/OntologyContext';
+
+// Registered ontology namespaces, offered as defaults. The field stays optional and accepts any URI.
+function namespaceOptions(ontologies) {
+  const values = new Set();
+  for (const row of ontologies || []) {
+    for (const value of [row.namespace, row.source_namespace, row.target_namespace]) {
+      const uri = String(value || '').trim();
+      if (uri) values.add(uri);
+    }
+  }
+  return [...values].sort();
+}
 
 const STATUS_LABELS = {
   draft: 'Draft',
@@ -68,6 +81,7 @@ export default function RegistryAssetsSection({
   transitioningAssetIds,
   lastUpdated,
 }) {
+  const { ontologies } = useOntologies();
   return (
     <>
       <form onSubmit={createAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
@@ -77,6 +91,7 @@ export default function RegistryAssetsSection({
         <label className="depo-field"><span>Owner</span><input className="depo-input" value={newAsset.owner} onChange={(event) => setNewAsset({ ...newAsset, owner: event.target.value })} /></label>
         <label className="depo-field"><span>Steward</span><input className="depo-input" value={newAsset.steward} onChange={(event) => setNewAsset({ ...newAsset, steward: event.target.value })} /></label>
         <label className="depo-field"><span>Domain</span><input className="depo-input" value={newAsset.domain} onChange={(event) => setNewAsset({ ...newAsset, domain: event.target.value })} /></label>
+        <label className="depo-field"><span>Ontology namespace (optional)</span><input className="depo-input" list="registry-ontology-namespaces" value={newAsset.ontology_uri || ''} onChange={(event) => setNewAsset({ ...newAsset, ontology_uri: event.target.value })} placeholder="Pick a registered namespace or leave blank" /><datalist id="registry-ontology-namespaces">{namespaceOptions(ontologies).map((uri) => <option key={uri} value={uri} />)}</datalist></label>
         <button type="submit" className="depo-button" disabled={createLoading || !newAsset.name.trim()}>{createLoading ? 'Registering...' : 'Register'}</button>
       </form>
       {registryMessage && <div className={`depo-alert depo-alert--${registryMessage.kind}`}>{registryMessage.text}</div>}

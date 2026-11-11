@@ -72,6 +72,19 @@ export default function OntologyMetadataForm({
   const [validationErrors, setValidationErrors] = useState({});
   const [sourceNamespace, setSourceNamespace] = useState('');
   const prefixEdited = useRef(Boolean(initialValues?.prefix));
+  const nameEdited = useRef(Boolean(initialValues?.ontologyName));
+  // Defaults from the file name are offered on load; the user can keep or change them.
+  useEffect(() => {
+    if (!selectedFile) return;
+    const base = selectedFile.name.replace(/\.[^.]+$/, '');
+    const readable = base.replace(/[_-]+/g, ' ').trim();
+    const defaultPrefix = base.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    setFormData(previous => ({
+      ...previous,
+      ontologyName: nameEdited.current ? previous.ontologyName : readable,
+      prefix: prefixEdited.current ? previous.prefix : (/^[a-z]/.test(defaultPrefix) ? defaultPrefix.slice(0, 50) : ''),
+    }));
+  }, [selectedFile]);
   useEffect(() => {
     let active = true;
     setSourceNamespace('');
@@ -226,7 +239,7 @@ export default function OntologyMetadataForm({
               type="text"
               placeholder={ontologyNamePlaceholder}
               value={formData.ontologyName}
-              onChange={(e) => setFormData({ ...formData, ontologyName: e.target.value })}
+              onChange={(e) => { nameEdited.current = true; setFormData({ ...formData, ontologyName: e.target.value }); }}
               style={{
                 width: '100%',
                 padding: '10px 12px',

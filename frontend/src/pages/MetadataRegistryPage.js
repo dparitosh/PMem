@@ -92,7 +92,7 @@ export default function MetadataRegistryPage() {
   const [registryMessage, setRegistryMessage] = useState(null);
   const [governanceAction, setGovernanceAction] = useState(null);
   const [governanceEvidence, setGovernanceEvidence] = useState('');
-  const [newAsset, setNewAsset] = useState({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
+  const [newAsset, setNewAsset] = useState({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '', ontology_uri: '' });
   const registryControllerRef = useRef(null);
   const dictionaryControllerRef = useRef(null);
   const refreshReadRef = useRef(null);
@@ -145,7 +145,7 @@ export default function MetadataRegistryPage() {
       setPrefixFilter(null);
       setCreateLoading(false);
       setTransitioningAssetIds(new Set());
-      setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
+      setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '', ontology_uri: '' });
       loadRegistryAssets();
     };
     const sessionEvents = ['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
@@ -178,7 +178,7 @@ export default function MetadataRegistryPage() {
       setRegistryAssets((current) => [response.data, ...current]);
       setRegistryLoaded(true);
       setRegistryMessage({ kind: 'success', text: 'Metadata asset registered in the governed registry.' });
-      setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
+      setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '', ontology_uri: '' });
     } catch (err) {
       if (controller.signal.aborted) return;
       setRegistryMessage({ kind: 'warning', text: apiErrorMessage(err, 'Metadata asset could not be registered.') });
