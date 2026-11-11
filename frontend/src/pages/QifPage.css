@@ -19,8 +19,8 @@
 .qif-digital-thread__index { display: grid; place-items: center; width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background: var(--ui-primary); color: var(--ui-surface); font-size: 12px; font-weight: 800; }
 .qif-digital-thread__stage strong, .qif-digital-thread__stage span { display: block; }
 .qif-digital-thread__stage strong { color: var(--ui-text); font-size: 13px; }
-.qif-digital-thread__stage span { margin-top: 2px; color: var(--ui-primary); font-size: 11px; font-weight: 700; }
-.qif-digital-thread__stage p { margin: 7px 0 0; color: var(--ui-muted); font-size: 11px; line-height: 1.45; }
+.qif-digital-thread__stage span { margin-top: 2px; color: var(--ui-primary); font-size: 12px; font-weight: 700; }
+.qif-digital-thread__stage p { margin: 7px 0 0; color: var(--ui-muted); font-size: 12px; line-height: 1.45; }
 .qif-digital-thread__evidence { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; color: var(--ui-muted); font-size: 12px; }
 .qif-digital-thread__evidence strong { color: var(--ui-text); font-size: 15px; }
 
@@ -32,7 +32,7 @@
 .qif-artifact-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .qif-artifact-list a { display: grid; gap: 2px; min-width: 160px; padding: 8px 10px; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-primary); font-size: 12px; font-weight: 700; text-decoration: none; }
 .qif-artifact-list a:hover { border-color: var(--ui-primary); background: var(--ui-primary-soft); }
-.qif-artifact-list small { color: var(--ui-muted); font-size: 11px; font-weight: 600; }
+.qif-artifact-list small { color: var(--ui-muted); font-size: 12px; font-weight: 600; }
 .qif-history-list button[aria-pressed="true"] { border-color: var(--ui-primary); background: var(--ui-primary-soft); box-shadow: inset 3px 0 0 var(--ui-primary); }
 
 @media (max-width: 900px) {

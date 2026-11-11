@@ -11,7 +11,7 @@
 .reports-chart-card { min-width: 0; overflow: hidden; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); color: var(--ui-text); }
 .reports-chart-card__header { padding: 12px 14px 0; }
 .reports-chart-card__header h3 { margin: 0; color: var(--ui-text); font-size: 14px; }
-.reports-chart-card__header p { margin: 4px 0 0; color: var(--ui-muted); font-size: 11px; line-height: 1.4; }
+.reports-chart-card__header p { margin: 4px 0 0; color: var(--ui-muted); font-size: 12px; line-height: 1.4; }
 .reports-chart-card__canvas { width: 100%; height: 280px; min-width: 0; }
 .reports-chart-card__empty { min-height: 180px; display: grid; place-items: center; padding: 20px; color: var(--ui-muted); font-size: 12px; text-align: center; }
 @media (max-width: 560px) { .reports-chart-card__canvas { height: 240px; } }

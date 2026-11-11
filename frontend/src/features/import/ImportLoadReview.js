@@ -93,7 +93,7 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
                       color: C.primaryText,
                       padding: '4px 8px',
                       borderRadius: '3px',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       fontWeight: '500',
                     }}
                   >
@@ -115,7 +115,7 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
                 overflow: 'auto',
                 maxHeight: '200px',
               }}>
-                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${C.border}`, background: C.bg }}>
                       {(previewData.columns || []).slice(0, 5).map((col, colIdx) => (

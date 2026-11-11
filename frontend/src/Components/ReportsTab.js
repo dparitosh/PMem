@@ -740,7 +740,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                       background: 'rgba(255,255,255,0.24)',
                       borderRadius: 999,
                       padding: '1px 6px',
-                      fontSize: 11,
+                      fontSize: 12,
                     }}
                   >
                     {relationshipRows.length}
@@ -764,7 +764,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                 }}
               >
                 Ontologies
-                <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 11 }}>{ontologyRows.length}</span>
+                <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 12 }}>{ontologyRows.length}</span>
               </button>              {availableTypes.map(({ type, count }) => (
                 <button
                   key={type}
@@ -784,7 +784,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                   }}
                 >
                   {type}
-                  <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 11 }}>{count}</span>
+                  <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 12 }}>{count}</span>
                 </button>
               ))}
               <button
@@ -1401,7 +1401,7 @@ function XsdRelationalReport({ report, loading, error, selectedOntology, ontolog
         </div>
         {activeTable ? <div style={{ border: '1px solid #d9e2ec', borderRadius: 7, overflow: 'auto' }}><table className="depo-table"><thead><tr><th>Column</th><th>Type</th><th>Kind</th><th>Occurrence</th><th>Key role</th></tr></thead><tbody>{activeTable.columns.map((column) => <tr key={`${activeTable.name}:${column.name}`}><td><strong>{column.name}</strong></td><td>{column.xsd_type}</td><td>{column.kind}</td><td>{column.min_occurs}..{column.max_occurs}</td><td>{column.is_primary_key_candidate ? 'PK candidate' : column.is_foreign_key_candidate ? `FK → ${column.foreign_key_target}` : '—'}</td></tr>)}</tbody></table></div> : <div style={{ padding: 24, color: '#52606d' }}>No complexType tables found.</div>}
       </div>
-      <div style={{ fontSize: 11, color: '#52606d' }}>{report.semantics?.primary_key} {report.semantics?.foreign_key}</div>
+      <div style={{ fontSize: 12, color: '#52606d' }}>{report.semantics?.primary_key} {report.semantics?.foreign_key}</div>
     </div>
   );
 }

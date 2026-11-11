@@ -47,7 +47,7 @@ const buttonStyle = {
 function Stat({ label, value }) {
   return (
     <div style={{ minWidth: 82, padding: '5px 7px', borderLeft: `2px solid ${colors.blue}` }}>
-      <div style={{ fontSize: 10, color: colors.muted, fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 12, color: colors.muted, fontWeight: 800 }}>{label}</div>
       <div style={{ fontSize: 16, color: colors.text, fontWeight: 850, lineHeight: 1.2 }}>{value ?? '-'}</div>
     </div>
   );
@@ -550,18 +550,18 @@ export default function AdminPanel({ onSchemaCleaned }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
           <section style={cardStyle}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 850, color: colors.text }}>Service Health</div>
+              <div style={{ fontSize: 12, fontWeight: 850, color: colors.text }}>Service Health</div>
               <div style={{ fontSize: 13, fontWeight: 850, color: error ? colors.danger : colors.ok }}>
                 {statusText}
               </div>
             </div>
             {health?.message && (
-              <div style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>{health.message}</div>
+              <div style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>{health.message}</div>
             )}
           </section>
 
           <section style={cardStyle}>
-            <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
               Knowledge graph schema
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
@@ -573,10 +573,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
           </section>
 
           <section style={cardStyle} aria-label="Agent operations telemetry">
-            <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
               Agent Operations — Retained history
             </div>
-            <div style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
               PostgreSQL retains agent run and tool history after cache, schema and graph cleanup.
               These totals cover the latest {agentOps?.window_limit || 500} recorded runs, not the current knowledge graph.
               Historical failures do not by themselves indicate a current service outage.
@@ -596,7 +596,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
               </div>
               </details>
             ) : (
-              <div style={{ fontSize: 11, color: colors.muted }}>
+              <div style={{ fontSize: 12, color: colors.muted }}>
                 Configure the Agentic service to display durable run and tool telemetry.
               </div>
             )}
@@ -604,14 +604,14 @@ export default function AdminPanel({ onSchemaCleaned }) {
         </div>
 
         <section style={cardStyle}>
-          <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 3 }}>
+          <div style={{ fontSize: 12, fontWeight: 850, color: colors.text, marginBottom: 3 }}>
             Targeted Graph Cleanup
           </div>
-          <div style={{ fontSize: 11, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
             Preview and delete a scoped set of knowledge graph nodes. This does not delete uploaded ontology files or registry metadata.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 8 }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, fontWeight: 800, color: colors.muted }}>
               Label
               <input
                 value={deleteLabel}
@@ -620,7 +620,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
                 style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, fontWeight: 800, color: colors.muted }}>
               Prefix
               <input
                 value={deletePrefix}
@@ -629,7 +629,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
                 style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, fontWeight: 800, color: colors.muted }}>
               Property
               <input
                 value={deleteProperty}
@@ -638,7 +638,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
                 style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, fontWeight: 800, color: colors.muted }}>
               Value
               <input
                 value={deleteValue}
@@ -647,7 +647,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
                 style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, fontWeight: 800, color: colors.muted }}>
               Batch size
               <input
                 type="number"
@@ -661,7 +661,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             </label>
           </div>
           {deletePreview && (
-            <div style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px 0', fontWeight: 700 }}>
+            <div style={{ fontSize: 12, color: colors.muted, margin: '0 0 8px 0', fontWeight: 700 }}>
               Preview: {deletePreview.matched} node(s) match {deletePreview.target}. Batch size {deletePreview.batchSize}.
             </div>
           )}
@@ -688,10 +688,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
         </section>
 
         <section style={cardStyle}>
-          <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 3 }}>
+          <div style={{ fontSize: 12, fontWeight: 850, color: colors.text, marginBottom: 3 }}>
             Cache and Ontology Metadata Maintenance
           </div>
-          <div style={{ fontSize: 11, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
             These actions are operational maintenance. Cache cleanup is non-destructive. Old XSD cleanup targets stale ontology registry entries and their matching schema nodes only.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -708,10 +708,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
         </section>
 
         <section style={{ ...cardStyle, borderColor: colors.dangerBorder, background: colors.dangerBg }}>
-          <div style={{ fontSize: 11, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
+          <div style={{ fontSize: 12, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
             Destructive Reset Actions
           </div>
-          <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
             Graph Reset retains Import history. Full Schema Cleanup also clears quiescent instance-import tasks and owned files.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -730,10 +730,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
         </section>
 
         <section aria-labelledby="admin-danger-zone" style={{ ...cardStyle, borderColor: colors.dangerBorder, background: colors.dangerBg }}>
-          <div id="admin-danger-zone" style={{ fontSize: 11, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
+          <div id="admin-danger-zone" style={{ fontSize: 12, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
             Danger zone
           </div>
-          <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
             Vanilla reset also clears application records, agent history and retained ontology artifacts, while preserving credentials and the embedded foundation. Preview first to see exactly what will be deleted. The reset then asks you to type a confirmation phrase.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

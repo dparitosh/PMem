@@ -6,10 +6,10 @@
 .code-network__workspace, .code-network__review { display: flex; align-items: flex-start; gap: 9px; color: #176ba0; }
 .code-network__workspace div, .code-network__review div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .code-network__workspace strong { color: #243b53; font-size: 13px; }
-.code-network__workspace span, .code-network__review span { color: #52606d; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.code-network__workspace span, .code-network__review span { color: #52606d; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
 .code-network__metric { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
 .code-network__metric strong { color: #102a43; font-size: 20px; line-height: 1; }
-.code-network__metric span { color: #52606d; font-size: 11px; }
+.code-network__metric span { color: #52606d; font-size: 12px; }
 .code-network__metric svg { color: #176ba0; margin-bottom: 2px; }
 .code-network__review { color: #b7791f; }
 .code-network__review strong { overflow: hidden; color: #243b53; font-size: 12px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
@@ -44,17 +44,17 @@
 .code-network__nodes circle.is-expandable { stroke: #102a43; stroke-width: 2; }
 .code-network__nodes circle:focus { outline: none; stroke: #f2b134; stroke-width: 3.5; }
 .code-network__labels { pointer-events: none; }
-.code-network__labels text { fill: #34495e; font-size: 9px; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
-.code-network__radial-labels text { font-size: 10px; font-weight: 600; }
+.code-network__labels text { fill: #34495e; font-size: 12px; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.code-network__radial-labels text { font-size: 12px; font-weight: 600; }
 .code-network__tooltip { position: absolute; z-index: 3; max-width: min(480px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 8px; transform: translate(12px, calc(-100% - 10px)); pointer-events: none; background: rgba(13, 34, 55, .95); color: #fff; box-shadow: 0 8px 24px rgba(13, 34, 55, .2); }
 .code-network__tooltip strong { overflow-wrap: anywhere; font-size: 12px; }
-.code-network__tooltip span { color: #d8e5ef; font-size: 11px; }
+.code-network__tooltip span { color: #d8e5ef; font-size: 12px; }
 .code-network__detail { position: absolute; left: 12px; bottom: 12px; max-width: min(620px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 9px; background: rgba(13, 34, 55, .92); color: #fff; }
 .code-network__detail span { font-size: 12px; color: #d8e5ef; }
 .code-network__symbols { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(216, 229, 239, .3); }
 .code-network__symbols > strong { display: block; margin-bottom: 5px; font-size: 12px; }
 .code-network__symbols > div { display: grid; max-height: 190px; gap: 4px; overflow: auto; }
-.code-network__symbols button { overflow: hidden; border: 0; border-radius: 4px; padding: 4px 6px; color: #e6f0f7; background: rgba(255, 255, 255, .1); font: inherit; font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.code-network__symbols button { overflow: hidden; border: 0; border-radius: 4px; padding: 4px 6px; color: #e6f0f7; background: rgba(255, 255, 255, .1); font: inherit; font-size: 12px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .code-network__symbols button:hover { background: rgba(255, 255, 255, .2); }
 .code-network__symbols button.is-class { border-left: 3px solid #c4b5fd; }
 .code-network__symbols button.is-function { border-left: 3px solid #7dd3c7; }

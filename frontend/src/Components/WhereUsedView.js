@@ -154,7 +154,7 @@ const panelStyle = {
 };
 
 const fieldLabelStyle = {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 800,
     letterSpacing: 0,
     color: WU.muted,
@@ -604,7 +604,7 @@ const WhereUsedView = ({
             <div style={{ ...panelStyle, marginBottom: 12, padding: '10px 12px' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
                 <div style={{ fontSize: 12, color: WU.muted, lineHeight: 1.5 }}>Search for a part, requirement, instance, or named business object. We rank matches, select the best one, then build its upward usage chain from the graph.</div>
-                <div style={{ marginTop: 8, fontSize: 11, color: WU.subtle, fontWeight: 600 }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: WU.subtle, fontWeight: 600 }}>
                     {suppliedSnapshot ? `${totalSearchableNodes} business-object candidates are available in the supplied snapshot.` : 'Enter a business object name to find recorded usage.'}
                 </div>
             </div>

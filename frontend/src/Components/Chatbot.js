@@ -469,7 +469,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
-                            padding: '1px 8px', fontSize: 11, fontWeight: 600,
+                            padding: '1px 8px', fontSize: 12, fontWeight: 600,
                         }}>{Math.ceil(chatMessages.length / 2)} {chatMessages.length <= 2 ? 'turn' : 'turns'}</span>
                     )}
                 </div>
@@ -483,7 +483,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         style={{
                             background: 'var(--theme-color-std-background)', color: 'var(--theme-color-std-text, #252a2e)',
                             border: '1px solid rgba(255,255,255,0.3)', borderRadius: 5,
-                            padding: '2px 10px', fontSize: 11, cursor: 'pointer',
+                            padding: '2px 10px', fontSize: 12, cursor: 'pointer',
                         }}
                     >Clear conversation</button>
                 )}
@@ -539,7 +539,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                             borderRadius: 6,
                                             color: CHAT_COLORS.primary,
                                             cursor: 'pointer',
-                                            fontSize: 11,
+                                            fontSize: 12,
                                             fontWeight: 500,
                                             textAlign: 'left',
                                             lineHeight: '1.35',
@@ -599,7 +599,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     {msg.restored && <p>Saved answer — evidence has not been refreshed.</p>}
                                     {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
-                                        <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>
+                                        <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 12, color: '#888' }}>...</span>
                                     )}
                                 </div>
                             </div>

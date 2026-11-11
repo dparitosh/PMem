@@ -76,7 +76,7 @@ export default function DataGridWidget({
       {(title || subtitle) && (
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${widgetColors.border}` }}>
           {title && <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: widgetColors.text }}>{title}</h3>}
-          {subtitle && <div style={{ marginTop: 4, fontSize: 11, color: widgetColors.muted }}>{subtitle}</div>}
+          {subtitle && <div style={{ marginTop: 4, fontSize: 12, color: widgetColors.muted }}>{subtitle}</div>}
         </div>
       )}
       {rows.length === 0 ? (

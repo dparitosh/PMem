@@ -202,7 +202,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
               {term.label || term.term_id.split(':').pop()}
             </span>
             <span style={{
-              fontSize: '10px',
+              fontSize: '12px',
               color: C.textSec,
               background: C.bg,
               border: `1px solid ${C.border}`,
@@ -220,7 +220,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
           </div>
         )}
         {(hiddenChildrenCount > 0 || depth === TAXONOMY_MAX_DEPTH) && (
-          <div style={{ paddingLeft: `${24 + (depth * 18)}px`, fontSize: '11px', color: C.textMuted }}>
+          <div style={{ paddingLeft: `${24 + (depth * 18)}px`, fontSize: '12px', color: C.textMuted }}>
             {depth === TAXONOMY_MAX_DEPTH
               ? 'Refine the filter to inspect deeper taxonomy branches.'
               : `${hiddenChildrenCount} additional child nodes hidden until you narrow the filter.`}
@@ -250,7 +250,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
           { label: 'Individuals', value: reasoning?.summary?.individuals ?? taxonomy?.reasoning_summary?.individuals ?? 0 },
         ].map((item) => (
           <div key={item.label} style={{ background: C.surface, padding: '10px 12px' }}>
-            <div style={{ fontSize: '10px', fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{item.label}</div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{item.label}</div>
             <div style={{ fontSize: '22px', fontWeight: 800, color: C.textPrimary, marginTop: '4px' }}>{item.value}</div>
           </div>
         ))}
@@ -260,28 +260,28 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
         <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, overflow: 'hidden' }}>
           <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Ontology semantics</span>
-            <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
               {reasoning.summary?.classes || 0} classes  |  {reasoning.summary?.subclass_edges || 0} subclass links
             </span>
           </div>
           <div style={{ padding: '10px 12px', display: 'grid', gap: '10px' }}>
             <div style={{ display: 'grid', gap: '6px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Classes</div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Classes</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {(reasoning.classes || []).slice(0, 10).map((cls) => (
-                  <span key={cls.iri} title={cls.iri} style={{ fontSize: '11px', color: C.textPrimary, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px 7px' }}>
+                  <span key={cls.iri} title={cls.iri} style={{ fontSize: '12px', color: C.textPrimary, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px 7px' }}>
                     {cls.label}
                   </span>
                 ))}
               </div>
             </div>
             <div style={{ display: 'grid', gap: '6px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Object Properties</div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Object Properties</div>
               <div style={{ display: 'grid', gap: '6px' }}>
                 {(reasoning.object_properties || []).slice(0, 6).map((prop) => (
                   <div key={prop.iri} style={{ fontSize: '12px', color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '6px 8px' }}>
                     <strong>{prop.label}</strong>
-                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       Domain: {(prop.domain || []).map((d) => d.label).join(', ') || 'None'}  |  Range: {(prop.range || []).map((r) => r.label).join(', ') || 'None'}
                     </div>
                   </div>
@@ -289,10 +289,10 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
               </div>
             </div>
             <div style={{ display: 'grid', gap: '6px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Individuals</div>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Individuals</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {(reasoning.individuals || []).slice(0, 10).map((individual) => (
-                  <span key={individual.iri} title={individual.iri} style={{ fontSize: '11px', color: C.textPrimary, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px 7px' }}>
+                  <span key={individual.iri} title={individual.iri} style={{ fontSize: '12px', color: C.textPrimary, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px 7px' }}>
                     {individual.label}
                   </span>
                 ))}
@@ -307,12 +307,12 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
           <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Taxonomy Browser</span>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {taxonomy?.extraction_source && (
-              <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
                 Taxonomy: {taxonomy.extraction_source}
               </span>
             )}
             {reasoning?.engine === 'semantica' && (
-              <span style={{ fontSize: '10px', fontWeight: 700, color: C.primaryText, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: C.primaryText, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
                 Asserted ontology · structural validation
               </span>
             )}
@@ -320,7 +320,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
         </div>
         {Array.isArray(reasoning?.diagnostics) && reasoning.diagnostics.length > 0 && (
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, background: C.bg, display: 'grid', gap: '6px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Reasoning diagnostics</div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Reasoning diagnostics</div>
             {reasoning.diagnostics.slice(0, 3).map((item, idx) => (
               <div key={`${item.category || 'diag'}-${idx}`} style={{ fontSize: '12px', color: C.textPrimary, lineHeight: 1.45 }}>
                 <strong style={{ color: item.severity === 'warning' ? C.red : C.primary }}>{item.category || item.severity}</strong>: {item.message}
@@ -354,7 +354,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
               <section key={prefix} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
                 <div style={{ background: C.bg, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 800, color: C.primaryText }}>{prefix}</span>
-                  <span style={{ fontSize: '11px', color: C.textSec }}>{terms.length} terms</span>
+                  <span style={{ fontSize: '12px', color: C.textSec }}>{terms.length} terms</span>
                 </div>
                 <div style={{ padding: '8px 10px', display: 'grid', gap: '8px' }}>
                   {hasHierarchy ? prefixRoots.slice(0, TAXONOMY_MAX_ROOTS).map((termId) => (
@@ -368,7 +368,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
                           key={term.term_id}
                           title={term.term_id}
                           style={{
-                            fontSize: '11px',
+                            fontSize: '12px',
                             color: C.textPrimary,
                             background: C.bg,
                             border: `1px solid ${C.border}`,
@@ -386,7 +386,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
                     </div>
                   )}
                   {hasHierarchy && prefixRoots.length > TAXONOMY_MAX_ROOTS && (
-                    <div style={{ fontSize: '11px', color: C.textMuted }}>
+                    <div style={{ fontSize: '12px', color: C.textMuted }}>
                       {prefixRoots.length - TAXONOMY_MAX_ROOTS} additional root branches hidden until you narrow the filter.
                     </div>
                   )}

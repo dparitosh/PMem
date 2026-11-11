@@ -41,19 +41,19 @@ const SimilarPartsResult = ({ data }) => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.primaryLight, textAlign: 'center' }}>
               <div style={{ fontSize: '28px', fontWeight: 800, color: C.primaryText }}>{data.similar_parts?.length || 0}</div>
-              <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Candidates found</div>
+              <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Candidates found</div>
             </div>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.bg, textAlign: 'center' }}>
               <div style={{ fontSize: '28px', fontWeight: 800, color: C.orange }}>
                 {data.similar_parts?.some(p => typeof p.shared_assembly === 'boolean') ? data.similar_parts.filter(p => p.shared_assembly).length : 'Not assessed'}
               </div>
-              <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Shared assembly</div>
+              <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Shared assembly</div>
             </div>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.bg, textAlign: 'center' }}>
               <div style={{ fontSize: '28px', fontWeight: 800, color: C.green }}>
                 {data.similar_parts?.filter(p => p.type_match ?? p.score_evidence?.graph_type_match).length || 0}
               </div>
-              <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Type match</div>
+              <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Type match</div>
             </div>
           </div>
         </div>

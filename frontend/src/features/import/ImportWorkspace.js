@@ -1844,7 +1844,7 @@ export default function ImportWorkspace() {
           marginBottom: '8px',
         }}>
           <span style={{
-            fontSize: '10px',
+            fontSize: '12px',
             fontWeight: '800',
             color: C.textPrimary,
             marginRight: '2px',
@@ -1875,12 +1875,12 @@ export default function ImportWorkspace() {
                 title={workflow.description}
               >
                 <Icon size={13} strokeWidth={2.4} />
-                <span style={{ fontSize: '10px', fontWeight: '800', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: '800', whiteSpace: 'nowrap' }}>
                   {workflow.title}
                 </span>
                 {isRecommended && (
                   <span style={{
-                    fontSize: '8px',
+                    fontSize: '12px',
                     fontWeight: '800',
                     color: isActive ? '#fff' : C.primary,
                     background: isActive ? 'rgba(255,255,255,0.16)' : '#FFFFFF',
@@ -1903,7 +1903,7 @@ export default function ImportWorkspace() {
                 border: `1px solid ${C.border}`,
                 borderRadius: '4px',
                 padding: '5px 8px',
-                fontSize: '10px',
+                fontSize: '12px',
                 fontWeight: '800',
                 color: C.textPrimary,
                 cursor: 'pointer',
@@ -1923,7 +1923,7 @@ export default function ImportWorkspace() {
           flexWrap: 'wrap',
         }}>
           <label htmlFor="import-workflow-select" style={{
-            fontSize: '10px',
+            fontSize: '12px',
             fontWeight: '700',
             color: C.textPrimary,
             whiteSpace: 'nowrap',
@@ -1939,7 +1939,7 @@ export default function ImportWorkspace() {
               flex: '1 1 260px',
               maxWidth: '460px',
               padding: '5px 8px',
-              fontSize: '11px',
+              fontSize: '12px',
               border: `1px solid ${C.borderDark}`,
               borderRadius: '4px',
               background: C.bg,
@@ -1974,7 +1974,7 @@ export default function ImportWorkspace() {
             );
           })()}
           <div style={{
-            fontSize: '9px',
+            fontSize: '12px',
             color: C.textSec,
             flex: '2 1 260px',
             minWidth: '220px',
@@ -1985,7 +1985,7 @@ export default function ImportWorkspace() {
             {fallbackWorkflow.description} Prerequisite: {fallbackWorkflow.prerequisite}.
           </div>
           <span style={{
-            fontSize: '9px',
+            fontSize: '12px',
             color: canRunSelectedWorkflow ? C.green : C.orange,
             fontWeight: '700',
             background: canRunSelectedWorkflow ? '#E8F5E9' : '#FFF8E1',
@@ -1998,7 +1998,7 @@ export default function ImportWorkspace() {
           </span>
           {selectedWorkflow === recommendedWorkflowId && (
             <span style={{
-              fontSize: '9px',
+              fontSize: '12px',
               fontWeight: '700',
               color: C.primaryText,
               background: '#FFFFFF',
@@ -2020,7 +2020,7 @@ export default function ImportWorkspace() {
           alignItems: 'center',
         }}>
           <span style={{
-            fontSize: '9px',
+            fontSize: '12px',
             fontWeight: '700',
             color: C.textPrimary,
             background: C.bg,
@@ -2031,7 +2031,7 @@ export default function ImportWorkspace() {
             {workflowOptions.length} workflows
           </span>
           <span style={{
-            fontSize: '9px',
+            fontSize: '12px',
             color: C.textSec,
           }}>
             {groupedWorkflows.map(group => `${group.category} ${group.items.length}`).join('  /  ')}
@@ -2053,7 +2053,7 @@ export default function ImportWorkspace() {
             padding: '6px',
             background: C.bg,
           }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
               Stages
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -2061,7 +2061,7 @@ export default function ImportWorkspace() {
                 <span
                   key={`${fallbackWorkflow.id}-${stage}`}
                   style={{
-                    fontSize: '8px',
+                    fontSize: '12px',
                     color: C.textPrimary,
                     background: C.surface,
                     border: `1px solid ${C.borderDark}`,
@@ -2081,7 +2081,7 @@ export default function ImportWorkspace() {
             padding: '6px',
             background: C.bg,
           }}>
-            <div style={{ fontSize: '9px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
               Outputs
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -2089,7 +2089,7 @@ export default function ImportWorkspace() {
                 <span
                   key={`${fallbackWorkflow.id}-${output}`}
                   style={{
-                    fontSize: '8px',
+                    fontSize: '12px',
                     color: C.textSec,
                     background: C.surface,
                     border: `1px solid ${C.border}`,
@@ -2121,7 +2121,7 @@ export default function ImportWorkspace() {
           }}>
             {selectedWorkflow === 'instance.link' && (
               <>
-                <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
                   Source instance
                 </label>
                 <select
@@ -2131,7 +2131,7 @@ export default function ImportWorkspace() {
                   style={{
                     minWidth: '220px',
                     padding: '4px 8px',
-                    fontSize: '10px',
+                    fontSize: '12px',
                     border: `1px solid ${C.borderDark}`,
                     borderRadius: '3px',
                   }}
@@ -2145,7 +2145,7 @@ export default function ImportWorkspace() {
                 </select>
               </>
             )}
-            <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+            <label style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
               {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology:'}
             </label>
             <select
@@ -2155,7 +2155,7 @@ export default function ImportWorkspace() {
               style={{
                 minWidth: '180px',
                 padding: '4px 8px',
-                fontSize: '10px',
+                fontSize: '12px',
                 border: `1px solid ${C.borderDark}`,
                 borderRadius: '3px',
               }}
@@ -2178,7 +2178,7 @@ export default function ImportWorkspace() {
                 color: C.primaryText,
                 border: `1px solid ${C.borderDark}`,
                 borderRadius: '3px',
-                fontSize: '10px',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: ontologyCatalogState.loading ? 'not-allowed' : 'pointer',
                 opacity: ontologyCatalogState.loading ? 0.6 : 1,
@@ -2191,7 +2191,7 @@ export default function ImportWorkspace() {
             </button>
             {selectedWorkflow === 'ontology.merge' && (
               <>
-                <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
                   Target ontology
                 </label>
                 <select
@@ -2200,7 +2200,7 @@ export default function ImportWorkspace() {
                   style={{
                     minWidth: '180px',
                     padding: '4px 8px',
-                    fontSize: '10px',
+                    fontSize: '12px',
                     border: `1px solid ${C.borderDark}`,
                     borderRadius: '3px',
                   }}
@@ -2227,7 +2227,7 @@ export default function ImportWorkspace() {
                 background: C.bg,
                 padding: '6px 8px',
                 color: C.textSec,
-                fontSize: '10px',
+                fontSize: '12px',
                 lineHeight: 1.45,
               }}>
                 <strong style={{ color: C.textPrimary }}>Bridge steps:</strong> pick the completed import, choose the target ontology, preview the mapping, review candidates, then publish approved mappings. For CAD STEP/STP/STPX, use <strong style={{ color: C.primaryText }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>.
@@ -2249,7 +2249,7 @@ export default function ImportWorkspace() {
                   color: '#fff',
                   border: 'none',
                   borderRadius: '3px',
-                  fontSize: '10px',
+                  fontSize: '12px',
                   fontWeight: '700',
                   cursor: (workflowLoading || workflowBlockReason) ? 'not-allowed' : 'pointer',
                 }}
@@ -2266,7 +2266,7 @@ export default function ImportWorkspace() {
                     color: '#fff',
                     border: 'none',
                     borderRadius: '3px',
-                    fontSize: '10px',
+                    fontSize: '12px',
                     fontWeight: '700',
                     cursor: workflowLoading ? 'not-allowed' : 'pointer',
                   }}
@@ -2276,7 +2276,7 @@ export default function ImportWorkspace() {
               )}
             </div>
             {workflowRun?.artifact_manifest && (
-              <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec, lineHeight: 1.45 }}>
+              <div style={{ flexBasis: '100%', fontSize: '12px', color: C.textSec, lineHeight: 1.45 }}>
                 <div>
                   Generated {workflowRun.artifact_manifest.artifacts?.length || 0} retained artifact(s) in task {workflowRun.task_id}.
                 </div>
@@ -2296,7 +2296,7 @@ export default function ImportWorkspace() {
                           border: `1px solid ${C.border}`,
                           borderRadius: '999px',
                           padding: '2px 8px',
-                          fontSize: '9px',
+                          fontSize: '12px',
                           fontWeight: '700',
                         }}
                       >
@@ -2329,7 +2329,7 @@ export default function ImportWorkspace() {
                         borderRadius: '3px',
                         color: C.textPrimary,
                         padding: '2px 5px',
-                        fontSize: '9px',
+                        fontSize: '12px',
                         maxWidth: '240px',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -2344,7 +2344,7 @@ export default function ImportWorkspace() {
               </div>
             )}
             {selectedWorkflow === 'ontology.merge' && workflowRun?.result && !workflowRun?.artifact_manifest && (
-              <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec, lineHeight: 1.45 }}>
+              <div style={{ flexBasis: '100%', fontSize: '12px', color: C.textSec, lineHeight: 1.45 }}>
                 <div style={{ color: C.textPrimary }}>
                   {workflowRun.result.message || 'Ontology merge completed.'}
                 </div>
@@ -2393,7 +2393,7 @@ export default function ImportWorkspace() {
                 background: C.bg,
               }}
             >
-              <div style={{ fontSize: '10px', color: C.textSec, marginBottom: '4px' }}>{item.label}</div>
+              <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '4px' }}>{item.label}</div>
               <div style={{ fontSize: '18px', fontWeight: 700, color: item.color }}>{item.value}</div>
             </div>
           ))}
@@ -2426,23 +2426,23 @@ export default function ImportWorkspace() {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {file.name}
                     </div>
-                    <div style={{ fontSize: '10px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       {typeof status.message==='string' ? status.message.replace(/\bNeo4j\b/gi,'knowledge graph') : 'Running...'}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '10px', color: C.textSec }}>Commit phase</div>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
+                    <div style={{ fontSize: '12px', color: C.textSec }}>Commit phase</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>
                       {phaseLabel || getStageLabel(status.stage)}
                       {batchLabel ? `  /  ${batchLabel}` : ''}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '10px', color: C.textSec }}>Counts</div>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
+                    <div style={{ fontSize: '12px', color: C.textSec }}>Counts</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>
                       {countsLabel}
                     </div>
                   </div>
@@ -2462,7 +2462,7 @@ export default function ImportWorkspace() {
         padding: '8px 10px',
         marginBottom: '10px',
       }}>
-        <p style={{ fontSize: '10px', fontWeight: '600', color: C.textPrimary, margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <p style={{ fontSize: '12px', fontWeight: '600', color: C.textPrimary, margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Stages
         </p>
         <div style={{
@@ -2530,7 +2530,7 @@ export default function ImportWorkspace() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontWeight: '700',
-                      fontSize: '10px',
+                      fontSize: '12px',
                       flexShrink: 0,
                       border: `2px solid ${(idx === maxCurrentIdx && !isSelected) ? C.orange : (isSelected ? C.primary : C.borderDark)}`,
                       transition: 'all 0.3s ease',
@@ -2542,7 +2542,7 @@ export default function ImportWorkspace() {
 
                   {/* Stage label */}
                   <div style={{
-                    fontSize: '9px',
+                    fontSize: '12px',
                     fontWeight: '600',
                     color: (() => {
                       if (isSelected) return C.primary;
@@ -2558,7 +2558,7 @@ export default function ImportWorkspace() {
                   </div>
                   {/* Stage description */}
                   <div style={{
-                    fontSize: '8px',
+                    fontSize: '12px',
                     color: C.textMuted,
                     marginTop: '1px',
                     lineHeight: '1.2',
@@ -2568,7 +2568,7 @@ export default function ImportWorkspace() {
                   {/* File count badge */}
                   {filesAtStage > 0 && (
                     <div style={{
-                      fontSize: '9px',
+                      fontSize: '12px',
                       fontWeight: '700',
                       color: '#fff',
                       background: C.primary,
@@ -2629,7 +2629,7 @@ export default function ImportWorkspace() {
               return (
                 <div>
                   <div style={{
-                    fontSize: '10px',
+                    fontSize: '12px',
                     fontWeight: '600',
                     color: C.textPrimary,
                     marginBottom: '4px',
@@ -2647,7 +2647,7 @@ export default function ImportWorkspace() {
                           color: '#fff',
                           border: 'none',
                           borderRadius: '2px',
-                          fontSize: '9px',
+                          fontSize: '12px',
                           fontWeight: '600',
                           cursor: 'pointer',
                         }}
@@ -2664,7 +2664,7 @@ export default function ImportWorkspace() {
                           border: `1px solid ${C.primary}`,
                           borderRadius: '3px',
                           padding: '2px 6px',
-                          fontSize: '9px',
+                          fontSize: '12px',
                           color: C.primaryText,
                           fontWeight: '500',
                         }}>
@@ -2674,7 +2674,7 @@ export default function ImportWorkspace() {
                     </div>
                   ) : (
                     <div style={{
-                      fontSize: '11px',
+                      fontSize: '12px',
                       color: C.textMuted,
                       fontStyle: 'italic',
                     }}>
@@ -2753,10 +2753,10 @@ export default function ImportWorkspace() {
         flexWrap: 'wrap',
       }}>
         <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-          <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
             Ontology registration workflow
           </div>
-          <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
+          <div style={{ fontSize: '12px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
             Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
             <span style={{ color: C.primaryText, fontWeight: '700' }}> Import instance graph</span>.
           </div>
@@ -2780,7 +2780,7 @@ export default function ImportWorkspace() {
           {dependencyTarget && <button type="button" onClick={() => setDependencyTarget(null)}>Back to upload list</button>}
           {ontologyCatalogState.message && (
             <div style={{
-              fontSize: '9px',
+              fontSize: '12px',
               color: ontologyCatalogState.stale ? C.orange : C.textSec,
               marginTop: '4px',
             }}>
@@ -2798,7 +2798,7 @@ export default function ImportWorkspace() {
             color: C.primaryText,
             border: `1px solid ${C.borderDark}`,
             borderRadius: '3px',
-            fontSize: '10px',
+            fontSize: '12px',
             fontWeight: '700',
             cursor: ontologyCatalogState.loading ? 'not-allowed' : 'pointer',
             opacity: ontologyCatalogState.loading ? 0.6 : 1,
@@ -2820,7 +2820,7 @@ export default function ImportWorkspace() {
             color: '#fff',
             border: 'none',
             borderRadius: '3px',
-            fontSize: '10px',
+            fontSize: '12px',
             fontWeight: '700',
             cursor: (workflowBlockReason || workflowLoading) ? 'not-allowed' : 'pointer',
             opacity: (workflowBlockReason || workflowLoading) ? 0.5 : 1,
@@ -2846,10 +2846,10 @@ export default function ImportWorkspace() {
         flexWrap: 'wrap',
       }}>
         <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-          <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
             Structural import only
           </div>
-          <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
+          <div style={{ fontSize: '12px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
             Files load first as source-faithful instance data. Ontology selection and semantic linking now happen in
             <span style={{ color: C.primaryText, fontWeight: '700' }}> Link instances to ontology</span>.
           </div>
@@ -2861,7 +2861,7 @@ export default function ImportWorkspace() {
               borderRadius: '4px',
               background: ap242OntologyOption ? C.bg : '#FFF8E1',
               color: C.textPrimary,
-              fontSize: '10px',
+              fontSize: '12px',
               lineHeight: 1.45,
             }}>
               <strong>STEP/AP242 guidance:</strong> 1. Run validation. 2. Open the retained run in Data Flow and review publication. 3. After a publication receipt is retained, open <strong>Link instances to ontology</strong>. 4. Select the published source and <strong>{ap242OntologyOption?.name || 'AP242 Domain Model'}</strong>. 5. Review and publish approved mappings.
@@ -2874,7 +2874,7 @@ export default function ImportWorkspace() {
           )}
           {ontologyCatalogState.message && (
             <div style={{
-              fontSize: '9px',
+              fontSize: '12px',
               color: ontologyCatalogState.stale ? C.orange : C.textSec,
               marginTop: '4px',
             }}>
@@ -2882,7 +2882,7 @@ export default function ImportWorkspace() {
             </div>
           )}
           {ontologyCatalogState.lastLoadedAt && (
-            <div style={{ fontSize: '9px', color: C.textMuted, marginTop: '4px' }}>
+            <div style={{ fontSize: '12px', color: C.textMuted, marginTop: '4px' }}>
               Ontology catalog source: {ontologyCatalogState.source === 'live' ? 'live registry' : ontologyCatalogState.source === 'cache' ? 'cached catalog' : 'unavailable'}
             </div>
           )}
@@ -2897,7 +2897,7 @@ export default function ImportWorkspace() {
             color: '#fff',
             border: 'none',
             borderRadius: '3px',
-            fontSize: '10px',
+            fontSize: '12px',
             fontWeight: '700',
             cursor: (workflowBlockReason || workflowLoading) ? 'not-allowed' : 'pointer',
             opacity: (workflowBlockReason || workflowLoading) ? 0.5 : 1,
@@ -2915,7 +2915,7 @@ export default function ImportWorkspace() {
         borderRadius: '4px',
         padding: '6px 10px',
         marginBottom: '8px',
-        fontSize: '10px',
+        fontSize: '12px',
         color: C.textSec,
         lineHeight: 1.45,
       }}>
@@ -2952,7 +2952,7 @@ export default function ImportWorkspace() {
           background: C.bg,
           borderBottom: `1px solid ${C.border}`,
           fontWeight: '600',
-          fontSize: '9px',
+          fontSize: '12px',
           color: C.textPrimary,
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
@@ -2977,7 +2977,7 @@ export default function ImportWorkspace() {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '10px',
-            fontSize: '10px',
+            fontSize: '12px',
             color: C.textMuted,
           }}>
             <span>Supported: CSV, JSON, STEP, STPX, XML, XSD, XMI, OWL, RDF, TTL, Excel</span>
@@ -2989,7 +2989,7 @@ export default function ImportWorkspace() {
                 color: '#fff',
                 border: 'none',
                 borderRadius: '3px',
-                fontSize: '10px',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
@@ -3020,7 +3020,7 @@ export default function ImportWorkspace() {
                     padding: '6px 10px',
                     borderBottom: `1px solid ${C.border}`,
                     alignItems: 'center',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     background: status.stage === 'error' ? '#FFF5F5' : 'transparent',
                   }}
                 >
@@ -3036,13 +3036,13 @@ export default function ImportWorkspace() {
                       }}>
                         {file.name}
                       </div>
-                      {file.schemaSetSources?.length > 1 && <details style={{fontSize:'10px',marginTop:4}}>
+                      {file.schemaSetSources?.length > 1 && <details style={{fontSize:'12px',marginTop:4}}>
                         <summary>{file.schemaSetSources.length} XSD sources · one ontology</summary>
                         <ul>{file.schemaSetSources.map((name,index) => <li key={`${index}:${name}`}>{name}</li>)}</ul>
                       </details>}
                       {(status.message || file.persisted) && (
                         <div style={{
-                          fontSize: '9px',
+                          fontSize: '12px',
                           color: C.textSec,
                           marginTop: '2px',
                           whiteSpace: 'normal',
@@ -3051,7 +3051,7 @@ export default function ImportWorkspace() {
                           {typeof status.message==='string' ? status.message.replace(/\bNeo4j\b/gi,'knowledge graph') : 'Persisted job monitor'}{status.dataJobRunId && <a href={pipelineRunLink(status.dataJobRunId)}> View run</a>}{file.persisted && !file.fileObj && status.error ? ' Re-attach the source file to retry.' : ''}
                         </div>
                       )}
-                      <details style={{ fontSize: '10px', marginTop: 4 }}>
+                      <details style={{ fontSize: '12px', marginTop: 4 }}>
                         <summary>Processing details</summary>
                         <div>State: {status.status || 'pending'}  /  Stage: {status.backendStage || status.stage || 'upload'}</div>
                         {status.startedAt && <div>Started: {new Date(status.startedAt).toLocaleString()}</div>}
@@ -3060,7 +3060,7 @@ export default function ImportWorkspace() {
                     </div>
                     {file.ontologyName && (
                       <span style={{
-                        fontSize: '9px',
+                        fontSize: '12px',
                         fontWeight: '700',
                         padding: '2px 6px',
                         backgroundColor: C.primaryLight,
@@ -3079,7 +3079,7 @@ export default function ImportWorkspace() {
                     <div style={{
                       gridColumn: '1 / -1',
                       marginTop: '-2px',
-                      fontSize: '9px',
+                      fontSize: '12px',
                       color: C.textSec,
                       fontFamily: 'monospace',
                       overflow: 'hidden',
@@ -3093,7 +3093,7 @@ export default function ImportWorkspace() {
                   {/* File size */}
                   <div style={{
                     color: C.textMuted,
-                    fontSize: '11px',
+                    fontSize: '12px',
                   }}>
                     {formatFileSize(file.size)}
                   </div>
@@ -3108,7 +3108,7 @@ export default function ImportWorkspace() {
                     color: statusBadge.color,
                     borderRadius: '4px',
                     fontWeight: '600',
-                    fontSize: '10px',
+                    fontSize: '12px',
                     whiteSpace: 'nowrap',
                   }}>
                     {statusBadge.text}
@@ -3139,7 +3139,7 @@ export default function ImportWorkspace() {
                       minWidth: '28px',
                       textAlign: 'right',
                       color: C.textSec,
-                      fontSize: '10px',
+                      fontSize: '12px',
                       fontWeight: '600',
                     }}>
                       {Math.round(status.progress)}%
@@ -3150,24 +3150,24 @@ export default function ImportWorkspace() {
                   <div style={{
                     color: C.textSec,
                     fontWeight: '500',
-                    fontSize: '11px',
+                    fontSize: '12px',
                   }}
                   title={status.stats?.ontology_mapping ? `Import context: ${status.stats.ontology_mapping === 'auto' ? 'Auto-detected from ' + (status.stats.mapping_type || 'file format') : status.stats.ontology_mapping}` : 'Structural import'}>
                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {status.governedImport && !status.committed && ['completed', 'quality_warning'].includes(status.status || status.backendStage) ? 'Publication pending' : getStageLabel(status.stage)}
                         {status.stage === 'map' && status.stats?.ontology_mapping && (
-                          <span style={{ fontSize: '9px', color: C.orange, marginLeft: '4px' }}>
+                          <span style={{ fontSize: '12px', color: C.orange, marginLeft: '4px' }}>
                             ({status.stats.ontology_mapping === 'auto' ? 'Auto' : status.stats.ontology_mapping})
                           </span>
                         )}
                         {typeof status.shaclConforms !== 'undefined' && status.shaclConforms !== null && (
-                          <span style={{ fontSize: '10px', fontWeight: '700', marginLeft: '8px', color: status.shaclConforms ? C.green : C.orange }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', marginLeft: '8px', color: status.shaclConforms ? C.green : C.orange }}>
                             {status.shaclConforms ? 'Ontology SHACL OK' : 'Ontology SHACL Failed'}
                           </span>
                         )}
                       </div>
                       {(status.commitPhase || status.batchProgress) && (
-                        <div style={{ fontSize: '9px', color: C.textSec, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {[getCommitPhaseLabel(status.commitPhase), formatBatchProgress(status.batchProgress)].filter(Boolean).join('  /  ')}
                         </div>
                       )}
@@ -3178,7 +3178,7 @@ export default function ImportWorkspace() {
                     color: status.stats?.entities_found ? C.textPrimary : C.textMuted,
                     textAlign: 'center',
                     fontWeight: '600',
-                    fontSize: '11px',
+                    fontSize: '12px',
                   }}>
                     {status.stats?.entities_found !== undefined ? status.stats.entities_found : '-'}
                   </div>
@@ -3188,7 +3188,7 @@ export default function ImportWorkspace() {
                     color: status.stats?.relationships_found ? C.textPrimary : C.textMuted,
                     textAlign: 'center',
                     fontWeight: '600',
-                    fontSize: '11px',
+                    fontSize: '12px',
                   }}>
                     {status.stats?.relationships_found !== undefined ? status.stats.relationships_found : '-'}
                   </div>
@@ -3249,7 +3249,7 @@ export default function ImportWorkspace() {
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: '600',
                           cursor: (canRunSelectedWorkflow && (file.fileObj || !file.persisted)) ? 'pointer' : 'not-allowed',
                           opacity: (canRunSelectedWorkflow && (file.fileObj || !file.persisted)) ? 1 : 0.6,
@@ -3278,7 +3278,7 @@ export default function ImportWorkspace() {
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: '600',
                           cursor: 'not-allowed',
                           opacity: 0.7,
@@ -3301,7 +3301,7 @@ export default function ImportWorkspace() {
                           color: C.primaryText,
                           border: `1px solid ${C.primary}`,
                           borderRadius: '4px',
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: '600',
                           cursor: 'pointer',
                         }}
@@ -3344,7 +3344,7 @@ export default function ImportWorkspace() {
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: '600',
                           cursor: 'pointer',
                           display: 'flex',
@@ -3366,7 +3366,7 @@ export default function ImportWorkspace() {
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: '600',
                           cursor: 'not-allowed',
                           opacity: 0.75,
@@ -3393,7 +3393,7 @@ export default function ImportWorkspace() {
                           borderRadius: '4px',
                           background: C.bg,
                           color: C.textPrimary,
-                          fontSize: '10px',
+                          fontSize: '12px',
                           fontWeight: 700,
                           maxWidth: '118px',
                         }}
@@ -3412,7 +3412,7 @@ export default function ImportWorkspace() {
                         background: '#E8F5E9',
                         color: C.green,
                         borderRadius: '4px',
-                        fontSize: '10px',
+                        fontSize: '12px',
                         fontWeight: '600',
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -3429,7 +3429,7 @@ export default function ImportWorkspace() {
                         color: C.red,
                         border: `1px solid ${C.red}`,
                         borderRadius: '4px',
-                        fontSize: '10px',
+                        fontSize: '12px',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -3475,7 +3475,7 @@ export default function ImportWorkspace() {
                 padding: '6px 10px',
                 background: C.bg,
                 borderTop: `1px solid ${C.border}`,
-                fontSize: '10px',
+                fontSize: '12px',
               }}>
                 <div style={{ color: C.textMuted }}>
                   {files.length} file{files.length !== 1 ? 's' : ''}  /  {activeProcessingCount} processing
@@ -3496,7 +3496,7 @@ export default function ImportWorkspace() {
                     color: '#fff',
                     border: 'none',
                     borderRadius: '3px',
-                    fontSize: '10px',
+                    fontSize: '12px',
                     fontWeight: '600',
                     cursor: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 'not-allowed' : 'pointer',
                     opacity: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 0.5 : 1,

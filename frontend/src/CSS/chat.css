@@ -30,7 +30,7 @@
 .chat-composer-form textarea:focus-visible { outline: 2px solid var(--ui-accent, #005a9c); outline-offset: 1px; }
 .chat-composer-form button { padding: 8px 12px; border: 0; border-radius: 6px; background: var(--ui-accent, #005a9c); color: #fff; cursor: pointer; }
 .chat-composer-form button:disabled { opacity: .5; cursor: default; }
-.chat-answer-help { margin-top: 4px; font-size: 11px; color: var(--theme-color-soft-text, #66788a); }
+.chat-answer-help { margin-top: 4px; font-size: 12px; color: var(--theme-color-soft-text, #66788a); }
 .chat-answer-help summary { cursor: pointer; }
 .chat-messages:focus-visible { outline: 2px solid var(--ui-accent, #005a9c); outline-offset: -2px; }
 

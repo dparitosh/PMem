@@ -237,12 +237,12 @@ export default function OntologyMetadataForm({
               }}
             />
             {validationErrors.ontologyName && (
-              <div style={{ color: C.red, fontSize: '11px', marginTop: '4px' }}>
+              <div style={{ color: C.red, fontSize: '12px', marginTop: '4px' }}>
                 {validationErrors.ontologyName}
               </div>
             )}
             <div style={{
-              fontSize: '11px',
+              fontSize: '12px',
               color: C.textMuted,
               marginTop: '4px'
             }}>
@@ -278,12 +278,12 @@ export default function OntologyMetadataForm({
               }}
             />
             {validationErrors.prefix && (
-              <div style={{ color: C.red, fontSize: '11px', marginTop: '4px' }}>
+              <div style={{ color: C.red, fontSize: '12px', marginTop: '4px' }}>
                 {validationErrors.prefix}
               </div>
             )}
             <div style={{
-              fontSize: '11px',
+              fontSize: '12px',
               color: C.textMuted,
               marginTop: '4px'
             }}>
@@ -306,10 +306,10 @@ export default function OntologyMetadataForm({
               fontSize: '13px',
               color: C.primaryText
             }}>
-              Generate As * {fileType === 'xsd' && <span style={{ fontSize: '11px', color: C.green }}>{publicationMode ? 'OWL for ontology publication' : 'SHACL for shape validation; OWL for ontology generation'}</span>} {fileType === 'xmi' && <span style={{ fontSize: '11px', color: C.green }}>OWL recommended</span>}
+              Generate As * {fileType === 'xsd' && <span style={{ fontSize: '12px', color: C.green }}>{publicationMode ? 'OWL for ontology publication' : 'SHACL for shape validation; OWL for ontology generation'}</span>} {fileType === 'xmi' && <span style={{ fontSize: '12px', color: C.green }}>OWL recommended</span>}
             </label>
             {showFileTypeError && (
-              <div style={{ color: C.red, fontSize: '11px', marginBottom: '8px', padding: '8px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '4px' }}>
+              <div style={{ color: C.red, fontSize: '12px', marginBottom: '8px', padding: '8px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '4px' }}>
                 <AlertTriangle size={12} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} aria-hidden="true" />
                 File type ".{fileType}" is not recognized. Supported types: .xsd, .xmi, .owl, .rdf, .ttl
               </div>
@@ -338,7 +338,7 @@ export default function OntologyMetadataForm({
               ))}
             </select>
             {validationErrors.generationType && (
-              <div style={{ color: C.red, fontSize: '11px', marginTop: '4px' }}>
+              <div style={{ color: C.red, fontSize: '12px', marginTop: '4px' }}>
                 {validationErrors.generationType}
               </div>
             )}
@@ -379,7 +379,7 @@ export default function OntologyMetadataForm({
                   <div>
                     <strong style={{ color: C.primaryText }}>Schema/Ontology</strong>
                     <br/>
-                    <span style={{ fontSize: '11px', color: C.textMuted }}>
+                    <span style={{ fontSize: '12px', color: C.textMuted }}>
                       For metadata and standards files (e.g., OMG SysML profile, reference ontologies)
                     </span>
                   </div>
@@ -402,7 +402,7 @@ export default function OntologyMetadataForm({
                   <div>
                     <strong style={{ color: C.primaryText }}>Instance/Model Data</strong>
                     <br/>
-                    <span style={{ fontSize: '11px', color: C.textMuted }}>
+                    <span style={{ fontSize: '12px', color: C.textMuted }}>
                       For concrete implementations (e.g., MBSE models, product data)
                     </span>
                   </div>

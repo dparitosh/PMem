@@ -50,7 +50,7 @@
 }
 
 .vocab-panel__chip-count {
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.75;
 }
 
@@ -92,7 +92,7 @@
 .vocab-panel__td--index {
   width: 40px;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.7;
 }
 
@@ -132,7 +132,7 @@
 
 .vocab-panel__term-id {
   font-family: monospace;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 2px;
   opacity: 0.75;
   word-break: break-all;
@@ -151,7 +151,7 @@
 }
 
 .vocab-panel__detail-heading {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   margin-bottom: 4px;
@@ -163,7 +163,7 @@
 }
 
 .vocab-panel__detail-code {
-  font-size: 11px;
+  font-size: 12px;
   word-break: break-all;
   opacity: 0.75;
 }

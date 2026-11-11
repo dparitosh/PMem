@@ -40,7 +40,7 @@ const ChangeImpactResult = ({ data }) => {
             </div>
           </div>
           <div style={{ minWidth: '260px' }}>
-            <div style={{ fontSize: '11px', color: C.textSec, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>Linked evidence indicator (heuristic)</div>
+            <div style={{ fontSize: '12px', color: C.textSec, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>Linked evidence indicator (heuristic)</div>
             {typeof data.impact_score === 'number' && Number.isFinite(data.impact_score) && <ScoreBar score={data.impact_score} />}
             {data.message && <p>{data.message}</p>}
           </div>

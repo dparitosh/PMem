@@ -112,7 +112,7 @@ function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
     <div style={{ marginBottom: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--theme-color-std-text)', marginBottom: 4 }}>{title}</div>
       <div style={{ overflowX: 'auto', maxHeight: 160, overflowY: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--theme-color-component-2)' }}>
               <th style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--theme-color-std-text)' }}>Name</th>

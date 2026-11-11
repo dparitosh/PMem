@@ -275,7 +275,7 @@ ix-application .export-buttons .btn {
 
 @media screen and (max-width: 576px) {
   ix-application .nav-tabs .nav-link {
-    font-size: 10px;
+    font-size: 12px;
     padding: 6px 8px;
   }
   

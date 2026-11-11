@@ -17,7 +17,7 @@ function RelBadge({ type }) {
     <span title={type} style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: '12px',
       background: s.bg, color: s.text, border: `1px solid ${s.border}`,
-      fontWeight: 700, fontSize: '11px', whiteSpace: 'nowrap',
+      fontWeight: 700, fontSize: '12px', whiteSpace: 'nowrap',
     }}>{label}</span>
   );
 }

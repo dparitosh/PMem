@@ -25,7 +25,7 @@
 .quality-table-scroll td { min-width:130px; }
 .quality-table-scroll td:first-child { min-width:200px; }
 .quality-table-scroll small { display:block; color:var(--ui-muted); margin-top:8px; }
-.quality-run-id { font-size:11px; overflow-wrap:anywhere; max-width:220px; }
+.quality-run-id { font-size: 12px; overflow-wrap:anywhere; max-width:220px; }
 .quality-status { display:inline-block; padding:5px 9px; background:var(--ui-background,#f3f6f8); border:1px solid var(--ui-border); border-radius:20px; font-size:12px; text-transform:capitalize; white-space:nowrap; }
 .quality-status--attention { border-color:var(--ui-danger,#b42318); }
 .quality-status--active { border-color:var(--ui-primary,#005a9c); }

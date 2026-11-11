@@ -413,7 +413,7 @@ export default function AdminPage({ onSchemaCleaned }) {
                 background: 'var(--ui-surface-alt)',
               }}
             >
-              <div style={{ fontSize: 11, color: widgetColors.muted, marginBottom: 4 }}>{catalog.title}</div>
+              <div style={{ fontSize: 12, color: widgetColors.muted, marginBottom: 4 }}>{catalog.title}</div>
               <div style={{ fontSize: 20, fontWeight: 800, color: widgetColors.text }}>{catalog.count}</div>
             </div>
           ))}

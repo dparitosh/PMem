@@ -20,7 +20,7 @@ const TH = {
   borderBottom: `2px solid ${C.primary}`,
   color: C.primaryText,
   fontWeight: 700,
-  fontSize: '11px',
+  fontSize: '12px',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
 };
@@ -38,7 +38,7 @@ const TABLE = { width: '100%', borderCollapse: 'collapse', fontSize: '13px' };
 const Badge = ({ color = C.primary, children }) => (
   <span style={{
     display: 'inline-block', padding: '2px 9px', borderRadius: '10px',
-    fontSize: '11px', fontWeight: 600, background: color, color: '#fff',
+    fontSize: '12px', fontWeight: 600, background: color, color: '#fff',
     marginRight: '5px',
   }}>{children}</span>
 );
@@ -80,7 +80,7 @@ const SectionHeader = ({ icon: Icon, label, count, color = C.primary }) => (
     {count !== undefined && (
       <span style={{
         background: C.primaryLight, color: C.primaryText,
-        fontSize: '11px', fontWeight: 700, padding: '1px 8px', borderRadius: '10px',
+        fontSize: '12px', fontWeight: 700, padding: '1px 8px', borderRadius: '10px',
       }}>{count}</span>
     )}
   </div>
@@ -137,7 +137,7 @@ const ResultTabBar = ({ tabs, active, onChange, children }) => {
             <span style={{
               background: isActive ? col : C.border,
               color: isActive ? '#fff' : C.textSec,
-              fontSize: '10px', fontWeight: 700,
+              fontSize: '12px', fontWeight: 700,
               padding: '1px 6px', borderRadius: '10px', minWidth: '18px', textAlign: 'center',
             }}>{t.count}</span>
           )}
@@ -157,7 +157,7 @@ const MetricChip = ({ value, label, color }) => (
     minWidth: '72px',
   }}>
     <span style={{ fontSize: '20px', fontWeight: 800, color, lineHeight: 1 }}>{value}</span>
-    <span style={{ fontSize: '10px', fontWeight: 600, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: '3px' }}>{label}</span>
+    <span style={{ fontSize: '12px', fontWeight: 600, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: '3px' }}>{label}</span>
   </div>
 );
 

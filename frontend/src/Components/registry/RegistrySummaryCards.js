@@ -3,7 +3,7 @@ import React from 'react';
 function Summary({ icon, label, value }) {
   return (
     <div style={{ borderLeft: '2px solid var(--ui-border, #d9e2ec)', padding: '4px 12px' }}>
-      <div style={{ display: 'flex', gap: 7, alignItems: 'center', color: 'var(--ui-muted, #52606d)', fontSize: 11, fontWeight: 700 }}>{icon}{label}</div>
+      <div style={{ display: 'flex', gap: 7, alignItems: 'center', color: 'var(--ui-muted, #52606d)', fontSize: 12, fontWeight: 700 }}>{icon}{label}</div>
       <div style={{ marginTop: 4, color: 'var(--ui-text, #102a43)', fontSize: 20, fontWeight: 800 }}>{value}</div>
     </div>
   );

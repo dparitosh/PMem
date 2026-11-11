@@ -41,15 +41,15 @@ const ManufacturingResult = ({ data }) => {
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '22px', fontWeight: 700, color: C.primaryText }}>{summary.total_direct || 0}</div>
-              <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Direct</div>
+              <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase' }}>Direct</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '22px', fontWeight: 700, color: C.orange }}>{instancesAssessed ? summary.total_instances ?? data.process_instances?.length ?? 0 : 'Not assessed'}</div>
-              <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Instances</div>
+              <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase' }}>Instances</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '22px', fontWeight: 700, color: C.amber }}>{relatedAssessed ? summary.total_related ?? data.related_part_processes?.length ?? 0 : 'Not assessed'}</div>
-              <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Related</div>
+              <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase' }}>Related</div>
             </div>
           </div>
         </div>
@@ -133,7 +133,7 @@ const ManufacturingResult = ({ data }) => {
                 }}>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: C.primaryText }}>{type}</div>
                   <div style={{ fontSize: '22px', fontWeight: 700, color: C.textPrimary, margin: '4px 0' }}>{procs.length}</div>
-                  <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>processes</div>
+                  <div style={{ fontSize: '12px', color: C.textSec, textTransform: 'uppercase' }}>processes</div>
                 </div>
               ))}
             </div>

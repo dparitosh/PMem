@@ -353,7 +353,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
               borderRadius: 999,
               background: (params.data.depth || 0) > 0 ? C.primaryLight : C.bg,
               color: (params.data.depth || 0) > 0 ? C.primary : C.textMuted,
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: 800,
             }}
           >
@@ -445,7 +445,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
           <div className="ontology-browser-stats" style={{ display: 'grid', gap: 8, minWidth: 'min(100%, 420px)' }}>
             {browserStats.map((stat) => (
               <div key={stat.label} style={{ borderLeft: `2px solid ${C.border}`, padding: '4px 12px' }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{stat.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{stat.label}</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.primaryText, marginTop: 2 }}>{stat.value}</div>
               </div>
             ))}
@@ -460,7 +460,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
             <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.textPrimary }}>Term details</h3>
           </div>
           {selectedTerm?.ontology_prefix && (
-            <span style={{ alignSelf: 'center', background: C.primaryLight, color: C.primaryText, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ alignSelf: 'center', background: C.primaryLight, color: C.primaryText, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 800, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {selectedTerm.ontology_prefix}
             </span>
           )}
@@ -471,18 +471,18 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
               <div style={{ fontSize: 18, fontWeight: 800, color: C.primaryText, wordBreak: 'break-word' }}>
                 {selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}
               </div>
-              <code style={{ display: 'block', fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
+              <code style={{ display: 'block', fontSize: 12, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
             </section>
             <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Superclass axioms (named parents and restrictions)</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Superclass axioms (named parents and restrictions)</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{selectedTerm.browse_declarations?.parents?.length ?? hierarchy.parentByChild.get(selectedTerm.term_id)?.length ?? 0}</div>
             </div>
             <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{selectedTerm.browse_declarations?.children_count ?? hierarchy.childrenByParent.get(selectedTerm.term_id)?.length ?? 0}</div>
             </div>
             <section style={{ display: 'grid', gap: 6, minWidth: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Related Axioms</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Related Axioms</div>
               <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
                 {selectedAxioms.length === 0 ? (
                   <div style={{ fontSize: 12, color: C.textMuted, borderLeft: `2px solid ${C.border}`, padding: 8, whiteSpace: 'nowrap' }}>
@@ -508,11 +508,11 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
                 {selectedPropertyRow && (
                   <>
                     <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginTop: 4 }}>{selectedPropertyRow.kind}</div>
                     </div>
                     <div style={{ borderLeft: `2px solid ${C.border}`, padding: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain / Range</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain / Range</div>
                       <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain}{' → '}{selectedPropertyRow.range}</div>
                     </div>
                   </>

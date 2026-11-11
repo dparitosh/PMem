@@ -67,18 +67,18 @@ export default function OntologyInferenceWorkbench(props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 360px) 1fr', gap: '12px', alignItems: 'start' }}>
         <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', background: C.bg }}>
-          <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Inference rules</div>
+          <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Inference rules</div>
           {INFERENCE_RULES.map(([id, label, help]) => (
             <label key={id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: '8px', padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
               <input type="checkbox" checked={Boolean(inferenceRules[id])} onChange={() => toggleInferenceRule(id)} />
               <span>
                 <span style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: C.textPrimary }}>{label}</span>
-                <span style={{ display: 'block', fontSize: '11px', color: C.textSec, lineHeight: 1.4 }}>{help}</span>
+                <span style={{ display: 'block', fontSize: '12px', color: C.textSec, lineHeight: 1.4 }}>{help}</span>
               </span>
             </label>
           ))}
           <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>SWRL-style rule editor</div>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>SWRL-style rule editor</div>
             <p>Validation checks the supported rule syntax only. This expression is not executed by Run preview.</p>
             <textarea
               aria-label="SWRL-style rule expression"
@@ -86,18 +86,18 @@ export default function OntologyInferenceWorkbench(props) {
               onChange={(e) => setSwrlExpression(e.target.value)}
               rows={4}
               spellCheck={false}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 9px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', fontSize: '11px', lineHeight: 1.45, fontFamily: 'monospace', resize: 'vertical' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 9px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', fontSize: '12px', lineHeight: 1.45, fontFamily: 'monospace', resize: 'vertical' }}
             />
             <button
               type="button"
               onClick={validateSwrlExpression}
               disabled={swrlBusy || !swrlExpression.trim()}
-              style={{ marginTop: '8px', padding: '7px 10px', borderRadius: '6px', border: 'none', background: swrlBusy || !swrlExpression.trim() ? C.textMuted : C.primary, color: '#fff', fontSize: '11px', fontWeight: 800, cursor: swrlBusy || !swrlExpression.trim() ? 'not-allowed' : 'pointer' }}
+              style={{ marginTop: '8px', padding: '7px 10px', borderRadius: '6px', border: 'none', background: swrlBusy || !swrlExpression.trim() ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 800, cursor: swrlBusy || !swrlExpression.trim() ? 'not-allowed' : 'pointer' }}
             >
               {swrlBusy ? 'Validating' : 'Validate rule'}
             </button>
             {swrlValidation && (
-              <div style={{ marginTop: '8px', border: `1px solid ${swrlValidation.valid ? C.green : C.red}`, background: swrlValidation.valid ? 'var(--ui-surface)'  : 'var(--ui-surface)' , color: swrlValidation.valid ? C.green : C.red, borderRadius: '6px', padding: '8px', fontSize: '11px', lineHeight: 1.4 }}>
+              <div style={{ marginTop: '8px', border: `1px solid ${swrlValidation.valid ? C.green : C.red}`, background: swrlValidation.valid ? 'var(--ui-surface)'  : 'var(--ui-surface)' , color: swrlValidation.valid ? C.green : C.red, borderRadius: '6px', padding: '8px', fontSize: '12px', lineHeight: 1.4 }}>
                 <div style={{ fontWeight: 800 }}>{swrlValidation.valid ? 'Supported syntax — not executed' : 'Rule needs correction'}</div>
                 <div style={{ color: C.textPrimary, marginTop: '4px' }}>{swrlValidation.preview}</div>
                 {(swrlValidation.issues || []).slice(0, 4).map((issue, idx) => (
@@ -106,7 +106,7 @@ export default function OntologyInferenceWorkbench(props) {
               </div>
             )}
           </div>
-          <label style={{ display: 'block', marginTop: '10px', fontSize: '11px', fontWeight: 800, color: C.textSec }}>Preview limit</label>
+          <label style={{ display: 'block', marginTop: '10px', fontSize: '12px', fontWeight: 800, color: C.textSec }}>Preview limit</label>
           <input
             aria-label="Inference preview limit"
             type="number"
@@ -129,7 +129,7 @@ export default function OntologyInferenceWorkbench(props) {
               ['Properties', (inferenceResult?.summary || reasoning?.summary) ? ((inferenceResult?.summary?.object_properties ?? reasoning?.summary?.object_properties ?? 0) + (inferenceResult?.summary?.datatype_properties ?? reasoning?.summary?.datatype_properties ?? 0)) : 'Unavailable'],
               ['Individuals', inferenceResult?.summary?.individuals ?? reasoning?.summary?.individuals ?? 'Unavailable'],
             ].map(([label, value]) => (
-              <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
+              <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '12px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
             ))}
           </div>
           {(inferenceResult?.warnings || []).map((warning, idx) => (
@@ -137,7 +137,7 @@ export default function OntologyInferenceWorkbench(props) {
           ))}
           {inferenceResult && <ResultProvenance mode="graph" policy={inferenceResult.decision_policy} />}
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden', background: C.surface }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', gap: 0, background: C.primary, color: '#fff', fontSize: '11px', fontWeight: 800 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', gap: 0, background: C.primary, color: '#fff', fontSize: '12px', fontWeight: 800 }}>
               {['Rule', 'Subject', 'Predicate', 'Object', 'Support'].map((header) => <div key={header} style={{ padding: '9px 10px' }}>{header}</div>)}
             </div>
             {(inferenceResult?.inferences || [])
@@ -154,7 +154,7 @@ export default function OntologyInferenceWorkbench(props) {
                   <div style={{ padding: '9px 10px', color: C.textSec, fontWeight: 700 }}>{row.predicate}</div>
                   <div style={{ padding: '9px 10px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.object}>{row.object_label || row.object}</div>
                   <div style={{ padding: '9px 10px', fontWeight: 800 }}>{row.support || 'Rule candidate'}</div>
-                  {row.evidence && <div style={{ gridColumn: '1 / -1', padding: '0 10px 9px 10px', color: C.textSec, fontSize: '11px' }}>{row.evidence}</div>}
+                  {row.evidence && <div style={{ gridColumn: '1 / -1', padding: '0 10px 9px 10px', color: C.textSec, fontSize: '12px' }}>{row.evidence}</div>}
                 </div>
               ))}
             {!inferenceResult && (

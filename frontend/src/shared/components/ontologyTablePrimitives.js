@@ -15,7 +15,7 @@ export const TH = (extra = {}) => ({
   background: C.primary,
   color: '#fff',
   fontWeight: 700,
-  fontSize: '11px',
+  fontSize: '12px',
   textTransform: 'uppercase',
   letterSpacing: '0.05em',
   textAlign: 'left',

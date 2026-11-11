@@ -1081,7 +1081,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
           <>
             {!registryLoading && !registryError && mappingOptions.length === 0 && <p role="status">No ontologies are registered. <a href="#/import">Import an ontology</a> to browse terms or compare registered versions.</p>}
             <div className="ontology-compact-selection">
-              <label style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active ontology</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active ontology</label>
               <select aria-label="Active ontology"
                 value={selectedMapping}
                 onChange={e => {
@@ -1121,7 +1121,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                         } catch (failure) { if (!controller.signal.aborted) setExportError(apiErrorMessage(failure, 'Ontology export failed.')); }
                         finally { if (exportRequest.current === controller) { exportRequest.current = null; setExportBusy(false); } }
                       }}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 7px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', color: C.primaryDark, background: C.surface, fontSize: '10px', fontWeight: 800, textDecoration: 'none', textTransform: 'uppercase' }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 7px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', color: C.primaryDark, background: C.surface, fontSize: '12px', fontWeight: 800, textDecoration: 'none', textTransform: 'uppercase' }}
                     >
                       <Download size={11} /> {format}
                     </button>
@@ -1130,7 +1130,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
               )}
             </div>
             {stats && (
-              <div style={{ fontSize: '11px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 10px' }}>
+              <div style={{ fontSize: '12px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 10px' }}>
                 {stats.total_terms} terms  |  {stats.total_vocabulary_mappings} mapping edges
               </div>
             )}
@@ -1209,33 +1209,33 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                     color: C.textPrimary,
                   }}
                 >
-                  <span style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: active ? C.primaryDark : C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Step {index + 1}</span>
+                  <span style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: active ? C.primaryDark : C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Step {index + 1}</span>
                   <span style={{ display: 'block', fontSize: '12px', fontWeight: 800, marginTop: '2px' }}>{guide.title}</span>
-                  <span style={{ display: 'block', fontSize: '10px', lineHeight: 1.35, color: C.textSec, marginTop: '3px' }}>{guide.description}</span>
+                  <span style={{ display: 'block', fontSize: '12px', lineHeight: 1.35, color: C.textSec, marginTop: '3px' }}>{guide.description}</span>
                 </button>
               );
             })}
           </div>
 
           {WORKBENCH_GUIDE[activeView] && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(220px, 1fr)', gap: '8px', marginBottom: '10px', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '7px', background: C.bg, fontSize: '11px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(220px, 1fr)', gap: '8px', marginBottom: '10px', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '7px', background: C.bg, fontSize: '12px' }}>
               <div><strong style={{ color: C.primaryDark }}>Next action:</strong> <span style={{ color: C.textPrimary }}>{WORKBENCH_GUIDE[activeView].action}</span></div>
               <div><strong style={{ color: C.primaryDark }}>You will produce:</strong> <span style={{ color: C.textPrimary }}>{WORKBENCH_GUIDE[activeView].outcome}</span></div>
             </div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
-            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface, fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
+            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface, fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>
               {selectedOntologyOption?.label || 'No active ontology selected'}
             </div>
-            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 700, color: C.textSec }}>
+            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '12px', fontWeight: 700, color: C.textSec }}>
               Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'}
             </div>
-            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${dictionarySourceMode === 'taxonomy-fallback' ? '#F7C948' : C.border}`, background: dictionarySourceMode === 'taxonomy-fallback' ? '#FFF8E1' : C.bg, fontSize: '11px', fontWeight: 700, color: dictionarySourceMode === 'taxonomy-fallback' ? '#8A5A00' : C.textSec }}>
+            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${dictionarySourceMode === 'taxonomy-fallback' ? '#F7C948' : C.border}`, background: dictionarySourceMode === 'taxonomy-fallback' ? '#FFF8E1' : C.bg, fontSize: '12px', fontWeight: 700, color: dictionarySourceMode === 'taxonomy-fallback' ? '#8A5A00' : C.textSec }}>
               {dictionarySourceMode === 'taxonomy-fallback' ? 'OWL/taxonomy-derived terms' : 'Primary ontology dictionary'}
             </div>
             {activeView === 'alignment' && bridgeMode === 'instance' && selectedMappingType && (
-              <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 700, color: C.textSec }}>
+              <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '12px', fontWeight: 700, color: C.textSec }}>
                 Instance source profile {String(selectedMappingType).toUpperCase()}
               </div>
             )}
@@ -1244,7 +1244,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
           </details>
 
           {activeView !== 'alignment' && dictionarySourceMode === 'taxonomy-fallback' && (
-            <div style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: '#FFF8E1', color: C.textPrimary, fontSize: '11px', lineHeight: 1.45 }}>
+            <div style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: '#FFF8E1', color: C.textPrimary, fontSize: '12px', lineHeight: 1.45 }}>
               Showing OWL/taxonomy terms for this ontology. Generate a dictionary projection when you need curated business definitions and relationship mappings.
             </div>
           )}
@@ -1322,7 +1322,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                     { title: '3. Run automation', text: 'Propose, validate, then publish' },
                   ].map((item) => (
                     <div key={item.title} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, padding: '8px 10px' }}>
-                      <div style={{ fontSize: '10px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.title}</div>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.title}</div>
                       <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 600, marginTop: '4px' }}>{item.text}</div>
                     </div>
                   ))}
@@ -1340,11 +1340,11 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                   marginBottom: '12px',
                 }}>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Auto-map</span>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: C.primaryDark, background: C.primaryLight, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Auto-map</span>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: C.primaryDark, background: C.primaryLight, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
                       {bridgeCandidates.length} candidates
                     </span>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
                       {visibleMappingEdges.length} mappings
                     </span>
                   </div>
@@ -1354,7 +1354,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                 </div>
                 <div className="depo-bridge-selection" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Instance</label>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Instance</label>
                     <select aria-label="Imported instance"
                       value={selectedImportTaskId}
                       onChange={e => setSelectedImportTaskId(e.target.value)}
@@ -1374,12 +1374,12 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                     {!importTasksLoading && !importTasksError && !importTasks.length && <p>No retained instance imports are available. <a href="#/import">Import instance data</a>, then refresh this list.</p>}
                   </div>
                   <div style={{ border: `1px solid ${selectedOntologyApi ? C.borderDark : C.red}`, borderRadius: '6px', background: C.surface, padding: '10px 12px', minHeight: '42px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Active ontology</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Active ontology</div>
                     <select aria-label="Semantic Bridge target ontology" value={selectedMapping} onChange={event => applyOntologySelection(event.target.value)} style={{ width: '100%', background: C.surface, color: C.textPrimary }}>
                       <option value="">Select target ontology</option>
                       {mappingOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
-                    <div style={{ fontSize: '10px', color: C.textSec, marginTop: '4px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '4px' }}>
                       {selectedOntologyOption?.prefix ? `Prefix ${selectedOntologyOption.prefix}` : 'The semantic bridge uses the shared active ontology selection.'}
                     </div>
                   </div>
@@ -1397,39 +1397,39 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                   gap: '10px 16px',
                 }}>
                   <div>
-                    <div style={{ fontSize: '10px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Instance metadata</div>
+                    <div style={{ fontSize: '12px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Instance metadata</div>
                     <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 700, marginTop: '3px' }}>
                       {selectedImportTaskInfo?.filename || 'No instance selected'}
                     </div>
-                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       Task {selectedImportTaskInfo?.task_id || 'n/a'}  |  {selectedImportTaskInfo?.file_type || 'unknown'}  |  {selectedImportTaskInfo?.status || 'unknown'}{selectedImportTaskInfo?.current_stage ? `  |  ${selectedImportTaskInfo.current_stage}` : ''}
                     </div>
-                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       Manifest {selectedImportManifest ? 'available' : 'missing'}  |  source format {selectedMappingType || 'unknown'}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '10px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ontology target metadata</div>
+                    <div style={{ fontSize: '12px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ontology target metadata</div>
                     <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 700, marginTop: '3px' }}>
                       {selectedOntologyOption?.label || 'No ontology selected'}
                     </div>
-                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'}  |  id {selectedOntologyOption?.value || 'n/a'}
                     </div>
-                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       {selectedOntologyOption?.source ? `Registered from ${selectedOntologyOption.source}` : 'Active ontology used as the semantic target for bridge validation and export.'}
                     </div>
-                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                    <div style={{ fontSize: '12px', color: C.textSec, marginTop: '2px' }}>
                       {selectedOntologyOption?.type ? `Ontology role: ${selectedOntologyOption.type.toUpperCase()} semantic model` : 'Ontology role: semantic target model'}
                     </div>
                     {targetDictionarySourceMode === 'taxonomy-fallback' && (
-                      <div style={{ fontSize: '11px', color: '#8A5A00', marginTop: '6px' }}>
+                      <div style={{ fontSize: '12px', color: '#8A5A00', marginTop: '6px' }}>
                         Target ontology dictionary is using taxonomy-derived fallback content for this ontology.
                       </div>
                     )}
                   </div>
                 </div>
-                <div style={{ marginTop: '8px', fontSize: '11px', color: C.textSec }}>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: C.textSec }}>
                   {selectedImportTaskId ? `Source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
                 </div>
                 </details>
@@ -1448,7 +1448,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                     {importTasksError || unifyResult?.text}
                     {unifyResult?.nodes !== undefined && ` (${unifyResult.nodes} links applied)`}
                     {selectedBridgeSummary && (
-                      <div style={{ marginTop: '8px', fontWeight: 500, fontSize: '11px', lineHeight: 1.5 }}>
+                      <div style={{ marginTop: '8px', fontWeight: 500, fontSize: '12px', lineHeight: 1.5 }}>
                         {[
                           selectedBridgeSummary.high_confidence_candidates !== undefined ? `High confidence: ${selectedBridgeSummary.high_confidence_candidates}` : null,
                           selectedBridgeSummary.ambiguous_candidates !== undefined ? `Ambiguous: ${selectedBridgeSummary.ambiguous_candidates}` : null,
@@ -1479,18 +1479,18 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                           <tr key={`${candidate.import_row_key || candidate.source_term || index}-${index}`} style={{ background: index % 2 === 0 ? C.surface : C.bg }}>
                             <td style={TD()}>
                               <div style={{ fontWeight: 600, fontSize: '12px' }}>{candidate.source_term || candidate.import_row_key || 'Imported entity'}</div>
-                              <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.source_type || candidate.match_source || candidate.signal_type || 'metadata'}</div>
+                              <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.source_type || candidate.match_source || candidate.signal_type || 'metadata'}</div>
                             </td>
                             <td style={TD()}>
                               <div style={{ fontWeight: 600, fontSize: '12px' }}>{candidate.ontology_term || 'Ontology concept'}</div>
-                              <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.target_ontology_type || 'Class'}</div>
-                              <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.ontology_class_element_id || 'n/a'}</div>
+                              <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.target_ontology_type || 'Class'}</div>
+                              <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.ontology_class_element_id || 'n/a'}</div>
                             </td>
                             <td style={TD({ textAlign: 'center' })}>
                               {typeof candidate.confidence === 'number' ? `${Math.round(candidate.confidence * 100)}% match score` : 'Match score unavailable'}
                             </td>
                             <td style={TD()}>
-                              <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.4 }}>
+                              <div style={{ fontSize: '12px', color: C.textSec, lineHeight: 1.4 }}>
                                 {(candidate.evidence || []).length > 0 ? (candidate.evidence || []).join(', ') : 'row metadata'}
                               </div>
                             </td>
@@ -1499,7 +1499,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                                 display: 'inline-block',
                                 padding: '2px 8px',
                                 borderRadius: '10px',
-                                fontSize: '10px',
+                                fontSize: '12px',
                                 fontWeight: 600,
                                 background: candidate.selected_for_apply ? '#E8F5E9' : candidate.ambiguous ? '#FFF8E1' : '#EEF2FF',
                                 color: candidate.selected_for_apply ? '#067647' : candidate.ambiguous ? '#9A6700' : '#3730A3',
@@ -1519,7 +1519,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                                     border: `1px solid ${C.primary}`,
                                     background: C.primaryLight,
                                     color: C.primaryDark,
-                                    fontSize: '10px',
+                                    fontSize: '12px',
                                     fontWeight: 700,
                                     cursor: 'pointer',
                                   }}
@@ -1545,7 +1545,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                                     border: `1px solid ${C.borderDark}`,
                                     background: C.surface,
                                     color: C.textPrimary,
-                                    fontSize: '10px',
+                                    fontSize: '12px',
                                     fontWeight: 700,
                                     cursor: 'pointer',
                                   }}
@@ -1567,12 +1567,12 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
               {bridgeMode === 'merge' && <>
               <details open className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
                 <summary>Merge two ontologies</summary>
-                <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
+                <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
                   Create a new ontology from two retained versions. The target supplies the identities used for any consolidations; both original ontologies remain unchanged.
                 </div>
                 <div className="depo-merge-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source ontology</label>
+                    <label style={{ fontSize: '12px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source ontology</label>
                     <select
                       aria-label="Source ontology" value={mergeSourceOntologyId}
                       onChange={(e) => setMergeSourceOntologyId(e.target.value)}
@@ -1640,12 +1640,12 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                       </p>)}
                       <pre style={{whiteSpace:'pre-wrap',maxHeight:240,overflow:'auto'}}>{mergeResult.governedPreview.semantic_checks.report}</pre></details>}
                     {mergeResult.report?.summary && (
-                      <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
+                      <div style={{ fontSize: '12px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
                         Overlaps {mergeResult.report.summary.overlap_count ?? 0} | Additions {mergeResult.report.summary.addition_count ?? 0} | Conflicts {mergeResult.report.summary.conflict_count ?? mergeResult.report.conflict_count ?? 0} | Subclass gaps {mergeResult.report.summary.subclass_gap_count ?? 0}
                       </div>
                     )}
                     {mergeResult.report?.candidate_nodes !== undefined && (
-                      <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
+                      <div style={{ fontSize: '12px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
                         Candidate nodes {mergeResult.report.candidate_nodes ?? 0} | Updated nodes {mergeResult.report.nodes_updated ?? 0}
                       </div>
                     )}
@@ -1656,7 +1656,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                             key={artifact.path}
                             href="#"
                             onClick={(event) => { event.preventDefault(); downloadArtifact(API_METHODS.workflow.artifactUrl(mergeResult.task_id, artifact.path), artifact.path.split('/').pop()).catch(() => {}); }}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '5px 8px', borderRadius: '999px', background: C.primaryLight, color: C.primaryDark, fontSize: '10px', fontWeight: 700, textDecoration: 'none' }}
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '5px 8px', borderRadius: '999px', background: C.primaryLight, color: C.primaryDark, fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}
                           >
                             {artifact.path}
                           </a>
@@ -1672,13 +1672,13 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
               {bridgeMode === 'instance' && <details><summary>Advanced manual corrections and existing mappings</summary>
               <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Manual override</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
-                <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px', lineHeight: 1.45 }}>
+                <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '10px', lineHeight: 1.45 }}>
                   <span style={{ color: C.textPrimary, fontWeight: 700 }}>Imported instance:</span> {selectedImportTaskInfo?.filename || 'None'}.
                   Use the reviewed suggestions table for the normal flow. Use this panel only when you need to add or correct one bridge mapping manually.
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source signal type</label>
+                    <label style={{ fontSize: '12px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source signal type</label>
                     <select
                       value={bridgeSourceKind}
                       onChange={(e) => setBridgeSourceKind(e.target.value)}
@@ -1688,7 +1688,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                         <option key={kind} value={kind}>{kind}</option>
                       ))}
                     </select>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source term</label>
+                    <label style={{ fontSize: '12px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source term</label>
                     <select
                       value={bridgeSourceTerm}
                       onChange={(e) => setBridgeSourceTerm(e.target.value)}
@@ -1701,7 +1701,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology concept type</label>
+                    <label style={{ fontSize: '12px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology concept type</label>
                     <select
                       value={bridgeTargetKind}
                       onChange={(e) => setBridgeTargetKind(e.target.value)}
@@ -1713,7 +1713,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                         </option>
                       ))}
                     </select>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target term</label>
+                    <label style={{ fontSize: '12px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target term</label>
                     <select
                       value={bridgeTargetTerm}
                       onChange={(e) => setBridgeTargetTerm(e.target.value)}
@@ -1726,14 +1726,14 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                     </select>
                   </div>
                   <div style={{ display: 'grid', gap: '8px', minWidth: 180 }}>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block' }}>User note</label>
+                    <label style={{ fontSize: '12px', color: C.textSec, display: 'block' }}>User note</label>
                     <input
                       value={bridgeComment}
                       onChange={(e) => setBridgeComment(e.target.value)}
                       placeholder="Optional note"
                       style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     />
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: C.textSec }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: C.textSec }}>
                       <input type="checkbox" checked={bridgeApproved} onChange={(e) => setBridgeApproved(e.target.checked)} />
                       Approved
                     </label>
@@ -1769,7 +1769,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
               {/* ── Mapping Table ───────────────────────────────────────────── */}
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '500px' }}>
                 {selectedMappingEdge && (
-                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.primaryLight, fontSize: '11px', color: C.primaryDark }}>
+                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.primaryLight, fontSize: '12px', color: C.primaryDark }}>
                     Selected mapping: {selectedMappingEdge.source_label || selectedMappingEdge.source_term || 'source'} → {selectedMappingEdge.target_label || selectedMappingEdge.target_term || 'target'}
                   </div>
                 )}
@@ -1795,7 +1795,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                       'semantic_bridge_mappings.csv'
                     )}
                     disabled={visibleMappingEdges.length === 0}
-                    style={{ padding: '6px 10px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: visibleMappingEdges.length ? C.surface : C.bg, color: visibleMappingEdges.length ? C.primary : C.textMuted, fontSize: '11px', fontWeight: 700, cursor: visibleMappingEdges.length ? 'pointer' : 'not-allowed' }}
+                    style={{ padding: '6px 10px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: visibleMappingEdges.length ? C.surface : C.bg, color: visibleMappingEdges.length ? C.primary : C.textMuted, fontSize: '12px', fontWeight: 700, cursor: visibleMappingEdges.length ? 'pointer' : 'not-allowed' }}
                   >
                     Export mappings CSV
                   </button>
@@ -1823,19 +1823,19 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                         >
                           <td style={TD()}>
                             <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.source_label || edge.source_term || edge.source_instance_label || 'Imported entity'}</div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               {edge.source_instance_label || 'Imported instance'}{edge.source_instance_id ? `  |  ${edge.source_instance_id}` : ''}
                             </div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               term: {edge.source_term || 'n/a'}
                             </div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               type: {edge.source_type || 'Entity'}
                             </div>
                           </td>
                           <td style={TD()}>
                             <span style={{
-                              display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '10px',
+                              display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '12px',
                               background: REL_COLORS[edge.mapping_type]?.bg || C.bg,
                               color: REL_COLORS[edge.mapping_type]?.text || C.textPrimary,
                               border: `1px solid ${REL_COLORS[edge.mapping_type]?.border || C.border}`,
@@ -1844,23 +1844,23 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                           </td>
                           <td style={TD()}>
                             <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.target_label || edge.target_term || 'Ontology class'}</div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               {edge.target_term || 'n/a'}
                             </div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                            <div style={{ fontSize: '12px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               type: {edge.target_ontology_type || 'Class'}
                             </div>
                           </td>
                           <td style={TD()}>
                             <div className="ontology-compact-selection">
-                              <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: '999px', fontSize: '10px', fontWeight: 700, background: edge.approvedByUser ? '#E8F5E9' : edge.validation_status === 'needs_review' ? '#FFF8E1' : '#EEF2FF', color: edge.approvedByUser ? '#067647' : edge.validation_status === 'needs_review' ? '#9A6700' : '#3730A3', border: `1px solid ${edge.approvedByUser ? '#C8E6C9' : edge.validation_status === 'needs_review' ? '#FFE08A' : '#C7D2FE'}` }}>
+                              <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, background: edge.approvedByUser ? '#E8F5E9' : edge.validation_status === 'needs_review' ? '#FFF8E1' : '#EEF2FF', color: edge.approvedByUser ? '#067647' : edge.validation_status === 'needs_review' ? '#9A6700' : '#3730A3', border: `1px solid ${edge.approvedByUser ? '#C8E6C9' : edge.validation_status === 'needs_review' ? '#FFE08A' : '#C7D2FE'}` }}>
                                 {edge.approvedByUser ? 'Approved' : edge.validation_status === 'needs_review' ? 'Needs review' : edge.validation_status || 'Suggested'}
                               </span>
-                              <div style={{ fontSize: '10px', color: C.textSec }}>
+                              <div style={{ fontSize: '12px', color: C.textSec }}>
                                 {typeof edge.confidence === 'number' ? `${Math.round(edge.confidence * 100)}% match score` : 'Match score unavailable'}
                               </div>
                               {edge.userComment && (
-                                <div style={{ fontSize: '10px', color: C.textPrimary, lineHeight: 1.35 }}>{edge.userComment}</div>
+                                <div style={{ fontSize: '12px', color: C.textPrimary, lineHeight: 1.35 }}>{edge.userComment}</div>
                               )}
                             </div>
                           </td>
@@ -1882,7 +1882,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                                   border: `1px solid ${edge.approvedByUser ? '#C8E6C9' : '#FFE08A'}`,
                                   background: edge.approvedByUser ? '#E8F5E9' : '#FFF8E1',
                                   color: edge.approvedByUser ? '#067647' : '#9A6700',
-                                  fontSize: '10px',
+                                  fontSize: '12px',
                                   fontWeight: 700,
                                   cursor: 'pointer',
                                 }}
@@ -1901,7 +1901,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                                   border: `1px solid ${C.borderDark}`,
                                   background: C.surface,
                                   color: C.textPrimary,
-                                  fontSize: '10px',
+                                  fontSize: '12px',
                                   fontWeight: 700,
                                   cursor: 'pointer',
                                 }}
@@ -1920,7 +1920,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                                   border: `1px solid ${C.red}`,
                                   background: '#FFF5F5',
                                   color: C.red,
-                                  fontSize: '10px',
+                                  fontSize: '12px',
                                   fontWeight: 700,
                                   cursor: 'pointer',
                                 }}

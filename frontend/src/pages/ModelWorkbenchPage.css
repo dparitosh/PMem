@@ -129,7 +129,7 @@
 
 .model-viewer-summary span {
   color: var(--ui-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -205,7 +205,7 @@
 .selected-card small {
   display: block;
   color: var(--ui-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -255,7 +255,7 @@
 
 .edge-label {
   fill: #475569;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
   paint-order: stroke;
   stroke: #ffffff;
@@ -320,7 +320,7 @@
   gap: 8px;
   padding: 7px 9px;
   border-bottom: 1px solid #eef2f7;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .property-list span {
@@ -431,7 +431,7 @@
   background: var(--ui-surface-alt);
   color: var(--ui-muted);
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: none;
 }
@@ -494,7 +494,7 @@
   padding: 8px 10px;
   background: var(--ui-surface-alt);
   border-bottom: 1px solid var(--ui-border);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -537,7 +537,7 @@
 .tree-group button small {
   display: block;
   color: var(--ui-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -568,7 +568,7 @@
   background: var(--ui-border);
   color: var(--ui-muted);
   padding: 2px 7px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -585,13 +585,13 @@
   grid-template-columns: 14px minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
 }
 
 .tree-caret {
   color: var(--ui-primary);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .tree-type button {
@@ -611,7 +611,7 @@
 
 .tree-type button small {
   color: #8a97a6;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .model-viewer-page {
@@ -644,7 +644,7 @@
   background: var(--ui-surface);
   color: var(--ui-muted);
   padding: 4px 9px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -662,7 +662,7 @@
   color: var(--ui-muted);
   background: var(--ui-surface-alt);
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -702,7 +702,7 @@
 }
 
 .semantic-canvas-wrap .node-label {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .tree-group h3 {
@@ -729,7 +729,7 @@
   background: var(--ui-surface);
   color: var(--ui-muted);
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -782,7 +782,7 @@
   background: var(--ui-surface);
   color: var(--ui-muted);
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 800;
 }
@@ -803,7 +803,7 @@
   background: var(--ui-surface);
   color: var(--ui-primary);
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   cursor: pointer;
 }
@@ -829,7 +829,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -840,7 +840,7 @@
   background: var(--ui-border);
   color: var(--ui-muted);
   padding: 2px 7px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -868,7 +868,7 @@
 
 .model-viewer-representation span {
   color: var(--ui-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -922,7 +922,7 @@
 
 .react-flow__edge-text {
   fill: var(--ui-text);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1024,7 +1024,7 @@
 
 .model-viewer-inspector-bar span {
   color: var(--ui-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1073,7 +1073,7 @@
 .archi-tree-caret,
 .archi-tree-icon {
   color: var(--ui-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-align: center;
 }
@@ -1098,7 +1098,7 @@
 
 .archi-tree-label small {
   color: var(--ui-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1205,7 +1205,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -1230,7 +1230,7 @@
 
 .semantic-rf-node__text small {
   color: var(--ui-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1247,7 +1247,7 @@
 
 .react-flow__edge-text {
   fill: var(--ui-text);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1348,7 +1348,7 @@
 .compact-toolbar .model-viewer-representation select,
 .compact-toolbar .model-viewer-search input,
 .compact-toolbar .model-viewer-representation span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .compact-toolbar .model-viewer-tabs button,
@@ -1465,7 +1465,7 @@
 .sysml-node { width:240px; min-height:100px; background:#fff; border:1.5px solid #334155; color:#17212b; text-align:center; padding:8px 0; font-size:12px; }
 .sysml-node.selected { outline:3px solid #0077a8; }
 .sysml-node strong { display:block; padding:4px 8px; white-space:normal; }
-.sysml-stereotype { font-size:11px; }
+.sysml-stereotype { font-size: 12px; }
 .sysml-compartment { text-align:left; border-top:1px solid #334155; padding:7px; white-space:normal; overflow-wrap:anywhere; max-height:130px; overflow:auto; }
 .sysml-usecase { border-radius:50%; padding:24px 14px; }
 .sysml-actor { border:0; background:transparent; }

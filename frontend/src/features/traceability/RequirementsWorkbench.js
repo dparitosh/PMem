@@ -116,10 +116,10 @@ export default function RequirementsWorkbench({ filter = "", onNavigate }) {
               ['Visible', visibleRequirements.length],
               ['Source', 'Import pipeline'],
             ].map(([label, value]) => (
-              <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
+              <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '12px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
             ))}
           </div>
-          <div style={{ padding: '8px 10px', borderRadius: '6px', background: '#EEF7FF', border: `1px solid ${C.border}`, fontSize: '11px', color: C.textPrimary }}>
+          <div style={{ padding: '8px 10px', borderRadius: '6px', background: '#EEF7FF', border: `1px solid ${C.border}`, fontSize: '12px', color: C.textPrimary }}>
             Source: knowledge graph loaded through the Import pipeline. Use Import for ReqIF/PLMXML/MBSE/OSLC/ALM/unstructured ingestion, then review normalized requirements here.
           </div>
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '360px' }}>
@@ -144,9 +144,9 @@ export default function RequirementsWorkbench({ filter = "", onNavigate }) {
                     <td style={TD({ fontSize: '12px', lineHeight: 1.45 })}>
                       {row.description || <span style={{ color: C.textMuted }}>No description text</span>}
                       {row.contextText && <div style={{ marginTop: '5px', color: C.textSec }}>{row.contextText}</div>}
-                      {row.sourceFile && <div style={{ marginTop: '5px', color: C.textMuted, fontSize: '11px' }}>{row.sourceFile}</div>}
+                      {row.sourceFile && <div style={{ marginTop: '5px', color: C.textMuted, fontSize: '12px' }}>{row.sourceFile}</div>}
                     </td>
-                    <td style={TD({ fontFamily: 'monospace', fontSize: '11px', color: C.textSec })}>{row.ontologyClass || row.typeRef || 'n/a'}</td>
+                    <td style={TD({ fontFamily: 'monospace', fontSize: '12px', color: C.textSec })}>{row.ontologyClass || row.typeRef || 'n/a'}</td>
                     <td style={TD({ textAlign: 'center', fontWeight: 800 })}>{row.relationshipCount || 0}</td>
                   </tr>
                 ))}

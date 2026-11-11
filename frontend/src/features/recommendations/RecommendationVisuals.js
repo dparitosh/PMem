@@ -80,7 +80,7 @@ const ProcessFlowTimeline = ({ data }) => {
         // Name
         g.append('text')
           .attr('x', leftPad + 18).attr('y', iy + itemH / 2 + 4)
-          .attr('font-size', 11).attr('fill', C.textPrimary)
+          .attr('font-size', 12).attr('fill', C.textPrimary)
           .text(item.name?.length > 45 ? item.name.slice(0, 43) + '…' : item.name);
         // Tag badge
         if (item.tag) {
@@ -88,7 +88,7 @@ const ProcessFlowTimeline = ({ data }) => {
           g.append('text')
             .attr('x', tagX).attr('y', iy + itemH / 2 + 3)
             .attr('text-anchor', 'end')
-            .attr('font-size', 9).attr('fill', group.color).attr('font-weight', 600)
+            .attr('font-size', 12).attr('fill', group.color).attr('font-weight', 600)
             .text(item.tag);
         }
       });
