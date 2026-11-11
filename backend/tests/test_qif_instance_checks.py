@@ -9,17 +9,10 @@ MINIMAL = (ROOT / "data" / "ceim" / "fixtures" / "qif-minimal-valid.xml").read_b
 NS = 'xmlns="http://qifstandards.org/xsd/qif3"'
 
 
-def test_minimal_valid_instance_passes_schema_and_runs_checks():
+def test_minimal_valid_instance_runs_checks_without_findings():
     result = check_instance(MINIMAL)
-    assert result["xsd_valid"] is True
-    assert result["xsd_errors"] == []
     assert result["check_finding_count"] == 0
-
-
-def test_schema_errors_are_reported_without_failing():
-    result = check_instance(f'<QIFDocument {NS}><Unexpected/></QIFDocument>'.encode())
-    assert result["xsd_valid"] is False
-    assert result["xsd_errors"]
+    assert "xsd_valid" not in result
 
 
 def test_external_document_reference_is_refused():
@@ -45,3 +38,11 @@ def test_non_qif_root_is_refused():
 def test_malformed_xml_is_refused():
     with pytest.raises(UnsupportedInstance, match="not well-formed"):
         check_instance(b"<QIFDocument")
+
+
+def test_array_length_extensions_match_reference_contract():
+    from backend.qif.instance_checks import _count_tokens
+    assert _count_tokens("1.5 2 3e2\n4", float) == 4
+    assert _count_tokens("1 2 x", float) == -1
+    assert _count_tokens("1.0 2", int) == -1
+    assert _count_tokens("", int) == 0

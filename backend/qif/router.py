@@ -7,8 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from .agent_registry import registry
@@ -181,6 +181,55 @@ async def check_qif_instance(file: Annotated[UploadFile, File(description="One Q
     except UnsupportedInstance as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"filename": filename, **result}
+
+
+async def _boc_report(qif_file: UploadFile, ap242_file: UploadFile) -> dict:
+    qif_name = Path(qif_file.filename or "").name
+    ap_name = Path(ap242_file.filename or "").name
+    if not qif_name.lower().endswith(".xml"):
+        raise HTTPException(status_code=422, detail=f"{qif_name or 'QIF file'} must be an XML file")
+    if Path(ap_name).suffix.lower() not in {".stp", ".step", ".stpx", ".xml"}:
+        raise HTTPException(status_code=422, detail=f"{ap_name or 'AP242 file'} must be a STEP or AP242 XML file")
+    qif_content = await qif_file.read(_MAX_FILE_BYTES + 1)
+    ap_content = await ap242_file.read(_MAX_FILE_BYTES + 1)
+    for name, content in ((qif_name, qif_content), (ap_name, ap_content)):
+        if not content or len(content) > _MAX_FILE_BYTES:
+            raise HTTPException(status_code=422, detail=f"{name} is empty or exceeds 10 MB")
+
+    def _compare() -> dict:
+        from backend.ceim.ap242_adapter import ap242_to_ceim_batch
+        from backend.ceim.boc_conformance import compare_boc
+        from backend.ceim.qif_adapter import qif_to_ceim_batch
+        return compare_boc(ap242_to_ceim_batch(ap_content, filename=ap_name), qif_to_ceim_batch(qif_content))
+
+    try:
+        result = await run_in_threadpool(_compare)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"qif_filename": qif_name, "ap242_filename": ap_name, **result}
+
+
+@router.post("/instances/boc-check", summary="Compare a QIF Bill of Characteristics with the AP242 PMI it came from")
+async def check_boc_pair(qif_file: Annotated[UploadFile, File(description="QIF 3.0 instance (.xml)")],
+                         ap242_file: Annotated[UploadFile, File(description="AP242 STEP (.stp/.step/.stpx) or AP242 XML")]) -> dict:
+    from backend.ceim.boc_document import serialize_boc
+    report = await _boc_report(qif_file, ap242_file)
+    return {**report, "bill_of_characteristics_turtle": serialize_boc(report)}
+
+
+@router.post("/boc/export", summary="Export a Bill of Characteristics as an AAS-style submodel, Turtle, or JSON")
+async def export_boc(qif_file: Annotated[UploadFile, File(description="QIF 3.0 instance (.xml)")],
+                     ap242_file: Annotated[UploadFile, File(description="AP242 STEP (.stp/.step/.stpx) or AP242 XML")],
+                     format: Annotated[str, Query(pattern="^(aas|turtle|json)$")] = "aas"):
+    # Stateless export: nothing is stored, published, or registered.
+    from backend.ceim.boc_aas import build_boc_submodel
+    from backend.ceim.boc_document import serialize_boc
+    report = await _boc_report(qif_file, ap242_file)
+    if format == "turtle":
+        return Response(content=serialize_boc(report), media_type="text/turtle")
+    if format == "json":
+        return report
+    return build_boc_submodel(report)
 
 
 @router.get("/tasks", response_model=QifTaskListResponse, summary="List recent QIF workflow tasks")

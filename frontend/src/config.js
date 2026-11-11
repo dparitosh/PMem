@@ -406,6 +406,7 @@ const QIF_ENDPOINTS = {
   cancel: setting('API_QIF_CANCEL') || '/api/v1/qif/tasks/{task_id}/cancel',
   retryGraph: setting('API_QIF_RETRY_GRAPH') || '/api/v1/qif/tasks/{task_id}/retry-graph',
   checkInstance: setting('API_QIF_CHECK_INSTANCE') || '/api/v1/qif/instances/check',
+  checkBoc: setting('API_QIF_CHECK_BOC') || '/api/v1/qif/instances/boc-check',
 };
 
 /** Optional ontology-agentic service endpoints. */

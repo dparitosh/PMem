@@ -447,6 +447,12 @@ export const qifAPI = {
     formData.append('file', file);
     return apiClient.post(buildUrl(API.qif.checkInstance), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 120000 });
   },
+  checkBoc: (qifFile, ap242File, options = {}) => {
+    const formData = new FormData();
+    formData.append('qif_file', qifFile);
+    formData.append('ap242_file', ap242File);
+    return apiClient.post(buildUrl(API.qif.checkBoc), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });
+  },
   listTasks: () => apiClient.get(buildUrl(API.qif.tasks)),
   getTask: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.task, { task_id: taskId }))),
   getPreview: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.preview, { task_id: taskId }))),
