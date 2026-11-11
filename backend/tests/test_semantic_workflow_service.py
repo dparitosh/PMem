@@ -4,6 +4,21 @@ from unittest.mock import patch
 from backend.Services.semantic_workflow_service import SemanticWorkflowService
 from backend.ontology_service.domain.reasoning import OntologyReasoningService
 
+@pytest.fixture(autouse=True)
+def isolate_graph_term_transport(monkeypatch):
+    # These unit tests supply class/reasoning fixtures, never a live graph.
+    monkeypatch.setattr(SemanticWorkflowService, '_load_graph_term_lookup', lambda scope: {})
+
+@pytest.mark.parametrize('element', ['ProductRevision', 'Requirement', 'Header'])
+def test_xml_entity_provenance_and_references_do_not_change_mapping_kind(element):
+    row = {'import_row_key': 'id2', 'source_element_name': element,
+           'source_filename': 'requirements.xml', 'source_namespace': 'urn:plmxml',
+           'masterRef': '#id1', 'description': 'Business record'}
+    assert SemanticWorkflowService._classify_source_row(row) == 'Entity'
+    signals = SemanticWorkflowService._collect_row_signals(row)
+    assert any(signal['raw'] == element and signal['signal_type'] == 'type' for signal in signals)
+    assert SemanticWorkflowService._classify_source_row({**row, 'entity_type': 'edge'}) == 'Relationship'
+
 
 
 
@@ -399,7 +414,7 @@ def test_merge_exports_have_one_primary_ontology_header(monkeypatch, tmp_path):
     assert "target ontology: target" in ttl
 
 
-def test_instance_link_does_not_auto_apply_owlready_only_iri_targets(monkeypatch):
+def test_instance_link_does_not_auto_apply_semantic_only_iri_targets(monkeypatch):
     rows = [
         {
             "import_row_key": "row-iri-only",

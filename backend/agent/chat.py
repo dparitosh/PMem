@@ -501,6 +501,8 @@ from backend.Services.change_impact_recommender import ChangeImpactRecommender
 from backend.Services.similar_parts_recommender import SimilarPartsRecommender
 from backend.Services.manufacturing_process_recommender import ManufacturingProcessRecommender
 
+from backend.depo_platform.decision_policy import assess_recommendation, recommendation_policy_text
+
 _ci = ChangeImpactRecommender(_rec_graph)
 _sp = SimilarPartsRecommender(_rec_graph)
 _mp = ManufacturingProcessRecommender(_rec_graph)
@@ -508,7 +510,7 @@ _mp = ManufacturingProcessRecommender(_rec_graph)
 @tool
 def change_impact_analysis(query: str) -> str:
     """Analyse the ripple effects of a change request or part across assemblies, requirements, and processes. Use when user asks about change impact, affected parts, or ripple effects."""
-    result = _ci.analyse(change_name=query, part_name=query)
+    result = assess_recommendation(_ci.analyse(change_name=query, part_name=query), "change-impact", {})
     ce = result.get("change_entity") or {}
     parts = result.get("impacted_parts", [])
     asm = result.get("assembly_impact", [])
@@ -519,23 +521,15 @@ def change_impact_analysis(query: str) -> str:
     if not ce:
         return f"No change entity found for '{query}'. Please verify the name exists in the graph."
 
-    # Score label
-    if score <= 40:
-        score_label = "Low"
-    elif score <= 70:
-        score_label = "Medium"
-    else:
-        score_label = "High"
-
     lines = [
-        f"## Change Impact Analysis — {ce.get('name')}",
-        f"**Entity type:** {ce.get('source_tag', 'Unknown')}  |  "
-        f"**Impact score:** {score}/100 ({score_label})",
+        f"## Change dependency review — {ce.get('name')}",
+        result.get('message', ''),
+        result.get('traceability', ''),
+        "Impact severity and effectivity require engineering review.",
         "",
     ]
-
     # Impacted parts
-    lines.append(f"### Directly Impacted Parts ({len(parts)})")
+    lines.append(f"### Parts requiring dependency review ({len(parts)})")
     if parts:
         for p in parts:
             rel = f" via {p['relation_type']}" if p.get('relation_type') and p['relation_type'] != 'self' else ""
@@ -552,7 +546,7 @@ def change_impact_analysis(query: str) -> str:
         if len(asm) > 10:
             lines.append(f"- … and {len(asm) - 10} more")
     else:
-        lines.append("- No assembly impact found")
+        lines.append("- No assembly dependencies found within the traversal budget")
 
     # Requirements
     lines.append(f"\n### Impacted Requirements ({len(reqs)})")
@@ -562,7 +556,7 @@ def change_impact_analysis(query: str) -> str:
         if len(reqs) > 8:
             lines.append(f"- … and {len(reqs) - 8} more")
     else:
-        lines.append("- No requirements impacted")
+        lines.append("- No requirement links found within the traversal budget")
 
     # Processes
     lines.append(f"\n### Process Impact ({len(procs)} processes)")
@@ -572,7 +566,7 @@ def change_impact_analysis(query: str) -> str:
         if len(procs) > 8:
             lines.append(f"- … and {len(procs) - 8} more")
     else:
-        lines.append("- No processes impacted")
+        lines.append("- No process dependencies found within the traversal budget")
 
     # Realization chain
     lines.append(f"\n### Realization Chain ({len(chain)} entities)")
@@ -583,14 +577,14 @@ def change_impact_analysis(query: str) -> str:
         if len(chain) > 8:
             lines.append(f"- … and {len(chain) - 8} more")
     else:
-        lines.append("- No realization chain found")
+        lines.append("- No eligible dependency chain found within the traversal budget")
 
-    return "\n".join(lines)
+    return recommendation_policy_text(result) + "\n\n" + "\n".join(lines)
 
 @tool
 def find_similar_parts(query: str) -> str:
     """Find parts similar to a given part using structural and semantic scoring. Use when user asks 'what is similar to X', 'parts like X', or 'find similar parts'."""
-    result = _sp.recommend(query, top_n=10)
+    result = assess_recommendation(_sp.recommend(query, top_n=10), "similar-parts", {})
     sp = result.get("source_part")
     if not sp:
         return f"Part '{query}' not found in the graph."
@@ -602,21 +596,20 @@ def find_similar_parts(query: str) -> str:
     ]
     if not parts:
         lines.append("No similar parts found based on current scoring criteria.")
-        return "\n".join(lines)
-    lines.append("| # | Part Name | Score | Type Match | RFLP Match | Assembly | Traceability |")
-    lines.append("|---|-----------|-------|------------|------------|----------|-------------|")
-    for i, p in enumerate(parts, 1):
-        type_m  = "[Y]" if p.get('source_tag_match') else "—"
-        rflp_m  = "[Y]" if p.get('rflp_layer_match') else "—"
-        asm_m   = "[Y]" if p.get('shared_assembly') else "—"
-        trace   = p.get('traceability_link') or "—"
-        lines.append(f"| {i} | **{p['name']}** | {p['similarity_score']}/100 | {type_m} | {rflp_m} | {asm_m} | {trace} |")
-    return "\n".join(lines)
+        return recommendation_policy_text(result) + "\n\n" + "\n".join(lines)
+    lines.append(result.get('ranking_scope', 'Engineering review is required.'))
+    lines.append("| Part | Match score | Engineering properties assessed | Conflicts |")
+    lines.append("|---|---:|---:|---|")
+    for p in parts:
+        conflicts = ', '.join(p.get('conflicts', [])) or 'None recorded; review missing evidence'
+        assessed = p.get('score_evidence', {}).get('engineering_assessed', 0)
+        lines.append(f"| {p['name']} | {p['similarity_score']} | {assessed} | {conflicts} |")
+    return recommendation_policy_text(result) + "\n\n" + "\n".join(lines)
 
 @tool
 def recommend_manufacturing_processes(query: str) -> str:
     """Recommend manufacturing processes for a given part. Use when user asks about processes, manufacturing steps, or how a part is made. Pass the part name EXACTLY as stated by the user — do NOT remove words, abbreviate, or modify the name in any way."""
-    result = _mp.recommend(query)
+    result = assess_recommendation(_mp.recommend(query), "manufacturing", {})
     pt = result.get("part")
     if not pt:
         return f"Part '{query}' not found in the graph."
@@ -676,7 +669,7 @@ def recommend_manufacturing_processes(query: str) -> str:
     else:
         lines.append("- No related-part processes found")
 
-    return "\n".join(lines)
+    return recommendation_policy_text(result) + "\n\n" + "\n".join(lines)
 # ──────────────────────────────────────────────────────────────────────────
 
 # @tool

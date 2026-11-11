@@ -1,412 +1,57 @@
-# Industrial Ontology Platform Architecture
+# Industrial ontology platform architecture
 
-## Purpose
+Current implementation review: 1 November 2026. PMem combines industrial source ingestion, governed semantic integration, durable batch execution, bounded event reconciliation, graph serving and snapshot analytics. Continuous streaming, customer effectivity semantics and a unified executable CR/CO lifecycle remain separate extensions.
 
-This document describes the target architecture for the current codebase only.
+## Business outcomes and layers
 
-The goal is to industrialize and componentize the app into a maintainable ontology platform for design, engineering, and manufacturing. The focus is on:
+| Layer | Responsibility | Current capabilities |
+|---|---|---|
+| L0 Business outcomes | Product reuse, change impact, requirements and manufacturing context | Evidence-backed investigations; results depend on actual source coverage and baseline |
+| L1 Workflows | Ingest, map, validate, review, authorize, publish and consume | Import, Data Flow, Ontology Junction, Change Control, Catalog, Products and Registry |
+| L2 Services | Own domain contracts and write authority | Ten capability APIs and canonical publication boundary |
+| L3 Execution and intelligence | Execute retained intents and explain evidence | Three durable workers, optional Spark, Governor, Steward, Graph Analyst and Companion |
+| L4 Persistence and operations | Protect state, evidence, access and recovery | PostgreSQL, published Neo4j projections, immutable artifacts, scoped memory, migrations and managed lifecycle |
 
-- identifying gaps in the current repo,
-- separating capabilities into clear services and UI components,
-- reducing coupling between registry, ontology, traceability, quality, and graph exploration,
-- and making the platform easier to extend without turning it into one large monolith.
+## Semantic integration and processing
 
-## Current State
+```mermaid
+flowchart LR
+  S[Industrial sources] --> A[Retained acquisition]
+  A --> M[Explicit field mapping and CEIM normalization]
+  E[Approved source events] --> R[Retained event reconciliation]
+  M --> V[Semantic checks and retained evidence]
+  R --> V
+  V --> G[Review and exact release authorization]
+  G --> P[Canonical publication and receipt]
+  P --> KG[Published business graph]
+  KG --> AN[Version-pinned analytics and products]
+  KG --> C[Graph Analyst and Companion]
+  AN --> CA[Data Catalog]
+  MEM[Scoped conversation memory and reviewed lessons] -. advisory .-> C
+```
 
-The repo already contains useful capabilities, but they are bundled too tightly:
+File, XML and ontology imports retain their native workflows. REST and 13 additional connector adapters use server-configured source references and bounded worker acquisition. Generic connector records can enter the explicit `connector-ceim-normalize` job; this produces a proposal through the existing mapping pack and CEIM validator. Acquisition is not automatic business alignment.
 
-- `Metadata Registry` is acting as a lightweight registry and governance boundary.
-- `Ontology Junction` is doing ontology browsing, vocabulary mapping, semantic bridge, and SWRL preview all in one place.
-- `Requirements` is handling ReqIF and graph requirements review.
-- `Graph Explorer` is handling generic graph inspection.
-- `Import` is handling ingestion and normalization.
+The batch path retains immutable inputs/results, job definitions, ownership leases and approved replay. Spark is optional and distinct from API/worker health. The speed path captures and reconciles bounded events using the same semantic contract and canonical approval boundary. It is not a complete continuous Lambda speed layer: persistent source offsets, event supersession, approved retractions and a customer latency/volume SLO are prerequisites for that claim.
 
-These are good building blocks, but they need to be split into explicit platform layers.
+## Authority and storage
 
-## Core Gaps in the Current Codebase
+PostgreSQL owns definitions, configurations, runs, leases, source/event/reconciliation state, approval evidence, product delivery and analytics tables. Neo4j serves published ontology/instance projections and scoped optional graph memory. Artifact storage owns immutable source/output bytes and report evidence. There is no distributed transaction across all stores; publication receipts, fences and reconciliation make uncertain outcomes recoverable.
 
-### 1. Missing Canonical Metadata Layer
+ODS values, entity dimensions, relationship/measure/KPI facts and versioned marts exist in PostgreSQL. Approved models pin a dataset and reviewed units. A descriptive revision/effectivity scope is not an executable temporal filter; the source baseline and model must establish its meaning. Graph presence and a completed job do not establish product approval.
 
-The codebase does not yet have a stable internal metadata model that cleanly separates:
+## Agents and knowledge use
 
-- governed assets,
-- ontology assets,
-- requirements,
-- trace links,
-- lineage,
-- quality,
-- and product/domain concepts.
+Governor coordinates proposals and authorized execution. Steward assesses retained mapping/reconciliation evidence and semantic checks. Graph Analyst investigates selected runs, events and business objects. Companion explains current cited evidence using vocabulary and a bounded operational context. None grants approval from model prose.
 
-Today, these concerns are partially inferred from the same records or moved around in page logic.
+Memory is scoped by ownership and selected context. Conversation and tool history can support follow-up questions; approved semantic bridge lessons can advise review for the matching version. Memory does not replace current source evidence, create semantic equivalence or retrain the model automatically. RDF parsing, SHACL/structural checks and isolated artifact-bound HermiT reasoning provide distinct assurances.
 
-### 2. Missing Governance Product Layer
+## User experience and governance
 
-The `Metadata Registry` page is not yet a full governance product. It needs:
+The six workspaces share retained task controls and explicit state/receipt links. Change Control currently aggregates evidence read-only; native services retain execution authority. A parent CR/CO can link those intents in a future extension without duplicating approval engines. Data Flow Event reviews exposes current reconciliation scope to existing agents and Companion. Detailed raw payloads remain out of the conversational narrative.
 
-- asset ownership,
-- stewardship,
-- lifecycle workflows,
-- approvals,
-- glossary/term management,
-- domain and product grouping,
-- policy linkage,
-- and quality status at a glance.
+## Acceptance boundaries
 
-### 3. Missing Semantically Clean Ontology Layer
+The event fixes require concurrent capture, transaction failure, safe retry, publication-receipt protection and session/context regression coverage. Optional connector SDKs and source accounts must be accepted in their deployment. Real restore validation, public-origin sessions, load/latency budgets and customer-specific KPI/baseline acceptance remain operational release requirements.
 
-`Ontology Junction` currently bundles several semantic responsibilities together:
-
-- ontology browsing,
-- mapping vocabulary,
-- semantic bridge,
-- ontology merge,
-- inference preview,
-- SWRL-style validation.
-
-This should be componentized so each function is a separate feature module.
-
-### 4. Missing Traceability Layer
-
-ReqIF and engineering traceability are present, but the platform still lacks a distinct traceability product layer for:
-
-- design-to-requirement mapping,
-- part/function/behavior trace links,
-- change impact navigation,
-- bridge evidence,
-- and review states.
-
-### 5. Missing Quality Layer
-
-Quality is not yet a first-class product area.
-
-The codebase lacks a cohesive UI and service model for:
-
-- test definitions,
-- test suites,
-- execution history,
-- incidents,
-- profiling,
-- quality scoring,
-- and certification/trust indicators.
-
-### 6. Missing GraphRAG/Agent Layer
-
-The repo has GraphRAG-adjacent pieces, but the context packaging layer is still distributed across several services.
-
-It needs a single layer responsible for:
-
-- canonical context bundles,
-- retrieval context selection,
-- citation-ready graph snippets,
-- agent-friendly summaries,
-- and memory injection.
-
-## Target Platform Layers
-
-### 1. Governance Layer
-
-Owns:
-
-- registry of governed assets,
-- lifecycle,
-- ownership,
-- governance status,
-- glossary and term linkage,
-- domain/product grouping,
-- approval state.
-
-### 2. Canonical Metadata Layer
-
-Owns:
-
-- normalized internal metadata objects,
-- consistent IDs,
-- source provenance,
-- source-to-canonical mapping,
-- drift detection.
-
-### 3. Ontology Layer
-
-Owns:
-
-- ontology browsing,
-- vocabulary and synonym mapping,
-- bridge suggestion,
-- ontology merge,
-- rule validation,
-- inference preview.
-
-### 4. Traceability Layer
-
-Owns:
-
-- requirement normalization,
-- ReqIF review,
-- engineering trace links,
-- impact analysis,
-- evidence-backed mapping records.
-
-### 5. Quality Layer
-
-Owns:
-
-- data and ontology quality checks,
-- test suites,
-- incident tracking,
-- profiler outputs,
-- trust indicators.
-
-### 6. Graph Layer
-
-Owns:
-
-- graph traversal,
-- graph visualization,
-- lineage navigation,
-- bridge navigation,
-- context overlays.
-
-### 7. GraphRAG / Agent Layer
-
-Owns:
-
-- context packaging,
-- retrieval tuning,
-- answer grounding,
-- memory augmentation,
-- agent-ready summaries.
-
-## Current Componentization Plan
-
-### Metadata Registry
-
-Current behavior:
-
-- lists ontology sources and governed registry entries,
-- shows prefix, namespace, lifecycle, and projection status.
-
-Gaps:
-
-- no dedicated domain/product model,
-- no glossary UI,
-- no ownership workflow,
-- no version history / approval surface,
-- no quality summary,
-- no traceability to downstream usage.
-
-Componentize into:
-
-- `RegistrySummaryCards`
-- `RegistryAssetTable`
-- `RegistryLifecyclePanel`
-- `RegistryOwnershipPanel`
-- `RegistrySyncStatusPanel`
-
-### Ontology Junction
-
-Current behavior:
-
-- ontology selection,
-- class/property browsing,
-- mapping vocabulary,
-- semantic bridge,
-- inference preview,
-- SWRL rule validation.
-
-Gaps:
-
-- all semantic concerns are in one screen,
-- shared selection state drives too many downstream views,
-- no dedicated subcomponents for bridge review, rule editing, or inference output,
-- weak separation between ontology registry data and ontology modeling behavior.
-
-Componentize into:
-
-- `OntologyBrowser`
-- `OntologyVocabularyPanel`
-- `OntologyBridgeWorkbench`
-- `OntologyInferenceWorkbench`
-- `OntologyRuleEditor`
-- `OntologyExportPanel`
-
-### Requirements Workbench
-
-Current behavior:
-
-- requirement review,
-- ReqIF support,
-- graph-backed requirement browsing.
-
-Gaps:
-
-- no structured traceability product layer,
-- limited linkage to product/domain objects,
-- no consistent impact-analysis workflow.
-
-Componentize into:
-
-- `RequirementList`
-- `RequirementDetail`
-- `TraceLinkPanel`
-- `ImpactAnalysisPanel`
-- `ReqIFImportReviewPanel`
-
-### Graph Explorer
-
-Current behavior:
-
-- raw graph exploration and filtering.
-
-Gaps:
-
-- no strong overlays for ontology, lineage, quality, or product domains,
-- still too generic for industrial workflows.
-
-Componentize into:
-
-- `GraphCanvas`
-- `GraphFilters`
-- `GraphLegend`
-- `GraphOverlayPanel`
-- `GraphNeighborhoodPanel`
-
-### Import Pipeline
-
-Current behavior:
-
-- file ingestion,
-- preview,
-- normalization,
-- bridge suggestion.
-
-Gaps:
-
-- import, normalization, semantic mapping, and publish are still too coupled,
-- insufficient separation between source parsing and canonicalization.
-
-Componentize into:
-
-- `ImportSourceSelector`
-- `ImportPreviewPanel`
-- `NormalizationStagePanel`
-- `BridgeSuggestionPanel`
-- `PublishStagePanel`
-
-## Backend Service Breakdown
-
-### `backend/routes`
-
-Current role:
-
-- HTTP entry points for ontology, registry, OSLC, SysML v2, 3DXML, and admin flows.
-
-Gap:
-
-- routes are still grouped by technical area more than by product layer.
-
-Recommended future route split:
-
-- `governance_routes.py`
-- `ontology_routes.py`
-- `traceability_routes.py`
-- `quality_routes.py`
-- `graph_routes.py`
-- `rag_routes.py`
-- `sync_routes.py`
-
-### `backend/Services`
-
-Current role:
-
-- business logic, import parsing, ontology reasoning, graph views, workflow handling.
-
-Key gaps:
-
-- ontology and governance logic are not fully separated,
-- traceability logic is spread across import, semantic workflow, and graph services,
-- quality is mostly utility-oriented rather than a dedicated product service,
-- GraphRAG context assembly is distributed across multiple services.
-
-Recommended service groups:
-
-- `governance`
-  - registry, ownership, glossary, lifecycle, domains, products
-- `ontology`
-  - ontology projection, mapping, reasoning, SWRL, SKOS
-- `traceability`
-  - requirements, bridges, impact, evidence
-- `quality`
-  - checks, tests, profiling, incidents
-- `graph`
-  - visualization, traversal, overlays
-- `rag`
-  - context bundles, retrieval prep, memory, citations
-- `sync`
-  - source-to-canonical synchronization, drift detection, publish
-
-## What To Keep Stable
-
-The following should remain stable while refactoring:
-
-- existing routes and UI entry points,
-- import file support,
-- ontology export and preview paths,
-- ReqIF ingestion support,
-- graph traversal and search endpoints,
-- current ontology registry persistence.
-
-## What To Split First
-
-1. Split `OntologyMapper.js` into smaller ontology components.
-2. Split `MetadataRegistryPage.js` into registry summary, lifecycle, ownership, and sync panels.
-3. Split `DataImportPipeline.js` into import, normalization, bridge, and publish subcomponents.
-4. Introduce a real canonical metadata model in backend services.
-5. Separate traceability and quality into dedicated services and UI surfaces.
-
-## Recommended File/Folder Direction
-
-### Frontend
-
-- `frontend/src/pages`
-  - route shells only
-- `frontend/src/Components/ontology`
-  - ontology browser and bridge workbench
-- `frontend/src/Components/registry`
-  - metadata registry components
-- `frontend/src/Components/traceability`
-  - requirements and trace links
-- `frontend/src/Components/quality`
-  - quality and incidents
-- `frontend/src/services`
-  - domain API clients
-- `frontend/src/contexts`
-  - shared state by capability
-
-### Backend
-
-- `backend/routes`
-  - route handlers only
-- `backend/Services/governance`
-  - registry and governance logic
-- `backend/Services/ontology`
-  - ontology logic
-- `backend/Services/traceability`
-  - trace and impact logic
-- `backend/Services/quality`
-  - quality logic
-- `backend/Services/graph`
-  - graph view logic
-- `backend/Services/rag`
-  - retrieval and agent context
-- `backend/Services/sync`
-  - canonicalization and sync
-
-## Success Criteria
-
-The refactor is on track when:
-
-- metadata registry, ontology junction, requirements, graph, and quality each own a clear responsibility,
-- no single page owns too many unrelated workflows,
-- backend services map cleanly to product layers,
-- and the platform can grow without adding more coupling.
-
+See [Semantic source preparation and event review](SEMANTIC-EVENT-WORKFLOW.md), [Workflow engine](WORKFLOW-ENGINE.md) and the dated [architecture audit](audits/industrial-ontology-lambda-review-2026-11-01.md) for implementation boundaries and evidence.

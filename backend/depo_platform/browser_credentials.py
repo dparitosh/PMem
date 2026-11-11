@@ -143,8 +143,13 @@ def verify_session(profile, token, current_digest, *, maintenance=False):
             raise HTTPException(403, 'Invalid maintenance scope')
         current_digest = admin[0] if admin else None
     if (not admin or admin[2] or (admin[1] and admin[1] <= now)
-            or admin[0] != record.get('admin_digest')
-            or record.get('profiles', {}).get(profile) != current_digest):
+            or admin[0] != record.get('admin_digest')):
+        raise HTTPException(403, 'Administrator key changed; reconnect in Admin')
+    if profile not in record['profiles']:
+        # Missing permission is not a revoked login. Preserve other valid scopes
+        # while refusing this operation; the client must explicitly reconnect.
+        raise HTTPException(403, f'Browser session lacks required scope: {profile}. Reconnect in Admin with the required access.')
+    if record['profiles'][profile] != current_digest:
         raise HTTPException(403, 'Browser session scope is unavailable or credentials changed; reconnect in Admin')
     return record['actor']
 

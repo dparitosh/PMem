@@ -76,6 +76,26 @@ class MemoryRegressions(unittest.TestCase):
         cypher = query.call_args.args[0]
         self.assertLess(cypher.index('ON CREATE SET'), cypher.index("SET f.kind"))
 
+    def test_unresolved_ontology_never_reads_other_ontology_facts(self):
+        with patch.object(Memory, '_query') as query:
+            self.assertEqual(Memory.semantic_bridge_facts('  '), [])
+        query.assert_not_called()
+
+    def test_fact_reuse_requires_current_explicit_approval(self):
+        with patch.object(Memory, '_query', return_value=[]) as query:
+            Memory.semantic_bridge_facts('ontology')
+        cypher = query.call_args.args[0]
+        for predicate in ("f.lifecycle_status = 'approved'", 'f.superseded_by IS NULL',
+                          'datetime(f.valid_from) <= datetime()', 'datetime(f.valid_until) > datetime()'):
+            self.assertIn(predicate, cypher)
+        self.assertNotIn("coalesce(f.lifecycle_status", cypher)
+
+    def test_optional_context_failure_is_distinct_from_empty_available_memory(self):
+        with patch.object(Memory, '_query', return_value=None):
+            self.assertEqual(Memory.recent_context('session')['status'], 'unavailable')
+        with patch.object(Memory, '_query', return_value=[]):
+            self.assertEqual(Memory.recent_context('session')['status'], 'available')
+
     def test_failed_schema_does_not_write_unconstrained_memory(self):
         with patch.object(Memory, 'ensure_schema', return_value={'ensured':False}), patch.object(Memory, '_query') as query:
             Memory.record_chat_turn(session_id='session', user_message='hello', assistant_response='answer')

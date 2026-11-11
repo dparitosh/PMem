@@ -1,0 +1,200 @@
+/*
+ * Vocabulary mapping table (OntologyVocabularyPanel).
+ * Colours come from the IX status tokens in ui/ix/tokens.css or IX theme variables;
+ * no hard-coded hex values.
+ */
+
+.vocab-panel {
+  color: var(--theme-color-text, inherit);
+}
+
+.vocab-panel__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.vocab-panel__relations,
+.vocab-panel__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vocab-panel__relations-label {
+  font-size: 12px;
+  margin-right: 4px;
+  opacity: 0.8;
+}
+
+.vocab-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--theme-color-primary, currentColor);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vocab-panel__chip[aria-pressed="true"] {
+  background: var(--theme-color-primary, currentColor);
+  color: var(--theme-color-primary-contrast, var(--ui-status-neutral-bg, transparent));
+}
+
+.vocab-panel__chip-count {
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.vocab-panel__count {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.vocab-panel__help {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.vocab-panel__table-wrap {
+  border: 1px solid var(--theme-color-border, var(--ui-status-neutral, currentColor));
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 520px;
+}
+
+.vocab-panel__table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+
+.vocab-panel__th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--theme-color-surface-alt, var(--ui-status-neutral-bg, transparent));
+  border-bottom: 1px solid var(--theme-color-border, var(--ui-status-neutral, currentColor));
+}
+
+.vocab-panel__th--index,
+.vocab-panel__td--index {
+  width: 40px;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.vocab-panel__th--relation,
+.vocab-panel__td--relation {
+  width: 150px;
+  text-align: center;
+}
+
+.vocab-panel__td {
+  padding: 10px 12px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--theme-color-border, var(--ui-status-neutral, currentColor));
+}
+
+.vocab-panel__row {
+  cursor: pointer;
+}
+
+.vocab-panel__row--alt {
+  background: var(--ui-status-neutral-bg, transparent);
+}
+
+.vocab-panel__row:hover,
+.vocab-panel__row:focus-visible {
+  background: var(--ui-status-info-bg, transparent);
+}
+
+.vocab-panel__row--selected {
+  background: var(--ui-status-info-bg, transparent);
+}
+
+.vocab-panel__label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.vocab-panel__term-id {
+  font-family: monospace;
+  font-size: 10px;
+  margin-top: 2px;
+  opacity: 0.75;
+  word-break: break-all;
+}
+
+.vocab-panel__detail {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--theme-color-border, var(--ui-status-neutral, currentColor));
+}
+
+.vocab-panel__detail-grid {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.vocab-panel__detail-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  opacity: 0.8;
+}
+
+.vocab-panel__detail-name {
+  font-weight: 700;
+}
+
+.vocab-panel__detail-code {
+  font-size: 11px;
+  word-break: break-all;
+  opacity: 0.75;
+}
+
+.vocab-panel__detail-middle {
+  text-align: center;
+  padding-top: 10px;
+}
+
+.vocab-panel__arrow {
+  font-size: 18px;
+  margin-top: 4px;
+  opacity: 0.6;
+}
+
+.vocab-panel__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.vocab-panel__page-size {
+  margin-left: 4px;
+}
+
+.vocab-panel__pager {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}

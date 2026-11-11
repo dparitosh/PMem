@@ -269,20 +269,6 @@ class ThreeDXMLExtractor(OntologyExtractor):
                 if rel.target not in source_entity.relationships:
                     source_entity.add_relationship(rel.target, rel.relation_type)
         
-        # Build implicit connections from shared attributes
-        attr_to_entities = defaultdict(list)
-        for entity_name, entity in self.entities.items():
-            for attr_name in entity.attributes:
-                attr_to_entities[attr_name].append(entity_name)
-        
-        # Connect entities that share attributes
-        for attr_name, entity_list in attr_to_entities.items():
-            if len(entity_list) > 1:
-                for entity_name in entity_list:
-                    if entity_name in self.entities:
-                        entity = self.entities[entity_name]
-                        for other_entity in entity_list:
-                            if other_entity != entity_name and other_entity not in entity.relationships:
-                                entity.add_relationship(other_entity, "shares_attribute")
+        self._connect_shared_attributes()
         
         logger.info(f"Built connections: {sum(len(e.relationships) for e in self.entities.values())} total")

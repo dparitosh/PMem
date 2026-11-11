@@ -64,6 +64,9 @@ class ThreeDXMLImportService:
             temp_file.write_bytes(file_content)
             extractor = ThreeDXMLExtractor(temp_dir)
             extractor.extract()
+            if not extractor.entities:
+                # extract() logs per-file parse failures and continues, so a malformed upload would otherwise be saved as an empty ontology.
+                raise ValueError("No 3DXML entities could be extracted; file is malformed or has no product structure")
             return {
                 "entities_extracted": len(extractor.entities),
                 "relationships_extracted": len(extractor.relationships),

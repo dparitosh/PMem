@@ -1,5 +1,5 @@
 import React from 'react';
-import { RequirementsWorkbench } from '../Components/OntologyMapper';
+import RequirementsWorkbench from '../features/traceability/RequirementsWorkbench';
 
 export default function RequirementsPage({ onNavigate }) {
   return (

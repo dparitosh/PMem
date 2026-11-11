@@ -31,6 +31,17 @@ function Assert-Rejected([string]$Expected) {
 }
 try {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-depo.ps1') -Destination (Join-Path $testRoot 'infra/windows')
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'native-install-command.ps1') -Destination (Join-Path $testRoot 'infra/windows')
+  # Isolate OS inspection and executable discovery, while exercising the real
+  # installer's version/lock checks. No dependency installation is permitted.
+  Set-Content -LiteralPath (Join-Path $testRoot 'infra/windows/deployment-process-guards.ps1') -Value 'function Assert-DepoWindowsManagementAccess {}'
+  Set-Content -LiteralPath (Join-Path $testRoot 'infra/windows/runtime-config.ps1') -Value @'
+function Read-DepoEnvironment { @{} }
+function Get-DepoNodeRuntime {
+  if ([version]$global:depoTestNodeVersion.TrimStart('v') -lt [version]'24.0.0') { throw 'Node.js 24 or newer is required.' }
+  @{ Directory=$PSScriptRoot; Version=$global:depoTestNodeVersion; Npm='npm.cmd' }
+}
+'@
   Set-Content -LiteralPath (Join-Path $testRoot 'frontend/package-lock.json') -Value '{}'
   Set-Content -LiteralPath (Join-Path $testRoot 'backend/requirements-lock.txt') -Value ('example==1.0 --hash=sha256:' + ('a' * 64))
   $script:installer = Join-Path $testRoot 'infra/windows/install-depo.ps1'

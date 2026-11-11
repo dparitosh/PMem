@@ -4,6 +4,8 @@ from backend.depo_platform.network import bounded_timeout_seconds, ontology_publ
 
 def tool_timeout_seconds(tool, inputs):
     normal = bounded_timeout_seconds('AGENTIC_TOOL_TIMEOUT_SECONDS', default=30)
+    if tool.get('id') == 'ontology.consistency.check':
+        normal = max(normal,bounded_timeout_seconds('DEPO_REASONER_TIMEOUT_SECONDS',default=60,maximum=180)+30)
     if tool.get('id') == 'engineering.publish':
         normal = max(normal, engineering_workflow_timeout_seconds() + 30)
     if tool.get('id') == 'bridge.mapping.preview':

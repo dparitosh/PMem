@@ -1,0 +1,18 @@
+NEXUS | Local demonstration verification | 2026-11-04
+
+The narrated video combines real full application viewport captures with labeled illustrative 3D diagrams. It is not an uninterrupted screen recording. Demonstration data is labeled; synthetic source provenance remains intact.
+
+Traceability story:
+- Forward: selected housing to CAD document, shape record, MBSE subsystem, requirement, manufacturing process, quality/PMI annotation and simulation document reference.
+- Backward: Where Used shows the recorded parent assembly.
+- Contextual graph: a requirement answer focuses the existing housing/requirement records (2 nodes, 1 edge); a PMI follow-up switches to the housing/PMI records (2 nodes, 1 edge). Restoring search context returns 10 nodes / 9 links.
+- Recorded values: requirement text says continuous operation for eight hours, verification not demonstrated; PMI value 0.02 mm, datum A.
+- Similarity: alternative housing ranks above shaft; neither score approves substitution.
+- Three consecutive agent investigations completed with one scoped read each and source revision checks.
+- Conversation was retained after reload; selected-object references were verified.
+
+Latest checks: 37 frontend shell/chat/evidence-focus tests; 28 contextual backend tests passed. Expected failure-simulation console output and a pytest cache-permission warning are not application test failures. Managed service restart passed readiness and browser access validation.
+
+Limits: this is local demo acceptance, not customer release certification. No customer-approved KPI model or PostgreSQL mart was created. Full model logical consistency was not checked. No CAD mesh viewer or computed simulation result is implied. A simulation document reference is a recorded association. Long-term approved lesson reuse is illustrative, not established by the conversation test. Legacy namespace-as-ontology-ID revision lookup remains open.
+
+Fixes made for this recording: page stacking isolation and reserved responsive chat space; selected housing reference resolution; completed typed chat evidence focuses existing loaded graph records only. No graph write or approval requirement was relaxed.

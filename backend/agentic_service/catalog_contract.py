@@ -1,4 +1,5 @@
 """Reject ambiguous agent identities and broken execution references at load time."""
+import re
 SERVICES = {'agentic', 'ontology', 'graph', 'ingestion', 'oslc', 'qif', 'catalog', 'data_products', 'ceim', 'data_pipeline'}
 
 
@@ -19,6 +20,8 @@ def validate_catalog(data):
             identities[value['id']] = value
         groups[kind] = identities
     for tool in groups['tools'].values():
+        if type(tool.get('mutates')) is not bool:
+            raise ValueError(f'Tool mutates must be a boolean: {tool["id"]}')
         if tool.get('transport') == 'openapi':
             if tool.get('service') not in SERVICES or tool.get('method') not in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'}:
                 raise ValueError(f'Invalid HTTP tool: {tool["id"]}')
@@ -31,6 +34,8 @@ def validate_catalog(data):
         else:
             raise ValueError(f'Unsupported tool transport: {tool["id"]}')
     for agent in groups['agents'].values():
+        if 'approval_required' in agent and type(agent['approval_required']) is not bool:
+            raise ValueError(f'Agent approval_required must be a boolean: {agent["id"]}')
         prompt = agent.get('system_prompt')
         if prompt is not None and (not isinstance(prompt, str) or not prompt.strip() or len(prompt.encode('utf-8')) > 16384):
             raise ValueError(f'Invalid system prompt: {agent["id"]}')
@@ -40,13 +45,32 @@ def validate_catalog(data):
         if len(allowed) != len(set(allowed)):
             raise ValueError(f'Agent has duplicate tools: {agent["id"]}')
     for workflow in groups['workflows'].values():
+        governance = workflow.get('governance')
+        if governance is not None:
+            validate_procedure_governance(governance)
         steps = workflow.get('steps')
         if not isinstance(steps, list) or not steps:
             raise ValueError(f'Workflow requires steps: {workflow["id"]}')
         for step in steps:
             if not isinstance(step, dict) or not isinstance(step.get('agent_id'), str) or not isinstance(step.get('tool_id'), str):
                 raise ValueError(f'Workflow has invalid step identities: {workflow["id"]}')
+            if 'approval_required' in step and type(step['approval_required']) is not bool:
+                raise ValueError(f'Workflow step approval_required must be a boolean: {workflow["id"]}')
             agent = groups['agents'].get(step['agent_id'])
             if agent is None or step.get('tool_id') not in agent['tools']:
                 raise ValueError(f'Workflow has an invalid agent/tool binding: {workflow["id"]}')
     return data
+
+
+def validate_procedure_governance(governance):
+    if not isinstance(governance, dict):
+        raise ValueError('Workflow governance must be an object')
+    if governance.get('status') not in {'proposed', 'approved', 'retired'}:
+        raise ValueError('Invalid workflow governance status')
+    if not re.fullmatch(r'\d+\.\d+\.\d+', str(governance.get('version', ''))):
+        raise ValueError('Workflow governance requires a version')
+    if governance['status'] == 'approved':
+        if not isinstance(governance.get('approved_by'), str) or not governance['approved_by'].strip():
+            raise ValueError('Approved procedure requires a deployment-review identity')
+        if not re.fullmatch(r'[0-9a-f]{64}', str(governance.get('evaluation_sha256', ''))):
+            raise ValueError('Approved procedure requires an evaluation artifact digest')

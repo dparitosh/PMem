@@ -7,8 +7,7 @@ and configure them separately; start DEPO before using plugin imports.
 
 Follow the [single installation sequence](../INSTALLATION.md)
 from the repository root. It is the only normative DEPO installation procedure.
-Use root `install-depo.ps1` as the customer execution command; it delegates to
-`infra/windows/install-depo-windows.ps1`, which orchestrates the lifecycle. It
+Use `Setup-DEPO.cmd` for guided setup, or root `install-depo.ps1` for advanced configuration. The root installer orchestrates the lifecycle and
 owns dependency installation, frontend build, database initialization,
 service startup, validation, and release preflight. PostgreSQL, Neo4j and
 optional Java/Spark runtimes must be provisioned before that command.
@@ -31,7 +30,7 @@ the runtime-path placeholders with approved installation paths. Set `DEPO_SPARK_
 `DEPO_HADOOP_HOME`, `DEPO_SPARK_OUTPUT_ROOT`, and `DEPO_SPARK_MASTER` for the host.
 
 The supported installer runs this smoke test itself. Enable it with
-`-EnableSpark` on `infra/windows/install-depo-windows.ps1`; add the connector
+`-EnableSpark` on root `install-depo.ps1`; add the connector
 and scheduler switches only when their customer capability has been approved.
 
 The connector switch requires Spark. Connector dependency resolution needs

@@ -1,0 +1,41 @@
+.quality-workspace { display:grid; gap:24px; min-width:0; color:var(--ui-text); }
+.quality-header,.quality-results__heading { display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap; }
+.quality-eyebrow { font-size:12px; font-weight:700; letter-spacing:.08em; color:var(--ui-primary,#005a9c); }
+.quality-header h2 { margin:8px 0; font-size:clamp(24px,2.2vw,32px); }
+.quality-header p,.quality-results__heading p { margin:6px 0 0; color:var(--ui-muted); max-width:70ch; }
+.quality-header__actions { display:grid; gap:8px; justify-items:end; }
+.quality-header__actions span,.quality-summary small { color:var(--ui-muted); font-size:12px; }
+.quality-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface); }
+.quality-summary > div { padding:20px; display:grid; gap:10px; border-inline-end:1px solid var(--ui-border); }
+.quality-summary > div:last-child { border:0; }
+.quality-summary strong { font-size:30px; font-variant-numeric:tabular-nums; }
+.quality-summary span { font-size:14px; min-height:2.6em; }
+.quality-notice { padding:14px 18px; border-inline-start:3px solid var(--ui-primary,#005a9c); background:var(--ui-surface); line-height:1.6; }
+.quality-notice--error { border-color:var(--ui-danger,#b42318); }
+.quality-results { min-width:0; }
+.quality-results h3 { margin:0; }
+.quality-toolbar { display:flex; gap:16px; flex-wrap:wrap; margin:20px 0; }
+.quality-toolbar label { display:grid; gap:8px; font-size:13px; font-weight:600; flex:1 1 250px; }
+.quality-toolbar label:last-child { flex:0 1 280px; }
+.quality-toolbar input,.quality-toolbar select { box-sizing:border-box; width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--ui-border); border-radius:6px; background:var(--ui-surface); color:var(--ui-text); font:inherit; }
+.quality-table-scroll { overflow:auto; max-height:65vh; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface); }
+.quality-table-scroll table { width:100%; border-collapse:collapse; text-align:left; }
+.quality-table-scroll th { position:sticky; top:0; background:var(--ui-surface); z-index:1; font-size:12px; color:var(--ui-muted); }
+.quality-table-scroll td,.quality-table-scroll th { padding:16px; border-bottom:1px solid var(--ui-border); vertical-align:top; }
+.quality-table-scroll td { min-width:130px; }
+.quality-table-scroll td:first-child { min-width:200px; }
+.quality-table-scroll small { display:block; color:var(--ui-muted); margin-top:8px; }
+.quality-run-id { font-size:11px; overflow-wrap:anywhere; max-width:220px; }
+.quality-status { display:inline-block; padding:5px 9px; background:var(--ui-background,#f3f6f8); border:1px solid var(--ui-border); border-radius:20px; font-size:12px; text-transform:capitalize; white-space:nowrap; }
+.quality-status--attention { border-color:var(--ui-danger,#b42318); }
+.quality-status--active { border-color:var(--ui-primary,#005a9c); }
+.quality-measurements { display:grid; gap:8px; margin:0; }
+.quality-measurements > div { display:flex; justify-content:space-between; gap:20px; }
+.quality-measurements dt { color:var(--ui-muted); }
+.quality-measurements dd { margin:0; font-weight:600; font-variant-numeric:tabular-nums; }
+.quality-muted { color:var(--ui-muted); font-size:13px; }
+.quality-empty { text-align:center; padding:48px 24px; border:1px dashed var(--ui-border); border-radius:8px; min-height:120px; }
+.quality-empty p { max-width:65ch; margin:12px auto 20px; color:var(--ui-muted); }
+.quality-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.quality-workspace a:focus-visible,.quality-workspace input:focus-visible,.quality-workspace select:focus-visible,.quality-table-scroll:focus-visible { outline:2px solid var(--ui-primary,#005a9c); outline-offset:3px; }
+@media(max-width:800px) { .quality-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } .quality-summary > div { border-bottom:1px solid var(--ui-border); } .quality-header__actions { justify-items:start; } }

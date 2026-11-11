@@ -16,9 +16,9 @@ from .access import authorize
 from .representation import represent
 from .media import REPRESENTATION_RESPONSES
 
-KINDS = {"job-definitions": "data_job_definitions", "job-runs": "data_job_runs",
+KINDS = {"analytics-baselines": "semantic_configurations","job-definitions": "data_job_definitions", "job-runs": "data_job_runs",
          "products": "catalog_products", "ontologies": "ontology_catalog"}
-PUBLIC_FIELDS = {"job_id", "run_id", "product_id", "version", "status", "job_type",
+PUBLIC_FIELDS = {"configuration_id", "configuration_context", "approval_status", "kind","job_id", "run_id", "product_id", "version", "status", "job_type",
                  "ontology_id", "ontology_name", "lifecycle_status", "semantic_completeness", "analytics_profile_artifact_id",
                  "quality_profile", "validation_status", "created_at", "started_at",
                  "finished_at", "updated_at", "event_id", "ceim_version", "mapping_digest"}
@@ -37,7 +37,8 @@ def discovery(request: Request):
     root = base()
     payload = {"uri": root, "type": "oslc:ServiceProvider", "read_only": True,
             "queryCapabilities": [{"queryBase": f"{root}/{kind}",
-                                   "resourceShape": f"{root}/shapes/{kind}"} for kind in KINDS]}
+                                   "resourceShape": f"{root}/shapes/{kind}"} for kind in KINDS],
+            "changeControlEvidence": OSLCService.config().base_url + '/oslc/change-control/records'}
     return represent(payload, request)
 
 
@@ -67,6 +68,8 @@ def resource(kind: str, identifier: str, request: Request, identity: str = Depen
     value = PostgresRegistry(KINDS[kind]).get(identifier)
     if value is None:
         raise HTTPException(404, "Lifecycle resource not found")
+    if kind == 'analytics-baselines' and value.get('kind') != 'analytics-baseline':
+        raise HTTPException(404, "Analytics baseline not found")
     payload = {"uri": f"{root}/{kind}/{quote(identifier, safe='')}",
                "type": f"{root}/types/{kind}", "identifier": identifier,
                "evidence": {key: item for key, item in value.items() if key in PUBLIC_FIELDS and isinstance(item, (str, int, float, bool))}}

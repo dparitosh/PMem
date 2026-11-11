@@ -14,18 +14,10 @@
   elementFormDefault="qualified"
   attributeFormDefault="unqualified"
   version="3.0.0">
+  <!-- Local reference to the W3C digital signature schema. A remote import
+       makes validation slow and fails offline, so the bundled copy is used. -->
   <xs:import namespace="http://www.w3.org/2000/09/xmldsig#"
-    schemaLocation="http://www.w3.org/TR/2002/REC-xmldsig-core-20020212/xmldsig-core-schema.xsd"/>
-
-<!-- The following local reference to the digital signature schema from w3c
-     can be used to replace the above remote reference. Such a replacement
-     is necessary for example in some widely-used software because the
-     real-time validation of the schema by the software makes keyboard
-     response very slow and therefore editing difficult.
-
-  <xs:import namespace="http://www.w3.org/2000/09/xmldsig#" 
              schemaLocation="../QIFLibrary/xmldsig-core-schema.xsd"/>
--->
   <xs:include schemaLocation="QIFPlan.xsd"/>
   <xs:include schemaLocation="QIFResults.xsd"/>
   <xs:include schemaLocation="QIFStatistics.xsd"/>

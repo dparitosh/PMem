@@ -41,17 +41,17 @@ export default function usePollerRegistry(isMountedRef) {
     pollerTimersRef.current.set(pollerKey, timerId);
   }, [clearPoller, isMountedRef]);
 
-  useEffect(() => () => {
-    pollerTimersRef.current.forEach((timerId) => clearTimeout(timerId));
-    pollerControllersRef.current.forEach((controller) => controller.abort());
-    pollerTimersRef.current.clear();
-    pollerControllersRef.current.clear();
-    activePollersRef.current.clear();
-  }, []);
+  const clearAllPollers = useCallback(() => {
+    const keys = new Set([...activePollersRef.current, ...pollerTimersRef.current.keys(), ...pollerControllersRef.current.keys()]);
+    keys.forEach(clearPoller);
+  }, [clearPoller]);
+
+  useEffect(() => clearAllPollers, [clearAllPollers]);
 
   return {
     activePollersRef,
     clearPoller,
+    clearAllPollers,
     pollerTimersRef,
     schedulePoller,
   };

@@ -126,6 +126,7 @@ class OntologyConfig:
 
     # ── Provenance (all optional) ─────────────────────────────────────────────
     creator:          str  = "IAE — Industrial Autonomy and Engineering"
+    class_iris:       dict = field(default_factory=dict)
     source_ns:        str  = ""   # Original schema namespace (info only)
     source_standard:  str  = ""   # e.g. "ANSI/ISA-95.00.02-2010"
     version_info:     str  = ""
@@ -165,7 +166,7 @@ class OntologyConfig:
         return Namespace(self.base_uri)
 
     def class_uri(self, name: str) -> URIRef:
-        return self.ns[_safe_uri_name(name)]
+        return URIRef(self.class_iris[name]) if name in self.class_iris else self.ns[_safe_uri_name(name)]
 
     def prop_uri(self, domain: str, prop_name: str) -> URIRef:
         canonical = self.canonical_property_key(prop_name)
@@ -535,6 +536,7 @@ def build_ontology_header(g: Graph, cfg: OntologyConfig) -> None:
         f"SKOS concept class representing controlled vocabulary terms in {cfg.title}")))
     g.add((SKOS.Concept, RDFS.isDefinedBy,
            URIRef("http://www.w3.org/2004/02/skos/core#Concept")))
+    g.add((SKOS.Concept, DC.source, URIRef(str(SKOS.Concept))))
     g.add((onto, OWL.imports, URIRef("http://open-services.net/ns/core")))
 
 
@@ -887,11 +889,17 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             association_uri = cfg.class_uri(association_name)
             g.add((association_uri, RDF.type, OWL.Class))
             g.add((association_uri, RDFS.label, Literal(association_name)))
+            g.add((association_uri, RDFS.comment, Literal(
+                f"Generated projection construct for repeated XSD particle {type_name}.{prop_name}.")))
+            g.add((association_uri, DC.source, Literal(f"{file_stem}.xsd")))
             target_prop = cfg.prop_uri(association_name, prop_name)
             g.add((target_prop, RDF.type, OWL.ObjectProperty))
             g.add((target_prop, RDFS.domain, association_uri))
             g.add((target_prop, RDFS.range, target_uri))
             g.add((target_prop, RDFS.label, Literal(f"target {prop_name}")))
+            g.add((target_prop, RDFS.comment, Literal(
+                f"Generated target edge for {type_name}.{prop_name} to XSD type {range_local}.")))
+            g.add((target_prop, DC.source, Literal(f"{file_stem}.xsd")))
             range_local = association_name
 
         # Strict mode avoids asserting property semantics with no type evidence.
@@ -1417,6 +1425,8 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
         raise ValueError('Missing conversion targets: ' + ', '.join(missing or ['no XSD files']))
     conversion_diagnostics = inspect_conversion_schemas(xsd_paths, XSD_TYPE_MAP)
     expanded_schemas = expand_model_groups(xsd_paths)
+    from .xsd_identity import class_iri_map
+    cfg.class_iris = class_iri_map(expanded_schemas)
     for message in conversion_diagnostics:
         g.add((URIRef(cfg.base_uri), DCTERMS.description, Literal('Conversion limitation: ' + message)))
 

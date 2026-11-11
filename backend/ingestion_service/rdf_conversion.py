@@ -1,6 +1,8 @@
 """Normalize uploaded RDF syntax without publishing or asserting new facts."""
 from pathlib import Path
-from rdflib import Graph
+from rdflib import Graph, URIRef
+from rdflib.namespace import RDF, OWL
+from backend.depo_platform.ontology_namespace import ontology_prefix as namespace_prefix
 from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 from backend.artifact_store import ArtifactStore
@@ -32,13 +34,16 @@ def convert_rdf(*, filename, content):
         raise ValueError('Ontology RDF syntax is invalid') from failure
     if not graph:
         raise ValueError('Ontology contains no RDF triples')
+    declared = sorted({str(subject) for subject in graph.subjects(RDF.type, OWL.Ontology) if isinstance(subject, URIRef)})
+    namespace = declared[0] if len(declared) == 1 else ''
+    prefix = namespace_prefix(namespace) if namespace else 'ontology'
     turtle = graph.serialize(format='turtle')
     store = ArtifactStore()
     source = store.ingest_bytes(content, filename=Path(filename).name, kind='ontology-source')
     serialized = store.ingest_bytes(turtle.encode('utf-8'), filename=Path(filename).stem + '.ttl', kind='serialized-ontology',
                                     media_type='text/turtle', provenance={'source_artifact_id': source['artifact_id']})
     return {'format': 'RDF', 'source_kind': 'schema', 'statistics': {'triples': len(graph)},
-            'ontology': {'name': Path(filename).stem, 'prefix': 'ontology', 'turtle': turtle},
+            'ontology': {'name': Path(filename).stem, 'prefix': prefix, 'base_uri': namespace, 'namespace_status': 'declared' if namespace else 'missing_or_ambiguous', 'turtle': turtle},
             'artifacts': {'source': source['artifact_id'], 'serialization': serialized['artifact_id']},
             'data_product_draft': {
                 'contract': 'ontology-evidence-data-product-v1',

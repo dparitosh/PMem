@@ -149,3 +149,32 @@ def test_ooxml_expanded_content_limit_blocks_archive_bombs(monkeypatch, tmp_path
 
     with pytest.raises(ValueError, match='expanded-content safety limit'):
         processor._validate_ooxml_archive(sample, 'word/')
+
+
+def test_docx_tables_and_nested_cells_preserve_source_order(tmp_path):
+    from docx import Document
+    doc = Document()
+    doc.add_paragraph('Before')
+    cell = doc.add_table(rows=1, cols=1).cell(0, 0)
+    cell.text = 'REQ-TABLE-001'
+    cell.add_table(rows=1, cols=1).cell(0, 0).text = 'Rated torque shall be 45 Nm'
+    doc.add_paragraph('After')
+    path = tmp_path / 'requirements.docx'
+    doc.save(path)
+    text = processor.extract_text_from_file(path)['text']
+    assert text.index('Before') < text.index('REQ-TABLE-001') < text.index('45 Nm') < text.index('After')
+    assert '/row[1]/cell[1]' in text
+
+
+def test_pptx_tables_and_grouped_shapes_are_extracted(tmp_path):
+    from pptx import Presentation
+    from pptx.util import Inches
+    doc = Presentation()
+    slide = doc.slides.add_slide(doc.slide_layouts[6])
+    slide.shapes.add_table(1, 1, 0, 0, Inches(2), Inches(1)).table.cell(0, 0).text = 'REQ-TABLE-002'
+    group = slide.shapes.add_group_shape()
+    group.shapes.add_textbox(0, 0, Inches(2), Inches(1)).text = 'Rated speed 3000 rpm'
+    path = tmp_path / 'requirements.pptx'
+    doc.save(path)
+    text = processor.extract_text_from_file(path)['text']
+    assert 'REQ-TABLE-002' in text and '3000 rpm' in text

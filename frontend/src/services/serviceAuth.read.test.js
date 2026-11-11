@@ -3,14 +3,29 @@ import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setB
 import { registerServiceContract, clearServiceContracts } from './serviceContractRegistry';
 
 vi.mock('../config', () => ({ config: { semanticServiceUrls: {
-  graph: 'http://vm:8013', agentic: 'http://vm:8012', catalog: 'http://vm:8016', dataProducts: 'http://vm:8017',
+  ontology:'http://vm:8011', graph: 'http://vm:8013', agentic: 'http://vm:8012', catalog: 'http://vm:8016', dataProducts: 'http://vm:8017',
 } } }));
 const reads = [
+  ['ontology','http://vm:8011','/api/v1/ontologies/health'],
+  ['ontology','http://vm:8011','/api/v1/ontologies'],
   ['graph', 'http://vm:8013', '/api/v1/graph/metrics'],
   ['agentic', 'http://vm:8012', '/api/v1/observability/summary'],
   ['catalog', 'http://vm:8016', '/api/v1/catalog/products'],
   ['dataProducts', 'http://vm:8017', '/api/v1/data-products'],
 ];
+
+test('workflow status keeps a credential after discovery reports reader and supervisor alternatives', () => {
+  setCredentialProfile('GRAPH_READ_TOKEN','fixture-reader');
+  registerServiceContract('agentic','http://vm:8012',{openapi:'3.0.3',paths:{
+    '/api/v1/workflow-runs/{run_id}':{get:{security:[{BearerKey:[]}],
+      'x-depo-authorization':{credential_profiles:['AGENTIC_APPROVAL_TOKEN','GRAPH_READ_TOKEN']}}},
+  }});
+  const url='http://vm:8012/api/v1/workflow-runs/run-retained';
+  expect(serviceAuthHeaders(url,'get').Authorization).toBe('Bearer fixture-reader');
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN','fixture-supervisor');
+  expect(serviceAuthHeaders(url,'get').Authorization).toBe('Bearer fixture-supervisor');
+  expect(serviceAuthHeaders('http://untrusted.test/api/v1/workflow-runs/run-retained','get')).toEqual({});
+});
 
 test('administrator rotation expires delegation while a missing write scope preserves reads', () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_rotated');
@@ -117,4 +132,13 @@ test('gateway key survives same-tab session restoration and clears on logout', a
   restored.clearServiceAuthToken();
   expect(sessionStorage.getItem('depo.browserSession.v1')).toBeNull();
   expect(restored.getGatewaySubscriptionKey()).toBe('');
+});
+
+
+test('missing delegated execution scope preserves the valid read session',()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','depo_session_read_only');
+ setBrowserSessionExpiry('depo_session_read_only',new Date(Date.now()+600000).toISOString());
+ handleSessionRejection(403,'Bearer depo_session_read_only','Browser session lacks required scope: DATA_JOB_EXECUTION_TOKEN. Reconnect in Admin with the required access.');
+ expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_read_only');
+ expect(getCredentialProfile('DATA_JOB_EXECUTION_TOKEN')).toBe('');
 });

@@ -1,0 +1,33 @@
+{
+  "synthetic": true,
+  "customer_approved": false,
+  "records": 11,
+  "triples": 108,
+  "business_associations": 9,
+  "kpis": [
+    {
+      "name": "Observed parts",
+      "formula": "count(Part records)",
+      "value": 3,
+      "unit": "records"
+    },
+    {
+      "name": "Parts with recorded PMI links",
+      "formula": "count(distinct Part with hasPMI)",
+      "value": 1,
+      "unit": "records"
+    },
+    {
+      "name": "Recorded requirement links",
+      "formula": "count(hasRequirement)",
+      "value": 1,
+      "unit": "links"
+    }
+  ],
+  "limitations": [
+    "No real CAD file or simulation output",
+    "No requirement satisfaction claim",
+    "No effectivity or BOM completeness claim",
+    "No customer publication or database materialization performed"
+  ]
+}

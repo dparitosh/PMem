@@ -1,0 +1,67 @@
+1
+00:00:00,000 --> 00:00:18,043
+The bearing requirement specifies a 25 mm bore and retains verification context.
+
+2
+00:00:18,043 --> 00:00:36,139
+The SysML block identifies the bearing subsystem and its revision.
+
+3
+00:00:36,139 --> 00:00:56,148
+Expand the requirement to reveal its subsystem, assembly, part and inspection links.
+
+4
+00:00:56,148 --> 00:01:14,365
+The subsystem records its assembly allocation and requirement relationship.
+
+5
+00:01:14,365 --> 00:01:30,632
+The bearing assembly connects requirements to the component structure.
+
+6
+00:01:30,632 --> 00:01:48,967
+The inner race retains its part number, revision A and 25 mm bore diameter.
+
+7
+00:01:48,967 --> 00:02:09,273
+Expand the part to reveal CAD, geometry, PMI, manufacturing and inspection evidence.
+
+8
+00:02:09,273 --> 00:02:25,518
+The CAD document is linked to its part through a recorded relationship.
+
+9
+00:02:25,518 --> 00:02:43,905
+The CAD reference retains its document identity and file name.
+
+10
+00:02:43,905 --> 00:03:02,043
+The cylindrical bore is represented separately from the physical part with a 25 mm nominal diameter.
+
+11
+00:03:02,043 --> 00:03:22,355
+The bore PMI records a 25 mm nominal dimension, datum A and limits of 24.99 to 25.01 mm.
+
+12
+00:03:22,355 --> 00:03:40,561
+Operation OP-020 records finish machining associated with the bore definition.
+
+13
+00:03:40,561 --> 00:03:56,708
+The manufacturing BOM retains revision A and explicit component identities.
+
+14
+00:03:56,708 --> 00:04:16,902
+Expand the manufacturing BOM to inspect its parts and individual BOM lines.
+
+15
+00:04:16,902 --> 00:04:38,903
+The inspection measures 25.006 mm within the recorded dimensional limits.
+
+16
+00:04:38,903 --> 00:04:59,266
+Expand the inspection result to return to the inspected part and the requirement it verifies.
+
+17
+00:04:59,266 --> 00:05:19,693
+Recorded relationships connect requirements, parts, CAD, PMI, manufacturing and quality for review.

@@ -10,26 +10,40 @@ from backend.mesh_store import InMemoryRegistry
 
 def test_ceim_graph_client_accepts_a_service_api_root(monkeypatch):
     """A recovery/service-discovery URL can already include /api/v1."""
+    import hashlib
+    import json as _json
     captured = {}
+    turtle = "@prefix ex: <urn:test:> ."
+    receipt = {"ontology_id": "test", "publication_id": hashlib.sha256(turtle.encode("utf-8")).hexdigest(),
+               "status": "success", "resources": 0, "relationships": 0, "hierarchy_edges": 0}
 
     class Response:
+        status_code = 200
+        headers = {}
+        request = __import__("httpx").Request("POST", "http://graph.internal:8013/api/v1/graph/ontologies/publish")
         is_error = False
-        def json(self): return {"status": "success"}
+        def json(self): return receipt
+        async def aiter_bytes(self):
+            yield _json.dumps(receipt).encode("utf-8")
+
+    class Stream:
+        async def __aenter__(self): return Response()
+        async def __aexit__(self, *args): return False
 
     class Client:
         async def __aenter__(self): return self
         async def __aexit__(self, *args): return False
-        async def post(self, url, **kwargs):
+        def stream(self, method, url, **kwargs):
             captured["url"] = url
             captured["headers"] = kwargs.get("headers")
-            return Response()
+            return Stream()
 
     monkeypatch.setenv("GRAPH_SERVICE_URL", "http://graph.internal:8013/api/v1")
     monkeypatch.setenv("GRAPH_PUBLICATION_TOKEN", "test-service-token")
-    monkeypatch.setattr("backend.ceim_service.router.httpx.AsyncClient", lambda timeout: Client())
+    monkeypatch.setattr("backend.ceim_service.router.httpx.AsyncClient", lambda *args, **kwargs: Client())
 
     import asyncio
-    result = asyncio.run(__import__("backend.ceim_service.router", fromlist=["_publish_to_graph"])._publish_to_graph(turtle="@prefix ex: <urn:test:> .", ontology_id="test", prefix="ex"))
+    result = asyncio.run(__import__("backend.ceim_service.router", fromlist=["_publish_to_graph"])._publish_to_graph(turtle=turtle, ontology_id="test", prefix="ex"))
 
     assert result["status"] == "success"
     assert captured["url"] == "http://graph.internal:8013/api/v1/graph/ontologies/publish"

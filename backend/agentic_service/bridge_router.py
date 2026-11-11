@@ -3,7 +3,7 @@ from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
-from .bridge_jobs import BridgeJobs, BridgeConflict
+from .bridge_jobs import BridgeJobs, BridgeConflict, BridgeJobNotFound
 
 router = APIRouter(prefix='/api/v1/workflows', tags=['semantic-bridge-jobs'])
 jobs = BridgeJobs()
@@ -33,7 +33,7 @@ class AutomaticApprovalInput(BaseModel):
 def translate(action):
     try:
         return action()
-    except KeyError as exc:
+    except BridgeJobNotFound as exc:
         raise HTTPException(404, 'Bridge job not found') from exc
     except BridgeConflict as exc:
         raise HTTPException(409, str(exc)) from exc

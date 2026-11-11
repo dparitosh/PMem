@@ -33,7 +33,7 @@ def health() -> dict:
 def remote_catalog() -> dict:
     require_remote()
     try: return client.discover()
-    except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC catalog unavailable: {exc}") from exc
+    except (httpx.HTTPError, TimeoutError) as exc: raise HTTPException(status_code=503, detail="Remote OSLC catalog unavailable; check provider readiness") from exc
     except (RuntimeError, ValueError) as exc: raise HTTPException(status_code=503, detail="Remote OSLC response or configuration is invalid") from exc
 
 
@@ -41,8 +41,8 @@ def remote_catalog() -> dict:
 def remote_query(resource_type: str, parameters: OslcQueryBody) -> dict:
     require_remote()
     try: return client.query(resource_type, parameters)
-    except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC query unavailable: {exc}") from exc
-    except RuntimeError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (httpx.HTTPError, TimeoutError) as exc: raise HTTPException(status_code=503, detail="Remote OSLC query unavailable; check provider readiness") from exc
+    except RuntimeError as exc: raise HTTPException(status_code=503, detail="Remote OSLC response or configuration is invalid") from exc
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -52,8 +52,8 @@ def pull_remote_sync(resource_type: str, parameters: OslcQueryBody, request: Req
     require_remote()
     try:
         return synchronizer.pull(resource_type, safe_parameters(parameters))
-    except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC sync unavailable: {exc}") from exc
-    except RuntimeError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (httpx.HTTPError, TimeoutError) as exc: raise HTTPException(status_code=503, detail="Remote OSLC sync unavailable; check provider readiness") from exc
+    except RuntimeError as exc: raise HTTPException(status_code=503, detail="Remote OSLC response or configuration is invalid") from exc
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

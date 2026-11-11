@@ -1,4 +1,19 @@
 # Shared guards for dependency installation and tracked process reuse.
+function Get-DepoProcessSnapshot {
+  try { return @(Get-CimInstance Win32_Process -ErrorAction Stop) }
+  catch {
+    throw "Windows process inspection is unavailable (CIM/WMI): $($_.Exception.Message). Use a Windows PowerShell session permitted to query Win32_Process; check the Windows Management Instrumentation service and host policy. Do not bypass running-process safety checks."
+  }
+}
+
+function Assert-DepoWindowsManagementAccess {
+  $null = Get-DepoProcessSnapshot
+  try { $null = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) }
+  catch {
+    throw "Windows listener inspection is unavailable: $($_.Exception.Message). Use a Windows PowerShell session permitted to query Get-NetTCPConnection before installing or starting DEPO. No process-ownership checks were bypassed."
+  }
+}
+
 function Add-DepoRuntimePath([string]$Directory) {
   $comparison = $Directory.Trim().Trim('"').Replace('/', '\').TrimEnd('\')
   $remaining = @($env:PATH -split ';' | Where-Object {
@@ -8,7 +23,7 @@ function Add-DepoRuntimePath([string]$Directory) {
 }
 
 function Assert-DepoRuntimeIdle([string]$Python) {
-  $running = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+  $running = @(Get-DepoProcessSnapshot | Where-Object {
     $_.ExecutablePath -and [string]::Equals($_.ExecutablePath, $Python, [StringComparison]::OrdinalIgnoreCase)
   })
   if ($running.Count) {
@@ -22,7 +37,7 @@ function Assert-DepoDeploymentStopped([string]$Root) {
   foreach ($entry in (@($manifest.services) + @($manifest.workers))) {
     $runtimes += Join-Path $Root ("backend/.dt_venv-" + $entry.id + '/Scripts/python.exe')
   }
-  if (@(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.ExecutablePath -in $runtimes }).Count) {
+  if (@(Get-DepoProcessSnapshot | Where-Object { $_.ExecutablePath -in $runtimes }).Count) {
     throw 'DEPO backend processes are running. Stop services before installation or schema migration; use update-depo.ps1 for an existing deployment.'
   }
 }

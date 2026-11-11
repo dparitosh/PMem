@@ -20,13 +20,19 @@ async def lifecycle():
             retention = int(bounded_timeout_seconds('AGENT_MEMORY_RETENTION_DAYS', default=30, maximum=3650))
             for cleanup, args in ((sessions.prune, ()),
                                   (AgentMemoryService.ensure_schema, ()),
-                                  (AgentMemoryService.ensure_schema, (os.getenv('NEO4J_DATABASE', 'neo4j'),)),
-                                  (companion_job_store.prune_completed, (retention,)),
-                                  (AgentMemoryService.prune_expired_sessions, ())):
+                                  (AgentMemoryService.ensure_schema, (os.getenv('NEO4J_DATABASE', 'neo4j'),))):
                 try:
                     await run_in_threadpool(cleanup, *args)
                 except Exception:
                     logging.getLogger(__name__).exception('Agent maintenance failed: %s', cleanup.__name__)
+            from .memory_maintenance import run_steps, prune_graph
+            from backend.mesh_store import PostgresRegistry
+            try:
+                await run_steps(PostgresRegistry('agentic_memory_maintenance'), [
+                    ('completed_companion_turns', companion_job_store.prune_completed, (retention,)),
+                    ('expired_graph_conversations', prune_graph, (AgentMemoryService,))])
+            except Exception:
+                logging.getLogger(__name__).exception('Memory maintenance receipt persistence failed; remaining cleanup stopped')
             await asyncio.sleep(bounded_timeout_seconds('DEPO_AGENT_MAINTENANCE_SECONDS', default=300, maximum=3600))
     from .mcp_transport import start_pool, close_pool
     start_pool()
@@ -49,7 +55,15 @@ async def lifecycle():
 
 
 app = create_service_app(title="DEPO Agentic Control Plane", version="1.0.0", readiness_check=configuration_status, lifespan_hook=lifecycle)
-app.include_router(create_odata_catalog_router(service_name="DEPOAgentic", capabilities=[ServiceCapability("Memory health", "/api/v1/memory/status", description="Verify optional memory connectivity and storage locations"), ServiceCapability("Agents", "/api/v1/agents"), ServiceCapability("Tools", "/api/v1/tools"), ServiceCapability("Workflows", "/api/v1/workflows"), ServiceCapability("Knowledge companion", "/api/v1/chat", "POST", "Submit a guided knowledge-companion prompt"), ServiceCapability("Knowledge companion stream", "/api/v1/chat-stream", "POST", "Stream a guided companion response"), ServiceCapability("Code audit", "/api/v1/code-audit", description="Generate a read-only repository dependency graph"), ServiceCapability("Plans", "/api/v1/plans", "POST", "Validate agent tool invocation"), ServiceCapability("Workflow runs", "/api/v1/workflow-runs", "POST", "Execute an ordered workflow and persist traces"), ServiceCapability("Recent workflow executions", "/api/v1/workflow-runs", description="Read authorized workflow history"), ServiceCapability("Verified write receipt", "/api/v1/workflow-runs/{run_id}/reconcile-receipt", "POST", "Verify a downstream receipt without repeating a write"), ServiceCapability("Compensation plan", "/api/v1/workflow-runs/{run_id}/compensation-plan", description="Review reversible operations"), ServiceCapability("Approved compensation", "/api/v1/workflow-runs/{run_id}/compensate", "POST", "Execute approved idempotent compensation"), ServiceCapability("Agent observability", "/api/v1/observability/summary", description="Read bounded durable agent and tool telemetry"), ServiceCapability("Prometheus metrics", "/api/v1/metrics", description="Scrape bounded agent operational metrics"), ServiceCapability("OpenAPI validation", "/api/v1/catalog/validate", description="Detect catalog drift from live OpenAPI contracts")]))
+app.include_router(create_odata_catalog_router(service_name="DEPOAgentic", capabilities=[ServiceCapability("Memory health", "/api/v1/memory/status", description="Verify optional memory connectivity and storage locations"), ServiceCapability("Agent Registry", "/api/v1/agent-registry", description="Read one authenticated agent/tool/workflow snapshot with revision and explicit readiness limits"), ServiceCapability("Agents", "/api/v1/agents"), ServiceCapability("Tools", "/api/v1/tools"), ServiceCapability("Workflows", "/api/v1/workflows"), ServiceCapability("Knowledge companion", "/api/v1/chat", "POST", "Submit a guided knowledge-companion prompt"), ServiceCapability("Knowledge companion stream", "/api/v1/chat-stream", "POST", "Stream a guided companion response"), ServiceCapability("Code audit", "/api/v1/code-audit", description="Generate a read-only repository dependency graph"), ServiceCapability("Plans", "/api/v1/plans", "POST", "Validate agent tool invocation"), ServiceCapability("Workflow runs", "/api/v1/workflow-runs", "POST", "Execute an ordered workflow and persist traces"), ServiceCapability("Recent workflow executions", "/api/v1/workflow-runs", description="Read authorized workflow history"), ServiceCapability("Verified write receipt", "/api/v1/workflow-runs/{run_id}/reconcile-receipt", "POST", "Verify a downstream receipt without repeating a write"), ServiceCapability("Compensation plan", "/api/v1/workflow-runs/{run_id}/compensation-plan", description="Review reversible operations"), ServiceCapability("Approved compensation", "/api/v1/workflow-runs/{run_id}/compensate", "POST", "Execute approved idempotent compensation"), ServiceCapability("Agent observability", "/api/v1/observability/summary", description="Read bounded durable agent and tool telemetry"), ServiceCapability("Prometheus metrics", "/api/v1/metrics", description="Scrape bounded agent operational metrics"), ServiceCapability("OpenAPI validation", "/api/v1/catalog/validate", description="Detect catalog drift from live OpenAPI contracts")]))
 app.include_router(router)
 from .bridge_router import router as bridge_router
 app.include_router(bridge_router)
+from .learning_router import router as learning_router
+app.include_router(learning_router)
+
+from .goal_routes import router as goal_router
+app.include_router(goal_router)
+
+from .page_tasks import router as page_tasks_router
+app.include_router(page_tasks_router)

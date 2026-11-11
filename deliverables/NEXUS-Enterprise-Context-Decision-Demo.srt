@@ -1,0 +1,119 @@
+1
+00:00:01,000 --> 00:00:06,400
+Product decisions cross team boundaries. A component change can affect an assembly,
+
+2
+00:00:06,400 --> 00:00:11,800
+a requirement, a manufacturing activity and quality evidence. People often spend the
+
+3
+00:00:11,800 --> 00:00:17,200
+first part of the review reconstructing that story. NEXUS helps bring the
+
+4
+00:00:17,200 --> 00:00:22,600
+relevant records together, so specialists can spend more time evaluating consequences and
+
+5
+00:00:22,600 --> 00:00:28,000
+less time searching.
+
+6
+00:00:31,000 --> 00:00:36,400
+Connected records need a shared meaning. NEXUS uses an embedded industrial reference
+
+7
+00:00:36,400 --> 00:00:41,800
+and application definitions to distinguish a physical part from its design, and
+
+8
+00:00:41,800 --> 00:00:47,200
+a requirement from evidence of satisfaction. Reviewed mappings connect customer terminology. This
+
+9
+00:00:47,200 --> 00:00:52,600
+gives engineering, manufacturing and quality a more consistent basis for discussion without
+
+10
+00:00:52,600 --> 00:00:58,000
+losing the original source.
+
+11
+00:01:01,000 --> 00:01:06,400
+Follow the product story in both directions. From the housing, explore CAD
+
+12
+00:01:06,400 --> 00:01:11,800
+and shape records, its MBSE subsystem, requirement, manufacturing activity and quality information.
+
+13
+00:01:11,800 --> 00:01:17,200
+Then trace backward through Where Used to the parent assembly. Contextual chat
+
+14
+00:01:17,200 --> 00:01:22,600
+retrieves the recorded tolerance and requirement description. These links support review; they
+
+15
+00:01:22,600 --> 00:01:28,000
+do not prove compliance.
+
+16
+00:01:31,000 --> 00:01:36,400
+For change review, NEXUS investigates recorded dependencies. For reuse, similarity narrows candidate
+
+17
+00:01:36,400 --> 00:01:41,800
+searches and exposes missing engineering properties. Recommendations organize options, evidence and open
+
+18
+00:01:41,800 --> 00:01:47,200
+questions. Agentic AI can plan permitted investigation steps and explain findings. The
+
+19
+00:01:47,200 --> 00:01:52,600
+accountable specialist still decides suitability, approval and the next action; a similarity
+
+20
+00:01:52,600 --> 00:01:58,000
+score never authorizes substitution.
+
+21
+00:02:01,000 --> 00:02:06,400
+Context carries the conversation forward. Ask about the housing tolerance, then ask
+
+22
+00:02:06,400 --> 00:02:11,800
+which requirements are associated with it. NEXUS retains the selected business subject
+
+23
+00:02:11,800 --> 00:02:17,200
+and retrieves recorded evidence. The saved answer survives reload. Longer term lessons
+
+24
+00:02:17,200 --> 00:02:22,600
+require their own reviewed scope and access checks; remembering an answer never
+
+25
+00:02:22,600 --> 00:02:28,000
+turns it into engineering approval.
+
+26
+00:02:31,000 --> 00:02:36,400
+Business services organize the evidence. Workers carry out authorized tasks and retain
+
+27
+00:02:36,400 --> 00:02:41,800
+their outcomes. Specialist agents and defined task skills prepare the review for
+
+28
+00:02:41,800 --> 00:02:47,200
+product, engineering, manufacturing and quality personas. Measure the value in a focused
+
+29
+00:02:47,200 --> 00:02:52,600
+pilot: review preparation effort, evidence coverage and unresolved questions. NEXUS connects knowledge
+
+30
+00:02:52,600 --> 00:02:58,000
+for accountable product decisions.

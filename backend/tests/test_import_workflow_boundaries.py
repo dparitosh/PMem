@@ -68,14 +68,12 @@ class ImportBoundaryTests(unittest.IsolatedAsyncioTestCase):
             async def post(self, url, **kwargs):
                 calls.append(url)
                 return Response({"compliant": True} if url.endswith("evaluate") else {"publish_recommended": False})
-        scope = extract("ingestion_service/engineering_workflow.py", {"EngineeringWorkflow", "PathName"},
-            {"EngineeringSchemaConverter": Converter, "Any": object, "service_url": lambda key, fallback: fallback,
-             "os": __import__("os"), "httpx": SimpleNamespace(AsyncClient=lambda **kw: Client()),
-             "run_in_threadpool": threadpool, "hashlib": hashlib, "json": json,
-             "service_bearer_headers": lambda *args, **kw: {}})
-        workflow = scope["EngineeringWorkflow"](Converter())
-        workflow._governance_entities = lambda turtle: []
-        result = await workflow.run(filename="demo.xsd", content=b"schema", publish=True, enforce_quality=False)
+        from backend.ingestion_service.engineering_workflow import EngineeringWorkflow
+        with patch('backend.ingestion_service.engineering_workflow.httpx.AsyncClient', lambda **kw: Client()), \
+             patch('backend.ingestion_service.engineering_workflow.service_bearer_headers', lambda *a,**kw:{}):
+            workflow = EngineeringWorkflow(Converter())
+            workflow._governance_entities = lambda turtle: []
+            result = await workflow.run(filename="demo.xsd", content=b"schema", publish=True, enforce_quality=False)
         self.assertEqual(result["status"], "quality_blocked")
         self.assertFalse(any(url.endswith("register") or url.endswith("publish") for url in calls))
         self.assertNotEqual(worker_threads[0], threading.get_ident())
@@ -114,35 +112,29 @@ class ImportBoundaryTests(unittest.IsolatedAsyncioTestCase):
         tree = ast.parse((ROOT / "ingestion_service/router.py").read_text(encoding="utf-8"))
         reads = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                  and n.func.attr == "read"]
-        self.assertEqual(len(reads), 1)
-        self.assertTrue(reads[0].args)
+        self.assertTrue(reads)
+        for read in reads:
+            self.assertEqual(len(read.args), 1, "Every ingestion stream read needs a byte bound")
 
     def test_registration_retry_reuses_artifact_and_rejects_conflicts(self):
-        tree = ast.parse((ROOT / "ontology_service/catalog.py").read_text(encoding="utf-8"))
-        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "OntologyCatalog")
-        method = next(n for n in cls.body if getattr(n, "name", None) == "register")
-        scope = {"Any": object, "re": re, "nullcontext": nullcontext}
-        exec(compile(ast.Module(body=[method], type_ignores=[]), "catalog", "exec"), scope)
+        from backend.ontology_service.catalog import OntologyCatalog
         source = "engineering-workflow:" + "a" * 64
+        content = b'<urn:a> <urn:p> <urn:b> .'
         entry = {"source": source, "prefix": "demo", "ontology_name": "Demo", "ontology_id": "demo_1",
                  "validation": {"rdf_format": "turtle"}, "lifecycle_status": "draft"}
-        fake = SimpleNamespace(_transition_lock=threading.RLock(), _postgres_enabled=False,
-            _validate_registration=lambda **kw: (kw["prefix"], kw["filename"], {"rdf_format": "xml"}),
-            list=lambda: [entry], read_artifact=lambda oid: ({}, b"rdf"),
+        fake = SimpleNamespace(_operation_lock=lambda key:nullcontext(True), _postgres_enabled=False,
+            _validate_registration=lambda **kw: (kw["prefix"], kw["filename"], {"rdf_format": "turtle","triple_count":1}),
+            list=lambda: [entry], read_artifact=lambda oid: ({}, content),
             _register=lambda **kwargs: self.fail("Retry created another registration"))
-        class Graph:
-            def parse(self, *, data, format): self.data = data; return self
-        rdf = ModuleType("rdflib.compare")
-        rdf.isomorphic = lambda a, b: a.data == b.data
-        scope["Graph"] = Graph
-        with patch.dict(sys.modules, {"rdflib": ModuleType("rdflib"), "rdflib.compare": rdf}):
-            result = scope["register"](fake, source=source, prefix="demo", ontology_name="Demo", filename="demo.rdf", content=b"rdf")
-            self.assertIs(result, entry)
-            with self.assertRaises(ValueError):
-                scope["register"](fake, source=source, prefix="demo", ontology_name="Demo", filename="demo.rdf", content=b"different")
-            entry["lifecycle_status"] = "retired"
-            with self.assertRaises(ValueError):
-                scope["register"](fake, source=source, prefix="demo", ontology_name="Demo", filename="demo.rdf", content=b"rdf")
+        fake._register_workflow = lambda **kwargs: OntologyCatalog._register_workflow(fake, **kwargs)
+        result = OntologyCatalog.register(fake, source=source, prefix="demo", ontology_name="Demo", filename="demo.ttl", content=content)
+        self.assertIs(result, entry)
+        with self.assertRaises(ValueError):
+            OntologyCatalog.register(fake, source=source, prefix="demo", ontology_name="Demo", filename="demo.ttl", content=b'<urn:different> <urn:p> <urn:b> .')
+        entry["lifecycle_status"] = "retired"
+        with self.assertRaises(ValueError):
+            OntologyCatalog.register(fake, source=source, prefix="demo", ontology_name="Demo", filename="demo.ttl", content=content)
+
 
 
 if __name__ == "__main__":

@@ -14,9 +14,10 @@ PREFIXES = {'oslc': OSLC, 'rdf': str(RDF), 'rdfs': str(RDFS), 'dcterms': str(DCT
 CORE_FIELDS = {'resourceShape', 'propertyDefinition', 'describes', 'valueType', 'occurs',
                'readOnly', 'queryBase', 'nextPage', 'name', 'domain'}
 FIELD_ALIASES = {'services': 'service', 'queryCapabilities': 'queryCapability',
-                 'resourceShapes': 'resourceShape', 'serviceProviders': 'serviceProvider'}
+                 'resourceShapes': 'resourceShape', 'serviceProviders': 'serviceProvider',
+                 'resourceTypeUri': 'resourceType'}
 LINK_FIELDS = {'uri', 'resourceShape', 'queryBase', 'propertyDefinition', 'serviceProvider',
-               'nextPage', 'base', 'changeLog', 'describes', 'valueType', 'occurs', 'targetUri', 'domain', 'oslc:domain', 'resourceShapes'}
+               'nextPage', 'base', 'changeLog', 'describes', 'valueType', 'occurs', 'targetUri', 'domain', 'oslc:domain', 'resourceShapes', 'resourceTypeUri'}
 
 
 def expand(value):
@@ -37,7 +38,7 @@ def rdf_graph(payload):
                         graph.add((subject, URIRef(expand(property_name)), URIRef(item) if property_name == 'oslc_rm:uses' else Literal(item)))
                 continue
             shape_properties = key == 'properties' and record.get('type') == 'oslc:ResourceShape'
-            predicate = RDF.type if key in {'type', 'rdf:type'} else RDFS.member if key == 'members' else DCTERMS.title if key == 'title' else RDFS.label if key == 'label' else URIRef(OSLC + 'property' if shape_properties else OSLC + FIELD_ALIASES[key] if key in FIELD_ALIASES else expand(key) if ':' in key else OSLC + key if key in CORE_FIELDS else EXT + quote(key, safe=''))
+            predicate = RDF.type if key in {'type', 'rdf:type'} else RDFS.member if key == 'members' else DCTERMS[key] if key in {'title', 'description', 'identifier'} else RDFS.label if key == 'label' else URIRef(OSLC + 'property' if shape_properties else OSLC + FIELD_ALIASES[key] if key in FIELD_ALIASES else expand(key) if ':' in key else OSLC + key if key in CORE_FIELDS else EXT + quote(key, safe=''))
             for item in value if isinstance(value, list) else [value]:
                 if isinstance(item, dict):
                     if key == 'members' and item.get('resource_uri'):
@@ -49,7 +50,7 @@ def rdf_graph(payload):
                             item.setdefault('propertyDefinition', definition)
                     obj = visit(item)
                 elif key in LINK_FIELDS or key.startswith('oslc:') and key.endswith(('Provider', 'Shape')) or key in {'type', 'rdf:type'}:
-                    iri = expand(item)
+                    iri = PREFIXES.get(item, expand(item)) if key in {'domain', 'oslc:domain'} else expand(item)
                     obj = URIRef(iri if ':' in iri else EXT + 'type:' + quote(iri, safe=''))
                 else:
                     obj = Literal(item)

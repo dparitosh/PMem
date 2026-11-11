@@ -34,6 +34,21 @@ from .workflow_artifact_service import WorkflowArtifactService
 
 logger = logging.getLogger(__name__)
 
+_background_tasks = set()
+
+def _observe_background(future):
+    """Retain asynchronous work and retrieve failures instead of losing them."""
+    _background_tasks.add(future)
+    def finished(completed):
+        _background_tasks.discard(completed)
+        if not completed.cancelled():
+            error = completed.exception()
+            if error is not None:
+                logger.error('Import background task failed', exc_info=(type(error), error, error.__traceback__))
+    future.add_done_callback(finished)
+    return future
+
+
 
 def _detect_xml_family(file_content: bytes) -> str:
     """Backward-compatible XML family detector shim for legacy parser callers/tests."""
@@ -1589,12 +1604,16 @@ class FileParser:
                     continue
                 append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
 
+            from .import_identity import attach_plmxml_identities
+            source_identity_records = attach_plmxml_identities(file_content, rows)
             _ns_uri = str(doc.parse_stats.get('namespace') or '')
             _ns_prefix = derive_prefix_from_namespace(_ns_uri)
 
             columns = list(rows[0].keys()) if rows else []
             stats = {
                 'format': 'PLMXML',
+                '_source_identity_records': source_identity_records,
+                'source_application_ref_count': len(source_identity_records),
                 'schema_version': doc.schema_version,
                 'namespace': _ns_uri,
                 'ontology_prefix': _ns_prefix,
@@ -2365,6 +2384,10 @@ class Neo4jImporter:
 import_tasks: Dict[str, Dict[str, Any]] = {}
 
 
+from backend.depo_platform.ontology_maintenance import ontology_writer
+from backend.depo_platform.import_cleanup import cleared as import_task_cleared
+
+
 class UnifiedDataImportService:
     """Main service for unified data import"""
 
@@ -2430,152 +2453,27 @@ class UnifiedDataImportService:
         return persistable
 
     @classmethod
+    @ontology_writer
     def _persist_task(cls, task_id: str) -> None:
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return
         task = import_tasks.get(task_id)
         if not task:
             return
+        from .import_task_persistence import persist_task, TaskPersistenceError
         try:
-            snapshot = cls._build_persistable_task(task)
-            # Add writer metadata to help diagnose race/overwrite issues
-            ver = int(snapshot.get('_persist_version', 0) or 0) + 1
-            snapshot['_persisted_by'] = {
-                'pid': os.getpid(),
-                'time': datetime.now().isoformat(),
-                'version': ver,
-            }
-            snapshot['_persist_version'] = ver
-            # Diagnostic: log which keys are being persisted and parsed_rows size
-            try:
-                keys = list(snapshot.keys())
-                parsed_rows_info = None
-                if 'parsed_rows' in snapshot:
-                    try:
-                        parsed_rows_info = len(snapshot.get('parsed_rows') or [])
-                    except Exception:
-                        parsed_rows_info = 'unlenable'
-                # Surface this at INFO level so it's always visible in dev logs
-                logger.info(f"Persisting snapshot for {task_id} keys={keys} parsed_rows={parsed_rows_info}")
-                # Note: debug copy will be written after path is resolved below
-            except Exception:
-                # swallow logging diagnostics to avoid breaking persist
-                pass
-            path = cls._task_snapshot_path(task_id)
-            # Ensure directory exists before writing
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # Acquire a lightweight per-task lock to avoid overlapping persists
-            lock_path = path.with_suffix('.lock')
-            lock_acquired = False
-            try:
-                attempts = 0
-                while attempts < 10:
-                    try:
-                        # Use exclusive create to acquire lock; will fail if exists
-                        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                        os.close(fd)
-                        lock_acquired = True
-                        break
-                    except FileExistsError:
-                        attempts += 1
-                        time.sleep(0.02)
-                if not lock_acquired:
-                    # If we couldn't acquire lock, proceed but log a warning
-                    logger.warning(f"Task {task_id}: couldn't acquire persist lock after {attempts} attempts")
-                # Proceed with writing while holding the lock (if acquired)
-                
-                # If parsed_rows present, write them to a separate file atomically to
-                # avoid large-list overwrite races and to make persistence robust.
-                parsed_rows = None
-                try:
-                    if 'parsed_rows' in snapshot:
-                        parsed_rows = snapshot.pop('parsed_rows')
-                        parsed_path = path.with_name(path.name + ".parsed_rows.json")
-                        parsed_tmp = parsed_path.with_suffix('.json.tmp')
-                        # Write parsed rows using default=str to tolerate odd values
-                        parsed_tmp.write_text(json.dumps(parsed_rows, ensure_ascii=True, default=str), encoding='utf-8')
-                        try:
-                            logger.info(f"Task {task_id}: about to atomically replace parsed_rows tmp -> {parsed_path.name} (pid={os.getpid()} v={ver})")
-                            parsed_tmp.replace(parsed_path)
-                            logger.info(f"Task {task_id}: parsed_rows replace completed -> {parsed_path.name} (size={parsed_path.stat().st_size} bytes)")
-                        except Exception as e_replace:
-                            logger.exception(f"Task {task_id}: failed atomic replace for parsed_rows: {e_replace}")
-                        # add pointer to snapshot for restore
-                        snapshot['_parsed_rows_file'] = parsed_path.name
-                        # Persist pointer into the in-memory task as well so concurrent
-                        # persists will include the pointer and not overwrite it.
-                        try:
-                            task['_parsed_rows_file'] = parsed_path.name
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.exception('Failed to persist parsed_rows separately')
-
-                # If a SHACL report is present in the snapshot (from OWL generation/validation),
-                # persist it separately to avoid bloating the snapshot and to make reports
-                # available for downstream inspection.
-                try:
-                    if 'shacl_report' in snapshot:
-                        shacl_report = snapshot.pop('shacl_report')
-                        shacl_path = path.with_name(path.name + ".shacl_report.json")
-                        shacl_tmp = shacl_path.with_suffix('.json.tmp')
-                        shacl_tmp.write_text(json.dumps(shacl_report, ensure_ascii=True, default=str), encoding='utf-8')
-                        try:
-                            logger.info(f"Task {task_id}: about to atomically replace shacl tmp -> {shacl_path.name} (pid={os.getpid()} v={ver})")
-                            shacl_tmp.replace(shacl_path)
-                            logger.info(f"Task {task_id}: shacl replace completed -> {shacl_path.name} (size={shacl_path.stat().st_size} bytes)")
-                        except Exception as e_sh:
-                            logger.exception(f"Task {task_id}: failed atomic replace for shacl_report: {e_sh}")
-                        # add pointer to snapshot and in-memory task
-                        snapshot['_shacl_file'] = shacl_path.name
-                        try:
-                            task['_shacl_file'] = shacl_path.name
-                        except Exception:
-                            pass
-                except Exception:
-                    logger.exception('Failed to persist shacl_report separately')
-                # Ensure any shacl_report pointer present in-memory is reflected
-                try:
-                    if '_shacl_file' not in snapshot and task.get('_shacl_file'):
-                        snapshot['_shacl_file'] = task.get('_shacl_file')
-                except Exception:
-                    pass
-
-                # Ensure any parsed_rows pointer present in-memory is reflected
-                # in the snapshot before writing to avoid losing the pointer when
-                # another writer started earlier.
-                try:
-                    if '_parsed_rows_file' not in snapshot and task.get('_parsed_rows_file'):
-                        snapshot['_parsed_rows_file'] = task.get('_parsed_rows_file')
-                except Exception:
-                    pass
-
-                # Also write a per-write debug copy to help diagnose overwrite/race issues
-                try:
-                    debug_path = path.with_name(path.name + f".writer_{os.getpid()}_v{ver}.json")
-                    debug_path.write_text(json.dumps(snapshot, ensure_ascii=True, default=str), encoding='utf-8')
-                except Exception:
-                    logger.debug("Failed to write debug snapshot copy", exc_info=True)
-                tmp_path = path.with_suffix('.json.tmp')
-                # Use default=str to tolerate any non-serializable values (best-effort)
-                tmp_path.write_text(json.dumps(snapshot, ensure_ascii=True, default=str), encoding='utf-8')
-                try:
-                    logger.info(f"Task {task_id}: about to atomically replace snapshot tmp -> {path.name} (pid={os.getpid()} v={ver})")
-                    tmp_path.replace(path)
-                    logger.info(f"Task {task_id}: snapshot replace completed -> {path.name} (size={path.stat().st_size} bytes)")
-                except Exception as e_replace:
-                    logger.exception(f"Task {task_id}: failed atomic replace for snapshot: {e_replace}")
-            finally:
-                try:
-                    if lock_acquired and lock_path.exists():
-                        lock_path.unlink()
-                except Exception:
-                    logger.debug("Failed to remove persist lock", exc_info=True)
-            
+            persist_task(cls._task_snapshot_path(task_id), task, cls._build_persistable_task)
         except Exception as exc:
-            logger.exception(f"Task {task_id}: failed to persist snapshot: {exc}")
+            task['_persistence_error'] = 'Import status could not be saved. Check task-storage permissions and file locks; refresh status before retrying this operation.'
+            logger.exception('Task %s: snapshot persistence failed; previous snapshot retained', task_id)
+            raise TaskPersistenceError(task['_persistence_error']) from exc
 
     @classmethod
     def _restore_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Restore task snapshot when current worker does not have in-memory state."""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            import_tasks.pop(task_id, None)
+            return None
         if task_id in import_tasks:
             return import_tasks[task_id]
 
@@ -2585,6 +2483,21 @@ class UnifiedDataImportService:
         try:
             task = json.loads(path.read_text(encoding='utf-8'))
             if isinstance(task, dict) and task.get('task_id') == task_id:
+                if task.get('committing'):
+                    # This process has no commit thread for the task (it was not
+                    # in memory). A snapshot still marked committing means the
+                    # previous process stopped mid-commit: the outcome is unknown.
+                    task.update(
+                        committing=False,
+                        status='outcome_unknown',
+                        commit_phase='outcome_unknown',
+                        message='Commit was interrupted before its outcome was recorded. Inspect retained graph results before retrying.',
+                    )
+                    import_tasks[task_id] = task
+                    try:
+                        cls._persist_task(task_id)
+                    except Exception as persist_exc:
+                        logger.warning(f"Task {task_id}: could not persist interrupted-commit state: {persist_exc}")
                 # Restore into unified service in-memory store
                 import_tasks[task_id] = task
                 # Also attempt to synchronize into the legacy DataImportService import_tasks
@@ -2629,25 +2542,30 @@ class UnifiedDataImportService:
         store; otherwise the UI renders an empty instance selector.
         """
         tasks_by_id: Dict[str, Dict[str, Any]] = {}
-        for task in import_tasks.values():
-            if isinstance(task, dict) and task.get('task_id'):
+        for task in list(import_tasks.values()):
+            if isinstance(task, dict) and task.get('task_id') and not import_task_cleared(str(task['task_id']), cls.TASK_STORE_DIR):
                 tasks_by_id[str(task['task_id'])] = task
 
         cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
         for path in cls.TASK_STORE_DIR.glob('*.json'):
-            if path.name.endswith(('.parsed_rows.json', '.shacl_report.json')):
+            # Only primary task snapshots belong in the registry. Sidecars
+            # include both legacy names and content-addressed hash names.
+            if '.parsed_rows.' in path.name or '.shacl_report.' in path.name:
                 continue
             try:
                 task = json.loads(path.read_text(encoding='utf-8'))
+                if not isinstance(task, dict):
+                    logger.warning('Skipping non-object import task snapshot %s', path.name)
+                    continue
                 task_id = str(task.get('task_id') or '')
-                if task_id and task_id not in tasks_by_id:
+                if task_id and path.name == f'{task_id}.json' and not import_task_cleared(task_id, cls.TASK_STORE_DIR):
                     tasks_by_id[task_id] = task
             except (OSError, ValueError, TypeError) as exc:
                 logger.warning("Skipping unreadable import task snapshot %s: %s", path, exc)
 
         fields = (
             'task_id', 'filename', 'file_type', 'current_stage', 'progress',
-            'message', 'status', 'committing', 'error', 'stats',
+            'message', 'status', 'committing', 'error', 'stats', 'result',
             'commit_phase', 'batch_progress', 'commit_metrics',
             'workflow_id', 'artifact_manifest', 'started_at', 'completed_at',
             'preview_completed_at',
@@ -2657,6 +2575,7 @@ class UnifiedDataImportService:
         return result
 
     @classmethod
+    @ontology_writer
     async def start_import(
         cls,
         file_content: bytes,
@@ -2758,13 +2677,14 @@ class UnifiedDataImportService:
         # Parse file in a thread pool — FileParser.parse() is CPU-bound synchronous
         # work; running it directly in an async function blocks the event loop.
         import asyncio
-        asyncio.get_event_loop().run_in_executor(
+        _observe_background(asyncio.get_event_loop().run_in_executor(
             None, cls._parse_and_preview, task_id, task_info, file_content, file_type
-        )
+        ))
 
         return task_id
 
     @classmethod
+    @ontology_writer
     def _parse_and_preview(
         cls,
         task_id: str,
@@ -2793,6 +2713,11 @@ class UnifiedDataImportService:
             # Extract relationship objects before merging stats (not JSON-serializable in bulk)
             xmi_rels = stats.pop('_xmi_relationships', [])
             step_ref_map = stats.pop('_step_ref_map', {})
+            source_identity_records = stats.pop('_source_identity_records', [])
+            if source_identity_records:
+                WorkflowArtifactService.write_json(task_id, 'source', 'source-identities.json',
+                    {'application_references': source_identity_records}, 'source_identity')
+                cls._refresh_artifact_manifest(task_id, task_info)
             if xmi_rels:
                 task_info['_xmi_relationships'] = xmi_rels
             if step_ref_map:
@@ -2800,11 +2725,8 @@ class UnifiedDataImportService:
 
             task_info['parsed_rows'] = rows
             # Persist parsed rows immediately to survive worker/process restarts
-            try:
-                cls._persist_task(task_id)
-                logger.info(f"Task {task_id}: persisted parsed_rows ({len(rows)} rows)")
-            except Exception:
-                logger.exception(f"Task {task_id}: failed to persist parsed_rows")
+            cls._persist_task(task_id)
+            logger.debug("Task %s: persisted parsed_rows (%s rows)", task_id, len(rows))
             # Merge stats — preserve ontology_mapping set during init
             task_info['stats'] = {**task_info.get('stats', {}), **stats}
 
@@ -2918,11 +2840,13 @@ class UnifiedDataImportService:
                     "ontology_ttl",
                     task_info.get('schema_metadata') or {},
                 )
-            # Parsing is complete, but Neo4j has not been changed yet.
-            task_info['status'] = ImportStatus.READY_FOR_COMMIT.value
-            task_info['preview_completed_at'] = datetime.now().isoformat()
-            cls._persist_task(task_id)
-            
+            # Parsing is complete, but Neo4j has not been changed yet. A cancel
+            # request that arrived while parsing must not be overwritten.
+            if task_info.get('status') != ImportStatus.CANCELLED.value:
+                task_info['status'] = ImportStatus.READY_FOR_COMMIT.value
+                task_info['preview_completed_at'] = datetime.now().isoformat()
+                cls._persist_task(task_id)
+
             logger.info(f"Task {task_id} ready for preview: {len(rows)} rows")
 
         except Exception as e:
@@ -2936,14 +2860,27 @@ class UnifiedDataImportService:
             # Do NOT re-raise — frontend polls /status to read the real error
 
     @classmethod
+    def _read_status_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
+        """Read atomic persisted state without replacing an active writer object."""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return None
+        try:
+            task = json.loads(cls._task_snapshot_path(task_id).read_text(encoding='utf-8'))
+            if isinstance(task, dict) and task.get('task_id') == task_id:
+                warning = (import_tasks.get(task_id) or {}).get('_persistence_error')
+                if warning:
+                    task['persistence_warning'] = warning
+                return task
+        except (OSError, ValueError, TypeError):
+            pass
+        return import_tasks.get(task_id)
+
+    @classmethod
     def get_status(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Get task status"""
-        if task_id not in import_tasks:
-            restored = cls._restore_task(task_id)
-            if not restored:
-                return None
-        
-        task = import_tasks[task_id]
+        task = cls._read_status_task(task_id)
+        if not task:
+            return None
         artifact_manifest = task.get('artifact_manifest')
         if not artifact_manifest:
             try:
@@ -2961,7 +2898,9 @@ class UnifiedDataImportService:
             'status': task['status'],
             'committing': task.get('committing', False),
             'error': task.get('error'),
+            'persistence_warning': task.get('persistence_warning') or task.get('_persistence_error'),
             'stats': task.get('stats'),
+            'result': task.get('result'),
             'commit_phase': task.get('commit_phase'),
             'batch_progress': task.get('batch_progress'),
             'commit_metrics': task.get('commit_metrics'),
@@ -2977,6 +2916,8 @@ class UnifiedDataImportService:
     @classmethod
     def get_preview(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Get preview data"""
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            return None
         if task_id not in import_tasks:
             restored = cls._restore_task(task_id)
             if not restored:
@@ -3050,7 +2991,10 @@ class UnifiedDataImportService:
         return lookup
 
     @classmethod
+    @ontology_writer
     def _commit_sync(cls, task_id: str, task: dict, schema: dict) -> Dict[str, Any]:
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            raise ValueError('Import workflow was cleared by an administrator')
         """
         Synchronous Neo4j write body — called via asyncio.to_thread so it never
         blocks the FastAPI event loop.
@@ -3058,6 +3002,7 @@ class UnifiedDataImportService:
         from .import_completeness import require_complete_archimate
         require_complete_archimate(task)
         import re as _re
+        from .import_commit_integrity import scoped_merge_keys
         commit_started_at = time.perf_counter()
         rows = task.get('parsed_rows', [])
 
@@ -3103,8 +3048,11 @@ class UnifiedDataImportService:
             f"ontology_name='{_ontology_name}', namespace='{_namespace_uri}'"
         )
         # Stamp namespace-derived metadata onto every row before writing
+        from .import_identity import stamp_instance_identity
         for _row in rows:
-            _row.setdefault('import_id', task_id)
+            if _row.get('import_row_key'):
+                stamp_instance_identity(_row, task_id)
+            _row['import_id'] = task_id
             _row.setdefault('ontology_prefix', _ontology_prefix)
             _row.setdefault('source_ontology', _namespace_uri or _ontology_name)
             _row.setdefault('source_filename', task.get('filename') or '')
@@ -3157,7 +3105,7 @@ class UnifiedDataImportService:
         seen_merge_signatures = set()
         for node_def in schema.get('nodes', []):
             label = node_def.get('label')
-            merge_keys = [str(k) for k in (node_def.get('mergeKeys') or []) if k]
+            merge_keys = scoped_merge_keys(node_def.get('mergeKeys') or [])
             if not label or not merge_keys:
                 continue
             signature = (str(label), tuple(merge_keys))
@@ -3185,6 +3133,8 @@ class UnifiedDataImportService:
                 idx_result = Neo4jImporter.execute_cypher(missing_index_queries)
                 result['queries_executed'] += idx_result.get('queries_executed', 0)
                 result['errors'].extend(idx_result.get('errors', []))
+                if idx_result.get('errors'):
+                    raise RuntimeError('Import index preparation failed; no entity batches were started')
                 result['schema_validation']['created_index_count'] = len(schema_validation['missing_indexes'])
         else:
             result['schema_validation']['created_index_count'] = 0
@@ -3193,7 +3143,7 @@ class UnifiedDataImportService:
         _sync_metrics('nodes', 84, 'Writing entity batches to Neo4j...')
         for node_def in schema.get('nodes', []):
             label = node_def.get('label', 'ImportedRecord')
-            merge_keys = node_def.get('mergeKeys', [])
+            merge_keys = scoped_merge_keys(node_def.get('mergeKeys') or [])
             filter_key = node_def.get('_filter_key')
             filter_val = node_def.get('_filter_val')
             if filter_key and filter_val:
@@ -3239,12 +3189,8 @@ class UnifiedDataImportService:
             result['queries_executed'] += node_result.get('queries_executed', 0)
             result['errors'].extend(node_result.get('errors', []))
             if node_result.get('errors'):
-                result['skipped_node_rows'] += len(node_rows)
-                result['warnings'].append(
-                    f"Neo4j rejected {len(node_rows)} '{label}' rows; see errors for details."
-                )
-            else:
-                result['nodes_created'] += len(node_rows)
+                raise RuntimeError(f"Entity batch failed for {label}; partial graph may exist: {node_result['errors'][0]}")
+            result['nodes_created'] += len(node_rows)
 
         # ── XMI relationship edges ───────────────────────────────────────────
         # ReqIF relation objects are edge records, not business-object nodes.
@@ -3312,6 +3258,13 @@ class UnifiedDataImportService:
         _label_hint = f":`{schema_labels[0]}`" if len(schema_labels) == 1 else ''
         row_id_set = {str(r.get('id')) for r in rows if r.get('id') is not None}
         if xmi_rels:
+            id_labels = {}
+            for definition in schema.get('nodes', []):
+                label = definition.get('label')
+                key, value = definition.get('_filter_key'), definition.get('_filter_val')
+                for row in rows:
+                    if label and row.get('id') is not None and (not key or not value or str(row.get(key, '')).replace(' ', '_').replace(':', '_') == value):
+                        id_labels[str(row['id'])] = ':' + '`' + label.replace('`', '``') + '`'
             rel_by_type: Dict[str, List[Dict[str, Any]]] = {}
             for rel in xmi_rels:
                 from_id = str((rel.get('from_props') or {}).get('id', '') or '')
@@ -3320,7 +3273,7 @@ class UnifiedDataImportService:
                 safe_type = _re.sub(r'[^A-Z0-9_]', '_', raw_type.upper()).strip('_') or 'RELATED_TO'
                 if from_id and to_id:
                     if from_id in row_id_set and to_id in row_id_set:
-                        rel_by_type.setdefault(safe_type, []).append({
+                        rel_by_type.setdefault((safe_type, id_labels.get(from_id, _label_hint), id_labels.get(to_id, _label_hint)), []).append({
                             'from_id': from_id,
                             'to_id': to_id,
                             'properties': rel.get('properties') or {},
@@ -3328,11 +3281,11 @@ class UnifiedDataImportService:
                     else:
                         result['relationships_skipped'] += 1
             _sync_metrics('relationships', 92, 'Creating relationship batches...')
-            for rel_type, rel_rows in rel_by_type.items():
+            for (rel_type, from_label, to_label), rel_rows in rel_by_type.items():
                 rel_cypher = f"""
                 UNWIND $rows AS row
-                MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
-                MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
+                MATCH (a{from_label} {{id: row.from_id, import_id: row.import_id}})
+                MATCH (b{to_label} {{id: row.to_id, import_id: row.import_id}})
                 MERGE (a)-[rel:`{rel_type}`]->(b)
                 SET rel += coalesce(row.properties, {{}})
                 RETURN count(*) AS matched_rows
@@ -3358,23 +3311,11 @@ class UnifiedDataImportService:
                             },
                         ),
                     )
-                    if rel_result.get('errors'):
-                        logger.warning(f"Relationship write errors for type {rel_type}: {rel_result['errors']}")
-                    else:
-                        matched_rows = int(rel_result.get('matched_rows') or 0)
-                        skipped_rows = max(0, len(rel_rows) - matched_rows)
-                        result['relationships_created'] += matched_rows
-                        result['relationships_skipped'] += skipped_rows
-                        if skipped_rows:
-                            logger.warning(
-                                "Task %s: relationship type %s resolved %s/%s rows",
-                                task_id,
-                                rel_type,
-                                matched_rows,
-                                len(rel_rows),
-                            )
+                    from .import_commit_integrity import require_relationship_batch
+                    require_relationship_batch(rel_result, len(rel_rows), rel_type)
+                    result['relationships_created'] += rel_result['matched_rows']
                 except Exception as rel_err:
-                    logger.warning(f"Relationship write skipped for type {rel_type}: {rel_err}")
+                    raise RuntimeError(f"Relationship write did not complete for {rel_type}: {rel_err}") from rel_err
 
         # ── STEP reference edges ────────────────────────────────────────────
         step_ref_map = task.get('_step_ref_map', {})
@@ -3420,9 +3361,9 @@ class UnifiedDataImportService:
                     result['relationships_skipped'] += skipped_rows
                     logger.info(f"Task {task_id}: STEP — wrote {matched_rows} row-key REFERENCES edges")
                 else:
-                    logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
+                    logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}"); result.setdefault('incomplete_relationships', []).append('STEP references')
             except Exception as step_rel_err:
-                logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
+                logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}"); result.setdefault('incomplete_relationships', []).append('STEP references')
         elif step_ref_map:
             ref_rows = [
                 {'from_id': f'#{fid}', 'to_id': f'#{tid}'}
@@ -3464,9 +3405,9 @@ class UnifiedDataImportService:
                     result['relationships_skipped'] += skipped_rows
                     logger.info(f"Task {task_id}: STEP — wrote {matched_rows} REFERENCES edges")
                 else:
-                    logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
+                    logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}"); result.setdefault('incomplete_relationships', []).append('STEP references')
             except Exception as step_rel_err:
-                logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
+                logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}"); result.setdefault('incomplete_relationships', []).append('STEP references')
 
         # ── STPX parent-child hierarchy edges ──────────────────────────────
         parent_rows = [
@@ -3510,9 +3451,9 @@ class UnifiedDataImportService:
                     result['relationships_skipped'] += skipped_rows
                     logger.info(f"Task {task_id}: STPX — wrote {matched_rows} PARENT_OF edges")
                 else:
-                    logger.warning(f"Task {task_id}: STPX hierarchy write errors: {parent_result['errors'][:3]}")
+                    logger.warning(f"Task {task_id}: STPX hierarchy write errors: {parent_result['errors'][:3]}"); result.setdefault('incomplete_relationships', []).append('STPX parent hierarchy')
             except Exception as parent_err:
-                logger.warning(f"Task {task_id}: STPX parent hierarchy edges skipped: {parent_err}")
+                logger.warning(f"Task {task_id}: STPX parent hierarchy edges skipped: {parent_err}"); result.setdefault('incomplete_relationships', []).append('STPX parent hierarchy')
 
         # Semantic ontology linking is intentionally deferred to the
         # `instance.link` semantic bridge workflow so import remains structural,
@@ -3555,7 +3496,7 @@ class UnifiedDataImportService:
                     result['relationships_created'] += matched_rows
                     result['relationships_skipped'] += max(0, len(_batch) - matched_rows)
                 except Exception as _own_err:
-                    logger.warning(f"Task {task_id}: OWNED_BY batch {_i // _BATCH}: {_own_err}")
+                    logger.warning(f"Task {task_id}: OWNED_BY batch {_i // _BATCH}: {_own_err}"); result.setdefault('incomplete_relationships', []).append('OWNED_BY')
 
         # ── Release parsed rows (large) — file_content kept for OWL background job ──
         task.pop('parsed_rows', None)
@@ -3566,7 +3507,10 @@ class UnifiedDataImportService:
         task['result'] = result
         task['completed_at'] = datetime.now().isoformat()
         task['committing'] = False
-        _sync_metrics('complete', 100, 'Import completed successfully', None)
+        if result.get('incomplete_relationships'):
+            _sync_metrics('complete', 100, 'Import committed, but some relationships were not written: ' + ', '.join(sorted(set(result['incomplete_relationships']))) + '. Review the import before relying on those links.', None)
+        else:
+            _sync_metrics('complete', 100, 'Import completed successfully', None)
         task['batch_progress'] = None
         cls._persist_task(task_id)
 
@@ -3574,6 +3518,7 @@ class UnifiedDataImportService:
         return result
 
     @classmethod
+    @ontology_writer
     def _generate_owl_background(cls, task_id: str, task: dict) -> None:
         """Generate OWL/TTL in a background thread — does not block the commit response."""
         try:
@@ -3613,7 +3558,7 @@ class UnifiedDataImportService:
                     try:
                         shacl_report = OWLGenerationService.validate_with_shacl(
                             owl_ttl,
-                            ontology_context=owl_meta.get('owlready2'),
+                            ontology_context=owl_meta.get('semantica'),
                         )
                     except TypeError:
                         # Preserve compatibility with older test doubles / callers
@@ -3652,6 +3597,7 @@ class UnifiedDataImportService:
             cls._persist_task(task_id)
 
     @classmethod
+    @ontology_writer
     async def commit_import(cls, task_id: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Commit import to Neo4j.
@@ -3661,6 +3607,8 @@ class UnifiedDataImportService:
         """
         import asyncio
 
+        if import_task_cleared(task_id, cls.TASK_STORE_DIR):
+            raise ValueError('Import workflow was cleared by an administrator')
         if task_id not in import_tasks:
             restored = cls._restore_task(task_id)
             if not restored:
@@ -3707,35 +3655,62 @@ class UnifiedDataImportService:
                 )
 
         schema = config or task.get('auto_schema', {})
+        before_queue = dict(task)
         task['current_stage'] = ImportStage.INGEST.value
         task['progress'] = 80
+        task['status'] = ImportStatus.PROCESSING.value
         task['message'] = 'Queued for Neo4j commit...'
         task['committing'] = True
-        cls._persist_task(task_id)
+        try:
+            cls._persist_task(task_id)
+        except Exception:
+            # No graph work has been dispatched. Restore the preview so a
+            # storage repair does not require restarting the application.
+            task.clear()
+            task.update(before_queue)
+            raise
 
         async def _run_commit_background() -> None:
             try:
-                result = await asyncio.to_thread(cls._commit_sync, task_id, task, schema)
+                from .import_commit_integrity import commit_operation
+                def run_owned_commit():
+                    with commit_operation(task_id):
+                        return cls._commit_sync(task_id, task, schema)
+                result = await asyncio.to_thread(run_owned_commit)
                 # Fire OWL generation in background — does NOT block the HTTP response.
-                asyncio.get_running_loop().run_in_executor(
+                _observe_background(asyncio.get_running_loop().run_in_executor(
                     None, cls._generate_owl_background, task_id, task
-                )
+                ))
                 logger.info(f"Task {task_id}: Neo4j commit finished in background: {result}")
             except Exception as e:
-                # Revert to an explicit preview-ready state so the user can retry.
+                from .import_task_persistence import TaskPersistenceError
+                if isinstance(e, TaskPersistenceError):
+                    # A write may already have reached the graph. Never advertise
+                    # a retry based on a snapshot that could not be committed.
+                    task.update(status='outcome_unknown', current_stage='ingest', committing=False,
+                                commit_phase='outcome_unknown',
+                                message='Import outcome needs review because status could not be saved. Restore task storage and inspect graph results before retrying.',
+                                error=str(e))
+                    try:
+                        cls._persist_task(task_id)
+                    except TaskPersistenceError:
+                        pass  # original persistence error is already logged and visible
+                    return
+                # Graph batches may have committed before the failure. Never
+                # advertise automatic retry without reconciling that outcome.
                 task.pop('file_content', None)
-                task['committing'] = False
-                task['status'] = ImportStatus.READY_FOR_COMMIT.value
-                task['current_stage'] = ImportStage.PREVIEW.value
-                task['progress'] = 75
-                task['commit_phase'] = 'error'
-                task['batch_progress'] = None
-                task['message'] = f'Commit failed — retry available. Error: {str(e)[:200]}'
-                task['error'] = str(e)
-                cls._persist_task(task_id)
-                logger.error(f"Task {task_id} commit failed (reset to preview for retry): {str(e)}")
+                task.update(committing=False, status='outcome_unknown',
+                            current_stage=ImportStage.INGEST.value,
+                            commit_phase='outcome_unknown', batch_progress=None,
+                            message='Import failed after dispatch. Inspect retained graph results before retrying.',
+                            error=str(e))
+                try:
+                    cls._persist_task(task_id)
+                except Exception:
+                    logger.error('Task %s: outcome_unknown state could not be persisted', task_id, exc_info=True)
+                logger.error('Task %s commit outcome requires reconciliation', task_id, exc_info=True)
 
-        asyncio.create_task(_run_commit_background())
+        _observe_background(asyncio.create_task(_run_commit_background()))
         return {
             "queued": True,
             "task_id": task_id,
@@ -3746,10 +3721,13 @@ class UnifiedDataImportService:
         }
 
     @classmethod
+    @ontology_writer
     def cancel_import(cls, task_id: str) -> None:
         """Cancel import task"""
         if task_id in import_tasks:
             task = import_tasks[task_id]
+            if task.get('committing') or task.get('commit_phase') == 'outcome_unknown':
+                raise ValueError('Commit is active or unverified; inspect its outcome before cancellation')
             if task['status'] in (
                 ImportStatus.PROCESSING.value,
                 ImportStatus.READY_FOR_COMMIT.value,

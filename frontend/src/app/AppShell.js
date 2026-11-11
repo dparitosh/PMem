@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { BRAND } from '../brand';
 import {
   IxApplication,
   IxApplicationHeader,
@@ -8,10 +9,13 @@ import {
   IxContent,
   IxContentHeader,
   IxMenu,
+  IxMenuCategory,
   IxMenuItem,
 } from '@siemens/ix-react';
-import { navigationItems, pageLabel } from './navigation';
+import { prefetchPage } from './pageRegistry';
+import { navigationItems, navigationGroups, pageAliases, pageLabel } from './navigation';
 import { getServiceAuthToken, wasBrowserSessionExpired } from '../services/serviceAuth';
+import WorkspaceBreadcrumbs from './WorkspaceBreadcrumbs';
 import RunRecoveryNotice from './RunRecoveryNotice';
 import { verifyStoredAccess } from '../services/readAccessVerification';
 import './AppShell.css';
@@ -27,7 +31,7 @@ function initialColorSchema() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-// Matches the official Siemens IX React starter frame while keeping DEPO
+// Matches the official Siemens IX React starter frame while keeping Nexus
 // feature pages and their API integrations independent from the shell.
 export default function AppShell({
   activePage,
@@ -40,39 +44,62 @@ export default function AppShell({
   onServiceAuthChange,
   children,
 }) {
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   const [verifyingAccess, setVerifyingAccess] = useState(false);
+  const [accessState, setAccessState] = useState('unverified');
+  const [accessRevision, setAccessRevision] = useState(0);
+  const [routeHash,setRouteHash]=useState(()=>window.location.hash);
+  useEffect(()=>{
+    const update=()=>setRouteHash(window.location.hash);
+    update();window.addEventListener('hashchange',update);window.addEventListener('popstate',update);
+    return()=>{window.removeEventListener('hashchange',update);window.removeEventListener('popstate',update);};
+  },[activePage]);
+  const [accessDetail, setAccessDetail] = useState('');
   const [accessMessage, setAccessMessage] = useState(() => wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : '');
   const accessRequest = useRef(null);
+  const previousPage = useRef(activePage);
+  useEffect(()=>{
+    if(previousPage.current===activePage)return;
+    previousPage.current=activePage;
+    const main=document.getElementById('main-content');
+    main?.focus?.({preventScroll:true});
+    const body=main?.querySelector('.depo-ix-page__body');
+    if(body)body.scrollTop=0;
+  },[activePage]);
   useEffect(() => () => { accessRequest.current?.abort(); accessRequest.current = null; }, []);
   const openAccess = () => {
     try { sessionStorage.setItem('depo:admin-tab', 'access'); } catch {}
     window.dispatchEvent(new CustomEvent('depo:admin-section', { detail: 'access' }));
     onPageChange('admin');
   };
-  const revalidateAccess = async () => {
+  const revalidateAccess = async ({ interactive = true } = {}) => {
     if (accessRequest.current) return;
     const controller = new AbortController(); accessRequest.current = controller;
     const timeout = setTimeout(() => controller.abort(), 15000);
     setVerifyingAccess(true); setAccessMessage('Checking stored API access…');
     try {
       const result = await verifyStoredAccess({ signal: controller.signal });
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && accessRequest.current === controller) {
         setAccessMessage(result.message);
+        setAccessDetail(result.detail || result.message);
+        setAccessState(result.status);
+        if(result.status==='verified')window.dispatchEvent(new Event('depo:access-verified'));
       }
-      if (result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
-    } catch { if (!controller.signal.aborted) setAccessMessage('Access could not be verified. Try again.'); }
+      if (accessRequest.current === controller && interactive && result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
+    } catch { if (!controller.signal.aborted && accessRequest.current === controller) { setAccessState('unverified'); setAccessMessage('Access could not be verified. Try again.'); } }
     finally {
       clearTimeout(timeout);
       if (accessRequest.current === controller) {
         accessRequest.current = null; setVerifyingAccess(false);
-        if (controller.signal.aborted) setAccessMessage('Verification timed out. Retry when services are reachable.');
+        if (controller.signal.aborted) { setAccessState('unverified'); setAccessMessage('Verification timed out. Retry when services are reachable.'); }
       }
     }
   };
   useEffect(() => {
     const rejected = () => {
+      setAccessState('reconnect_required');
       accessRequest.current?.abort(); accessRequest.current = null; setVerifyingAccess(false);
       setAccessMessage('A service rejected the current access. Revalidate access to check service configuration or reconnect; background jobs are retained.');
     };
@@ -80,12 +107,20 @@ export default function AppShell({
     return () => window.removeEventListener('depo:access-rejected', rejected);
   }, []);
   useEffect(() => {
-    const changed = event => { setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
+    const changed = event => { accessRequest.current?.abort();accessRequest.current=null;setVerifyingAccess(false);setAccessState('unverified'); setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessRevision(value => value + 1); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);
     window.addEventListener('depo:session-expired', changed);
-    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); window.removeEventListener('depo:session-expired', changed); };
+    window.addEventListener('depo:session-replaced', changed);
+    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); window.removeEventListener('depo:session-expired', changed);window.removeEventListener('depo:session-replaced', changed); };
   }, [onServiceAuthChange]);
+  // Verify the current session on load/replacement instead of leaving a valid
+  // connection labelled unverified until the user presses Revalidate.
+  const verifyCurrentAccess = useRef(revalidateAccess);
+  verifyCurrentAccess.current = revalidateAccess;
+  useEffect(() => {
+    if (apiAccessConfigured) void verifyCurrentAccess.current({ interactive: false });
+  }, [apiAccessConfigured, accessRevision]);
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';
     document.documentElement.dataset.ixColorSchema = colorSchema;
@@ -124,8 +159,8 @@ export default function AppShell({
     <>
       <a href="#main-content" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to main content</a>
       <IxApplication theme="classic" colorSchema={colorSchema}>
-        <IxApplicationHeader name="DEPO | Digital Thread">
-          <div className="depo-app-mark" aria-label="DEPO">D</div>
+        <IxApplicationHeader name={BRAND.name}>
+          <div className="depo-app-mark" aria-label={BRAND.name}>{BRAND.mark}</div>
           <IxBadge type="label" variant={statusVariant} label={statusLabel} role="status" aria-live="polite" />
           <IxButton
             type="button"
@@ -133,7 +168,7 @@ export default function AppShell({
             onClick={openAccess}
             aria-label="Configure API access"
           >
-            API access{apiAccessConfigured ? ' configured' : ''}
+            {accessState === 'reconnect_required' ? 'API access needs attention' : accessState === 'verified' ? 'API access verified' : apiAccessConfigured ? 'API access not verified' : 'API access'}
           </IxButton>
           <IxButton type="button" variant="tertiary" disabled={verifyingAccess} onClick={revalidateAccess} aria-label="Revalidate or reconnect API access">
             {verifyingAccess ? 'Checking access…' : apiAccessConfigured ? 'Revalidate access' : 'Reconnect access'}
@@ -166,11 +201,13 @@ export default function AppShell({
             while custom elements hydrate; an implicit breakpoint can trigger
             its scroll handler before the menu items container exists. */}
         <IxMenu aria-label="Application navigation" breakpoint="lg" enableToggleTheme={false}>
-          {navigationItems.map((item) => (
+          {navigationItems.filter(item=>item.id==='home').map((item) => (
             <IxMenuItem
               key={item.id}
               icon={item.icon}
               active={item.id === activePage}
+              onPointerEnter={()=>prefetchPage(item.id)}
+              onFocus={()=>prefetchPage(item.id)}
               onClick={(event) => {
                 event.preventDefault();
                 if (item.id === 'home') onHome();
@@ -180,24 +217,36 @@ export default function AppShell({
               {item.label}
             </IxMenuItem>
           ))}
+          {navigationGroups.map(group=><IxMenuCategory key={group.label} label={group.label} icon={group.items[0].icon}>
+            {group.items.map(item=><IxMenuItem key={item.id} icon={item.icon} active={item.id===activePage}
+              onPointerEnter={()=>prefetchPage(item.id)} onFocus={()=>prefetchPage(item.id)}
+              onClick={event=>{event.preventDefault();onPageChange(item.id);}}>{item.label}</IxMenuItem>)}
+          </IxMenuCategory>)}
         </IxMenu>
 
         <IxContent id="main-content" tabIndex={-1} className="depo-ix-content">
 
-          <div className="depo-ix-page">
-            {accessMessage && <div aria-live="polite" className="depo-alert">{accessMessage}</div>}
+          <div className={`depo-ix-page${showChat && rightDrawer && !chatExpanded ? ' depo-ix-page--with-chat' : ''}`}>
+            <div aria-live="polite" className="depo-alert depo-access-status" title={accessDetail || undefined}>{accessMessage || 'Application access status'}</div>
+            {(()=>{
+              const hash=routeHash;
+              const requested=hash.startsWith('#/')?hash.slice(2).split(/[/?]/)[0].trim().toLowerCase():'';
+              return requested&&!pageAliases[requested]?<div role="alert">This workspace link is not recognized. Showing {pageLabel(activePage)}. <a href="#/home">Go to Home</a> or choose a workspace from navigation.</div>:null;
+            })()}
+            <WorkspaceBreadcrumbs page={activePage} label={pageLabel(activePage)} />
             <IxContentHeader
               headerTitle={pageLabel(activePage)}
               headerSubtitle={activePage === 'home' ? 'Digital thread workspace' : undefined}
               hasBackButton={false}
               variant="primary"
             />
-            <div className="depo-ix-page__body"><RunRecoveryNotice />{children}</div>
+            <div className="depo-ix-page__body" tabIndex={0} role="region" aria-label="Page content"><RunRecoveryNotice />{children}</div>
           </div>
           {rightDrawer && (
-            <aside id="depo-chat-drawer" className="depo-ix-drawer" aria-label="Knowledge Companion" hidden={!showChat} tabIndex={-1}>
+            <aside id="depo-chat-drawer" className={`depo-ix-drawer${chatExpanded ? ' depo-ix-drawer--expanded' : ''}`} aria-label="Knowledge Companion" hidden={!showChat} tabIndex={-1}>
               <div className="depo-ix-drawer__header">
                 <strong>Knowledge Companion</strong>
+                <button type="button" aria-label="Expand Knowledge Companion" aria-pressed={chatExpanded} onClick={() => setChatExpanded(value => !value)}>{chatExpanded ? 'Compact' : 'Expand'}</button>
                 <button type="button" className="depo-ix-drawer__close" onClick={onToggleChat} aria-label="Close Knowledge Companion">×</button>
               </div>
               <div className="depo-ix-drawer__body">{rightDrawer}</div>

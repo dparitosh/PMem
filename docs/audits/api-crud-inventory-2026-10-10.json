@@ -7801,7 +7801,7 @@
       "line": 4376,
       "method": "GET",
       "router_path": "/ontology-mapper/{mapping_type}/mappings",
-      "handler": "get_ontology_mappings",
+      "handler": "list_legacy_ontology_mappings",
       "parameters": [
         {
           "name": "mapping_type",
@@ -7873,7 +7873,7 @@
       "line": 4376,
       "method": "GET",
       "router_path": "/ontology-mappings",
-      "handler": "get_ontology_mappings",
+      "handler": "list_legacy_ontology_mappings",
       "parameters": [
         {
           "name": "file_type",

@@ -1,3 +1,4 @@
+import os
 import tempfile
 import ast
 import unittest
@@ -54,3 +55,22 @@ class ProductPackageIntegrity(unittest.TestCase):
             package = build_package(output_root=root, payload=payload, artifacts=[({'artifact_id':'sha256:'+'a'*64}, source)])
             package['zip_path'].write_bytes(b'corrupt ZIP')
             with self.assertRaises(ValueError): verify_package(package['package_dir'], package['zip_path'], package['manifest'])
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows extended path acceptance')
+    def test_long_customer_storage_root_can_package_and_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / ('customer-storage-' + 'x' * 100) / ('retained-' + 'y' * 60)
+            source = Path(directory) / 'source.ttl'
+            source.write_text('<urn:part> <urn:name> "Part" .')
+            payload = {'product_id':'analytics', 'version':'1.0.0', 'name':'Evidence', 'domain':'engineering', 'owner':'steward'}
+            args = dict(output_root=root, payload=payload, artifacts=[({'artifact_id':'sha256:'+'a'*64}, source)])
+            first = build_package(**args)
+            self.assertGreater(len(str(first['zip_path'])), 260)
+            self.assertEqual(verify_package(first['package_dir'], first['zip_path']), first['manifest'])
+            self.assertEqual(build_package(**args)['manifest'], first['manifest'])
+            # The fixture's own non-extended cleanup cannot traverse MAX_PATH either.
+            import shutil
+            extended_root = first['package_dir'].parents[2]
+            self.assertEqual(extended_root.name, root.name)
+            self.assertTrue(str(extended_root).endswith(str(root)))
+            shutil.rmtree(extended_root)

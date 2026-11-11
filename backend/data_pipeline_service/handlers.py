@@ -40,6 +40,12 @@ def _method(name, **options):
 
 
 registry = HandlerRegistry()
+from .rest_sources import execute as acquire_rest_records
+registry.register('rest-source-ingest', JobHandler('registered-rest-source-v1', 'rest-source-records-v1', acquire_rest_records))
+from .connector_sources import execute as acquire_connector_records
+from .connector_semantics import execute as normalize_connector_records
+registry.register('connector-ceim-normalize', JobHandler('connector-field-mapping-v1','semantic-validation-report-v1',normalize_connector_records))
+registry.register('registered-source-ingest', JobHandler('registered-connector-source-v1', 'connector-records-v1', acquire_connector_records))
 for name, input_contract, output_contract, method, options in [
     ("interactive-quality-summary", "quality-records-v1", "quality-summary-v1", "transform_quality_summary", {}),
     ("data-quality-assessment", "quality-records-v1", "data-quality-report-v1", "assess_data_quality", {}),
@@ -54,3 +60,15 @@ for name, input_contract, output_contract, method, options in [
     ("rdf-deduplicate-serialize", "rdf-artifact-v1", "canonical-ntriples-v1", "rdf_deduplicate_serialize", {}),
 ]:
     registry.register(name, JobHandler(input_contract, output_contract, _method(method, **options)))
+
+from .semantic_datasets import execute_materialization
+from .semantic_analysis import execute_analysis
+registry.register("rdf-semantic-materialize", JobHandler("registered-rdf-source-v1", "semantic-dataset-v1", execute_materialization))
+registry.register("semantic-dataset-analysis", JobHandler("semantic-analysis-plan-v1", "semantic-analysis-v1", execute_analysis))
+
+from .semantic_configuration import execute_review
+registry.register("semantic-source-review", JobHandler("semantic-dataset-reference-v1", "semantic-refresh-assessment-v1", execute_review))
+
+from .semantic_analysis import execute_business_mart,execute_graph_snapshot
+registry.register('semantic-business-mart',JobHandler('approved-business-model-v1','semantic-analysis-v1',execute_business_mart))
+registry.register('graph-source-snapshot',JobHandler('published-graph-selection-v1','semantic-analysis-v1',execute_graph_snapshot))

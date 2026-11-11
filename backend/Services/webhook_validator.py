@@ -164,8 +164,8 @@ class WebhookValidator:
         Args:
             payload: Raw request body
             signature_header: Value of signature header
-            timestamp_header: Value of timestamp header (optional)
-            check_timestamp: Whether to validate timestamp
+            timestamp_header: Required canonical Unix-seconds timestamp header
+            check_timestamp: Must be True; disabling replay-age checks is rejected
         
         Returns:
             (is_valid, error_message)
@@ -175,26 +175,20 @@ class WebhookValidator:
             if not is_valid:
                 raise HTTPException(401, f"Webhook validation failed: {error}")
         """
-        # Validate signature
-        if not verify_signature(payload, signature_header, self.secret):
-            msg = f"{self.webhook_name}: Invalid signature"
-            logger.warning(msg)
-            return False, msg
-        
-        # Validate timestamp if enabled
-        if check_timestamp and timestamp_header:
-            try:
-                timestamp = int(timestamp_header)
-            except (ValueError, TypeError):
-                msg = f"{self.webhook_name}: Invalid timestamp format"
-                logger.warning(msg)
-                return False, msg
-            
-            if not validate_webhook_timestamp(timestamp):
-                msg = f"{self.webhook_name}: Timestamp too old (possible replay attack)"
-                logger.warning(msg)
-                return False, msg
-        
+        # Sender signs timestamp + "." + raw body. A body-only signature lets
+        # an attacker replace the timestamp and replay captured events forever.
+        if not check_timestamp or not timestamp_header:
+            return False, f"{self.webhook_name}: A signed timestamp is required"
+        try:
+            timestamp = int(timestamp_header)
+            if str(timestamp) != timestamp_header or not validate_webhook_timestamp(timestamp):
+                return False, f"{self.webhook_name}: Invalid or expired timestamp"
+        except (ValueError, TypeError):
+            return False, f"{self.webhook_name}: Invalid timestamp format"
+        signed_payload = timestamp_header.encode('ascii') + b'.' + payload
+        if not verify_signature(signed_payload, signature_header, self.secret):
+            return False, f"{self.webhook_name}: Invalid signature"
+
         logger.info(f"Webhook validated: {self.webhook_name}")
         return True, None
     

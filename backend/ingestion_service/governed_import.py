@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import re
 from backend.depo_platform.service_urls import service_url
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,8 @@ class GovernedImportService:
         self, *, filename: str, content: bytes, job_id: str, job_version: str,
         profile: str = "auto", source_system: str = "", request_id: str = "",
     ) -> dict[str, Any]:
+        if not re.fullmatch(r'[a-z][a-z0-9-]{2,62}',job_id) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',job_version):
+            raise ValueError('Select a valid configured job identity and version')
         normalized = await run_in_threadpool(self.normalize, filename=filename, content=content, profile=profile, source_system=source_system)
         payload = {
             "standard": normalized["standard"], "representation": "normalized-ceim-v1",
@@ -84,7 +87,7 @@ class GovernedImportService:
         # reaching an internal service.  The ingestion service uses its scoped
         # execution credential; local disabled-auth remains loopback-only in
         # the data-pipeline service.
-        from backend.depo_platform.network import gateway_subscription_headers
+        from backend.depo_platform.network import gateway_subscription_headers, service_bearer_headers
         headers = gateway_subscription_headers(self.pipeline_url)
         if request_id:
             headers["X-Request-ID"] = request_id
@@ -94,6 +97,19 @@ class GovernedImportService:
         payload["approved_by"] = os.getenv("DATA_PIPELINE_SERVICE_ACTOR", "governed-ingestion-service")
         payload["approval_token"] = os.getenv("DATA_JOB_EXECUTION_TOKEN", execution_token)
         async with asyncio.timeout(self.timeout), httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
+            definition_response = await client.get(f"{self.pipeline_url}/pipeline/jobs/definitions/{job_id}/{job_version}",
+                headers=service_bearer_headers('GRAPH_READ_TOKEN',service_name='configured job routing',endpoint=self.pipeline_url))
+            if definition_response.status_code == 404:
+                raise ValueError(f'Configured job {job_id}:{job_version} was not found; select an approved job')
+            if definition_response.is_error:
+                raise RuntimeError('Configured job could not be verified; no run was queued')
+            definition = definition_response.json()
+            if not isinstance(definition,dict) or definition.get('job_id') != job_id or definition.get('version') != job_version:
+                raise RuntimeError('Configured job identity did not match; no run was queued')
+            if definition.get('lifecycle_state') != 'approved' or definition.get('enabled') is not True:
+                raise ValueError('Select an approved, enabled data-job definition')
+            if normalized['standard'] not in definition.get('allowed_standards',[]):
+                raise ValueError(f"Selected job does not allow {normalized['standard']}; select an approved job for this source standard. No run was queued.")
             response = await client.post(f"{self.pipeline_url}/pipeline/jobs/definitions/{job_id}/{job_version}/run", json=payload)
         if response.status_code == 404:
             raise ValueError(f"Configured job {job_id}:{job_version} was not found; create and approve it before importing")

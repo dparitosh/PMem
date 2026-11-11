@@ -1,8 +1,9 @@
 import { setCredentialProfile, getCredentialProfile } from '../../services/serviceAuth';
 import React from 'react';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import SemanticBridgeJobs from './SemanticBridgeJobs';
 import agenticAPI from '../../services/agenticApi';
+vi.mock('@siemens/ix-react', () => import('../../ui/ix/ixReact.mock.js'));
 
 const preview = { job_id: 'preview-1', publication_job_id: 'publish-1', kind: 'preview', ontology_id: 'ontology', import_task_id: 'import', candidates: [
   { candidate_id: 'valid', source_term: 'part', ontology_term: 'Part', eligible: true },
@@ -30,10 +31,18 @@ test('saved workflow automatically resumes status checks after remount', async (
 });
 const mount = () => {
   const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
-  view.container.querySelector('details').open = true;
+  screen.getByText('Advanced: manual review and approval').closest('details').open = true;
+  screen.getByText('Who approves publication?').closest('details').open = true;
   fireEvent.change(screen.getByLabelText('Approver'), {target: {value: 'reviewer'}});
   return view;
 };
+test('rejected workflow access explains reconnection without suggesting another run', async () => {
+  api.automate = vi.fn().mockRejectedValue({response:{status:403,data:{detail:'Required API key is missing or invalid'}}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  expect(await screen.findByText(/Access to this workflow was rejected/)).toHaveTextContent('Reconnect in Admin');
+  expect(api.automate).toHaveBeenCalledTimes(1);
+});
 async function create() { fireEvent.click(screen.getByText('Create preview')); await screen.findByLabelText('Approve part to Part'); }
 
 test('automated workflow publishes validated results without individual approval clicks', async () => {
@@ -44,7 +53,7 @@ test('automated workflow publishes validated results without individual approval
   ]}});
   render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
   fireEvent.click(screen.getByText('Run automated mapping and publish'));
-  await screen.findByText(/1 mappings published to Neo4j/);
+  await screen.findByText(/1 mappings published to knowledge graph/);
   expect(api.automate).toHaveBeenCalledTimes(1);
   expect(api.publish).not.toHaveBeenCalled();
   expect(Object.keys(sessionStorage).some(key => key.startsWith('bridge-workflow:') && sessionStorage.getItem(key) === 'workflow-1')).toBe(true);
@@ -55,12 +64,13 @@ test('lost automation response blocks duplicate publication and exposes recovery
   api.automate = vi.fn().mockRejectedValue(new Error('network'));
   const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
   fireEvent.click(screen.getByText('Run automated mapping and publish'));
-  await screen.findByText(/Inspect recent workflows in agent telemetry/);
+  await screen.findByText(/Check recent workflows in Agent telemetry/);
   expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
   expect(screen.getByText('Refresh automation result')).toBeDisabled();
   view.unmount();
   render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
   expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+  fireEvent.click(screen.getByText('Recovery: look up a retained workflow'));
   expect(screen.getByLabelText('Recover mapping workflow ID')).toBeVisible();
 });
 
@@ -70,7 +80,7 @@ test('malformed steward decisions produce a recovery message without crashing th
   ]}});
   render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
   fireEvent.click(screen.getByText('Run automated mapping and publish'));
-  await screen.findByText('Invalid steward evidence. Refresh the retained workflow before retrying.');
+  await screen.findByText('Validation results are invalid. Refresh the retained workflow, then retry.');
   expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
 });
 
@@ -96,6 +106,7 @@ test('saves manual drafts as visible recommendations without selecting publicati
   await create();
   expect(api.preview).toHaveBeenCalledWith('ontology', 'import', { approved_by: 'reviewer', approval_token: 'supervisor' }, manual, 0);
   expect(screen.getByText(/2 mapping recommendations; 1 eligible/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name:/Evidence for part to Part/}));
   expect(screen.getByText('server-resolved source and target')).toBeInTheDocument();
   expect(screen.getByText('Preview agent run: agent-run-1')).toBeInTheDocument();
   expect(screen.getByLabelText('Approve part to Part')).not.toBeChecked();
@@ -105,7 +116,7 @@ test('saves manual drafts as visible recommendations without selecting publicati
 test('structured validation errors do not crash or echo submitted credentials', async () => {
   api.preview.mockRejectedValue({ response: { status: 422, data: { detail: [{ msg: 'invalid', input: 'private-credential' }] } } });
   mount(); fireEvent.click(screen.getByText('Create preview'));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Invalid request');
+  expect(await screen.findByRole('alert')).toHaveTextContent(/invalid/i);
   expect(document.body.textContent).not.toContain('private-credential');
 });
 
@@ -205,7 +216,8 @@ test('resume restores publication selection and status', async () => {
 
 test('changing inputs discards old preview and credentials are not persisted', async () => {
   const view = mount();
-  setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'secret-test-value');
+  act(()=>setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'secret-test-value'));
+  fireEvent.change(screen.getByLabelText('Approver'), {target:{value:'reviewer'}});
   await create();
   expect(JSON.stringify(sessionStorage)).not.toContain('secret-test-value');
   view.rerender(<SemanticBridgeJobs ontologyId="other" importTaskId="import" api={api} />);
@@ -244,4 +256,16 @@ test('unavailable session storage still submits and retains the workflow in memo
     await screen.findByText(/Workflow: memory-run/);
     expect(api.automate).toHaveBeenCalledTimes(1);
   } finally { storage.mockRestore(); }
+});
+
+
+test('mapping guidance remains visible when manual approval controls are collapsed', async () => {
+ const view=mount();await create();
+ const manual=screen.getByText('Advanced: manual review and approval').closest('details');
+ manual.open=false;
+ expect(screen.getByRole('region',{name:'Mapping guidance'})).toBeVisible();
+ expect(screen.getByText('Mapping review')).toBeVisible();
+ expect(screen.getAllByText('No supporting rationale recorded')[0]).toBeVisible();
+ expect(screen.queryByText('What is being mapped')).not.toBeInTheDocument();
+ expect(api.publish).not.toHaveBeenCalled();
 });

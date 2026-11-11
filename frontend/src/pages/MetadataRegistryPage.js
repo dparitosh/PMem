@@ -1,14 +1,21 @@
+import useRouteView from '../app/useRouteView';
 import { dictionaryPayload } from '../services/ontologyPayload';
-import WorkspaceTabs from '../Components/WorkspaceTabs';
+import './MetadataRegistryPage.css';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Clock3, Database, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Database, RefreshCw, ShieldCheck } from '../ui/IxIcons';
 import { useOntologies } from '../contexts/OntologyContext';
 import { API_METHODS } from '../services/apiClient';
 import RegistrySummaryCards from '../Components/registry/RegistrySummaryCards';
 import RegistryAssetsSection from '../Components/registry/RegistryAssetsSection';
 import { metadataAssetsPayload, dictionaryAssetDraft } from '../services/metadataRegistryPayload';
+import { IxTabsBar, EmptyState, TextField } from '../ui/ix';
+import { ixIconName } from '../ui/ixIconRegistry';
 
+const REGISTRY_VIEWS=['assets','dictionary'];
+// Status vocabulary (shared with RegistryAssetsSection): "Review required" means a
+// person must act on the asset (uploaded, draft, in review). "Unclassified" means the
+// service returned no lifecycle status at all. Both count toward the review total.
 const STATUS_LABELS = {
   draft: 'Draft',
   in_review: 'In review',
@@ -40,40 +47,34 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
   });
   const prefixes = [...new Set(nodes.map((node) => node.ontology_prefix).filter(Boolean))].sort();
 
-  return (
-    <div style={{ border: '1px solid #d9e2ec', borderRadius: 8, overflow: 'auto', maxHeight: 520 }}>
-      <div style={{ padding: '9px 12px', color: '#52606d', fontSize: 12, borderBottom: '1px solid #d9e2ec' }}>
-        {visible.length} of {nodes.length} terms
-        {prefixes.length > 0 && (
-          <select value={prefixFilter || ''} onChange={(event) => onPrefixFilterChange(event.target.value || null)} style={{ marginLeft: 12, padding: '4px 8px' }} aria-label="Filter dictionary by prefix">
-            <option value="">All prefixes</option>
-            {prefixes.map((prefix) => <option key={prefix} value={prefix}>{prefix}</option>)}
-          </select>
-        )}
-      </div>
-      <table className="depo-table">
-        <thead><tr><th>Term ID</th><th>Label</th><th>Type</th><th>Definition</th><th>Governance</th></tr></thead>
-        <tbody>
-          {visible.map((node) => (
-            <tr key={`${node.term_id}:${node.source}`}>
-              <td><code>{node.term_id}</code></td>
-              <td><strong>{node.label || '—'}</strong></td>
-              <td>{node.source || '—'}</td>
-              <td>{node.definition || '—'}</td>
-              <td><button type="button" disabled={disabled} onClick={() => onRegister(node)}>Prepare draft registration</button></td>
-            </tr>
-          ))}
-          {!visible.length && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No terms match the filter.</td></tr>}
-        </tbody>
-      </table>
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
+  const lastPage = Math.max(0, Math.ceil(visible.length / pageSize) - 1);
+  const currentPage = Math.min(page, lastPage);
+  useEffect(() => setPage(0), [filter, prefixFilter, nodes]);
+  return <section className="registry-dictionary" aria-label="Dictionary terms">
+    <div className="registry-dictionary__toolbar"><strong>{visible.length} of {nodes.length} terms</strong>
+      {prefixes.length > 0 && <label>Prefix <select className="registry-dictionary__select" value={prefixFilter || ''} onChange={event => onPrefixFilterChange(event.target.value || null)} aria-label="Filter dictionary by prefix"><option value="">All prefixes</option>{prefixes.map(prefix => <option key={prefix}>{prefix}</option>)}</select></label>}
     </div>
-  );
+    <div className="registry-dictionary__scroll"><table className="registry-dictionary__table">
+      <colgroup><col className="registry-dictionary__col--term"/><col className="registry-dictionary__col--type"/><col className="registry-dictionary__col--definition"/><col className="registry-dictionary__col--action"/></colgroup>
+      <thead><tr><th scope="col">Term</th><th scope="col">Type</th><th scope="col">Definition</th><th scope="col">Action</th></tr></thead>
+      <tbody>{visible.slice(currentPage*pageSize,(currentPage+1)*pageSize).map(node => <tr key={`${node.term_id}:${node.source}`}>
+        <td><strong>{node.label || 'Unnamed term'}</strong><details><summary>Term identity</summary><code>{node.term_id}</code></details></td>
+        <td><span className="registry-dictionary__type">{node.source || 'Unspecified'}</span></td>
+        <td><p className="registry-dictionary__definition">{node.definition || 'No definition provided.'}</p>{node.definition?.length > 220 && <details><summary>Read full definition</summary><p>{node.definition}</p></details>}</td>
+        <td><button className="depo-button depo-button--secondary" type="button" aria-label="Prepare draft registration" disabled={disabled} onClick={()=>onRegister(node)}>Prepare draft</button></td>
+      </tr>)}{!visible.length && <tr><td colSpan={4}>No terms match the filter.</td></tr>}</tbody>
+    </table></div>
+    <nav className="registry-dictionary__pagination" aria-label="Dictionary pages"><span>Page {currentPage+1} of {lastPage+1} · 25 terms per page</span><button disabled={currentPage===0} onClick={()=>setPage(currentPage-1)}>Previous</button><button disabled={currentPage>=lastPage} onClick={()=>setPage(currentPage+1)}>Next</button></nav>
+  </section>;
+
 }
 
 export default function MetadataRegistryPage() {
   const { ontologies, loading, error, lastUpdated, fetchOntologies } = useOntologies();
   const [query, setQuery] = useState('');
-  const [section, setSection] = useState('assets');
+  const [section, setSection] = useRouteView(REGISTRY_VIEWS,'assets',undefined,'#/registry');
   const [selectedOntology, setSelectedOntology] = useState('');
   const [dictionary, setDictionary] = useState([]);
   const [dictionaryLoading, setDictionaryLoading] = useState(false);
@@ -94,6 +95,7 @@ export default function MetadataRegistryPage() {
   const [newAsset, setNewAsset] = useState({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
   const registryControllerRef = useRef(null);
   const dictionaryControllerRef = useRef(null);
+  const refreshReadRef = useRef(null);
   const mutationControllersRef = useRef(new Set());
 
   const loadRegistryAssets = async (offset = 0) => {
@@ -146,12 +148,14 @@ export default function MetadataRegistryPage() {
       setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
       loadRegistryAssets();
     };
-    window.addEventListener('depo:credentials-changed', resetSession);
-    window.addEventListener('depo:credentials-cleared', resetSession);
+    const sessionEvents = ['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
+    sessionEvents.forEach(name => window.addEventListener(name, resetSession));
+    const refreshReads = () => refreshReadRef.current?.();
+    window.addEventListener('depo:access-verified', refreshReads);
     loadRegistryAssets();
     return () => {
-      window.removeEventListener('depo:credentials-changed', resetSession);
-      window.removeEventListener('depo:credentials-cleared', resetSession);
+      sessionEvents.forEach(name => window.removeEventListener(name, resetSession));
+      window.removeEventListener('depo:access-verified', refreshReads);
       registryControllerRef.current?.abort();
       dictionaryControllerRef.current?.abort();
       mutationControllers.forEach((controller) => controller.abort());
@@ -250,6 +254,11 @@ export default function MetadataRegistryPage() {
     }
   };
 
+  refreshReadRef.current = () => {
+    loadRegistryAssets(registryOffset);
+    if (selectedOntology) loadDictionary(selectedOntology);
+  };
+
   const transitionHandler = async (asset, action, evidence = {}) => {
     if (!action || transitioningAssetIds.has(asset.asset_id)) return;
     if ((action.status === 'approved' && !evidence.approval_evidence) ||
@@ -285,7 +294,8 @@ export default function MetadataRegistryPage() {
   };
 
   return (
-    <div className="depo-page" style={{ display: 'grid', gap: 12 }}>
+    <div className="depo-page metadata-registry">
+      {/* Layout classes live in MetadataRegistryPage.css */}
       {governanceAction && <section className="depo-panel" aria-label="Metadata governance evidence">
         <form onSubmit={event => {
           event.preventDefault();
@@ -298,10 +308,9 @@ export default function MetadataRegistryPage() {
           <button type="button" disabled={transitioningAssetIds.has(governanceAction.asset.asset_id)} onClick={() => setGovernanceAction(null)}>Cancel</button>
         </form>
       </section>}
-      <section className="depo-panel">
+      <section className="depo-panel depo-panel--workspace">
         <div className="depo-panel__header">
           <div>
-            <div className="depo-panel__title">Metadata Registry</div>
             <div className="depo-panel__meta">
               Governed catalog for definitions, ownership, lifecycle, versions, and physical implementations.
             </div>
@@ -314,18 +323,21 @@ export default function MetadataRegistryPage() {
             Refresh catalog
           </button>
         </div>
-        <div className="depo-panel__body" style={{ display: 'grid', gap: 12 }}>
+        <div className="depo-panel__body metadata-registry__body">
           {registryStale && <p role="status">Registry refresh failed. Retained rows may be stale; current counts are unavailable until refresh succeeds.</p>}
-          <WorkspaceTabs label="Metadata registry views" tabs={[{id:'assets',label:'Registry assets'},{id:'dictionary',label:'Data Dictionary'}]} value={section} onChange={setSection} />
+          <IxTabsBar ariaLabel="Metadata registry views" tabs={[{id:'assets',label:'Registry assets'},{id:'dictionary',label:'Terms'}]} active={section} onChange={setSection} />
 
           {section === 'dictionary' && (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <select className="depo-input" value={selectedOntology} onChange={(event) => loadDictionary(event.target.value)} aria-label="Select registry source for Data Dictionary">
+            <div className="metadata-registry__dictionary">
+              <h2 className="metadata-registry__heading">Data Dictionary</h2>
+              <div className="metadata-registry__controls">
+                <select className="depo-input metadata-registry__source" value={selectedOntology} onChange={(event) => loadDictionary(event.target.value)} aria-label="Select registry source for Data Dictionary">
                   <option value="">Select a registered source</option>
                   {ontologies.map((entry) => <option key={entry.ontology_id || entry.value || entry.prefix} value={entry.ontology_id || entry.value || entry.prefix}>{entry.label || entry.prefix}</option>)}
                 </select>
-                <input className="depo-input" value={dictionaryFilter} onChange={(event) => setDictionaryFilter(event.target.value)} placeholder="Filter terms" aria-label="Filter Data Dictionary terms" />
+                <div className="metadata-registry__filter">
+                  <TextField label="Filter terms" value={dictionaryFilter} onValueChange={setDictionaryFilter} />
+                </div>
                 {selectedOntology && <span className="depo-panel__meta">Dictionary terms are scoped to the selected source.</span>}
               </div>
               {dictionaryLoading && <div className="depo-empty">Loading dictionary terms...</div>}
@@ -342,7 +354,13 @@ export default function MetadataRegistryPage() {
                     } catch (failure) { setDictionaryError(failure.message); }
                   }} />
               )}
-              {!selectedOntology && <div className="depo-empty">Select a registered source to inspect its terms, properties, and relationships.</div>}
+              {!selectedOntology && (
+                <EmptyState
+                  icon={ixIconName.tagEye}
+                  title="Choose a registered source"
+                  body="Pick the ontology whose classes, properties and relationships you want to review. Terms are read-only here; from any term you can prepare a draft asset for the governed registry."
+                />
+              )}
             </div>
           )}
 
@@ -351,7 +369,7 @@ export default function MetadataRegistryPage() {
               <RegistrySummaryCards items={[
                 { icon: <Database size={15} />, label: 'Governed assets on this page', value: registryLoaded ? registryAssets.length : '—' },
                 { icon: <ShieldCheck size={15} />, label: 'Approved assets on this page', value: registryLoaded ? publishedCount : '—' },
-                { icon: <Clock3 size={15} />, label: 'Review required on this page', value: registryLoaded ? reviewCount : '—' },
+                { icon: <AlertTriangle size={15} />, label: 'Review required on this page', value: registryLoaded ? reviewCount : '—' },
               ]} />
               <RegistryAssetsSection
                 newAsset={newAsset}
@@ -363,7 +381,7 @@ export default function MetadataRegistryPage() {
                 setQuery={setQuery}
                 error={error}
                 registryLoaded={registryLoaded}
-                loading={loading}
+                loading={loading || registryLoading}
                 visibleRegistryAssets={visibleRegistryAssets}
                 registryAssets={registryAssets}
                 entries={entries}

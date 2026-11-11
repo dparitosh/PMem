@@ -1,0 +1,52 @@
+ENGINEERING LIFECYCLE — SUCCESS CRITERIA
+
+Active local ontology: engineering_lifecycle_de13ea35eb5844c9
+Visible name: Engineering lifecycle
+20 business records; 74 published graph resources and 113 relationships.
+The additional resources include declared vocabulary. They are not 74 parts.
+
+1. Bearing requirements
+Select Engineering lifecycle in Graph Explorer, search BRG-2001 and select the inner race.
+Ask: What requirements are recorded for this bearing?
+Expected: REQ-BRG-001 with its 25 mm bore requirement and a recorded connection.
+Indirect requirement paths must remain distinguishable from direct ownership.
+
+2. Short-term contextual follow-up
+Without changing the selected record, ask: What PMI is recorded for it?
+Expected: BRG-2001-IR, bore dimensional PMI, datum A, tolerance 0.01 mm.
+The response must not silently repeat the previous requirement answer.
+Model evidence for this revision is consistent.
+
+3. Dimensional quality and shape
+The retained data contains nominal 25 mm, lower limit 24.99 mm, upper limit 25.01 mm,
+and inspection value 25.006 mm. The CAD reference, cylindrical bore and PMI are distinct records.
+This scenario includes a reference, not a CAD mesh or computed simulation result.
+
+4. Change-impact decision support
+In Recommendations, find SHAFT-1001/B Rotor shaft, choose the Engineering lifecycle source,
+and run Direct graph analysis. Expected: two assembly dependencies and one finish-grinding process.
+Read Recommended next actions and the retained path for each record.
+Missing effectivity remains unassessed. The result does not authorize an engineering change.
+
+5. Similarity negative control
+Compare SHAFT-1001/B with SHAFT-1002/B. The material comparison must report Steel versus Aluminium
+as a conflict. A similarity score must never be presented as interchangeability approval.
+
+6. Manufacturing and systems traceability
+The manufacturing BOM contains two distinct lines, quantity 1 each, for shaft and inner race.
+The bearing subsystem allocates to the bearing assembly and links to REQ-BRG-001.
+The shaft has one recorded direct finish-grinding process; this does not prove a complete operation sequence.
+
+7. Retained memory in the application
+Open Reports > Memory records. Search engineering_lifecycle.
+Expand the retained PMI answer to inspect the resolved question, ontology context and timestamp.
+The saved response is historical evidence, not a fresh model execution.
+Where this memory is stored explains the PostgreSQL conversation store.
+Long-term engineering records are accessible in Graph Explorer, separate from conversation history.
+
+PROVENANCE AND LIMITS
+This is an authorized generated local engineering scenario, not customer measurement or product approval.
+The original PLMXML files remain unchanged. Generation metadata and hashes preserve provenance.
+There is no approved reusable learning lesson or customer-published analytics product established here.
+The free-form agent investigation still has a retained model-response failure; direct graph and Companion
+checks are separately verified. Do not claim every agent path passed.

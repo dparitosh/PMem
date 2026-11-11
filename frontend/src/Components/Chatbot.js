@@ -8,6 +8,8 @@ import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection, wasBrowserSessionExpired } from '../services/serviceAuth';
 import { createChatFrameParser } from '../services/chatStreamFrames';
+import { companionFallbackPrompts } from '../services/companionPrompts';
+import { companionEvidenceIds } from '../features/graph/companionGraphEvidence';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -21,7 +23,7 @@ const CHAT_COLORS = {
     textMuted: 'var(--theme-color-soft-text, #66788a)',
 };
 
-const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '' }) => {
+const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '', nodeId = '', runId = '', productId = '', productVersion = '', reconciliationId = '', contextLabel = '' }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
@@ -36,15 +38,19 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     const followLatestRef = useRef(true);
     const [followingLatest, setFollowingLatest] = useState(true);
     const sessionIdRef = useRef(getClientSessionId());
-    const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
+    const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || '';
     const scopePrefix = ontologyPrefix || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
-    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix });
-    const resetConversation = useCallback(() => {
+    const scopeNodeId = nodeId || graphData?.root_node_id || graphData?.view?.root_node_id || '';
+    const recordScope = JSON.stringify([runId, productId, productVersion,reconciliationId]);
+    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope });
+    const resetConversation = useCallback((preserveSession = false) => {
         abortRef.current?.abort();
         abortRef.current = null;
         requestActiveRef.current = false;
-        clearClientSessionId();
-        sessionIdRef.current = null;
+        if (preserveSession !== true) {
+            clearClientSessionId();
+            sessionIdRef.current = null;
+        }
         setChatMessages([]);
         setChatResults?.([]);
         setRequestActive(false);
@@ -56,10 +62,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     }, [setChatResults]);
 
     useEffect(() => {
-        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix) return;
-        scopeRef.current = { id: scopeId, prefix: scopePrefix };
-        resetConversation();
-    }, [scopeId, scopePrefix, resetConversation]);
+        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix && scopeRef.current.page === pageId && scopeRef.current.node === scopeNodeId && scopeRef.current.record === recordScope) return;
+        scopeRef.current = { id: scopeId, prefix: scopePrefix, page: pageId, node:scopeNodeId, record:recordScope };
+        resetConversation(true);
+    }, [scopeId, scopePrefix, pageId, scopeNodeId, recordScope, resetConversation]);
 
     useEffect(() => {
         let readKey = getCredentialProfile('GRAPH_READ_TOKEN');
@@ -70,6 +76,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             readKey = nextKey;
             if (!nextKey && wasBrowserSessionExpired()) {
                 abortRef.current?.abort();
+                abortRef.current=null;requestActiveRef.current=false;setRequestActive(false);setShowSpinner(false);setStatusLabel(null);
                 setError('Access expired. Reconnect in Admin to resume this conversation.');
                 return;
             }
@@ -83,6 +90,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         const replaced = () => {
             readKey = getCredentialProfile('GRAPH_READ_TOKEN');
             abortRef.current?.abort();
+            abortRef.current=null;requestActiveRef.current=false;setRequestActive(false);setShowSpinner(false);setStatusLabel(null);
             setChatMessages([]);
             setChatResults?.([]);
             setError(null);
@@ -105,32 +113,33 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         const controller = new AbortController();
         let active = true;
         const timeout = setTimeout(() => controller.abort(), 10000);
-        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history`);
-        fetch(url, { headers: serviceAuthHeaders(url), signal: controller.signal, credentials: 'omit', redirect: 'error' })
+        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history?ontology_id=${encodeURIComponent(scopeId)}&ontology_prefix=${encodeURIComponent(scopePrefix)}&page=${encodeURIComponent(pageId)}&node_id=${encodeURIComponent(scopeNodeId)}&run_id=${encodeURIComponent(runId)}&product_id=${encodeURIComponent(productId)}&product_version=${encodeURIComponent(productVersion)}&reconciliation_id=${encodeURIComponent(reconciliationId)}`);
+        const headers=serviceAuthHeaders(url);
+        fetch(url, { headers, signal: controller.signal, credentials: 'omit', redirect: 'error' })
             .then(async response => {
                 if ([404, 410].includes(response.status)) {
                     if (active && !requestActiveRef.current) { clearClientSessionId(); sessionIdRef.current = null; }
                     return null;
                 }
-                if (!response.ok) throw new Error(`Conversation restore failed (${response.status})`);
+                if (!response.ok) {
+                    const body=await response.json().catch(()=>({}));
+                    if(active&&!controller.signal.aborted&&credential===getCredentialProfile('GRAPH_READ_TOKEN'))handleSessionRejection(response.status,headers.Authorization||'',body.detail);
+                    throw new Error(`Conversation restore failed (${response.status})`);
+                }
                 return response.json();
             }).then(body => {
                 if (!active || credential !== getCredentialProfile('GRAPH_READ_TOKEN') || requestActiveRef.current || !Array.isArray(body?.turns)) return;
                 const restored = body.turns.flatMap(turn => [
                     { id: `${turn.job_id}-user`, role: 'user', text: turn.user_request || '' },
-                    { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, retainedPromptJobId: turn.job_id },
+                    { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, restored: true, retainedPromptJobId: turn.job_id },
                 ]);
                 setChatMessages(current => current.length ? current : restored);
-            }).catch(error => { if (active && error.name !== 'AbortError') setError(error.message); })
+            }).catch(error => { if (active && !controller.signal.aborted && credential===getCredentialProfile('GRAPH_READ_TOKEN') && error.name !== 'AbortError') setError(error.message); })
             .finally(() => clearTimeout(timeout));
         return () => { active = false; clearTimeout(timeout); controller.abort(); };
-    }, [scopeId, scopePrefix, historyVersion]);
+    }, [scopeId, scopePrefix, pageId, scopeNodeId, runId, productId, productVersion,reconciliationId, historyVersion]);
 
-    const [sampleQueries, setSampleQueries] = useState([
-        'Find ontology resources matching product',
-        'Find ontology resources matching requirement',
-        'Find ontology resources matching measurement',
-    ]);
+    const [sampleQueries, setSampleQueries] = useState(companionFallbackPrompts);
 
     // [OK] SECURE: Input validation + error handling
     const handleAsk = async (queryText = null) => {
@@ -187,7 +196,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
 
             let activeSessionId = getClientSessionId() || sessionIdRef.current;
             sessionIdRef.current = activeSessionId;
-            const graphContext = scopeId ? { ontology: scopeId, ontology_prefix: scopePrefix } : null;
+            const graphContext = (scopeId || scopePrefix || pageId || scopeNodeId || runId || productId || reconciliationId) ? { ontology: scopeId, ontology_prefix: scopePrefix, ...(pageId ? {page:pageId}: {}), ...(scopeNodeId ? {node_id:scopeNodeId}: {}), ...(runId ? {run_id:runId}: {}), ...(reconciliationId?{reconciliation_id:reconciliationId}:{}), ...(productId ? {product_id:productId,product_version:productVersion}: {}) } : null;
             let requestAuthorization = '';
             const sendRequest = (sessionId) => {
                 const authHeaders = serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post');
@@ -224,6 +233,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             if (response.status === 403 && returnedSessionId && returnedSessionId !== activeSessionId) {
                 activeSessionId = returnedSessionId;
                 response = await sendRequest(activeSessionId);
+                if(controller.signal.aborted)return;
                 returnedSessionId = response.headers.get('x-session-id');
                 if (returnedSessionId) {
                     sessionIdRef.current = returnedSessionId;
@@ -231,7 +241,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 }
             }
             if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
+                const payload = await readErrorPayload(response);
                 handleSessionRejection(response.status, requestAuthorization, payload?.detail);
                 throw new Error(payload?.detail || `Server error ${response.status}`);
             }
@@ -280,6 +290,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         setStatusLabel(null);
                         setShowSpinner(false);
                         if (!streamFailed && setChatResults) setChatResults([{ query: validated, response: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, timestamp: new Date().toISOString() }]);
+                        if (!streamFailed && pageId === 'graph') {
+                            const ids = companionEvidenceIds(responseEvidence, scopeNodeId);
+                            window.dispatchEvent(new CustomEvent('nexus:companion-graph-evidence', {detail: {ids, rootId:scopeNodeId, ontologyId:scopeId, ontologyPrefix:scopePrefix}}));
+                        }
                     } else if (parsed.error) {
                         streamCompleted = true;
                         streamFailed = true;
@@ -371,19 +385,24 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     useEffect(() => {
         // Fetch dynamic sample queries from backend
         const sampleController = new AbortController();
+        const sampleCredential=getCredentialProfile('GRAPH_READ_TOKEN');
+        setSampleQueries(companionFallbackPrompts);
+        const samplesUrl = new URL(buildUrl(API.chat.sampleQueries), window.location.origin);
+        samplesUrl.searchParams.set('page', pageId || 'home');
         const fetchSampleQueries = async () => {
             try {
                 const activeSessionId = getClientSessionId() || sessionIdRef.current;
                 sessionIdRef.current = activeSessionId;
-                const response = await fetch(buildUrl(API.chat.sampleQueries), {
+                const response = await fetch(samplesUrl.toString(), {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
-                        ...serviceAuthHeaders(buildUrl(API.chat.sampleQueries), 'get'),
+                        ...serviceAuthHeaders(samplesUrl.toString(), 'get'),
                         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
                     },
                     signal: sampleController.signal,
                 });
+                if (sampleController.signal.aborted || sampleCredential!==getCredentialProfile('GRAPH_READ_TOKEN')) return;
                 const returnedSessionId = response.headers.get('x-session-id');
                 if (returnedSessionId) {
                     sessionIdRef.current = returnedSessionId;
@@ -391,7 +410,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 }
                 if (response.ok) {
                     const data = await response.json();
-                    if (Array.isArray(data.queries) && data.queries.length > 0 && data.queries.every(query => typeof query === 'string' && query.trim())) {
+                    if (!sampleController.signal.aborted && sampleCredential===getCredentialProfile('GRAPH_READ_TOKEN') && Array.isArray(data.queries) && data.queries.length > 0 && data.queries.length <= 8 && data.queries.every(query => typeof query === 'string' && query.trim() && query.length <= 300)) {
                         setSampleQueries(data.queries);
                         logger.data('Loaded dynamic sample queries', {
                             count: data.queries.length,
@@ -416,7 +435,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 abortRef.current.abort();
             }
         };
-    }, []);
+    }, [pageId]);
 
     useEffect(() => {
         if (followLatestRef.current) messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
@@ -446,6 +465,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Sparkles size={14} />
                     <span style={{ fontSize: 13, fontWeight: 600 }}>Evidence-grounded answers</span>
+                    {contextLabel && <span style={{fontSize:12}} aria-label="Selected answer context">Context: {contextLabel}</span>}
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
@@ -470,7 +490,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 </div>
             </div>
 
-            {/* Status bar â€” shown while a tool is executing */}
+            {/* Status bar — shown while a tool is executing */}
             {statusLabel && (
                 <div style={{
                     background: CHAT_COLORS.primarySoft, color: CHAT_COLORS.primary,
@@ -557,15 +577,15 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     <div className="chat-message-label">{msg.role === 'user' ? 'You · Question' : 'Companion · Response'} {Math.floor(index / 2) + 1}</div>
                                     {msg.role === 'assistant' ? (
                                         <>
-                                            <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text) }} />
+                                            <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text, msg.evidence || []) }} />
                                             {Array.isArray(msg.evidence) && msg.evidence.length > 0 && (
                                                 <details style={{ marginTop: 8 }}>
                                                     <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Evidence ({msg.evidence.length})</summary>
                                                     <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-                                                        {msg.evidence.slice(0, 12).map((item, index) => (
+                                                        {msg.evidence.slice(0, 26).map((item, index) => (
                                                             <li key={`${item.resource_id || item.source_id || 'evidence'}-${index}`}>
-                                                                {item.label || `${item.source_id} ${item.relationship || ''} ${item.target_id}`}
-                                                                {item.ontology_id ? ` (${item.ontology_id})` : ''}
+                                                                [{index + 1}] {item.label || `${item.source_id} ${item.relationship || ''} ${item.target_id}`}
+                                                                <details><summary>Source identity</summary><code>{item.resource_id || item.source_id || item.source}</code>{item.ontology_id ? ` · ${item.ontology_id}` : ''}</details>
                                                             </li>
                                                         ))}
                                                     </ul>
@@ -575,10 +595,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     ) : (
                                         msg.text
                                     )}
-                                    {msg.generation && <p>Model generation: {msg.generation.status}</p>}
-                                    {msg.generation?.prompt_details && <details><summary>Prompt details</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{JSON.stringify(msg.generation.prompt_details, null, 2)}</pre></details>}
-                                    {msg.runId && <small>Agent run: {msg.runId}</small>}
-                                    {msg.retainedPromptJobId && <small>Saved conversation result: {msg.retainedPromptJobId}</small>}
+                                    {msg.generation?.status === 'completed' && <p>Model summary — verify its interpretation against the evidence.</p>}
+                                    {msg.restored && <p>Saved answer — evidence has not been refreshed.</p>}
                                     {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
                                         <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>
@@ -628,7 +646,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         />
                         <button type="submit" aria-label="Send chat question" disabled={requestActive || !question.trim()}>Send</button>
                     </form>
-                    <details className="chat-answer-help"><summary>About these answers</summary>Ontology search returns matching resources and evidence; comparison and impact analysis are not supported here. Use Shift+Enter for a new line.</details>
+                    <details className="chat-answer-help"><summary>About these answers</summary>Answers use matching graph resources and saved mapping reviews. Historical reviews do not verify current knowledge graph publication. Model summaries require an enabled provider; missing evidence is never invented. Use Shift+Enter for a new line.</details>
                     {requestActive && <button type="button" onClick={() => {
                         abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');
                         setChatMessages(messages => messages.map(message => message.streaming ? { ...message, streaming: false, stopped: true } : message));

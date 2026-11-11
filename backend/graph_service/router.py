@@ -3,7 +3,7 @@ from typing import Annotated
 from starlette.concurrency import run_in_threadpool
 from backend.depo_platform.upload_limits import ontology_upload_limit
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, Query
 from backend.depo_platform.authorization import service_write_identity, graph_read_identity
 
 from .neo4j_publisher import publisher
@@ -104,19 +104,31 @@ from .bridge_router import bridge_service_identity
 
 
 @router.get('/mapping-terms', dependencies=[Depends(bridge_service_identity)], summary='Private peer read of scoped ontology mapping targets from the graph data layer')
-def mapping_terms(scope: str) -> dict:
+def mapping_terms(scope: str, offset: int | None = Query(default=None,ge=0,le=100000), limit: int | None = Query(default=None,ge=1,le=10000)) -> dict:
     try:
-        return publisher.mapping_terms(scope)
+        return publisher.mapping_terms(scope,offset=offset,limit=limit)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(503, 'Graph mapping data unavailable; check graph service dependencies') from exc
 
 
-@router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
-def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict:
+@router.get('/explorer-search', dependencies=[Depends(graph_read_identity)], summary='Search graph nodes, relationships, property names and values')
+def explorer_search(query: str, scope: str = '', limit: int = 80, instances_only: bool = False) -> dict:
+    from .explorer_search import search as universal_search
     try:
-        return publisher.search(query=query, limit=limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        return universal_search(query,scope,limit,instances_only)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Explorer search failed')
+        raise HTTPException(503,'Graph search unavailable; inspect service logs with X-Request-ID') from exc
+
+
+@router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
+def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '', business_only: bool = False) -> dict:
+    try:
+        return publisher.search(query=query, limit=limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix, business_only=business_only)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -131,6 +143,16 @@ def ontology_projection(ontology_id: str, limit: int = 900) -> dict:
     except Exception as exc:
         logger.exception("Graph projection failed")
         raise HTTPException(status_code=503, detail="Graph projection failed; check service logs using X-Request-ID") from exc
+
+
+@router.get('/view/architecture/{prefix}', dependencies=[Depends(graph_read_identity)], summary='Read imported architecture and process instances')
+def architecture_process_view(prefix: str, limit: int = 750) -> dict:
+    from backend.Services.graph_view_service import GraphViewService
+    try:
+        return GraphViewService.get_architecture_process_view(prefix=prefix, limit=limit)
+    except Exception as exc:
+        logger.exception('Architecture process view failed')
+        raise HTTPException(503, 'Process graph unavailable; check graph service logs using X-Request-ID') from exc
 
 
 @router.get("/traversal/{iri:path}", dependencies=[Depends(graph_read_identity)], summary="Get a bounded explorer-ready neighborhood for an RDF resource")
@@ -160,3 +182,21 @@ def ontology_neighborhood(ontology_id: str, iri: str, max_hops: int = 3, limit: 
     except Exception as exc:
         logger.exception("Graph neighborhood failed")
         raise HTTPException(status_code=503, detail="Graph neighborhood failed; check service logs using X-Request-ID") from exc
+
+@router.get('/analytics/sources',dependencies=[Depends(graph_read_identity)])
+def analytics_snapshot_sources():
+    from .analytics_snapshot import snapshot_scopes
+    try:
+        rows=snapshot_scopes();return {'sources':rows[:200],'limited':len(rows)>200}
+    except Exception as exc:
+        logger.exception('Published graph discovery failed')
+        raise HTTPException(503,'Published graph sources are unavailable') from exc
+
+@router.get('/analytics/snapshot/{ontology_id}',dependencies=[Depends(graph_read_identity)])
+def analytics_snapshot(ontology_id: str,namespace: str=Query('',max_length=800)):
+    from .analytics_snapshot import projection_snapshot
+    try:return projection_snapshot(ontology_id,namespace)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from None
+    except Exception as exc:
+        logger.exception('Published graph snapshot failed')
+        raise HTTPException(503,'Snapshot unavailable; graph publication or service recovery may be active') from exc

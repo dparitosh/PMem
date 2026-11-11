@@ -13,13 +13,14 @@ def service_url(name: str, local_default: str) -> str:
         value = local_default
     try:
         parsed = urlsplit(value)
-        parsed.port
+        port = parsed.port
         path = unquote(parsed.path)
         valid = (parsed.scheme in {'http', 'https'} and parsed.hostname
+                 and (port is None or port > 0)
                  and not parsed.username and not parsed.password
                  and not parsed.query and not parsed.fragment
-                 and not any(c.isspace() for c in value)
-                 and not any(c in value for c in '<>\\')
+                 and not any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value + path)
+                 and not any(c in value for c in '<>{}*\\')
                  and not any(part in {'.', '..'} for part in path.split('/')))
     except ValueError:
         valid = False

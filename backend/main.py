@@ -534,7 +534,7 @@ class RateLimitMiddleware:
             return
         
         # Use shared SQLite state so the limit is consistent across workers.
-        if not allow_shared_request(client_ip, current_time, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX):
+        if not await run_in_threadpool(allow_shared_request, client_ip, current_time, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX):
             logger.warning("Rate limit exceeded for %s %s from %s", method, path, client_ip)
             await send({
                 "type": "http.response.start",
@@ -584,7 +584,7 @@ class SessionSecurityMiddleware:
         
         # Check shared session validity; the local dictionaries remain a small hot cache.
         session = session_store.get(session_id) if session_id else None
-        shared_session = get_shared_session(session_id) if session_id else None
+        shared_session = await run_in_threadpool(get_shared_session, session_id) if session_id else None
         if shared_session:
             session = {
                 'created_at': shared_session['created_at'],
@@ -605,16 +605,16 @@ class SessionSecurityMiddleware:
                 session_ips[session_id] = [client_ip]
                 session_store.pop(old_session_id, None)
                 session_ips.pop(old_session_id, None)
-                delete_shared_session(old_session_id)
+                await run_in_threadpool(delete_shared_session, old_session_id)
             
             # Update last accessed time
             session['last_accessed_at'] = current_time
             session_store[session_id] = session
-            save_shared_session(session_id, session.get('created_at', current_time), current_time, session_ips[session_id])
+            await run_in_threadpool(save_shared_session, session_id, session.get('created_at', current_time), current_time, session_ips[session_id])
         else:
             # Create new session
             if session_id:
-                delete_shared_session(session_id)
+                await run_in_threadpool(delete_shared_session, session_id)
             session_id = str(uuid4())
             session_store[session_id] = {
                 'created_at': current_time,
@@ -622,7 +622,7 @@ class SessionSecurityMiddleware:
                 'data': {}
             }
             session_ips[session_id] = [client_ip]
-            save_shared_session(session_id, current_time, current_time, [client_ip])
+            await run_in_threadpool(save_shared_session, session_id, current_time, current_time, [client_ip])
         
         # Pass session ID to app via scope
         scope['session_id'] = session_id
@@ -953,11 +953,20 @@ class TimeoutMiddleware:
         path = scope.get("path", "")
         timeout_seconds = self.get_timeout_for_path(path)
         
+        started = False
+        async def tracked_send(message):
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+            await send(message)
+
         try:
             # Wrap app call with timeout
             async with asyncio.timeout(timeout_seconds):
-                await self.app(scope, receive, send)
+                await self.app(scope, receive, tracked_send)
         except asyncio.TimeoutError:
+            if started:
+                raise  # Abort an incomplete stream; headers can no longer be replaced.
             # Send timeout response if not already sent
             try:
                 await send({
@@ -973,6 +982,8 @@ class TimeoutMiddleware:
                 logger.error(f"Error sending timeout response: {e}")
 
 app.add_middleware(TimeoutMiddleware)
+from backend.depo_platform.legacy_write_guard import LegacyWriteGuard
+app.add_middleware(LegacyWriteGuard)
 
 # CORS is configured solely by the shared root environment.
 def _build_allowed_origins() -> list[str]:
@@ -2571,7 +2582,7 @@ async def get_uploaded_ontology_taxonomy(ontology_id: str):
 
 @app.get("/api/v1/ontology/{ontology_id}/reason")
 async def get_uploaded_ontology_reasoning(ontology_id: str):
-    """Return cached Owlready2-backed classes, properties, individuals, and diagnostics."""
+    """Return cached semantic runtime-backed classes, properties, individuals, and diagnostics."""
     try:
         from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 
@@ -2582,7 +2593,7 @@ async def get_uploaded_ontology_reasoning(ontology_id: str):
         logger.exception("Ontology reasoning degraded for %s: %s", ontology_id, e)
         return {
             "status": "degraded",
-            "engine": "owlready2",
+            "engine": "semantica",
             "available": False,
             "ontology_id": ontology_id,
             "prefix": ontology_id,
@@ -2629,7 +2640,7 @@ def get_registered_ontology_data_dictionary(ontology_id: str):
                 "kind": kind,
                 "domain": row.get("domain") or [],
                 "range": row.get("range") or [],
-                "source": "owlready2_reasoning",
+                "source": "semantic_inspection",
             }
 
         entities = {}
@@ -4178,6 +4189,8 @@ except ImportError:
     from Services.similar_parts_recommender import SimilarPartsRecommender
     from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
 
+from backend.depo_platform.decision_policy import assess_recommendation
+
 _change_impact = ChangeImpactRecommender(graph)
 _similar_parts = SimilarPartsRecommender(graph)
 _mfg_process = ManufacturingProcessRecommender(graph)
@@ -4195,7 +4208,7 @@ def recommend_change_impact(body: ContextBody):
     if not change_name and not part_name:
         raise HTTPException(status_code=400, detail="Provide 'change_name' or 'part_name'")
     try:
-        return _change_impact.analyse(change_name=change_name, part_name=part_name, scope=scope)
+        return assess_recommendation(_change_impact.analyse(change_name=change_name, part_name=part_name, scope=scope), "change-impact", scope)
     except Exception as e:
         safe_error("/recommendations/change-impact", e)
 
@@ -4212,7 +4225,7 @@ def recommend_similar_parts(body: ContextBody):
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _similar_parts.recommend(part_name, top_n=int(top_n), scope=scope, node_id=node_id)
+        return assess_recommendation(_similar_parts.recommend(part_name, top_n=int(top_n), scope=scope, node_id=node_id), "similar-parts", scope)
     except Exception as e:
         safe_error("/recommendations/similar-parts", e)
 
@@ -4228,7 +4241,7 @@ def recommend_manufacturing(body: ContextBody):
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _mfg_process.recommend(part_name, scope=scope, node_id=node_id)
+        return assess_recommendation(_mfg_process.recommend(part_name, scope=scope, node_id=node_id), "manufacturing", scope)
     except Exception as e:
         safe_error("/recommendations/manufacturing", e)
 
@@ -5249,9 +5262,8 @@ def pre_commit_check(task_id: str):
 async def commit_import(task_id: str):
     """Commit import data to Neo4j."""
     try:
-        # Prefer unified import flow which uses `parsed_rows` and handles OWL
-        # generation and commit atomically. Falls back to legacy per-node
-        # commit logic only if unified service isn't available.
+        # Only the unified importer owns commit state and recovery.
+        # Never fall back to independent, partially committed graph writes.
         try:
             from backend.Services.unified_data_import import UnifiedDataImportService
         except Exception:
@@ -5264,7 +5276,7 @@ async def commit_import(task_id: str):
                 result = await UnifiedDataImportService.commit_import(task_id)
                 invalidate_graphvis_cache()
                 try:
-                    OSLCTRSService.publish_event(
+                    await run_in_threadpool(OSLCTRSService.publish_event,
                         OSLCTRSService.import_resource_uri(task_id),
                         "Modification",
                         title=f"Import committed for {task_id}",
@@ -5275,97 +5287,15 @@ async def commit_import(task_id: str):
                 return {"success": True, "task_id": task_id, "message": "Committed via unified service", "result": result}
             except ValueError as ve:
                 # Task not found or not ready
-                raise HTTPException(status_code=404, detail=str(ve))
+                raise HTTPException(status_code=404 if str(ve).startswith('Task not found:') else 409, detail=str(ve))
+            except HTTPException:
+                raise
             except Exception as ue:
                 logger.error(f"Unified commit failed for {task_id}: {ue}", exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Unified commit failed: {ue}")
 
-        # Legacy fallback: attempt to restore into legacy import_tasks and use
-        # the older commit path (nodes/relationships shaped under result.parsed_data)
-        try:
-            from backend.Services.data_import_service import import_tasks
-        except Exception:
-            import_tasks = {}
+        raise HTTPException(503, 'Unified import service is unavailable; no legacy writes were attempted')
 
-        task = import_tasks.get(task_id)
-        if not task:
-            # Try restoring snapshot (works across workers)
-            try:
-                task = UnifiedDataImportService._restore_task(task_id) if UnifiedDataImportService else None
-            except Exception:
-                task = None
-            if task:
-                import_tasks[task_id] = task
-            else:
-                raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
-
-        # Legacy expects a `result` dict containing parsed_data.nodes/relationships
-        result = task.get("result") or {}
-        parsed_data = (result.get("parsed_data") or {})
-        nodes = parsed_data.get("nodes", [])
-        relationships = parsed_data.get("relationships", [])
-
-        if not nodes and not relationships:
-            raise HTTPException(status_code=400, detail="No data to commit")
-
-        # Push to Neo4j using legacy graph API
-        try:
-            committed_count = 0
-            for node in nodes:
-                props = node.get("properties", {})
-                node_id = props.get("id", "")
-                if node_id:
-                    label = _safe_cypher_identifier(node.get("label", "Element"), default="Element")
-                    cypher = f"MERGE (n:`{label}` {{id: $id, import_id: $import_id}}) SET n += $props"
-                    scoped_props = {**props, "import_id": task_id}
-                    graph.query(
-                        cypher,
-                        {"id": node_id, "import_id": task_id, "props": scoped_props},
-                        timeout=300,
-                    )
-                    committed_count += 1
-            for rel in relationships:
-                from_id = rel.get("from_props", {}).get("id", "")
-                to_id = rel.get("to_props", {}).get("id", "")
-                rel_type = _safe_cypher_identifier(rel.get("type", "RELATES_TO"), default="RELATES_TO")
-                if from_id and to_id:
-                    cypher = (
-                        f"MATCH (a {{id: $from_id, import_id: $import_id}}) "
-                        f"MATCH (b {{id: $to_id, import_id: $import_id}}) "
-                        f"MERGE (a)-[:`{rel_type}`]->(b)"
-                    )
-                    graph.query(
-                        cypher,
-                        {"from_id": from_id, "to_id": to_id, "import_id": task_id},
-                        timeout=300,
-                    )
-                    committed_count += 1
-
-            task["status"] = "committed"
-            task["committed_count"] = committed_count
-            task["completed_at"] = time.time()
-            invalidate_graphvis_cache()
-            try:
-                OSLCTRSService.publish_event(
-                    OSLCTRSService.import_resource_uri(task_id),
-                    "Modification",
-                    title=f"Import committed for {task_id}",
-                    metadata={"task_id": task_id, "path": "legacy_commit", "committed_count": committed_count},
-                )
-            except Exception as exc:
-                logger.warning("OSLC TRS publish skipped for import commit %s: %s", task_id, exc)
-            return {
-                "success": True,
-                "task_id": task_id,
-                "message": f"Successfully committed {committed_count} items to Neo4j",
-                "committed_count": committed_count,
-            }
-        except Exception as neo4j_err:
-            logger.error(f"Failed to commit to Neo4j (legacy path): {neo4j_err}")
-            task["status"] = "commit_failed"
-            task["error"] = str(neo4j_err)
-            raise HTTPException(status_code=500, detail=f"Failed to commit to Neo4j: {str(neo4j_err)}")
-    
     except HTTPException:
         raise
     except Exception as e:
@@ -5471,73 +5401,73 @@ def _modeling_service():
 
 
 @app.get("/api/v1/modeling/metamodel")
-async def modeling_metamodel():
+def modeling_metamodel():
     return _modeling_service().metamodel()
 
 
 @app.post("/api/v1/modeling/indexes")
-async def modeling_indexes():
+def modeling_indexes():
     return _modeling_service().ensure_indexes()
 
 
 @app.get("/api/v1/modeling/graph")
-async def modeling_graph(project: str = "Digital Engineering Model", search: str = "", limit: int = Query(default=500, ge=1, le=2000)):
+def modeling_graph(project: str = "Digital Engineering Model", search: str = "", limit: int = Query(default=500, ge=1, le=2000)):
     return _modeling_service().list_graph(project=project, search=search, limit=limit)
 
 
 @app.get("/api/v1/modeling/tree")
-async def modeling_tree(project: str = "Digital Engineering Model"):
+def modeling_tree(project: str = "Digital Engineering Model"):
     return _modeling_service().tree(project=project)
 
 
 @app.get("/api/v1/modeling/search")
-async def modeling_search(q: str, project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
+def modeling_search(q: str, project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
     return _modeling_service().search(query=q, project=project, limit=limit)
 
 
 @app.get("/api/v1/modeling/context/{element_id}")
-async def modeling_context(element_id: str, depth: int = Query(default=1, ge=1, le=2), limit: int = Query(default=300, ge=1, le=1000)):
+def modeling_context(element_id: str, depth: int = Query(default=1, ge=1, le=2), limit: int = Query(default=300, ge=1, le=1000)):
     return _modeling_service().context(element_id=element_id, depth=depth, limit=limit)
 
 
 @app.post("/api/v1/modeling/nodes")
-async def modeling_create_node(payload: ModelNodeBody):
+def modeling_create_node(payload: ModelNodeBody):
     return _modeling_service().create_node(payload)
 
 
 @app.put("/api/v1/modeling/nodes/{element_id}")
-async def modeling_update_node(element_id: str, payload: ModelNodeBody):
+def modeling_update_node(element_id: str, payload: ModelNodeBody):
     return _modeling_service().update_node(element_id, payload)
 
 
 @app.delete("/api/v1/modeling/nodes/{element_id}")
-async def modeling_delete_node(element_id: str):
+def modeling_delete_node(element_id: str):
     return _modeling_service().delete_node(element_id)
 
 
 @app.post("/api/v1/modeling/links")
-async def modeling_create_link(payload: ModelLinkBody):
+def modeling_create_link(payload: ModelLinkBody):
     return _modeling_service().create_link(payload)
 
 
 @app.put("/api/v1/modeling/links/{element_id}")
-async def modeling_update_link(element_id: str, payload: ModelLinkBody):
+def modeling_update_link(element_id: str, payload: ModelLinkBody):
     return _modeling_service().update_link(element_id, payload)
 
 
 @app.delete("/api/v1/modeling/links/{element_id}")
-async def modeling_delete_link(element_id: str):
+def modeling_delete_link(element_id: str):
     return _modeling_service().delete_link(element_id)
 
 
 @app.get("/api/v1/modeling/validation")
-async def modeling_validation(project: str = "Digital Engineering Model"):
+def modeling_validation(project: str = "Digital Engineering Model"):
     return _modeling_service().validate(project=project)
 
 
 
 @app.post("/api/v1/modeling/agent/proposals")
-async def modeling_agent_create_proposal(payload: ModelProposalBody):
+def modeling_agent_create_proposal(payload: ModelProposalBody):
     try:
         return _agentic_modeling_service().create_proposal(payload)
     except ValueError as exc:
@@ -5545,14 +5475,14 @@ async def modeling_agent_create_proposal(payload: ModelProposalBody):
 
 
 @app.get("/api/v1/modeling/agent/proposals")
-async def modeling_agent_list_proposals(project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
+def modeling_agent_list_proposals(project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
     return _agentic_modeling_service().list_proposals(project=project, limit=limit)
 
 
 @app.post("/api/v1/modeling/agent/proposals/{proposal_id}/approve")
-async def modeling_agent_approve_proposal(proposal_id: str, payload: ModelDecisionBody | None = None):
+def modeling_agent_approve_proposal(proposal_id: str, request: Request, payload: ModelDecisionBody | None = None):
     payload = payload or {}
-    result = _agentic_modeling_service().approve_proposal(proposal_id, approved_by=payload.get("approved_by") or "user", comment=payload.get("comment") or "")
+    result = _agentic_modeling_service().approve_proposal(proposal_id, approved_by=request.state.verified_write_actor, comment=payload.get("comment") or "")
     if result.get("error") == "not_found":
         raise HTTPException(status_code=404, detail="Agent proposal not found")
     if result.get("error") == "invalid_state":
@@ -5561,16 +5491,16 @@ async def modeling_agent_approve_proposal(proposal_id: str, payload: ModelDecisi
 
 
 @app.post("/api/v1/modeling/agent/proposals/{proposal_id}/reject")
-async def modeling_agent_reject_proposal(proposal_id: str, payload: ModelDecisionBody | None = None):
+def modeling_agent_reject_proposal(proposal_id: str, request: Request, payload: ModelDecisionBody | None = None):
     payload = payload or {}
-    result = _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=payload.get("rejected_by") or "user", comment=payload.get("comment") or "")
+    result = _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=request.state.verified_write_actor, comment=payload.get("comment") or "")
     if result.get("error") == "not_found":
         raise HTTPException(status_code=404, detail="Agent proposal not found")
     if result.get("error") == "invalid_state":
         raise HTTPException(status_code=409, detail=f"Agent proposal is already {result.get('current_status') or 'finalized'}")
     return result
 @app.post("/api/v1/modeling/seed")
-async def modeling_seed(payload: ModelSeedBody | None = None):
+def modeling_seed(payload: ModelSeedBody | None = None):
     payload = payload or {}
     return _modeling_service().seed_sample(project=payload.get("project") or "Digital Engineering Model")
 

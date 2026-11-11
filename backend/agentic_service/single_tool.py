@@ -23,7 +23,8 @@ async def execute(payload, request):
         raise HTTPException(422, 'wait_for_completion must be a boolean')
     workflow_id = 'single-tool:'+payload['agent_id']+':'+payload['tool_id']
     command = {'workflow_id': workflow_id, 'inputs': payload.get('inputs', {}),
-               'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
+               'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token'),
+               'page_context': payload.get('page_context')}
     mode = execution_mode()
     if mode != 'worker' and payload.get('wait_for_completion', True) is False:
         raise HTTPException(422, 'wait_for_completion=false requires AGENTIC_EXECUTION_MODE=worker')

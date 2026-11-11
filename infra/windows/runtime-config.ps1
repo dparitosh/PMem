@@ -158,7 +158,9 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $previousNames = @()
   $tracked = [Environment]::GetEnvironmentVariable('DEPO_IMPORTED_ENV_KEYS', 'Process')
   if ($tracked) {
-    try { $previousNames = @($tracked | ConvertFrom-Json) } catch { throw 'Invalid environment import bookkeeping. Open a fresh PowerShell session.' }
+    # Windows PowerShell emits a JSON array as one pipeline object. Assign it
+    # directly so foreach sees its names rather than a nested array.
+    try { $previousNames = ConvertFrom-Json -InputObject $tracked } catch { throw 'Invalid environment import bookkeeping. Open a fresh PowerShell session.' }
   }
   foreach ($limitName in @('DEPO_MAX_INGEST_BYTES','SYSML_V2_MAX_SNAPSHOT_BYTES','DEPO_SERVICE_RUNTIME_MODE')) {
     if (-not $values.ContainsKey($limitName)) { [Environment]::SetEnvironmentVariable($limitName, $null, 'Process') }
@@ -274,4 +276,26 @@ if (-not $Overrides.ContainsKey('EnablePipelineScheduler')) { $EnablePipelineSch
 if (-not $Overrides.ContainsKey('EnablePostgresSparkConnector')) { $EnablePostgresSparkConnector = $env:DEPO_SPARK_POSTGRES_ENABLED -eq 'true' }
 if (($EnableNeo4jSparkConnector -or $EnablePostgresSparkConnector) -and -not $EnableSpark) { throw 'Spark connectors require Spark enabled.' }
   return @{ EnableSpark = [bool]$EnableSpark; EnableNeo4jSparkConnector = [bool]$EnableNeo4jSparkConnector; EnablePostgresSparkConnector = [bool]$EnablePostgresSparkConnector; EnablePipelineScheduler = [bool]$EnablePipelineScheduler }
+}
+
+# All Windows frontend entry points share the same Node.js >=24 contract.
+function Test-DepoNodeVersion([string]$Version) {
+  return ($Version.Trim() -match '^v?(\d+)\.\d+\.\d+$' -and [int]$Matches[1] -ge 24)
+}
+function Get-DepoNodeRuntime([string]$Root, [string]$NodeJsDir='') {
+  $candidates=@()
+  if ($NodeJsDir) { $candidates=@($NodeJsDir) }
+  else {
+    foreach($command in @(Get-Command node.exe -All -ErrorAction SilentlyContinue)) { $candidates += Split-Path $command.Source }
+    $candidates += Join-Path (Split-Path (Split-Path $Root)) 'NodeJS'
+  }
+  foreach($folder in @($candidates|Select-Object -Unique)) {
+    $node=Join-Path $folder 'node.exe'; $npm=Join-Path $folder 'npm.cmd'
+    if(-not(Test-Path -LiteralPath $node -PathType Leaf) -or -not(Test-Path -LiteralPath $npm -PathType Leaf)){continue}
+    $version=& $node --version
+    if($LASTEXITCODE -eq 0 -and (Test-DepoNodeVersion ([string]$version))) {
+      return @{Directory=$folder; Node=$node; Npm=$npm; Version=([string]$version).Trim()}
+    }
+  }
+  throw 'Node.js 24 or newer with npm is required. Install a supported version, or set DEPO_NODEJS_DIR to its directory. Older Node.js versions are not supported.'
 }

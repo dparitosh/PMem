@@ -1,3 +1,20 @@
+/* Shared grid geometry must not depend on visiting Graph Explorer first. */
+.depo-data-grid {
+  --ag-font-size: 12px;
+  --ag-header-height: 38px;
+  --ag-row-height: 36px;
+  --ag-list-item-height: 32px;
+  --ag-borders: none;
+  --ag-cell-horizontal-padding: 10px;
+  --ag-grid-size: 6px;
+}
+.depo-data-grid .ag-root-wrapper,
+.depo-data-grid .ag-root,
+.depo-data-grid .ag-body-viewport,
+.depo-data-grid .ag-center-cols-viewport { min-width: 0; }
+.depo-data-grid .ag-header-cell-text,
+.depo-data-grid .ag-cell-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .depo-data-grid .ag-paging-panel {
   height: auto;
   min-height: var(--ag-pagination-panel-height, 48px);

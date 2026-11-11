@@ -1,4 +1,6 @@
 import React,{useState} from 'react';
+import {vi} from 'vitest';
+vi.mock('@siemens/ix-react', () => import('../ui/ix/ixReact.mock.js'));
 import {fireEvent,render,screen} from '@testing-library/react';
 import WorkspaceTabs from './WorkspaceTabs';
 test('keyboard navigation updates selection and focus without remounting tabs',()=>{

@@ -65,10 +65,6 @@ async def require_admin_api_key(request: Request) -> None:
             await run_in_threadpool(verify_key, 'ADMIN_API_KEY', supplied)
         return
     expected = os.getenv("ADMIN_API_KEY", "").strip()
-    if not _is_production_environment() and not expected:
-        if (os.getenv('DEPO_ALLOW_INSECURE_LOCAL_AUTH', '').lower() == 'true'
-                and request.client and request.client.host in {'127.0.0.1', '::1'}):
-            return
     if not expected:
         raise HTTPException(status_code=503, detail="Admin API key is not configured")
     supplied = request.headers.get("X-API-Key", "")
@@ -329,20 +325,20 @@ def _configuration_registry(neo4j: dict, llm: dict) -> list[dict]:
         },
         {
             "component": "LLM",
-            "key": "OLLAMA_BASE_URL",
-            "configured_value": _mask_uri(ollama_base or llm.get("endpoint", "")),
+            "key": llm.get("endpoint_key", "OLLAMA_BASE_URL"),
+            "configured_value": _mask_uri(llm.get("endpoint", "")),
             "active_value": _mask_uri(llm.get("endpoint", "")),
-            "source": ollama_source,
-            "status": "configured" if ollama_base else "default",
+            "source": llm.get("endpoint_source", ollama_source),
+            "status": llm.get("status", "default"),
             "mutable": False,
         },
         {
             "component": "LLM",
-            "key": "LLM_MODEL_NAME",
-            "configured_value": llm_model or llm.get("model", ""),
+            "key": llm.get("model_key", "LLM_MODEL_NAME"),
+            "configured_value": llm.get("model", ""),
             "active_value": llm.get("model", ""),
-            "source": model_source,
-            "status": "configured" if llm_model else "default",
+            "source": llm.get("model_source", model_source),
+            "status": llm.get("status", "default"),
             "mutable": False,
         },
     ]
@@ -353,7 +349,19 @@ def _llm_settings() -> dict:
     provider, provider_source = _env_lookup("USE_LLM")
     model, model_source = _env_lookup("LLM_MODEL_NAME", "AZURE_OPENAI_DEPLOYMENT")
     endpoint, endpoint_source = _env_lookup("OLLAMA_BASE_URL", "AZURE_OPENAI_ENDPOINT")
-    provider = (provider or "ollama").lower()
+    provider = (os.getenv("USE_LLM") or provider or "ollama").strip().lower()
+    if provider in {'openai', 'mistral', 'aoi'}:
+        from backend.core.llm_providers import cloud_settings
+        try:
+            selected = cloud_settings(provider)
+            return {'provider': provider, 'model': selected.model, 'endpoint': selected.base_url,
+                    'status': 'configured', 'provider_source': provider_source,
+                    'model_key': provider.upper() + '_MODEL', 'endpoint_key': provider.upper() + '_BASE_URL',
+                    'model_source': 'process', 'endpoint_source': 'process' if os.getenv(provider.upper() + '_BASE_URL') else 'default'}
+        except ValueError:
+            return {'provider': provider, 'model': '', 'endpoint': '', 'status': 'degraded',
+                    'provider_source': provider_source, 'model_key': provider.upper() + '_MODEL',
+                    'endpoint_key': provider.upper() + '_BASE_URL', 'model_source': 'process', 'endpoint_source': 'process'}
     model = model or "llama3:latest"
     endpoint = endpoint or "http://localhost:11434"
     status = "configured" if endpoint and model else "degraded"
@@ -380,14 +388,14 @@ def _workflow_registry() -> list[dict]:
 def _package_registry() -> list[dict]:
     package_path = _project_root() / "frontend" / "package.json"
     keep = {
-        "@emotion/react",
-        "@emotion/styled",
-        "@mui/material",
-        "@mui/x-tree-view",
         "@testing-library/dom",
         "@testing-library/jest-dom",
         "@testing-library/react",
         "@testing-library/user-event",
+        "@siemens/ix",
+        "@siemens/ix-react",
+        "@xyflow/react",
+        "echarts",
         "ag-grid-community",
         "ag-grid-react",
         "axios",
@@ -398,7 +406,6 @@ def _package_registry() -> list[dict]:
         "react",
         "react-dom",
         "react-scripts",
-        "web-vitals",
     }
     remove_candidates = {
         "@neo4j-nvl/base",
@@ -435,10 +442,10 @@ def _package_registry() -> list[dict]:
             elif name in keep:
                 recommendation = "keep"
                 used = True
-                category = "active_runtime"
+                category = "maintained_runtime_or_test_dependency"
             else:
                 recommendation = "review"
-                used = False
+                used = None
                 category = "needs_import_audit"
             packages.append({
                 "name": name,
@@ -617,9 +624,20 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             detail=f"Confirmation token required: confirm='{CLEAN_SCHEMA_CONFIRM_TOKEN}'",
         )
     
+    receipt = None
     try:
+        from backend.depo_platform.import_cleanup import clear_import_workflows
+        # Reject active/uncertain imports before any graph data is removed.
+        try:
+            clear_import_workflows(dry_run=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         # 1. Clean database and schema. The UI action is a destructive full schema clean,
         # so leave indexes/constraints empty instead of recreating default indexes.
+        from backend.depo_platform.cleanup_receipts import CleanupReceipt
+        from backend.mesh_store import PostgresRegistry
+        receipt = CleanupReceipt(PostgresRegistry('admin_cleanup_runs_v1'))
+        receipt.phase('graph', 'running', required=True)
         cleaner = Neo4jSchemaCleaner()
         try:
             result = cleaner.reset_database(recreate_indexes=False)
@@ -627,13 +645,22 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             cleaner.close()
 
         graph_complete = result.get("status") == "SUCCESS"
+        receipt.phase('graph', 'completed' if graph_complete else 'partial')
         if not graph_complete and not result.get('data_deleted'):
             raise HTTPException(status_code=500, detail=result.get("message", "Schema cleanup failed"))
         # Once graph data has been deleted, complete metadata cleanup even when
         # dropping constraints/indexes failed. Preserve that failure in the result.
         reconciliation = _reconcile_reset()
+        receipt.phase('reconciliation', 'partial' if reconciliation['status'] == 'partial' else 'completed')
         from backend.depo_platform.ontology_cleanup import clear_ontology_registrations
         metadata_result = clear_ontology_registrations()
+        receipt.phase('ontology_metadata', 'completed' if metadata_result.get('status') == 'success' else 'partial')
+        try:
+            import_result = clear_import_workflows()
+        except Exception as exc:
+            logger.exception('Graph reset completed but Import cleanup failed')
+            import_result = {'status': 'partial', 'error_type': type(exc).__name__}
+        receipt.phase('import_workflows', 'completed' if import_result.get('status') == 'success' else 'partial')
         metadata_cleared = metadata_result['cleared']
         # Publish again after file deletion so peers cannot retain a list cached
         # between graph reset and the filesystem cleanup.
@@ -642,6 +669,7 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             invalidate_shared_caches()
         except Exception:
             reconciliation = {'status': 'partial', 'message': 'Files were processed, but shared cache invalidation failed; check PostgreSQL connectivity.'}
+            receipt.phase('reconciliation', 'partial')
         
         try:
             OSLCTRSService.publish_event(
@@ -653,9 +681,12 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         except Exception as exc:
             logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
 
+        cleanup_receipt = receipt.finish()
+        complete = cleanup_receipt['status'] == 'completed'
         return {
-            "success": graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial',
-            "status": "SUCCESS" if graph_complete and metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' else 'partial',
+            'cleanup_receipt': cleanup_receipt,
+            "success": complete,
+            "status": "SUCCESS" if complete else 'partial',
             "registry_reconciliation": reconciliation,
             "graph_cleanup_status": result.get("status"),
             "graph_cleanup_message": result.get("message") if not graph_complete else None,
@@ -664,17 +695,40 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             "before": result.get("before"),
             "after": result.get("after"),
             "metadata_cleared": metadata_cleared,
+            "import_cleanup": import_result,
             "metadata_cleanup_status": metadata_result.get('status'),
             "metadata_failed": metadata_result.get('failed', []),
             "metadata_cleanup_message": 'Ontology registry cleanup is incomplete or unverified; inspect registry_verification and server logs.' if metadata_result.get('status') != 'success' else None,
         }
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
+        raise HTTPException(status_code=400, detail=str(e),
+            headers={'X-DEPO-Cleanup-ID': receipt.record['run_id']} if receipt is not None else None)
+    except HTTPException as exc:
+        if receipt is not None:
+            exc.headers = {**(exc.headers or {}), 'X-DEPO-Cleanup-ID': receipt.record['run_id']}
         raise
     except Exception as e:
         logger.exception("Failed to clean schema")
-        raise HTTPException(status_code=500, detail="Unable to clean the Neo4j schema") from e
+        raise HTTPException(status_code=500, detail="Unable to clean the Neo4j schema",
+            headers={'X-DEPO-Cleanup-ID': receipt.record['run_id']} if receipt is not None else None) from e
+    finally:
+        if receipt is not None and receipt.record['status'] == 'running':
+            for phase, status in list(receipt.record['phases'].items()):
+                if status == 'running':
+                    receipt.record['phases'][phase] = 'outcome_unverified'
+            receipt.finish()
+
+
+@router.get('/cleanup-runs/{run_id}', dependencies=[Depends(require_admin_api_key)])
+def cleanup_run_status(run_id: str):
+    import re
+    from backend.mesh_store import PostgresRegistry
+    if not re.fullmatch(r'cleanup-[0-9a-f]{32}', run_id):
+        raise HTTPException(422, 'Invalid cleanup run identity')
+    record = PostgresRegistry('admin_cleanup_runs_v1').get(run_id)
+    if record is None:
+        raise HTTPException(404, 'Cleanup receipt not found')
+    return record
 
 
 @router.post("/delete-data", dependencies=[Depends(require_admin_api_key)])
@@ -923,6 +977,73 @@ def reset_database(recreate_indexes: bool = True):
     except Exception as e:
         logger.exception("Failed to reset database")
         raise HTTPException(status_code=500, detail="Unable to reset the Neo4j database") from e
+
+
+class ClearImportWorkflowsRequest(BaseModel):
+    confirm: str
+
+
+class VanillaResetRequest(BaseModel):
+    confirm: str
+    preview_digest: str
+
+
+@router.get('/reset-vanilla/preview', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def preview_vanilla_reset():
+    from backend.depo_platform.vanilla_reset import inventory, assert_isolated
+    from backend.mesh_store import PostgresRegistry
+    try:
+        with PostgresRegistry('maintenance_state')._connect() as db:
+            plan = inventory(db, _project_root())
+        try:
+            assert_isolated(_project_root())
+            plan['can_execute'] = True
+        except ValueError as exc:
+            plan.update(can_execute=False, maintenance_instruction=str(exc))
+        return plan
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.post('/reset-vanilla', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def reset_vanilla(body: VanillaResetRequest):
+    if body.confirm != 'RESET DEPO TO VANILLA':
+        raise HTTPException(400, 'Typed reset confirmation is required')
+    from backend.depo_platform.vanilla_reset import reset
+    from backend.mesh_store import PostgresRegistry
+    try:
+        cleaner = Neo4jSchemaCleaner()
+        try:
+            with PostgresRegistry('maintenance_state')._connect() as db:
+                return reset(db, _project_root(), expected_digest=body.preview_digest,
+                             graph_reset=lambda: cleaner.reset_database(recreate_indexes=True))
+        finally:
+            cleaner.close()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Vanilla reset failed before completion')
+        raise HTTPException(500, 'Reset could not complete; inspect logs/vanilla-reset before recovery') from exc
+
+
+@router.post('/clear-import-workflows', dependencies=[Depends(require_admin_api_key)])
+@_maintenance_worker
+@ontology_cleanup
+def clear_import_workflow_history(body: ClearImportWorkflowsRequest):
+    if body.confirm != 'CLEAR_IMPORT_WORKFLOWS':
+        raise HTTPException(400, 'Confirmation required: CLEAR_IMPORT_WORKFLOWS')
+    from backend.depo_platform.import_cleanup import clear_import_workflows
+    try:
+        return clear_import_workflows()
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Import workflow cleanup failed')
+        raise HTTPException(500, 'Import workflow cleanup failed; inspect service logs') from exc
 
 
 @router.post("/clear-cache", dependencies=[Depends(require_admin_api_key)])

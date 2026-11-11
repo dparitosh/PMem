@@ -1,4 +1,4 @@
-"""Minimal file-backed OSLC TRS service."""
+"""OSLC TRS with PostgreSQL ordering and an optional single-process file store."""
 
 from __future__ import annotations
 
@@ -170,7 +170,7 @@ class OSLCTRSService:
             return f'/oslc/shapes/{quote(ontology_id, safe="")}'
         if path.startswith('/api/v1/import/status/'):
             task_id = path.rsplit('/', 1)[-1]
-            where_value = quote(f'import_id="{task_id}"', safe='')
+            where_value = cls._import_where(task_id)
             return f'/oslc/query/resources?oslc.where={where_value}'
         if path == '/api/v1/admin/schema-stats':
             return '/oslc/trs/base'
@@ -187,8 +187,15 @@ class OSLCTRSService:
         return f'{cls.base_url()}/oslc/shapes/{quote(str(ontology_id or "").strip(), safe="")}'
 
     @classmethod
+    def _import_where(cls, task_id: str) -> str:
+        # Escape the OSLC string literal before encoding the surrounding URL.
+        # Match the JSON-string escaping used by OSLC query serialization.
+        value = str(task_id or '').strip()
+        return quote('import_id=' + json.dumps(value, ensure_ascii=True), safe='')
+
+    @classmethod
     def import_resource_uri(cls, task_id: str) -> str:
-        where_value = quote(f'import_id="{str(task_id or "").strip()}"', safe='')
+        where_value = cls._import_where(task_id)
         return f'{cls.base_url()}/oslc/query/resources?oslc.where={where_value}'
 
     @classmethod
@@ -415,6 +422,7 @@ class OSLCTRSService:
             'count': len(external_events),
             'next_after': external_events[-1]['order'] if external_events else after,
             'first_retained_order': first_retained_order,
+            'head_order': int(state.get('counter') or 0),
             'rebase_required': rebase_required,
             'base': f'{cls.base_url()}/oslc/trs/base',
         }

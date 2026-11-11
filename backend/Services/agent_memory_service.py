@@ -207,17 +207,20 @@ class AgentMemoryService:
         graph_context: Optional[Dict[str, Any]] = None,
         generation: Optional[Dict[str, Any]] = None,
         status: str = "completed",
-    ) -> None:
+    ) -> bool:
         """Persist one chat turn and optional graph context as short-term memory."""
         if not cls.enabled():
-            return
+            return False
         if not cls.ensure_schema().get('ensured'):
-            return
+            return False
         turn_id = _stable_id(cls.scope(), session_id, user_message, assistant_response, _now_iso())
         user_id = f"{turn_id}:user"
         assistant_id = f"{turn_id}:assistant"
+        from backend.agentic_service.context_scope import companion_scope
+        selected_scope = {key: value for key, value in companion_scope(graph_context).items()
+                          if isinstance(value, str) and 0 < len(value) <= 2000}
         touched_nodes = cls._extract_touched_nodes(graph_context)
-        cls._query(
+        result = cls._query(
             """
             OPTIONAL MATCH (legacy:AgentMemorySession {memory_key:$legacy_key, scope:$scope})
             WHERE coalesce(legacy.session_ref, legacy.session_id)=$session_id
@@ -237,6 +240,7 @@ class AgentMemoryService:
             SET a.role = 'assistant',
                 a.text = $assistant_response,
                 a.generation_json = $generation_json,
+                a.context_json = $context_json,
                 a.created_at = $now,
                 a.status = $status
             MERGE (s)-[:HAS_MESSAGE]->(u)
@@ -260,12 +264,14 @@ class AgentMemoryService:
                 "user_message": str(user_message or "")[:4000],
                 "assistant_response": str(assistant_response or "")[:12000],
                 "generation_json": json.dumps(generation or {}),
+                "context_json": json.dumps(selected_scope, sort_keys=True),
                 "status": status,
                 "scope": cls.scope(),
                 "touched_nodes": touched_nodes[:100],
                 "now": _now_iso(),
             },
         )
+        return result is not None
 
     @classmethod
     def record_reasoning_trace(
@@ -343,7 +349,10 @@ class AgentMemoryService:
             """
             UNWIND $rows AS row
             MERGE (f:AgentMemoryFact {fact_id: row.fact_id})
-            ON CREATE SET f.created_at = $now
+            ON CREATE SET f.created_at = $now,
+                          f.memory_schema_version = 1,
+                          f.lifecycle_status = 'approved',
+                          f.valid_from = $now
             SET f.kind = 'semantic_bridge_mapping',
                 f.scope = row.scope,
                 f.source = row.source,
@@ -386,17 +395,24 @@ class AgentMemoryService:
                 'max_age': max(1, int(os.getenv('AGENT_SESSION_MAX_SECONDS', '86400'))),
             },
         )
-        return {"enabled": True, "messages": rows or [], "facts": []}
+        return {"enabled": True, "status": "unavailable" if rows is None else "available",
+                "best_effort": True, "messages": rows or [], "facts": []}
 
     @classmethod
     def semantic_bridge_facts(cls, ontology_id: str = "", limit: int = 1000) -> List[Dict[str, Any]]:
         """Return approved Semantic Bridge facts for mapping reuse."""
-        if not cls.enabled():
+        ontology_id = str(ontology_id or '').strip()
+        # A failed ontology resolution must not fall back to all project facts.
+        if not cls.enabled() or not ontology_id:
             return []
         rows = cls._query(
             """
             MATCH (f:AgentMemoryFact {kind: 'semantic_bridge_mapping'})
             WHERE f.scope = $scope AND ($ontology_id = '' OR f.ontology_id = $ontology_id)
+              AND f.lifecycle_status = 'approved'
+              AND f.superseded_by IS NULL
+              AND (f.valid_from IS NULL OR datetime(f.valid_from) <= datetime())
+              AND (f.valid_until IS NULL OR datetime(f.valid_until) > datetime())
             WITH f ORDER BY f.updated_at DESC
             WITH f.source AS source, f.target AS target, f.target_iri AS target_iri, f.ontology_id AS ontology_id,
                  f.source_type AS source_type, f.target_type AS target_type, collect(f)[0] AS f
@@ -409,6 +425,10 @@ class AgentMemoryService:
                    f.mapping_type AS mapping_type,
                    f.target_iri AS target_iri,
                    f.generic_match AS generic_match,
+                   f.lifecycle_status AS lifecycle_status,
+                   f.memory_schema_version AS memory_schema_version,
+                   f.import_task_id AS import_task_id,
+                   f.task_id AS task_id,
                    f.updated_at AS updated_at
             ORDER BY f.updated_at DESC
             LIMIT toInteger($limit)
@@ -440,7 +460,7 @@ class AgentMemoryService:
         return result is not None
 
     @classmethod
-    def prune_expired_sessions(cls, retention_days: Optional[int] = None) -> int:
+    def prune_expired_sessions(cls, retention_days: Optional[int] = None) -> Optional[int]:
         """Remove scoped conversation memory older than the configured retention."""
         if not cls.enabled():
             return 0
@@ -450,6 +470,7 @@ class AgentMemoryService:
             """
             MATCH (s:AgentMemorySession {scope: $scope})
             WHERE datetime(s.updated_at) < datetime() - duration({days: $days})
+              AND coalesce(s.legal_hold, false) = false
             OPTIONAL MATCH (s)-[:HAS_MESSAGE|HAS_REASONING_TRACE]->(item)
             WITH s, collect(item) AS items
             FOREACH (item IN items | DETACH DELETE item)
@@ -458,6 +479,8 @@ class AgentMemoryService:
             """,
             {"scope": cls.scope(), "days": days},
         )
+        if rows is None:
+            return None
         return int((rows or [{}])[0].get("deleted", 0)) if rows else 0
 
     @classmethod

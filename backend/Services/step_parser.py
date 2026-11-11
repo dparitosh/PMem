@@ -360,7 +360,8 @@ def _namespace_uri(tag: str) -> str:
 
 def _strip_step_comments(text: str) -> str:
     # Match strings first: comment delimiters inside a literal are data.
-    return re.sub(r"'(?:[^']|'')*'|/\*.*?\*/", lambda m: m.group(0) if m.group(0).startswith("'") else ' ' * len(m.group(0)), text, flags=re.DOTALL)
+    # An unterminated comment runs to end-of-text; without \Z each unclosed "/*" rescans to EOF (quadratic).
+    return re.sub(r"'(?:[^']|'')*'|/\*.*?(?:\*/|\Z)", lambda m: m.group(0) if m.group(0).startswith("'") else ' ' * len(m.group(0)), text, flags=re.DOTALL)
 
 
 def _step_references(text: str) -> List[int]:
@@ -411,6 +412,9 @@ def _extract_part21_data_records(text: str) -> List[str]:
             elif ch == ";" and depth == 0:
                 record = "".join(buf).strip()
                 if record:
+                    # Inside the DATA section every record is an entity instance; anything else is dropped silently otherwise.
+                    if data_start != -1 and not record.startswith('#'):
+                        raise ValueError('Malformed STEP record in DATA section')
                     records.append(record)
                 buf = []
                 i += 1
@@ -474,12 +478,19 @@ def _iter_part28_entities(file_path: Path) -> Iterator[StepP21Entity]:
     # First pass: assign deterministic synthetic step ids to every element in
     # document order and collect all local aliases so forward refs resolve.
     next_step_id = 1
+    business_object_model = False
     for event, elem in _DET.iterparse(str(file_path), events=("start",)):
         if event != "start":
             continue
         current_step_id = next_step_id
+        if current_step_id == 1:
+            namespace = _namespace_uri(elem.tag).rstrip('/')
+            business_object_model = namespace.endswith('/bo_model') or is_ap242_domain_model_namespace(namespace)
         next_step_id += 1
-        for alias_key in ("id", "uid"):
+        # BO/domain model `id` is a scoped business value (e.g. repeated Id/Identifier).
+        # Only uid is a document reference identity in these XML vocabularies.
+        alias_keys = ("uid",) if business_object_model else ("id", "uid")
+        for alias_key in alias_keys:
             alias_value = (elem.attrib.get(alias_key) or "").strip()
             if not alias_value:
                 continue
@@ -526,8 +537,12 @@ def _iter_part28_entities(file_path: Path) -> Iterator[StepP21Entity]:
         if text_value and len(list(elem)) == 0:
             raw_parts.append(f"text={text_value[:200]}")
 
-        source_identifier = (attrs.get("id") or attrs.get("uid") or "").strip()
-        source_identifier_kind = "id" if attrs.get("id") else ("uid" if attrs.get("uid") else "synthetic")
+        if business_object_model:
+            source_identifier = (attrs.get("uid") or "").strip()
+            source_identifier_kind = "uid" if source_identifier else "synthetic"
+        else:
+            source_identifier = (attrs.get("id") or attrs.get("uid") or "").strip()
+            source_identifier_kind = "id" if attrs.get("id") else ("uid" if attrs.get("uid") else "synthetic")
         parent_step_id = stack[-1] if stack else None
 
         yield StepP21Entity(
@@ -610,8 +625,11 @@ def _measure_number(
     entity: StepP21Entity,
     entity_map: Dict[int, StepP21Entity],
     visited: Optional[set[int]] = None,
+    _depth: int = 0,
 ) -> Optional[float]:
     """Return a real AP242 measure, avoiding quoted labels and STEP reference ids."""
+    if _depth > 100:
+        raise ValueError('STEP measure reference chain is too deep')
     visited = visited or set()
     if entity.step_id in visited:
         return None
@@ -634,7 +652,7 @@ def _measure_number(
             or "VALUE" in ref.entity_type
             or ref.entity_type in {"REAL", "INTEGER", "NUMBER"}
         ):
-            resolved = _measure_number(ref, entity_map, visited)
+            resolved = _measure_number(ref, entity_map, visited, _depth + 1)
             if resolved is not None:
                 return resolved
     return direct
@@ -689,7 +707,10 @@ def _measure_unit(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity]) -
             continue  # Preserve the declared unit; do not substitute its conversion base.
         for ref_id in current.ref_ids:
             ref = entity_map.get(ref_id)
-            if ref and any('MEASURE' in value or 'UNIT' in value or 'VALUE' in value or value in {'REAL', 'NUMBER'} for value in _entity_type_candidates(ref)):
+            ref_types = _entity_type_candidates(ref) if ref else []
+            # A representation context declares several default unit dimensions;
+            # those are not the explicitly referenced unit of this measure.
+            if ref and not any('CONTEXT' in value for value in ref_types) and any('MEASURE' in value or 'UNIT' in value or 'VALUE' in value or value in {'REAL', 'NUMBER'} for value in ref_types):
                 pending.append(ref)
     if len(units) > 1:
         raise ValueError('Ambiguous STEP measure units')
@@ -841,10 +862,19 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
     saved_views: List[StepSavedView] = []
     surface_finishes: List[StepSurfaceFinish] = []
 
+    # STEP-XML keeps a child <Name> element as its own entity; use its text as the
+    # display name when the owning element has no name of its own.
+    child_name_text = {
+        e.parent_step_id: e.text_value for e in entities
+        if e.entity_type == "NAME" and e.text_value and e.parent_step_id is not None
+    }
+
     for entity in entities:
         group = _classify_cad_entity(entity)
         if group:
             external_id, name, description = _cad_name_fields(entity)
+            if name == external_id and entity.step_id in child_name_text:
+                name = child_name_text[entity.step_id]
             cad = StepCadEntity(
                 id=entity.step_id,
                 entity_type=entity.entity_type,

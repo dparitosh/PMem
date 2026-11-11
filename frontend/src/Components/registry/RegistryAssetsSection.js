@@ -93,9 +93,10 @@ export default function RegistryAssetsSection({
       {!loading && registryLoaded && !visibleRegistryAssets.length && <div className="depo-empty">{registryAssets.length ? 'No governed assets match this search.' : 'No governed metadata assets are registered yet.'}</div>}
       {!loading && !registryLoaded && !entries.length && <div className="depo-empty">No registry entries match this search.</div>}
       {registryLoaded ? <GovernedAssetsTable assets={visibleRegistryAssets} transitioningAssetIds={transitioningAssetIds} onTransition={transitionHandler} /> : null}
-      {!registryLoaded && entries.length > 0 && <div className="depo-empty">The governed registry is unavailable. Ontology sources remain available from the Data Dictionary tab.</div>}
+      {loading && <p role="status">Loading governed registry assets…</p>}
+      {!loading && !registryLoaded && entries.length > 0 && <div className="depo-empty">The governed registry is unavailable. Ontology sources remain available from the Data Dictionary tab.</div>}
       <div className="depo-panel__meta">
-        This page is the governance boundary. Use Ontology Junction for OWL/RDF structure and Semantic Bridge for mappings. Registry editing, approvals, and version history will use dedicated registry APIs rather than adding more controls to Ontology Junction.
+        Register metadata drafts and review their lifecycle here. Lifecycle changes require the corresponding authorized access and review evidence. Use Ontology Junction for OWL/RDF structure and Semantic Bridge for mappings.
         {lastUpdated && ` Last refreshed ${lastUpdated.toLocaleTimeString()}.`}
       </div>
     </>

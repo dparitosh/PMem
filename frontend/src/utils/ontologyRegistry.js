@@ -4,6 +4,19 @@ export function registryCount(value) {
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
+// Whether an ontology is actually in the graph. Registration alone is not enough:
+// an ontology can be registered while its graph sync failed or is unverified.
+export function graphStateOf(option) {
+  const syncStatus = option?.raw?.graph_sync?.status;
+  if (syncStatus) {
+    return syncStatus === 'completed'
+      ? { inGraph: true, label: '' }
+      : { inGraph: false, label: ` · registered, graph sync ${String(syncStatus).replaceAll('_', ' ')}` };
+  }
+  if ((option?.node_count ?? 0) > 0) return { inGraph: true, label: '' };
+  return { inGraph: false, label: ' · registered, not confirmed in graph' };
+}
+
 export function mergeOntologyMetadata(existing, incoming) {
   const merged = { ...existing };
   for (const field of ['prefix', 'ontology_prefix', 'namespace', 'source_namespace', 'target_namespace', 'data_product_draft']) {

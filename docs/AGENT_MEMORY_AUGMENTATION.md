@@ -16,7 +16,7 @@ adapter so customer environments do not need a new experimental dependency.
 ## What It Does Not Replace
 
 - Neo4j remains the product/ontology/instance graph store.
-- Owlready2 remains the OWL semantic reasoning layer.
+- Semantica provides structural/context capabilities; RDFLib handles RDF parsing and exchange. Optional isolated OWLAPI/HermiT supplies supported OWL-DL checks. See [semantic evidence](SEMANTIC_DECISION_LOOP.md).
 - RDFLib / OWL / TTL exports remain the ontology exchange path.
 - Semantic Bridge remains the approval workflow for instance-to-ontology mappings.
 
@@ -41,7 +41,7 @@ The adapter uses the existing Neo4j connection and official Neo4j driver. It
 creates lightweight constraints/indexes on first use.
 
 Memory operations are best-effort and bounded. The default memory query timeout
-is 5 seconds and is clamped between 1 and 30 seconds.
+is 5 seconds. Configuration outside 1 to 30 seconds is rejected, not silently clamped.
 
 `AGENT_MEMORY_SCOPE` is the isolation boundary for sessions and reusable mapping
 facts. Give each customer/project deployment a unique value. If it is omitted,
@@ -54,19 +54,15 @@ and approved Semantic Bridge facts.
 
 ## API Endpoints
 
-- `GET /api/v1/agent-memory/status`
-- `GET /api/v1/agent-memory/sessions/{session_id}/context?limit=6`
-- `DELETE /api/v1/agent-memory/sessions/{session_id}`
+- `GET /api/v1/memory/status` on the agentic service (normally port 8012),
+  with configured graph-read authorization.
+- `GET /api/v1/memory/maintenance` reports the retained maintenance receipt.
 
-The context and delete endpoints require the server-issued `X-Session-ID` value
-to match the path. Delete the current conversation from PowerShell with:
-
-```powershell
-$sessionId = "paste-the-X-Session-ID-value"
-Invoke-RestMethod -Method Delete `
-  -Uri "http://127.0.0.1:8000/api/v1/agent-memory/sessions/$sessionId" `
-  -Headers @{ "X-Session-ID" = $sessionId }
-```
+The older `/api/v1/agent-memory/sessions/...` examples belonged to the
+compatibility host. Do not use them for a current microservice deployment.
+Use the Companion's Clear conversation control for its current conversation.
+Resolve service addresses from the selected deployment configuration rather
+than assuming the former port 8000 host is running.
 
 ## Stored Graph Labels
 
@@ -86,20 +82,11 @@ Relationships:
 
 ### Knowledge Companion
 
-After `/chat` or `/chat/jobs` completes, the app records:
+The current agentic-service Companion retains its original question, resolved retrieval query, response, evidence and selected scope in PostgreSQL. Follow-up subject resolution uses owner-bound turns from the same selected scope. Failed or unanswerable turns do not supply a subject; current owning-service evidence is retrieved again.
 
-- user question
-- assistant answer
-- session id
-- graph nodes supplied in `graph_context`
-- a reasoning trace for the chat operation
+When enabled, optional graph enrichment records the question, response and bounded selection identifiers. It is best-effort and does not replace required evidence retention. This Companion does not inject arbitrary graph-memory messages into its prompt. The legacy chat helper has a separate compact memory-context formatter; it is not evidence of current Companion recall.
 
-The memory write is best-effort. If Neo4j is down or memory is disabled, chat
-still returns normally.
-
-When memory is enabled, recent session memory is also injected into the
-Knowledge Companion prompt as a compact continuity block. Live graph/tool
-results still take priority for current facts.
+Workflow/read-goal plans, tool observations and outcomes are retained separately in PostgreSQL. Optional graph traces record only calls explicitly wired to the adapter; not every Companion request writes a graph reasoning trace. Recorded execution is not a model's private reasoning.
 
 ### Semantic Bridge
 

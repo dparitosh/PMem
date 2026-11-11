@@ -94,6 +94,10 @@ class EngineeringWorkflow:
         if not register:
             return {"status": "converted", "conversion": conversion}
         ontology = conversion["ontology"]
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        turtle_bytes = ontology['turtle'].encode('utf-8')
+        if len(turtle_bytes) > ontology_upload_limit():
+            raise ValueError(f'Generated ontology is {len(turtle_bytes)} bytes and exceeds ONTOLOGY_MAX_UPLOAD_BYTES={ontology_upload_limit()}. Increase that setting consistently in ingestion, ontology and graph services and restart them, or narrow the schema set. No ontology registration or publication was requested.')
         with dependency_stage('ontology_credentials', request_id):
             headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
         if request_id:
@@ -113,31 +117,34 @@ class EngineeringWorkflow:
             ).hexdigest(),
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
+            from backend.depo_platform.decision_policy import decision, policy_blocks
             policy_response = await self._request(client, 'policy_evaluation', request_id,
                 f"{self.ontology_url}/ontologies/policies/evaluate",
-                json={"decision": {"outcome": "approved", "confidence": 1.0,
-                      "decision_maker": "engineering-ingestion",
-                      "reasoning": f"Publish {filename}"},
+                json={"decision": decision(operation="ontology_import", decision_maker="engineering-ingestion",
+                      artifact_sha256=hashlib.sha256(turtle_bytes).hexdigest(),
+                      source_sha256=hashlib.sha256(content).hexdigest(),
+                      reasoning="Engineering import evidence; lifecycle approval remains required."),
                       "exception_policy_ids": policy_exception_ids or []},
             )
             policy_response.raise_for_status()
             policy = policy_response.json()
-            if publish and not policy.get("compliant", False):
+            if publish and policy_blocks(policy):
                 return {"status": "policy_blocked", "conversion": conversion, "policy": policy,
                         "message": "Publication was blocked by policy checks."}
             quality_response = await self._request(client, 'quality_gate', request_id,
                 f"{self.ontology_url}/ontologies/quality-gate",
-                json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True},
+                json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True,
+                      "deduplication_mode": "resource_identity"},
             )
             quality_response.raise_for_status()
             quality = quality_response.json()
             if publish and not quality.get("publish_recommended", False):
                 return {"status": "quality_blocked", "conversion": conversion, "policy": policy,
-                        "quality": quality, "message": "Publication was blocked by quality checks."}
+                        "quality": quality, "message": self._quality_block_message(quality)}
             response = await self._request(client, 'ontology_registration', request_id,
                 f"{self.ontology_url}/ontologies/register",
                 data=data,
-                files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
+                files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", turtle_bytes, "text/turtle")},
             )
             response.raise_for_status()
             registration = response.json()
@@ -203,13 +210,26 @@ class EngineeringWorkflow:
             raise ValueError("Ontology publication is blocked by its current lifecycle state")
 
     @staticmethod
+    def _quality_block_message(quality: dict[str, Any]) -> str:
+        # Explain the retained assessment without echoing resource contents or
+        # claiming that similarity candidates are confirmed duplicate identities.
+        counts = []
+        for key, label in (('duplicates', 'duplicate candidates'), ('conflicts', 'conflicts')):
+            items = quality.get(key)
+            if isinstance(items, list) and items:
+                counts.append(f'{len(items)} {label}')
+        findings = ', '.join(counts) if counts else 'the assessment did not recommend publication'
+        return ('Publication was blocked by quality checks: ' + findings +
+                '. Review the quality assessment before retrying; no graph publication was requested.')
+
+    @staticmethod
     def _governance_entities(turtle: str) -> list[dict[str, str]]:
         """Supply stable resource identities to Semantica's quality gate."""
-        from rdflib import Graph
+        from rdflib import Graph, URIRef
         graph = Graph()
         graph.parse(data=turtle, format="turtle")
         return [{"id": str(subject), "name": str(subject), "type": "resource"}
-                for subject in sorted(set(graph.subjects()), key=str) if str(subject).startswith(("http://", "https://"))]
+                for subject in sorted(set(graph.subjects()), key=str) if isinstance(subject, URIRef)]
 
 
 class PathName:

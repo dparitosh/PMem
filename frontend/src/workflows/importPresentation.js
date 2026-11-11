@@ -15,15 +15,7 @@ export function getStatusTimestamp(status = {}, file = null) {
 }
 
 export function isTerminalPipelineStatus(status = {}) {
-  return Boolean(
-    status.error
-    || status.status === 'failed'
-    || status.status === 'ready_for_commit'
-    || status.committed
-    || status.status === 'completed'
-    || status.commitPhase === 'complete'
-    || status.progress === 100
-  );
+  return ['failed', 'completed', 'awaitingReview'].includes(importJobState(status));
 }
 
 export function isResumablePersistedJob(file, status, now = Date.now()) {
@@ -63,10 +55,28 @@ export function getWorkflowNote({
   if (selectedWorkflow === 'ontology.merge') return 'Select a source ontology and a different target ontology, then review the merge plan.';
   if (['ontology.validate', 'dictionary.generate', 'taxonomy.generate', 'graph.chunk'].includes(selectedWorkflow)) return 'Select an ontology to generate the artifact.';
   if (mappingFileTypeContext === 'express') return 'EXPRESS creates ontology structure.';
-  if (mappingFileTypeContext === 'step') return 'STEP imports structural CAD instance data first. After commit, run Link instances to ontology with AP242 MBD/3D selected to create semantic INSTANCE_OF links.';
+  if (mappingFileTypeContext === 'step') return 'STEP validation retains a Data Flow run. Review and publish it there; a completed validation is not graph publication. After a publication receipt is retained, link the published instances to the AP242 ontology.';
   if (selectedWorkflow === 'instance.import' && ['csv', 'excel'].includes(mappingFileTypeContext)) return 'CSV and Excel import as source data first.';
   if (selectedWorkflow === 'instance.import' && ['json', 'xml', 'plmxml', 'reqif', '3dxml'].includes(mappingFileTypeContext)) return 'JSON, XML, PLMXML, ReqIF, and 3DXML import as source data first.';
   if (selectedWorkflow === 'instance.import' && ['ontology', 'xsd', 'xmi', 'express'].includes(mappingFileTypeContext)) return 'Use Create ontology for OWL, RDF, TTL, XSD, XMI, MDXML, or EXPRESS files.';
   if (selectedWorkflow === 'instance.import' && !mappingFileTypeContext) return 'Select files to continue.';
   return 'Ready.';
+}
+
+
+export function isAwaitingImportApproval(status = {}) {
+  return status.status === 'ready_for_commit' && !status.committing && !status.error && !status.commitError;
+}
+
+
+// Persisted outcome takes precedence over the in-memory started set.
+export function importJobState(status = {}, started = false) {
+  if (status.error || status.commitError || status.resumeExpired || status.outcomeUnknown
+      || status.stage === 'error' || status.commitPhase === 'error'
+      || ['failed', 'error', 'outcome_unknown'].includes(status.status)) return 'failed';
+  if (status.committed) return 'completed';
+  if (isAwaitingImportApproval(status)) return 'awaitingReview';
+  if (status.committing || status.status === 'committing') return 'active';
+  if (status.status === 'completed' || status.commitPhase === 'complete') return 'completed';
+  return started ? 'active' : 'pending';
 }

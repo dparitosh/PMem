@@ -1,3 +1,5 @@
+import TaskProgress from './TaskProgress';
+import { businessText } from '../utils/businessText';
 import React, { useEffect, useRef, useState } from 'react';
 import agenticAPI from '../services/agenticApi';
 import { publicationRecoveryScope, getCredentialProfile } from '../services/serviceAuth';
@@ -37,7 +39,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       } catch { setSubmissionUnknown(true); }
       setRevision(value => value + 1);
     };
-    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired','depo:session-replaced'];
     events.forEach(event => window.addEventListener(event, clear));
     return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, clear)); };
   }, [key]);
@@ -107,7 +109,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
   return <section className="depo-workflow-reconciliation" aria-label="Background agent task">
     <div><button type="button" className="depo-button" disabled={disabled || busy || !!runId || submissionUnknown || !getCredentialProfile('GRAPH_READ_TOKEN') || (governed && !getCredentialProfile('AGENTIC_APPROVAL_TOKEN'))} onClick={start}>{busy ? 'Submitting…' : label}</button>
     {runId && <button type="button" className="depo-button depo-button--secondary" onClick={() => setRevision(value => value + 1)}>Refresh status</button>}</div>
-    {error && <p role="alert">{error}</p>}
+    {error && <p role="alert">{businessText(error)}</p>}
     {submissionUnknown && !runId && <div>
       <label>Recover workflow ID <input value={recoveryId} onChange={event => setRecoveryId(event.target.value)} /></label>
       <button type="button" disabled={!recoveryId.trim()} onClick={() => {
@@ -117,22 +119,21 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       <small>Find this task in agent workflow history. Inspect its status before submitting another merge.</small>
     </div>}
     {runId && <p role="status">Workflow {runId}: {run?.execution_state || run?.status || 'checking'}. Results remain retained after leaving this page.</p>}
-    {run?.error_message && <p role="alert">{run.http_status ? `HTTP ${run.http_status}: ` : ''}{run.error_message}</p>}
+    {run?.error_message && <p role="alert">{businessText(run.error_message)}</p>}
     {run?.status === 'failed' && !run.error_message && <p role="alert">This older run retained no failure detail. Inspect service logs using its workflow ID. A new run will retain diagnostic details.</p>}
     {run?.pending_step?.child_run_id && <p>Waiting for dependent data job: {String(run.pending_step.child_run_id)}. Workflow completion requires its result.</p>}
-    {Number.isFinite(run?.pending_step?.progress?.current) && <p role="status">Tool progress: {run.pending_step.progress.current}{Number.isFinite(run.pending_step.progress.total) ? ` of ${run.pending_step.progress.total}` : ''}</p>}
     {run?.allowed_actions?.map(action => <button type="button" key={action} disabled={busy} onClick={async () => {
       const controller = new AbortController(); request.current = controller; setBusy(true);
       try { await agenticAPI.controlWorkflow(runId, action, { signal: controller.signal }); if (!controller.signal.aborted) setRevision(value => value + 1); }
       catch { if (!controller.signal.aborted) setError('Control was not confirmed. Refresh status before retrying.'); }
       finally { if (!controller.signal.aborted) setBusy(false); }
     }}>{action}</button>)}
+    {run && <TaskProgress run={run} kind="workflow" />}
     <WorkflowRecoveryActions key={runId} run={run} disabled={busy} onRefresh={() => setRevision(value => value + 1)} />
     {runId && <small>Controls take effect between tools. Completed writes remain retained.</small>}
     {runId && error && <p>Reconnect access and refresh this retained workflow. An inaccessible run cannot be cleared while its outcome is unverified.</p>}
     {['completed', 'cancelled', 'failed', 'timed_out'].includes(run?.status) && !run?.reconciliation_required && <button type="button" onClick={() => {
       try { sessionStorage.removeItem(key); } catch {} setRunId(''); setRun(null); setError('');
     }}>Prepare a new task</button>}
-    {run?.traces?.length > 0 && <details><summary>Retained task report · {run.traces.length} steps</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 360, overflow: 'auto' }}>{JSON.stringify(run.traces, null, 2)}</pre></details>}
   </section>;
 }

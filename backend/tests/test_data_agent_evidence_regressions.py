@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import ast
 import unittest
 import threading
@@ -34,7 +35,7 @@ class DataAgentRegressions(unittest.TestCase):
             retained.append((records, kwargs['kind']))
             return str(len(retained))
         runner = SimpleNamespace(max_records=100, _validate_records=validate,
-            _lock=threading.Lock(), _spark_session=lambda: SimpleNamespace(createDataFrame=lambda records: Frame()),
+            _work=nullcontext, _lock=threading.Lock(), _spark_session=lambda: SimpleNamespace(createDataFrame=lambda records: Frame()),
             _retain_json_artifact=retain, _now=lambda: 'now', _runs=deque())
         return lambda records: assess(runner, {'records': records}, correlation_id='test'), retained
 
@@ -82,7 +83,7 @@ class DataAgentRegressions(unittest.TestCase):
         for status in (401,403,409,422,429,500,503):
             error = RuntimeError('downstream failure')
             error.response = SimpleNamespace(status_code=status)
-            ns = {'HTTPException':HTTPException,'exc':error}
+            ns = {'HTTPException':HTTPException,'exc':error,'workflow_error': lambda exc, tool: {'error_code': 'downstream_failure'},'tool': {'id': 'fixture'}}
             with self.assertRaises(HTTPException) as caught:
                 exec(compile(ast.Module(body=handler.body,type_ignores=[]),'<status handling>','exec'),ns)
             self.assertEqual(caught.exception.status_code,status)

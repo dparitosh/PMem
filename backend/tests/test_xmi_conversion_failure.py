@@ -46,7 +46,7 @@ class XmiFailureTests(unittest.TestCase):
                          Dict=__import__('typing').Dict, Any=object,
                          logger=logging.getLogger('xmi-test'), _write_tmp=write,
                          _read_and_validate=lambda path: (path.read_text(), {'valid': True}),
-                         _inspect_with_owlready=lambda *args: {})
+                         _inspect_semantics=lambda *args: {})
             upload = load_function('backend/Services/owl_generation_service.py',
                                    'generate_owl_from_xmi', scope)
             with patch.dict(sys.modules, {'backend.Services.owl_xmi_engine': module}):

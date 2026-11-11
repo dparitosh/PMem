@@ -1,5 +1,6 @@
 // FastAPI validation details may be arrays of objects containing submitted
 // input. Never render those objects or echo their input fields into the UI.
+import { businessText } from './businessText';
 export function apiRequestId(error) {
   const headers = error?.response?.headers;
   const value = headers?.get?.('X-Request-ID') || headers?.['x-request-id'] || headers?.['X-Request-ID'] || error?.response?.data?.request_id || error?.apiError?.requestId;
@@ -7,10 +8,11 @@ export function apiRequestId(error) {
 }
 
 export function apiErrorMessage(error, fallback = 'Request failed.') {
-  return withApiRequestId(serviceMessage(error, fallback), error);
+  return withApiRequestId(businessText(serviceMessage(error, fallback)), error);
 }
 
 export function withApiRequestId(message, error) {
+  message = businessText(message);
   const id = apiRequestId(error);
   return id && !message.includes(`Request ID: ${id}`) ? `${message} Request ID: ${id}` : message;
 }
@@ -27,7 +29,18 @@ function serviceMessage(error, fallback) {
   if (status === 503) return 'The service or a required dependency is unavailable. Check Admin service diagnostics and server logs.';
   if (status >= 500) return 'The service failed while processing this request. Check its server logs.';
   if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') return 'The request timed out. Refresh operation status before retrying a write.';
-  if (error?.code === 'ERR_NETWORK') return 'No usable service response. Check service listeners, network access and CORS configuration.';
+  if (error?.code === 'ERR_NETWORK') {
+    // Browsers intentionally do not distinguish a blocked CORS response from a
+    // refused connection here. Do not diagnose either as an API-key rejection.
+    let target;
+    try { target = new URL(error?.config?.url, typeof window !== 'undefined' ? window.location.href : undefined); } catch (_) { /* No trustworthy endpoint. */ }
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && target?.protocol === 'http:') {
+      return 'The HTTPS page is targeting an HTTP service. Configure HTTPS service URLs or the HTTPS gateway, then rebuild the frontend.';
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'The browser is offline. Restore the network connection, then refresh status before retrying a write.';
+    const endpoint = target && ['http:', 'https:'].includes(target.protocol) ? ` from ${target.origin}` : '';
+    return `No usable service response${endpoint}. The browser cannot distinguish an unreachable listener, blocked network or CORS rejection. Check deployment diagnostics and the failed request in Network; reconnecting credentials alone may not resolve it.`;
+  }
   const message = error?.message;
   return typeof message === 'string' && message.trim() ? message : fallback;
 }

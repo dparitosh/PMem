@@ -35,7 +35,7 @@ class BridgeWorkflowRegressionTests(unittest.TestCase):
         neo.unit_of_work=unit_of_work
         scope=dict(digest=lambda _: 'digest',session=session,_publish_transaction=lambda *args:None,_bounded_query=lambda text:text)
         publish=load('backend/graph_service/bridge_publication.py','publish',scope)
-        command={'request_digest':'digest','rows':[{'candidate_id':'a','import_id':'i','import_row_key':'r','ontology_class_element_id':'t','target_ontology_type':'Class'}]}
+        command={'ontology_id':'chosen','request_digest':'digest','rows':[{'candidate_id':'a','import_id':'i','import_row_key':'r','ontology_class_element_id':'t','target_ontology_type':'Class'}]}
         from backend.depo_platform.operations import OperationContext, operation_scope
         from datetime import datetime,timezone,timedelta
         ctx=OperationContext('test',(datetime.now(timezone.utc)+timedelta(seconds=4)).isoformat())
@@ -47,7 +47,8 @@ class BridgeWorkflowRegressionTests(unittest.TestCase):
     def test_wrong_ontology_target_aborts_before_link_write(self):
         tx=Mock()
         tx.run.side_effect=[SimpleNamespace(single=lambda:{'receipt':None}),SimpleNamespace(data=lambda:[{'sources':1,'targets':0}])]
-        scope=dict(json=json,datetime=None,timezone=None)
+        from backend.graph_service.bridge_publication import verify_semantic_projection
+        scope=dict(json=json,datetime=None,timezone=None,verify_semantic_projection=verify_semantic_projection)
         publish=load('backend/graph_service/bridge_publication.py','_publish_transaction',scope)
         command={'publication_id':'p','ontology_id':'selected-v2','rows':[{'candidate_id':'c'}]}
         with self.assertRaisesRegex(ValueError,'no links were written'):

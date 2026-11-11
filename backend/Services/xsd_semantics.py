@@ -64,6 +64,11 @@ def qualify_schema_types(roots, contexts, namespaces):
     import hashlib
     declarations = {}
     for path, root in roots.items():
+        for declaration in root:
+            if declaration.tag in {X+'complexType', X+'simpleType', X+'element'} and declaration.get('name'):
+                declaration.set('{urn:pmem:conversion}sourceNamespace', namespaces[path])
+                declaration.set('{urn:pmem:conversion}sourceName', declaration.get('name'))
+    for path, root in roots.items():
         for node in root:
             if node.tag in {X+'complexType', X+'simpleType'} and node.get('name'):
                 declarations.setdefault(node.get('name'), set()).add(namespaces[path])
@@ -202,6 +207,10 @@ def expand_model_groups(paths):
             attribute_groups[key] = group
 
     def attributes(node, namespace, stack, budget):
+        # Count every visit: group-only DAGs otherwise expand exponentially without cloning any leaf.
+        budget[0] += 1
+        if budget[0] > 1000000:
+            raise ValueError('Attribute group expansion exceeds the supported complexity limit')
         ref = node.get('ref')
         scope = contexts[id(node)]
         if not ref:

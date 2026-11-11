@@ -1,4 +1,15 @@
-import { normalizeAxiomEdges, mergePropertyAxiomRows } from './ontologyAxioms';
+import { normalizeAxiomEdges, mergePropertyAxiomRows, deduplicateAxiomEdges } from './ontologyAxioms';
+
+test('deduplicates large taxonomy slices once, preserving order and delimiter-containing identities', () => {
+  const edges = Array.from({length: 100000}, (_, index) => ({source_term: `o:${index}`, mapping_type:'DOMAIN', target_term:'o:c'}));
+  const result = deduplicateAxiomEdges([...edges, ...edges,
+    {source_term:'a|b', mapping_type:'c', target_term:'d'},
+    {source_term:'a', mapping_type:'b|c', target_term:'d'},
+    {source_term:'', mapping_type:'DOMAIN', target_term:'o:c'}]);
+  expect(result).toHaveLength(100002);
+  expect(result[0]).toBe(edges[0]);
+  expect(result[99999]).toBe(edges[99999]);
+});
 
 test('normalizes RDF predicate IRIs and graph endpoint formats without duplicate counts', () => {
   const edges = normalizeAxiomEdges([

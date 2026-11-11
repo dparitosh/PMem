@@ -38,7 +38,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 import logging
 
 # Configure logging
@@ -1031,11 +1031,39 @@ class DataImportService:
                     }
                 })
             
+            # Business attributes (UserValue titles, ApplicationRef label/version) become named attributes of their owner.
+            from .plmxml_parser import business_properties
+            owned = business_properties(doc)
+            # Forms, external files and documents are business objects too: emit them so their data is kept.
+            seen_ids = {entity.get('id', '') for entity in entities}
+            extra_objects = [
+                ('Form', doc.forms.values()),
+                ('ExternalFile', doc.external_files.values()),
+                ('Document', doc.documents.values()),
+            ]
+            extra_objects.append(('GenericEntity', doc.generic_entities.values()))
+            for entity_type, collection in extra_objects:
+                for item in collection:
+                    if item.id in seen_ids:
+                        continue
+                    seen_ids.add(item.id)
+                    # Generic entities keep their own PLM tag (e.g. AssociatedAttachment) as the type.
+                    item_type = getattr(item, 'tag', '') or entity_type
+                    entities.append({'type': item_type, 'id': item.id, 'name': getattr(item, 'name', ''),
+                                     'attributes': {'properties': dict(getattr(item, 'properties', {}) or {})}})
+            for entity in entities:
+                for name, (value, plm_type) in owned.get(entity.get('id', ''), {}).items():
+                    attrs = entity.setdefault('attributes', {})
+                    attrs[name] = value
+                    if plm_type and plm_type != 'string':
+                        attrs[f'{name}_type'] = plm_type
+
             logger.info(f"[OK] PLMXML parsed: {len(entities)} entities, {len(relationships)} relationships")
-            
+
             return {
                 'entities': entities,
                 'relationships': relationships,
+                'root_attributes': dict(doc.root_attributes),
                 'format': 'plmxml',
                 'schema_version': doc.schema_version,
                 'author': doc.author,
@@ -1214,7 +1242,7 @@ class DataImportService:
         NEW: Generates ontology from XSD schema + data.
         """
         try:
-            tree = ET.parse(file_path)
+            tree = ET.parse(file_path, forbid_dtd=True)
             root = tree.getroot()
             
             # Extract namespace prefixes

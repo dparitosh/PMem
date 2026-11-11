@@ -1,4 +1,15 @@
 // Normalize relationship transport formats without counting arbitrary triples as axioms.
+export function deduplicateAxiomEdges(edges) {
+  const seen = new Set();
+  return edges.filter(edge => {
+    if (!edge.source_term || !edge.target_term) return false;
+    const key = JSON.stringify([edge.source_term, edge.mapping_type, edge.target_term]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function normalizeAxiomEdges(edges = [], nodes = []) {
   const ids = new Map();
   nodes.forEach(node => {

@@ -33,3 +33,6 @@
 .chat-answer-help { margin-top: 4px; font-size: 11px; color: var(--theme-color-soft-text, #66788a); }
 .chat-answer-help summary { cursor: pointer; }
 .chat-messages:focus-visible { outline: 2px solid var(--ui-accent, #005a9c); outline-offset: -2px; }
+
+.chat-citation { color: var(--ui-accent, #005b96); font-size: .85em; font-weight: 600; white-space: nowrap; }
+.chat-table td { overflow-wrap: anywhere; }

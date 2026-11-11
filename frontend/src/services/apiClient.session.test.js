@@ -1,10 +1,31 @@
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from './apiClient';
 import apiClient from './apiClient';
+import { platformAPI } from './apiClient';
 import { vi } from 'vitest';
 vi.unmock('axios');
 import { AxiosHeaders } from 'axios';
 import { buildUrl } from '../config';
 import { clearServiceAuthToken, setCredentialProfile } from './serviceAuth';
+
+test('shell pipeline readiness is independent of optional Spark configuration', async () => {
+  const get = vi.spyOn(apiClient, 'get').mockResolvedValue({data:{status:'ready'}});
+  try {
+    await platformAPI.health('dataPipeline');
+    expect(get.mock.calls[0][0]).toMatch(/\/readyz$/);
+  } finally { get.mockRestore(); }
+});
+
+test.each([
+  [{status:'ok'}, true], [{status:'ready'}, true], [{status:'degraded'}, false],
+  [{}, false], ['<html>proxy error</html>', false], [{status:'unavailable'}, false],
+])('health requires a recognized positive service status: %j', async (data, expected) => {
+  const health = vi.spyOn(platformAPI, 'health').mockResolvedValue({data});
+  try {
+    const result = await platformAPI.coreHealth();
+    expect(Object.values(result)).toHaveLength(10);
+    expect(Object.values(result).every(value => value === expected)).toBe(true);
+  } finally { health.mockRestore(); }
+});
 
 test('pipeline errors preserve diagnostic and recovery identities', async () => {
   const receive = vi.fn();

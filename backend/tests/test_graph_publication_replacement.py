@@ -1,6 +1,7 @@
 """Exercise the real RDF publisher against a recording transaction."""
 import ast
 import json
+import hashlib
 import logging
 import time
 import uuid
@@ -30,6 +31,7 @@ class PublicationReplacementTests(unittest.TestCase):
             return lambda fn: fn
         scope = dict(graph_publication=lambda fn:fn, prepare_rdf=lambda content, fmt, **kw:to_canonical_graph(Graph().parse(data=content,format=fmt)), logging=logging, time=time, uuid=uuid, ontology_writer=lambda fn: fn, unit_of_work=unit_of_work, bounded_timeout_seconds=bounded_timeout_seconds, URIRef=URIRef, Graph=Graph, Literal=Literal, OWL=OWL, RDF=RDF, RDFS=RDFS,
                      to_canonical_graph=to_canonical_graph, json=json, datetime=datetime, timezone=timezone, Any=object)
+        scope['hashlib'] = hashlib
         tree = ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         node = next(method for cls in tree.body if isinstance(cls, ast.ClassDef) for method in cls.body if getattr(method, 'name', '') == 'publish_turtle')
         from backend.tests.projection_fixture import install_projection_fixture

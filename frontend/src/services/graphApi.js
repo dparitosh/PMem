@@ -10,6 +10,17 @@ const readHeaders = () => {
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
 export const graphApi = {
+  searchBusiness(query, signal) {
+    return apiClient.get(graphUrl('/api/v1/graph/search'), {
+      params: {query, limit: 80, business_only: true}, signal,
+      timeout: 30000, headers: readHeaders(),
+    });
+  },
+  searchUniversal(query, params = {}, signal) {
+    return apiClient.get(graphUrl('/api/v1/graph/explorer-search'), {
+      params: { query, ...params }, signal, timeout: 35000, headers: readHeaders(),
+    });
+  },
   getOntologyReport(ontologyId, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/ontology-report/${encodeURIComponent(ontologyId)}`), {
       signal, timeout: 20000, headers: readHeaders(),
@@ -37,12 +48,13 @@ export const graphApi = {
   getOntologyGraph(prefix, limit = 200, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {
       params: { limit },
+      timeout: 35000,
       signal,
       headers: readHeaders(),
     });
   },
   getArchitectureGraph(prefix = 'archimate', limit = 1000, signal) {
-    return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {
+    return apiClient.get(graphUrl(`/api/v1/graph/view/architecture/${encodeURIComponent(prefix)}`), {
       params: { limit },
       signal,
       headers: readHeaders(),

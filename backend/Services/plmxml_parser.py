@@ -287,6 +287,10 @@ class PlmxmlDocument:
     generic_entities: Dict[str, PlmxmlGenericEntity] = field(default_factory=dict)
     relationships: List[PlmxmlRelationship] = field(default_factory=list)
     parse_stats: Dict[str, Any] = field(default_factory=dict)
+    # Lossless capture of data that has no dedicated model field.
+    root_attributes: Dict[str, str] = field(default_factory=dict)
+    application_refs: List[Dict[str, str]] = field(default_factory=list)
+    user_values: List[Dict[str, str]] = field(default_factory=list)
     unresolved_references: List[Dict[str, str]] = field(default_factory=list)
     duplicate_ids: List[str] = field(default_factory=list)
 
@@ -307,21 +311,66 @@ def _attrs(element: ET.Element) -> Dict[str, str]:
     return out
 
 
+_XSD_FOR_PLM_TYPE = {"real": "double", "int": "integer", "boolean": "boolean"}
+
+
+def _business_key(raw: str, taken: set) -> str:
+    """Turn a PLM title such as 'UG ENTITY HANDLE' into a unique business property name."""
+    key = re.sub(r"[^A-Za-z0-9_]", "_", (raw or "").strip()) or "value"
+    if key[0].isdigit():
+        key = "v_" + key
+    base, n = key, 2
+    while key in taken:
+        key, n = f"{base}_{n}", n + 1
+    taken.add(key)
+    return key
+
+
+def business_properties(doc) -> Dict[str, Dict[str, Tuple[str, str]]]:
+    """Business attributes per owning element id: {owner_id: {name: (value, plm_type)}}.
+
+    UserValue titles become named attributes; ApplicationRef becomes external_application,
+    external_label and external_version. Every source record maps to a name, so none is dropped.
+    """
+    by_owner: Dict[str, Dict[str, Tuple[str, str]]] = {}
+    taken: Dict[str, set] = {}
+    for record in getattr(doc, "user_values", []) or []:
+        owner = record.get("owner_id", "")
+        if not owner:
+            continue
+        names = taken.setdefault(owner, set())
+        key = _business_key(record.get("title", ""), names)
+        by_owner.setdefault(owner, {})[key] = (record.get("value", ""), record.get("type", "string") or "string")
+    for record in getattr(doc, "application_refs", []) or []:
+        owner = record.get("owner_id", "")
+        if not owner:
+            continue
+        names = taken.setdefault(owner, set())
+        for field_name, source in (("external_application", "application"), ("external_label", "label"),
+                                   ("external_version", "version")):
+            key = _business_key(field_name, names)
+            by_owner.setdefault(owner, {})[key] = (record.get(source, ""), "string")
+    return by_owner
+
+
+def xsd_datatype_for(plm_type: str) -> str:
+    """XSD local name for a PLM value type, or '' when the value should stay a plain string."""
+    return _XSD_FOR_PLM_TYPE.get((plm_type or "").lower(), "")
+
+
 def _iterparse(path: Path):
     try:
         from lxml import etree as _lxml_etree  # type: ignore
-        return _lxml_etree.iterparse(str(path), events=("start", "end"), recover=True, huge_tree=True), True
-    except Exception:
+        # Lossless: expand the file's own internal entities and accept large valid files.
+        # External entities and network access stay disabled (no XXE / SSRF).
+        return _lxml_etree.iterparse(str(path), events=("start", "end"), recover=True, huge_tree=True,
+                                     resolve_entities="internal", no_network=True, load_dtd=False), True
+    except ImportError:
+        # Only a missing lxml may fall back. The fallback has no retained tree, so
+        # root attributes, ApplicationRef and UserValue capture are unavailable there.
+        logger.warning("lxml unavailable: PLMXML parsed without root/ApplicationRef/UserValue capture")
         import defusedxml.ElementTree as _safe_et
         return _safe_et.iterparse(str(path), events=("start", "end")), False
-
-
-def _clear_element(elem: Any, using_lxml: bool) -> None:
-    elem.clear()
-    if using_lxml:
-        parent = elem.getparent()
-        while parent is not None and elem.getprevious() is not None:
-            del parent[0]
 
 
 def _primary_id(attrs: Dict[str, str]) -> str:
@@ -438,7 +487,7 @@ def _parse_quantity(attrs: Dict[str, str]) -> int:
     qty_raw = attrs.get("quantity", attrs.get("qty", "1"))
     try:
         return int(float(qty_raw))
-    except ValueError:
+    except (ValueError, OverflowError):
         return 1
 
 
@@ -515,8 +564,6 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
                 skipped_elements += 1
                 if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData", *_PARENT_PAYLOAD_TAGS}:
                     logger.debug("PLMXML skipped element without identifier: tag=%s file=%s", tag, file_path.name)
-                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData", *_PARENT_PAYLOAD_TAGS}:
-                    _clear_element(elem, using_lxml)
                 continue
 
         if elem_id in known_ids:
@@ -801,7 +848,6 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
                 semantic_role="structural" if is_structural else "entity",
                 is_structural=is_structural,
             )
-        _clear_element(elem, using_lxml)
 
     unresolved_references: List[Dict[str, str]] = []
     for source_id, ref_key, raw_target, source_tag in reference_candidates:
@@ -858,10 +904,39 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
         + len(doc.forms)
         + len(doc.generic_entities)
     )
+    # Recover mode keeps parsing past errors, so a truncated or malformed file must be
+    # reported here instead of being imported as a silently incomplete model.
+    if using_lxml:
+        fatal = [err for err in getattr(context, "error_log", []) if err.level_name in ("ERROR", "FATAL")]
+        if fatal:
+            raise ValueError(f"PLMXML is malformed or truncated: {fatal[0].message}")
     structural_entities = sum(1 for form in doc.forms.values() if getattr(form, "is_structural", False)) + sum(
         1 for entity in doc.generic_entities.values() if getattr(entity, "is_structural", False)
     )
     doc.unresolved_references = unresolved_references
+    # Post-pass over the retained tree: keep every ApplicationRef and UserValue with its
+    # owner, and the root attributes, so no source attribute is silently discarded.
+    root_el = getattr(context, "root", None) if using_lxml else None
+    if root_el is not None:
+        doc.root_attributes = {_local_name(key): value for key, value in root_el.attrib.items()}
+        for el in root_el.iter():
+            if not isinstance(el.tag, str):
+                continue
+            tag = _local_name(el.tag)
+            if tag not in {"ApplicationRef", "UserValue"}:
+                continue
+            # Skip wrapper containers (UserData) so the record belongs to the element that owns the data.
+            owner = el.getparent()
+            while owner is not None and (not owner.get("id") or _local_name(str(owner.tag)) == "UserData"):
+                owner = owner.getparent()
+            record = {key: value for key, value in _attrs(el).items()}
+            record["owner_id"] = owner.get("id", "") if owner is not None else ""
+            record["owner_tag"] = _local_name(owner.tag) if owner is not None and isinstance(owner.tag, str) else ""
+            record["text"] = (el.text or "").strip()
+            if tag == "ApplicationRef":
+                doc.application_refs.append(record)
+            else:
+                doc.user_values.append(record)
     doc.duplicate_ids = duplicate_ids
     doc.parse_stats = {
         "namespace": root_namespace,

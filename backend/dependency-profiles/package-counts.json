@@ -243,6 +243,7 @@
       "openpyxl",
       "pandas",
       "psycopg[binary]",
+      "psutil",
       "pydantic",
       "pyshacl",
       "python-dotenv",

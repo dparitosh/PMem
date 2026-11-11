@@ -4,7 +4,7 @@ from __future__ import annotations
 from backend.depo_platform.ontology_maintenance import ontology_writer
 from backend.depo_platform.rdf_preparation import prepare_rdf
 from backend.depo_platform.graph_publication_lock import graph_publication
-from backend.depo_platform.graph_access import ontology_projection_reader
+from backend.depo_platform.graph_access import ontology_projection_reader, graph_projection_reader
 
 import os
 import logging
@@ -23,6 +23,7 @@ from rdflib import Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
 from . import query_repository as cypher
+from .business_types import CEIM_IRIS
 
 
 class Neo4jPublisher:
@@ -79,6 +80,7 @@ class Neo4jPublisher:
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
         SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind, node.rdf_types = row.rdf_types,
+            node.search_label = toLower(coalesce(row.label,'')), node.search_iri = toLower(row.iri),
             node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
             node.source = row.source, node.description = row.description,
             node.publication_revision = $projection_revision
@@ -141,12 +143,13 @@ class Neo4jPublisher:
                     ON CREATE SET receipt.published_at = $published_at
                     SET receipt.prefix = $prefix, receipt.resources = $resources,
                         receipt.relationships = $relationships, receipt.hierarchy_edges = $hierarchy_edges,
-                        receipt.status = 'published', receipt.current = true
+                        receipt.status = 'published', receipt.current = true,
+                        receipt.artifact_sha256 = $artifact_sha256
                     """,
                     ontology_id=ontology_id, publication_id=publication_id, prefix=prefix,
                     resources=len(resources), relationships=sum(len(rows) for rows in relationships.values()),
                     hierarchy_edges=len(relationships["SUBCLASS_OF"]) + len(relationships["HAS_PART"]),
-                    published_at=now,
+                    published_at=now, artifact_sha256=hashlib.sha256(content).hexdigest(),
                 ).consume()
 
         logger.warning('Ontology publication phase=neo4j_write ontology_id=%s resources=%s relationships=%s elapsed_seconds=%.3f',
@@ -212,7 +215,7 @@ class Neo4jPublisher:
                 self._read_driver.close()
                 self._read_driver = None
 
-    def _session_rows(self, query: str, *, _publication_receipt=False, **parameters: Any) -> list[dict[str, Any]]:
+    def _session_rows(self, query: str, *, _publication_receipt=False, _timeout_seconds=None, **parameters: Any) -> list[dict[str, Any]]:
         if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
         with self._driver_lock:
@@ -225,9 +228,12 @@ class Neo4jPublisher:
         with (nullcontext() if _publication_receipt else projection_access()), driver.session(database=self.database) as session:
             from backend.depo_platform.network import bounded_timeout_seconds
             timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
+            if _timeout_seconds is not None:
+                timeout=min(timeout,float(_timeout_seconds))
+                if timeout<=0:raise TimeoutError('Graph read deadline elapsed')
             return session.run(Query(query, timeout=timeout), parameters).data()
 
-    def mapping_terms(self, scope: str) -> dict[str, Any]:
+    def mapping_terms(self, scope: str, offset=None, limit=None) -> dict[str, Any]:
         if not isinstance(scope, str) or not scope.strip() or len(scope) > 256:
             raise ValueError('Select a valid ontology scope.')
         scopes = {scope, scope.lower()}
@@ -235,8 +241,21 @@ class Neo4jPublisher:
             scopes.update({'ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D'})
         kinds = [{'kind': kind, 'iri': 'http://www.w3.org/2002/07/owl#' + kind}
                  for kind in ('Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty')]
-        rows = self._session_rows(cypher.MAPPING_TERMS, scope=scope, scopes=sorted(scopes), kinds=kinds,
-                                  rdf_type='http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+        parameters=dict(scope=scope, scopes=sorted(scopes), kinds=kinds,
+                        rdf_type='http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+        if offset is not None or limit is not None:
+            if type(offset) is not int or not 0 <= offset <= 100000 or type(limit) is not int or not 1 <= limit <= 10000:
+                raise ValueError('Select a mapping page of 1 to 10000 terms within the 100000-term read budget')
+            from backend.depo_platform.graph_access import projection_access
+            with projection_access():
+                revisions=self._session_rows("MATCH (p:OntologyPublication {ontology_id:$scope}) WHERE p.current=true AND p.status='published' RETURN p.publication_id AS id, p.artifact_sha256 AS artifact ORDER BY id",scope=scope)
+                from backend.depo_platform.bridge_contract import digest
+                revision=digest(revisions) if revisions else None
+                query=cypher.MAPPING_TERMS.replace('LIMIT 10001','SKIP toInteger($offset) LIMIT toInteger($read_limit)')
+                rows=self._session_rows(query,**parameters,offset=offset,read_limit=limit+1)
+            return {'scope':scope,'terms':rows[:limit],'offset':offset,
+                    'next_offset':offset+limit if len(rows)>limit else None,'revision':revision}
+        rows = self._session_rows(cypher.MAPPING_TERMS, **parameters)
         if len(rows) > 10000:
             raise ValueError('Ontology mapping lookup exceeds 10000 terms; narrow the ontology scope.')
         return {'scope': scope, 'terms': rows}
@@ -262,11 +281,14 @@ class Neo4jPublisher:
         provider.  Keeping this adapter in the graph service avoids the old
         port-8000 proxy and lets an API gateway expose this endpoint directly.
         """
+        from .search_evidence import search_properties
         explorer_nodes = [
             {
                 "elementId": str(node.get("graph_id") or node["id"]),
                 "labels": [str(node.get("type") or "resource")],
                 "properties": {
+                    **search_properties(node),
+                    "rdf_types": list(node.get("rdf_types") or []),
                     "iri": str(node.get("iri") or node["id"]),
                     "label": str(node.get("label") or node["id"]),
                     "kind": str(node.get("type") or "resource"),
@@ -307,17 +329,16 @@ class Neo4jPublisher:
         CALL {
           MATCH (n:OntologyResource)
           WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix)
+          OPTIONAL MATCH (n)-[typing]->(t:OntologyResource)
+          WHERE typing.predicate = $rdf_type
+          WITH n, collect(DISTINCT t.iri) + coalesce(n.rdf_types, []) AS declared_types
           RETURN count(n) AS resources,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri IN $class_types } THEN 1 ELSE 0 END) AS classes,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $object_property } THEN 1 ELSE 0 END) AS object_properties,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $data_property } THEN 1 ELSE 0 END) AS data_properties,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $annotation_property } THEN 1 ELSE 0 END) AS annotation_properties,
-            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
-              WHERE r.predicate = $rdf_type AND t.iri = $individual } THEN 1 ELSE 0 END) AS named_individuals
+            sum(CASE WHEN any(t IN declared_types WHERE t IN $class_types) THEN 1 ELSE 0 END) AS classes,
+            sum(CASE WHEN $object_property IN declared_types THEN 1 ELSE 0 END) AS object_properties,
+            sum(CASE WHEN $data_property IN declared_types THEN 1 ELSE 0 END) AS data_properties,
+            sum(CASE WHEN $annotation_property IN declared_types THEN 1 ELSE 0 END) AS annotation_properties,
+            sum(CASE WHEN $individual IN declared_types THEN 1 ELSE 0 END) AS named_individuals,
+            sum(CASE WHEN any(t IN declared_types WHERE t IN $business_types) THEN 1 ELSE 0 END) AS business_instances
         }
         CALL {
           MATCH (a:OntologyResource)-[r]->(b:OntologyResource)
@@ -334,11 +355,12 @@ class Neo4jPublisher:
           RETURN collect({ontology: ontology, node_count: node_count}) AS ontology_breakdown
         }
         RETURN resources, relationships, classes, object_properties, data_properties,
-               annotation_properties, named_individuals, ontology_breakdown
+               annotation_properties, named_individuals, business_instances, ontology_breakdown
         """
         rows = self._session_rows(query, ontology_id=ontology_id, ontology_prefix=ontology_prefix, rdf_type=str(RDF.type),
             class_types=[str(OWL.Class), str(RDFS.Class)], object_property=str(OWL.ObjectProperty),
-            data_property=str(OWL.DatatypeProperty), annotation_property=str(OWL.AnnotationProperty), individual=str(OWL.NamedIndividual))
+            data_property=str(OWL.DatatypeProperty), annotation_property=str(OWL.AnnotationProperty), individual=str(OWL.NamedIndividual),
+            business_types=list(CEIM_IRIS))
         if not rows:
             raise RuntimeError('Graph metrics query returned no aggregate result')
         result = dict(rows[0])
@@ -348,17 +370,20 @@ class Neo4jPublisher:
         legacy = self._session_rows(cypher.LEGACY_METRICS, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
         if not legacy:
             raise RuntimeError('Existing ontology metrics query returned no aggregate result')
-        result['existing_ontology'] = {**legacy[0], 'definition': 'Existing ingestion records counted by Neo4j labels. These are separate from declared RDF types in the published projection.'}
+        result['existing_ontology'] = {**legacy[0], 'definition': 'Existing ingestion records counted by graph labels. These are separate from declared RDF types in the published projection.'}
         return {**result, 'scope': {'type': 'published_rdf_projection', 'ontology_id': ontology_id or None,
             'sampled': False, 'inferred': False},
-            'definition': 'Declared RDF/OWL types in the published projection. Named individuals count explicit owl:NamedIndividual declarations. Resources include referenced vocabulary and blank nodes; literal values are stored as properties, not relationship edges.'}
+            'definition': 'Declared RDF/OWL types in the published projection. Annotation properties count explicit owl:AnnotationProperty declarations, not annotation statements such as labels and descriptions. Named individuals count explicit owl:NamedIndividual declarations. Business instance records count resources explicitly typed with a recognized DEPO business class within this scope; the same IRI in different ontology projections counts as separate records. Resources include referenced vocabulary and blank nodes; literal values are stored as properties, not relationship edges.'}
 
     def overview(self, *, limit: int = 900) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(
-            "MATCH (n:OntologyResource) RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id "
-            "ORDER BY n.ontology_id, n.label LIMIT $limit",
-            limit=safe_limit,
+            "MATCH (resource:OntologyResource) WITH DISTINCT resource.ontology_id AS scope ORDER BY scope LIMIT 64 "
+            "CALL (scope) { MATCH (n:OntologyResource {ontology_id:scope}) "
+            "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id, n.rdf_types AS rdf_types "
+            "ORDER BY CASE WHEN n.kind IN ['Class','Individual','NamedIndividual'] THEN 0 ELSE 1 END, n.label, id LIMIT $per_scope } "
+            "RETURN id, iri, label, type, ontology_id, rdf_types",
+            per_scope=min(100,safe_limit),
         )
         # Existing ontologies created before the standalone graph service use
         # the domain labels below.  Read them directly when no published
@@ -366,19 +391,30 @@ class Neo4jPublisher:
         # and avoids forcing a destructive graph migration merely to browse an
         # already-ingested ontology.
         legacy = self._session_rows(cypher.LEGACY_OVERVIEW, limit=safe_limit)
-        combined = sorted(nodes + legacy, key=lambda node: (str(node.get('ontology_id') or ''), str(node.get('label') or ''), node['id']))
-        selected = combined[:safe_limit]
-        selected_ids = {node['id'] for node in selected}
-        edges = self._read_edges([node['id'] for node in nodes if node['id'] in selected_ids], limit=safe_limit * 4)
-        edges += self._read_edges([node['id'] for node in legacy if node['id'] in selected_ids], limit=safe_limit * 4, existing=True)
+        instances = self._session_rows(cypher.IMPORTED_INSTANCE_OVERVIEW, limit=safe_limit)
+        unique = {node['id']: node for node in nodes + legacy + instances}
+        combined = sorted(unique.values(), key=lambda node: (str(node.get('ontology_id') or ''), str(node.get('label') or ''), node['id']))
+        # Round-robin scope candidates instead of letting alphabetically first
+        # ontologies consume the complete visible budget.
+        from collections import defaultdict, deque
+        groups=defaultdict(deque)
+        for node in combined: groups[str(node.get('ontology_id') or '')].append(node)
+        selected=[]
+        while len(selected)<safe_limit and any(groups.values()):
+            for group in groups.values():
+                if group and len(selected)<safe_limit: selected.append(group.popleft())
+        # The common edge adapter also retains typed links between imported
+        # instances and published ontology nodes in this bounded selection.
+        edges = self._read_edges([node['id'] for node in selected], limit=safe_limit * 4, existing=True)
         return self._explorer_payload(
             nodes=selected,
             edges=edges[:safe_limit * 4],
-            view={"type": "overview", "source": "published_and_existing_ontology", "limit": safe_limit, "truncated": len(combined) >= safe_limit},
+            view={"type": "overview", "source": "published_existing_and_imported_instances", "limit": safe_limit, "truncated": len(combined) >= safe_limit, "sampling":"round_robin_scope_candidates", "published_scope_limit":64, "per_scope_candidate_limit":min(100,safe_limit)},
         )
 
-    def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict[str, Any]:
-        stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships"}
+    @graph_projection_reader
+    def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '', business_only: bool = False) -> dict[str, Any]:
+        stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships", "what", "which", "where", "when", "why", "how", "are", "does", "find", "matching", "resources", "ontology", "please"}
         terms = sorted({token for token in re.findall(r"[a-z0-9]+", str(query).lower()) if len(token) >= 3 and token not in stop_words})
         if not terms:
             raise ValueError("query must contain at least one searchable term")
@@ -387,9 +423,17 @@ class Neo4jPublisher:
             raise ValueError('ontology_id must be at most 128 characters')
         if len(ontology_prefix) > 128:
             raise ValueError('ontology_prefix must be at most 128 characters')
-        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
-        legacy = self._session_rows(cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
-        combined = sorted(nodes + legacy, key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or '')))
+        nodes = self._session_rows(cypher.ONTOLOGY_BUSINESS_SEARCH if business_only else cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, candidate_limit=min(2000,max(200,safe_limit*10)), ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        legacy = self._session_rows(cypher.LEGACY_BUSINESS_SEARCH if business_only else cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        legacy += self._session_rows(cypher.IMPORTED_INSTANCE_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        if business_only:
+            from backend.Services.graph_view_service import GraphViewService
+            legacy=[node for node in legacy if GraphViewService._is_individual_node({'labels':[node.get('type')], 'properties':node}) and not GraphViewService._is_metadata_like_node({'labels':[node.get('type')], 'properties':node})]
+        unique={}
+        for node in nodes + legacy:
+            if node['id'] not in unique or int(node.get('score') or 0) > int(unique[node['id']].get('score') or 0):
+                unique[node['id']]=node
+        combined = sorted(unique.values(), key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or ''), str(node.get('id') or '')))
         selected = combined[:safe_limit]
         # Read edges after ranking so excluded candidates cannot consume the
         # relationship budget of the resources actually returned to chat.
@@ -399,7 +443,7 @@ class Neo4jPublisher:
         edges = edges[:safe_limit * 4]
         return self._explorer_payload(
             nodes=selected, edges=edges,
-            view={"type": "search", "query": query, "terms": terms, "ontology_id": ontology_id, "limit": safe_limit, "truncated": len(combined) >= safe_limit, "source": "published_and_existing_ontology"},
+            view={"type": "search", "query": query, "terms": terms, "ontology_id": ontology_id, "business_only":business_only,"candidate_limit_per_term":min(2000,max(200,safe_limit*10)), "limit": safe_limit, "truncated": len(combined) >= safe_limit, "source": "published_existing_and_imported"},
         )
 
     def _legacy_overview(self, *, limit: int) -> dict[str, Any]:
@@ -428,9 +472,10 @@ class Neo4jPublisher:
 
     def _bounded_walk(self, root_id: str, depth: int, limit: int, *, existing: bool = False):
         """Expand one hop at a time; never enumerate every multi-hop path."""
-        condition = cypher.LEGACY_NODE_FILTER.replace('n:', 'neighbor:') if existing else 'neighbor:OntologyResource'
+        existing_filter = '(' + cypher.LEGACY_NODE_FILTER + ') OR (' + cypher.IMPORTED_INSTANCE_FILTER + ')'
+        condition = ('(' + existing_filter + ')').replace('n:', 'neighbor:').replace('n.', 'neighbor.') if existing else 'neighbor:OntologyResource'
         scope = "coalesce(neighbor.ontology_id,neighbor.source_ontology,neighbor.prefix) = coalesce(root.ontology_id,root.source_ontology,root.prefix)" if existing else 'neighbor.ontology_id = root.ontology_id'
-        roots = self._session_rows("MATCH (n) WHERE elementId(n)=$id AND " + condition.replace("neighbor:", "n:") + " RETURN elementId(n) AS id, coalesce(n.iri,n.uri) AS iri, coalesce(n.label,n.name,n.iri,n.uri) AS label, coalesce(n.kind,head(labels(n))) AS type, n.ontology_id AS ontology_id", id=root_id)
+        roots = self._session_rows("MATCH (n) WHERE elementId(n)=$id AND " + condition.replace("neighbor:", "n:").replace("neighbor.", "n.") + " RETURN elementId(n) AS id, coalesce(n.iri,n.uri) AS iri, coalesce(n.label,n.name,n.iri,n.uri) AS label, coalesce(n.kind,head(labels(n))) AS type, n.ontology_id AS ontology_id, n.rdf_types AS rdf_types", id=root_id)
         if not roots:
             return []
         selected = {root_id: roots[0]}
@@ -442,7 +487,7 @@ class Neo4jPublisher:
             rows = self._session_rows(
                 "MATCH (root), (n) WHERE elementId(root)=$root AND elementId(n) IN $frontier "
                 "MATCH (n)--(neighbor) WHERE " + condition + " AND " + scope + " AND NOT elementId(neighbor) IN $seen "
-                "RETURN DISTINCT elementId(neighbor) AS id, coalesce(neighbor.iri,neighbor.uri) AS iri, coalesce(neighbor.label,neighbor.name,neighbor.iri,neighbor.uri) AS label, coalesce(neighbor.kind,head(labels(neighbor))) AS type, neighbor.ontology_id AS ontology_id LIMIT $limit",
+                "RETURN DISTINCT elementId(neighbor) AS id, coalesce(neighbor.iri,neighbor.uri) AS iri, coalesce(neighbor.label,neighbor.name,neighbor.iri,neighbor.uri) AS label, coalesce(neighbor.kind,head(labels(neighbor))) AS type, neighbor.ontology_id AS ontology_id, neighbor.rdf_types AS rdf_types LIMIT $limit",
                 root=root_id, frontier=frontier, seen=list(selected), limit=remaining)
             frontier = []
             for row in rows:

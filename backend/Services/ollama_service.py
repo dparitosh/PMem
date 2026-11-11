@@ -134,7 +134,11 @@ Provide a helpful, structured response based on the context."""
             logger.error("Ollama request timed out")
             return None
         except Exception as e:
-            logger.error(f"Ollama query error: {e}")
+            import httpx
+            if isinstance(e, getattr(httpx, 'TimeoutException', ())):
+                logger.error("Ollama request timed out")
+            else:
+                logger.error("Ollama query error: %s", e)
             return None
     
     def generate_guidance(self, file_type: str, schema_info: Optional[Dict[str, Any]] = None) -> str:

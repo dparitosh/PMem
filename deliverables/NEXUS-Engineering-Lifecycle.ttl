@@ -1,0 +1,313 @@
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix demo: <https://example.org/nexus/lifecycle-demo/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ceim:allocatedTo a owl:ObjectProperty .
+
+ceim:bomType a owl:DatatypeProperty .
+
+ceim:boreDiameter a owl:DatatypeProperty .
+
+ceim:datum a owl:DatatypeProperty .
+
+ceim:description a owl:DatatypeProperty .
+
+ceim:diameter a owl:DatatypeProperty .
+
+ceim:documentId a owl:DatatypeProperty .
+
+ceim:documentType a owl:DatatypeProperty .
+
+ceim:fileName a owl:DatatypeProperty .
+
+ceim:geometryType a owl:DatatypeProperty .
+
+ceim:hasBOMLine a owl:ObjectProperty .
+
+ceim:hasDocument a owl:ObjectProperty .
+
+ceim:hasPMI a owl:ObjectProperty .
+
+ceim:hasPart a owl:ObjectProperty .
+
+ceim:hasPreviousRevision a owl:ObjectProperty .
+
+ceim:hasRequirement a owl:ObjectProperty .
+
+ceim:hasShape a owl:ObjectProperty .
+
+ceim:lowerLimit a owl:DatatypeProperty .
+
+ceim:manufacturedBy a owl:ObjectProperty .
+
+ceim:material a owl:DatatypeProperty .
+
+ceim:measuredValue a owl:DatatypeProperty .
+
+ceim:modelType a owl:DatatypeProperty .
+
+ceim:nominalDiameter a owl:DatatypeProperty .
+
+ceim:nominalValue a owl:DatatypeProperty .
+
+ceim:operationNumber a owl:DatatypeProperty .
+
+ceim:partNumber a owl:DatatypeProperty .
+
+ceim:processType a owl:DatatypeProperty .
+
+ceim:quantity a owl:DatatypeProperty .
+
+ceim:releaseStatus a owl:DatatypeProperty .
+
+ceim:requirementId a owl:DatatypeProperty .
+
+ceim:result a owl:DatatypeProperty .
+
+ceim:revision a owl:DatatypeProperty .
+
+ceim:studyId a owl:DatatypeProperty .
+
+ceim:synthetic a owl:DatatypeProperty .
+
+ceim:tolerance a owl:DatatypeProperty .
+
+ceim:unit a owl:DatatypeProperty .
+
+ceim:upperLimit a owl:DatatypeProperty .
+
+ceim:verificationStatus a owl:DatatypeProperty .
+
+ceim:verifies a owl:ObjectProperty .
+
+demo:block a owl:NamedIndividual,
+        ceim:SystemComponent ;
+    rdfs:label "Bearing support subsystem" ;
+    ceim:allocatedTo demo:assembly ;
+    ceim:description "MBSE block allocating the bearing requirement to the bearing design." ;
+    ceim:hasRequirement demo:bearing_req ;
+    ceim:modelType "SysML block" ;
+    ceim:revision "A" ;
+    ceim:synthetic true .
+
+demo:mbom a owl:NamedIndividual,
+        ceim:Assembly ;
+    rdfs:label "mBOM Bearing assembly" ;
+    ceim:bomType "Manufacturing BOM" ;
+    ceim:description "Manufacturing BOM with explicit part identities and quantities." ;
+    ceim:hasBOMLine demo:bom_line_0,
+        demo:bom_line_1 ;
+    ceim:hasPart demo:race,
+        demo:shaft ;
+    ceim:revision "A" ;
+    ceim:synthetic true .
+
+demo:ontology a owl:Ontology ;
+    rdfs:label "Engineering lifecycle" ;
+    rdfs:comment "Illustrative example: generated values and relationships are not customer engineering evidence." .
+
+demo:shaft_candidate a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "SHAFT-1002/B Comparison candidate" ;
+    ceim:description "Similar dimensions do not establish interchangeability." ;
+    ceim:diameter 4e+01 ;
+    ceim:material "Aluminium" ;
+    ceim:partNumber "SHAFT-1002" ;
+    ceim:revision "B" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+ceim:ShapeRepresentation a owl:Class .
+
+ceim:SystemComponent a owl:Class .
+
+demo:assembly a owl:NamedIndividual,
+        ceim:Assembly ;
+    rdfs:label "BRG-2001/A Bearing assembly" ;
+    ceim:description "Bearing assembly with an inner race and a rotor shaft." ;
+    ceim:hasDocument demo:simulation ;
+    ceim:hasPart demo:race,
+        demo:shaft ;
+    ceim:hasRequirement demo:bearing_req ;
+    ceim:partNumber "BRG-2001" ;
+    ceim:revision "A" ;
+    ceim:synthetic true .
+
+demo:bom_line_0 a ceim:BOMLine ;
+    rdfs:label "Bearing assembly line 1" ;
+    ceim:hasPart demo:shaft ;
+    ceim:quantity 1 .
+
+demo:bom_line_1 a ceim:BOMLine ;
+    rdfs:label "Bearing assembly line 2" ;
+    ceim:hasPart demo:race ;
+    ceim:quantity 1 .
+
+demo:cad a owl:NamedIndividual,
+        ceim:EngineeringDocument ;
+    rdfs:label "BRG-2001/A CAD design reference" ;
+    ceim:description "CAD design reference associated with the bearing inner race." ;
+    ceim:documentId "BRG-2001-A-CAD" ;
+    ceim:documentType "CAD reference" ;
+    ceim:fileName "brg_2001_A.jt" ;
+    ceim:synthetic true .
+
+demo:inspection a owl:NamedIndividual,
+        ceim:EngineeringDocument ;
+    rdfs:label "QIF bearing bore inspection result" ;
+    ceim:description "Inspection result linked to its part and characteristic." ;
+    ceim:documentType "QIF inspection result" ;
+    ceim:lowerLimit 2.499e+01 ;
+    ceim:measuredValue 2.5006e+01 ;
+    ceim:nominalValue 2.5e+01 ;
+    ceim:result "Within defined dimensional limits" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" ;
+    ceim:upperLimit 2.501e+01 ;
+    ceim:verifies demo:bearing_req .
+
+demo:process a owl:NamedIndividual,
+        ceim:ManufacturingProcess ;
+    rdfs:label "Bearing bore finish machining" ;
+    ceim:description "Finishing operation associated with the bore definition." ;
+    ceim:operationNumber "OP-020" ;
+    ceim:processType "Finish machining" ;
+    ceim:synthetic true .
+
+demo:shaft_inspection a owl:NamedIndividual,
+        ceim:EngineeringDocument ;
+    rdfs:label "QIF shaft diameter inspection result" ;
+    ceim:description "Inspection result awaiting engineering sign-off." ;
+    ceim:documentType "QIF inspection result" ;
+    ceim:measuredValue 4.0006e+01 ;
+    ceim:nominalValue 4e+01 ;
+    ceim:synthetic true ;
+    ceim:unit "mm" ;
+    ceim:verifies demo:shaft_req .
+
+demo:shaft_pmi a owl:NamedIndividual,
+        ceim:PMIAnnotation ;
+    rdfs:label "Shaft diameter dimensional PMI" ;
+    ceim:datum "A" ;
+    ceim:description "Shaft diameter annotation." ;
+    ceim:lowerLimit 3.999e+01 ;
+    ceim:nominalValue 4e+01 ;
+    ceim:synthetic true ;
+    ceim:tolerance 1e-02 ;
+    ceim:unit "mm" ;
+    ceim:upperLimit 4.001e+01 .
+
+demo:shaft_previous a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "SHAFT-1001/A Rotor shaft" ;
+    ceim:description "Earlier revision retained separately from revision B." ;
+    ceim:diameter 3.98e+01 ;
+    ceim:material "Steel" ;
+    ceim:partNumber "SHAFT-1001" ;
+    ceim:revision "A" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+demo:shaft_process a owl:NamedIndividual,
+        ceim:ManufacturingProcess ;
+    rdfs:label "Rotor shaft finish grinding" ;
+    ceim:description "Manufacturing operation associated with revision B." ;
+    ceim:operationNumber "OP-030" ;
+    ceim:processType "Grinding" ;
+    ceim:synthetic true .
+
+demo:shape a owl:NamedIndividual,
+        ceim:ShapeRepresentation ;
+    rdfs:label "Bearing cylindrical bore" ;
+    ceim:description "Cylindrical bore feature, distinct from the physical part." ;
+    ceim:geometryType "Cylindrical bore" ;
+    ceim:hasPMI demo:bearing_pmi ;
+    ceim:nominalDiameter 2.5e+01 ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+demo:simulation a owl:NamedIndividual,
+        ceim:EngineeringDocument ;
+    rdfs:label "Bearing temperature study" ;
+    ceim:description "Reference to a bearing temperature study." ;
+    ceim:documentType "Simulation reference" ;
+    ceim:studyId "SIM-BRG-001" ;
+    ceim:synthetic true .
+
+ceim:Assembly a owl:Class .
+
+ceim:BOMLine a owl:Class .
+
+ceim:ManufacturingProcess a owl:Class .
+
+ceim:PMIAnnotation a owl:Class .
+
+ceim:Requirement a owl:Class .
+
+demo:bearing_pmi a owl:NamedIndividual,
+        ceim:PMIAnnotation ;
+    rdfs:label "Bearing bore dimensional PMI" ;
+    ceim:datum "A" ;
+    ceim:description "Bore dimension, datum and tolerance annotation." ;
+    ceim:lowerLimit 2.499e+01 ;
+    ceim:nominalValue 2.5e+01 ;
+    ceim:synthetic true ;
+    ceim:tolerance 1e-02 ;
+    ceim:unit "mm" ;
+    ceim:upperLimit 2.501e+01 .
+
+demo:shaft_req a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "REQ-SHAFT-001 Shaft diameter" ;
+    ceim:description "The revised shaft diameter shall be 40.0 mm within the stated dimensional tolerance." ;
+    ceim:requirementId "REQ-SHAFT-001" ;
+    ceim:synthetic true ;
+    ceim:verificationStatus "Requires engineering review" .
+
+demo:race a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "BRG-2001 Inner race" ;
+    ceim:boreDiameter 2.5e+01 ;
+    ceim:description "Bearing inner race with a recorded bore dimension." ;
+    ceim:hasDocument demo:cad,
+        demo:inspection ;
+    ceim:hasPMI demo:bearing_pmi ;
+    ceim:hasRequirement demo:bearing_req ;
+    ceim:hasShape demo:shape ;
+    ceim:manufacturedBy demo:process ;
+    ceim:partNumber "BRG-2001-IR" ;
+    ceim:revision "A" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+demo:shaft a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "SHAFT-1001/B Rotor shaft" ;
+    ceim:description "Revised shaft design linked to manufacturing and inspection evidence." ;
+    ceim:diameter 4e+01 ;
+    ceim:hasDocument demo:shaft_inspection ;
+    ceim:hasPMI demo:shaft_pmi ;
+    ceim:hasPreviousRevision demo:shaft_previous ;
+    ceim:hasRequirement demo:shaft_req ;
+    ceim:manufacturedBy demo:shaft_process ;
+    ceim:material "Steel" ;
+    ceim:partNumber "SHAFT-1001" ;
+    ceim:releaseStatus "Review pending" ;
+    ceim:revision "B" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+ceim:EngineeringDocument a owl:Class .
+
+ceim:Part a owl:Class .
+
+demo:bearing_req a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "REQ-BRG-001 Bearing bore" ;
+    ceim:description "Bearing bore nominal diameter shall be 25.0 mm; evaluate the recorded tolerance and inspection evidence." ;
+    ceim:requirementId "REQ-BRG-001" ;
+    ceim:synthetic true ;
+    ceim:verificationStatus "Inspection evidence available for review" .
+

@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from backend.Services.unified_data_import import FileParser
@@ -30,7 +31,8 @@ def test_stpx_streaming_parser_preserves_identifiers_refs_and_text(tmp_path: Pat
 
     entities = list(iter_part21_entities(path))
     assert len(entities) >= 5
-    assert any(e.entity_type == "PART" and e.source_identifier == "PartOne" for e in entities)
+    # BO-model `id` is a scoped business value; the document identity is `uid`.
+    assert any(e.entity_type == "PART" and e.source_identifier == "part-1" for e in entities)
     assert any(e.entity_type == "OCCURRENCE" and e.ref_ids for e in entities)
     assert any(e.text_value == "Motor Assembly" for e in entities)
 
@@ -45,7 +47,7 @@ def test_stpx_streaming_parser_preserves_identifiers_refs_and_text(tmp_path: Pat
     assert part_rows
     assert part_rows[0]["semantic_role"] == "product"
     assert part_rows[0]["is_cad_business_object"] is True
-    assert part_rows[0]["external_id"] == "PartOne"
+    assert part_rows[0]["external_id"] == "part-1"
     assert part_rows[0]["name"] == "Motor Assembly"
     occurrence_rows = [row for row in rows if row.get("entity_type") == "OCCURRENCE"]
     assert occurrence_rows
@@ -85,7 +87,8 @@ def test_stpx_bo_model_entities_are_classified_as_cad_business_objects(tmp_path:
     assert "PART_VIEW" in representation_types
     assert "OCCURRENCE" in topology_types
     assert {"PLACEMENT", "CARTESIAN_TRANSFORMATION", "ROTATION_MATRIX", "TRANSLATION_VECTOR"} <= geometry_types
-    assert any(item.external_id == "PartOne" and item.name == "PartOne" for item in doc.cad_products)
+    # This sample has no <Name> element, so the display name falls back to the uid.
+    assert any(item.external_id == "part-1" and item.name == "part-1" for item in doc.cad_products)
 
     rows, stats = FileParser._parse_step(path.read_bytes())
     by_type = {row["entity_type"]: row for row in rows}

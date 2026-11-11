@@ -5,6 +5,7 @@ from backend.oslc_service.sync import OSLCSyncStore, OSLCSynchronizer
 
 
 class FakeOSLCClient:
+    base_url = 'https://provider.example/api'
     def query(self, resource_type, parameters):
         return {"value": [{"id": "R-1", "type": resource_type, "params": parameters}]}
 

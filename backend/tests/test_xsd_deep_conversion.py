@@ -83,7 +83,7 @@ def test_choice_prohibition_and_inheritance_shapes(tmp_path):
       </xs:extension></xs:complexContent></xs:complexType>
     </xs:schema>''', encoding='utf-8')
     output = tmp_path / 'model.ttl'
-    convert_xsd_to_owl(OntologyConfig(base_uri='urn:model:', prefix='m', schema_dir=str(tmp_path), output_ttl=str(output)))
+    convert_xsd_to_owl(OntologyConfig(base_uri='urn:model:', prefix='m', title='Model', description='Conversion regression', schema_dir=str(tmp_path), output_ttl=str(output)))
     graph = Graph().parse(output, format='turtle')
     assert list(graph.triples((None, SH.xone, None)))
     assert not list(graph.triples((None, SH.closed, Literal(True))))

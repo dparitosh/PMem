@@ -1,9 +1,6 @@
-export const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive, graphViewMode = 'ontology') => {
-  if (['ontology', 'individual'].includes(graphViewMode)) return true;
-  if (graphSearchActive) return true;
-  if (nodeCount > 220 || linkCount > 260) return false;
-  return nodeCount > 0 || linkCount > 0;
-};
+// Keep dense overviews readable; focus and hover labels are handled by the renderer.
+export const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive) =>
+  (nodeCount > 0 || linkCount > 0) && nodeCount <= (graphSearchActive ? 100 : 80) && linkCount <= (graphSearchActive ? 180 : 140);
 
 export const getNodeLabelStyle = (nodeCount, graphViewMode = 'ontology') => {
   if (graphViewMode === 'ontology') {
@@ -37,7 +34,7 @@ export const getNodeLabelStyle = (nodeCount, graphViewMode = 'ontology') => {
 };
 
 export const shouldRenderRelationshipLabels = (nodeCount, linkCount, graphSearchActive, graphViewMode = 'ontology') => {
-  if (graphViewMode === 'individual') return true;
+  if (graphViewMode === 'individual') return nodeCount <= 80 && linkCount <= 120;
   if (graphSearchActive) return linkCount <= 120;
   if (graphViewMode === 'ontology') return linkCount <= 180 && nodeCount <= 220;
   return linkCount <= 60 && nodeCount <= 80;

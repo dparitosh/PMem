@@ -14,7 +14,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 Write-Host 'Starting DEPO: checking backend release files (dependency runtimes are excluded)...' -ForegroundColor Cyan
+if ($env:DEPO_VANILLA_MAINTENANCE -eq 'true') { throw 'Close the isolated reset maintenance host before starting normal services. Do not persist DEPO_VANILLA_MAINTENANCE in environment files.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+if (Test-Path -LiteralPath (Join-Path $root 'logs/vanilla-reset/active.json')) { throw 'A vanilla reset has an incomplete or unverified outcome. Inspect logs/vanilla-reset and reconcile it in isolated maintenance before starting application services.' }
+$resetLockPath = Join-Path $root 'logs/windows-services/vanilla-maintenance.lock'
+if (Test-Path -LiteralPath $resetLockPath) {
+  try {
+    $resetProbe = [IO.File]::Open($resetLockPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $resetProbe.Dispose()
+  } catch { throw 'Isolated vanilla-reset maintenance is active. Close its console before starting application services.' }
+}
 $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
 $codeCheck = Join-Path $root 'backend\depo_platform\release_code_check.py'
@@ -29,7 +38,9 @@ Write-Host 'Backend release fingerprint verified. Loading deployment configurati
 . (Join-Path $PSScriptRoot 'process-control.ps1')
 . (Join-Path $PSScriptRoot 'service-runtimes.ps1')
 . (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
+Assert-DepoWindowsManagementAccess
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+if ($env:DEPO_VANILLA_MAINTENANCE -eq 'true') { throw 'DEPO_VANILLA_MAINTENANCE is reserved for the isolated maintenance launcher. Remove it from the environment file before normal startup.' }
 $configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
 $corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
 if (-not $corsProbeOrigin) { throw 'ALLOWED_ORIGINS must contain at least one browser origin.' }
@@ -69,6 +80,14 @@ try {
 
 
 $requestedSparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
+
+Write-Host 'Checking embedded semantic foundation and bounded OWL-DL runtime...'
+Push-Location $root
+try {
+  $foundationPython = Get-DepoServicePython -Root $root -ServiceId 'ontology'
+  & $foundationPython -B -m backend.ontology_service.foundation
+  if ($LASTEXITCODE -ne 0) { throw 'Embedded foundation validation failed. Restore matching foundation files and the verified worker before starting services.' }
+} finally { Pop-Location }
 
 $manifestPath = Join-Path $root "infra\deployment\services.json"
 if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not found: $manifestPath" }
@@ -195,7 +214,17 @@ foreach ($service in $services) {
   $arguments = if ($service.Port) { "-m backend.depo_platform.windows_runtime uvicorn $($service.Module) --host $BindHost --port $($service.Port) --no-proxy-headers" } else { "-m backend.depo_platform.windows_runtime $($service.Module)" }
   $stdout = Join-Path $stateDir "$($service.Name).out.log"
   $stderr = Join-Path $stateDir "$($service.Name).err.log"
-  $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+  $bootstrapStdout = Join-Path $stateDir "$($service.Name).bootstrap.out.log"
+  $bootstrapStderr = Join-Path $stateDir "$($service.Name).bootstrap.err.log"
+  # Start-Process truncates redirected files. Preserve the previous launch's
+  # diagnostics before opening them again, including failed startup evidence.
+  $priorLogs = @($stdout, $stderr, $bootstrapStdout, $bootstrapStderr) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) -and (Get-Item -LiteralPath $_).Length -gt 0 }
+  if ($priorLogs.Count -gt 0) {
+    $archiveDir = Join-Path $stateDir ('archive/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
+    foreach ($priorLog in $priorLogs) { Copy-Item -LiteralPath $priorLog -Destination (Join-Path $archiveDir (Split-Path $priorLog -Leaf)) }
+  }
+  $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $bootstrapStdout -RedirectStandardError $bootstrapStderr -PassThru
   Write-Host "Launched '$($service.Name)' (PID $($process.Id)); readiness validation follows."
   # Roll back only processes launched by this invocation. Existing healthy
   # services are intentionally not part of a failed start attempt.
@@ -217,7 +246,7 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     $servicePidPath = Join-Path $stateDir "$($service.Name).pid"
     $servicePid = [int](Get-Content -LiteralPath $servicePidPath)
     if (-not (Get-Process -Id $servicePid -ErrorAction SilentlyContinue)) {
-      throw "DEPO service '$($service.Name)' exited before readiness (PID $servicePid). Inspect $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log for the startup exception. Increasing the startup timeout will not repair an exited process."
+      throw "DEPO service '$($service.Name)' exited before readiness (PID $servicePid). Inspect $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log and $stateDir\$($service.Name).bootstrap.err.log for the startup exception. Increasing the startup timeout will not repair an exited process."
     }
     try {
       # Liveness means a Python process exists; readiness also verifies every
@@ -267,6 +296,9 @@ foreach ($service in $services | Where-Object { $_.Port }) {
         default { 'Inspect the service log and endpoint response; this failure is not proven to be a key mismatch.' }
       }
       Write-Warning "Read-access probe for '$($service.Name)' failed (HTTP $probeStatus; 0 means no HTTP status). $probeAction Log: $stateDir\$($service.Name).err.log"
+      if ($probeStatus -notin @(401,403)) {
+        throw "Service '$($service.Name)' read-access verification did not complete (HTTP $probeStatus). $probeAction This is not a confirmed credential rejection. Keep existing credentials; inspect service responsiveness, listener and dependency logs before retrying startup."
+      }
       if ($env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
         throw "Service '$($service.Name)' rejected the root environment GRAPH_READ_TOKEN or its credential check failed. PostgreSQL stores the authoritative key; restart and schema migration preserve existing profiles. Check expiry/revocation and the selected file. If that file contains the intended replacement keys, deliberately run infra/windows/apply-depo-service-credentials.ps1 -EnvFile '$EnvFile' -ReplaceExisting, then retry startup. That command rotates all key profiles supplied in the file. Otherwise restore the current central read key in the file. Check service logs for database errors; ensure /auth/access exists in the deployed backend."
       }

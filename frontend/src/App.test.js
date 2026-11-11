@@ -78,6 +78,17 @@ test('an anchor hash does not replace the active workspace', async () => {
   expect(screen.getByTestId('page-graph')).toBeInTheDocument();
 });
 
+test('direct catalog navigation and history changes preserve distinct registry routes', async () => {
+  window.history.replaceState({}, '', '/#/catalog');
+  render(<App />);
+  await screen.findByTestId('page-products');
+  act(() => { window.history.replaceState({}, '', '/#/registry'); window.dispatchEvent(new Event('popstate')); });
+  await screen.findByTestId('page-registry');
+  act(() => { window.history.replaceState({}, '', '/#/catalog'); window.dispatchEvent(new Event('hashchange')); });
+  await screen.findByTestId('page-products');
+  expect(window.location.hash).toBe('#/catalog');
+});
+
 beforeEach(() => {
   platformAPI.coreHealth.mockReset();
   platformAPI.coreHealth.mockResolvedValue({ ontology: true });
@@ -91,16 +102,25 @@ test('the first all-service health failure clears the online indicator', async (
   expect(await screen.findByText('offline')).toBeInTheDocument();
 });
 
-test('renders the landing-page boundary when home is persisted', () => {
-  window.localStorage.setItem('depo.activePage', 'home');
+test('successful access verification immediately refreshes an earlier health failure', async () => {
+  platformAPI.coreHealth.mockResolvedValueOnce({ontology:false}).mockResolvedValue({ontology:true});
   render(<App />);
-  expect(screen.getByText('Landing Mock')).toBeInTheDocument();
+  await screen.findByText('offline');
+  act(()=>window.dispatchEvent(new Event('depo:access-verified')));
+  await screen.findByText('online');
+  expect(platformAPI.coreHealth).toHaveBeenCalledTimes(2);
 });
 
-test('renders the landing page for the root hash route', () => {
+test('renders the landing-page boundary when home is persisted', async () => {
+  window.localStorage.setItem('depo.activePage', 'home');
+  render(<App />);
+  expect(await screen.findByText('Landing Mock')).toBeInTheDocument();
+});
+
+test('renders the landing page for the root hash route', async () => {
   window.history.replaceState({}, '', '/#/');
   render(<App />);
-  expect(screen.getByText('Landing Mock')).toBeInTheDocument();
+  expect(await screen.findByText('Landing Mock')).toBeInTheDocument();
 });
 
 test('falls back to Graph Explorer for invalid persisted navigation', async () => {
@@ -114,6 +134,7 @@ test('falls back to Graph Explorer for invalid persisted navigation', async () =
 test('routes every application navigation item to its page boundary', async () => {
   window.history.replaceState({}, '', '/#/graph');
   render(<App />);
+  await screen.findByTestId('page-graph');
   const routes = [
     ['Import', 'page-import'],
     ['Ontology Junction', 'page-ontology'],

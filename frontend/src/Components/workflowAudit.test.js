@@ -1,3 +1,4 @@
+vi.mock('@siemens/ix-react',()=>import('../ui/ix/ixReact.mock.js'));
 import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { vi } from 'vitest';

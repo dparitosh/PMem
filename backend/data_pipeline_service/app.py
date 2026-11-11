@@ -7,6 +7,10 @@ from backend.depo_platform.service_runtime import create_service_app
 
 from .router import router, runner, execute_configured_job
 from .speed_router import router as speed_router
+from .rest_router import router as rest_router
+from .connector_router import router as connector_router
+from .semantic_catalog import router as semantic_router
+from .analytics_catalog import router as analytics_router
 from .scheduler import ScheduledJobSupervisor
 
 
@@ -55,3 +59,7 @@ app.include_router(create_odata_catalog_router(
 ))
 app.include_router(router, prefix="/api/v1")
 app.include_router(speed_router, prefix="/api/v1")
+app.include_router(rest_router, prefix="/api/v1")
+app.include_router(connector_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(semantic_router, prefix="/api/v1")

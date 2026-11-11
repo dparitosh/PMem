@@ -3,8 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import DataFlowPage from './DataFlowPage';
 
+beforeEach(()=>{window.history.replaceState(null,'','#/data-flow');});
+
 vi.mock('../services/apiClient', () => ({
   dataPipelineAPI: {
+    speedReviews: vi.fn().mockResolvedValue({data:{reconciliations:[],next_offset:null}}),
     health: vi.fn().mockResolvedValue({ data: { status: 'configured' } }),
     telemetry: vi.fn().mockResolvedValue({ data: {
       durable_job_telemetry: { runs: 100, records_accepted: 0, records_rejected: 0, limit: 100 },
@@ -16,6 +19,7 @@ vi.mock('../services/apiClient', () => ({
     disableDefinition: vi.fn().mockResolvedValue({ data: { lifecycle_state: 'disabled' } }),
     scheduleDefinition: vi.fn().mockResolvedValue({ data: { schedule: { interval_seconds: 300 } } }),
     disableSchedule: vi.fn().mockResolvedValue({ data: {} }),
+    executionIdentity: vi.fn().mockResolvedValue({data:{actor:'pipeline-steward'}}),
     replay: vi.fn().mockResolvedValue({ data: { status: 'queued', run_manifest: { run_id: 'replayed', status: 'queued', replay_of: 'one' } } }),
     getRun: vi.fn().mockImplementation(id => Promise.resolve({ data: { run_id: id, status: 'queued', replay_of: 'one' } })),
   },
@@ -32,6 +36,7 @@ test('marks quality unknown when the run evidence endpoint fails', async () => {
   const { dataPipelineAPI } = await import('../services/apiClient');
   dataPipelineAPI.runs.mockRejectedValueOnce(new Error('Run evidence unavailable'));
   render(<DataFlowPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Quality & evidence'}));
   expect(await screen.findByText(/Evidence is unavailable or stale/)).toBeInTheDocument();
   expect(screen.getByText('unknown')).toBeInTheDocument();
 });
@@ -41,42 +46,53 @@ test('Run now reuses the retained input instead of submitting an empty payload',
   dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'test',version:'1',lifecycle_state:'approved',enabled:true}]}});
   dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[{run_id:'retained-input',job_id:'test',job_version:'1',status:'completed'}]}});
   render(<DataFlowPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
   fireEvent.click(await screen.findByRole('button', {name:'Run now'}));
   await waitFor(() => expect(dataPipelineAPI.replay).toHaveBeenCalledWith('retained-input', expect.any(Object)));
 });
 
 test('sends explicit in-memory approval data for a direct replay', async () => {
   const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.runs.mockReset().mockResolvedValue({ data: { runs: [{ run_id: 'one', job_id: 'test', output_manifest: { counts: { accepted_records: 987 } } }] } });
   render(<DataFlowPage />);
   await screen.findByText('configured');
 
-  fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
+  fireEvent.click(screen.getByRole('tab',{name:'Approval & publication'}));
   setCredentialProfile('DATA_JOB_EXECUTION_TOKEN', 'direct-token');
-  fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
-
+  fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
+  fireEvent.click(screen.getByRole('tab',{name:'Run monitor'}));
+  const runRow = (await screen.findByRole('button', { name: 'test' })).closest('tr');
+  fireEvent.click([...runRow.querySelectorAll('button')].find(button => button.textContent === 'Replay'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Confirm replay retained run' }));
   await waitFor(() => expect(dataPipelineAPI.replay).toHaveBeenCalledWith('one', {
     approved_by: 'pipeline-steward',
     approval_token: 'direct-token',
+    idempotency_key: expect.any(String),
   }));
   await screen.findByText('replayed');
+  expect(screen.getByText(/Replay accepted\. Run replayed is queued/)).toBeInTheDocument();
   expect(screen.queryByLabelText('Replay execution API key')).toBeNull();
 });
 
 test('approves a registered data-job definition through the pipeline service', async () => {
   const { dataPipelineAPI } = await import('../services/apiClient');
-  dataPipelineAPI.definitions.mockResolvedValueOnce({ data: { definitions: [{
+  dataPipelineAPI.definitions.mockResolvedValue({ data: { definitions: [{
     job_id: 'qif-quality', version: '1.0.0', name: 'QIF quality', owner: 'governance',
     lifecycle_state: 'draft', enabled: true, input_contract: 'records-v1', output_contract: 'quality-v1',
   }] } });
   render(<DataFlowPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
   await screen.findByText('QIF quality');
-  fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
+  fireEvent.click(screen.getByRole('tab',{name:'Approval & publication'}));
   setCredentialProfile('DATA_JOB_APPROVAL_TOKEN', 'direct-token');
-  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
 
   await waitFor(() => expect(dataPipelineAPI.approveDefinition).toHaveBeenCalledWith('qif-quality', '1.0.0', {
     approved_by: 'pipeline-steward', approval_token: 'direct-token',
   }));
+  dataPipelineAPI.definitions.mockResolvedValue({ data: { definitions: [] } });
 });
 
 test('fetches a requested historical run absent from the recent list', async () => {
@@ -84,7 +100,7 @@ test('fetches a requested historical run absent from the recent list', async () 
   window.location.hash = '#/data-flow/historical';
   render(<DataFlowPage />);
   await screen.findByText('historical');
-  expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('historical');
+  expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('historical',expect.objectContaining({signal:expect.any(AbortSignal)}));
   window.location.hash = '';
 });
 test('does not select another run when a requested run is missing', async () => {
@@ -95,4 +111,170 @@ test('does not select another run when a requested run is missing', async () => 
   await screen.findByText(/Requested run is missing or inaccessible/);
   expect(screen.queryByText('Run ID')).not.toBeInTheDocument();
   window.location.hash = '';
+});
+
+test('cockpit separates pipeline configuration from runs and filters run status without executing a job',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.replay.mockClear();
+ render(<DataFlowPage/>);
+ await screen.findByText('configured');
+ expect(screen.queryByRole('heading',{name:'Data-job definitions'})).toBeNull();
+ fireEvent.change(screen.getByLabelText('Run status'),{target:{value:'failed'}});
+ expect(screen.getByText('No durable job runs match the current filter.')).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+ expect(screen.getByRole('heading',{name:'Data-job definitions'})).toBeVisible();
+ expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+test('pipeline jobs explain missing inputs and prevent empty run and schedule attempts',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'new',version:'1',lifecycle_state:'approved',enabled:true}]}});
+ render(<DataFlowPage/>);
+ await screen.findByText('configured');
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+ expect(await screen.findByRole('button',{name:'Run now'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Schedule',exact:true})).toBeDisabled();
+ expect(screen.getByRole('link',{name:'Import source data first'})).toHaveAttribute('href','#/import');
+});
+
+test('quality does not claim a healthy outcome before any run exists',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[]}});
+ render(<DataFlowPage/>);
+ await screen.findByText('configured');
+ fireEvent.click(screen.getByRole('tab',{name:'Quality & evidence'}));
+ expect(screen.getByText('No retained runs yet. Quality has not been evaluated.')).toBeVisible();
+ expect(screen.getByText('unknown')).toBeVisible();
+ expect(screen.queryByText('ok')).toBeNull();
+});
+
+
+test('run-id search retains published receipt and removes repeat publication action',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[{run_id:'exact-run',job_id:'semantic-source-validation',status:'completed',job_type:'validate-semantic-batch',output_manifest:{publication:{status:'published',publication_id:'receipt',ontology_id:'ceim-document'}}}]}});
+ render(<DataFlowPage/>);
+ expect(await screen.findByText('Published · receipt retained')).toBeInTheDocument();
+ fireEvent.change(screen.getByRole('textbox',{name:'Find a run'}),{target:{value:'exact-run'}});
+ expect(screen.getByText('Published · receipt retained')).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Publish',exact:true})).toBeNull();
+});
+
+test('disabled Spark is separate from the responding pipeline API',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.health.mockResolvedValueOnce({data:{status:'disabled',worker_count:1}});
+ render(<DataFlowPage/>);
+ await screen.findByText('responding');
+ expect(screen.getByText('Pipeline API').parentElement).toHaveTextContent('responding');
+ expect(screen.getByText('Spark engine').parentElement).toHaveTextContent('disabled');
+});
+
+test('query-style run links select the requested run instead of the latest record',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');window.history.replaceState(null,'','#/data-flow?run_id=requested-query');
+ render(<DataFlowPage/>);expect(await screen.findByText('requested-query')).toBeVisible();
+ expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('requested-query',expect.objectContaining({signal:expect.any(AbortSignal)}));window.history.replaceState(null,'','#/');
+});
+
+test('renders only 25 loaded run rows per page while retaining all loaded evidence',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:Array.from({length:100},(_,i)=>({run_id:`run-${i}`,job_id:`job-${i}`,status:'completed'}))}});
+ render(<DataFlowPage/>);await screen.findByRole('button',{name:'job-0',exact:true});
+ expect(screen.queryByRole('button',{name:'job-25',exact:true})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Next runs'}));expect(screen.getByRole('button',{name:'job-25',exact:true})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'job-0',exact:true})).not.toBeInTheDocument();
+});
+
+
+test('changing a run deep link clears old evidence while the new response is pending',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ window.location.hash='#/data-flow';render(<DataFlowPage/>);
+ await screen.findByText('Run ID');
+ let resolve;dataPipelineAPI.runs.mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+ window.location.hash='#/data-flow?run_id=another';fireEvent(window,new Event('hashchange'));
+ await waitFor(()=>expect(screen.queryByText('Run ID')).not.toBeInTheDocument());
+ resolve({data:{runs:[{run_id:'another',status:'completed'}]}});
+ await screen.findByText('another');window.location.hash='';
+});
+
+
+test('rejects execution preflight once and blocks repeated replay until revalidation',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.replay.mockClear();dataPipelineAPI.executionIdentity.mockClear();
+ dataPipelineAPI.executionIdentity.mockRejectedValueOnce({response:{status:403,data:{detail:'Browser session scope is unavailable or credentials changed'}}});
+ render(<DataFlowPage/>);await screen.findByText('configured');
+ const replay=await screen.findByRole('button',{name:'Replay',exact:true});fireEvent.click(replay);
+ fireEvent.change(await screen.findByLabelText('Action approver'),{target:{value:'pipeline-steward'}});fireEvent.click(screen.getByRole('button',{name:'Confirm replay retained run'}));
+ await screen.findByText(/Replay access was rejected/);
+ expect(replay).toBeDisabled();fireEvent.click(replay);
+ expect(dataPipelineAPI.executionIdentity).toHaveBeenCalledTimes(1);
+ expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+ fireEvent(window,new Event('depo:access-verified'));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Replay',exact:true})).toBeEnabled());
+});
+
+test('connection change during execution preflight never submits replay',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');dataPipelineAPI.replay.mockClear();let finish;
+ dataPipelineAPI.executionIdentity.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<DataFlowPage/>);await screen.findByText('configured');
+ fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
+ fireEvent.change(await screen.findByLabelText('Action approver'),{target:{value:'pipeline-steward'}});fireEvent.click(screen.getByRole('button',{name:'Confirm replay retained run'}));
+ await waitFor(()=>expect(finish).toBeTypeOf('function'));
+ fireEvent(window,new Event('depo:session-replaced'));finish({data:{actor:'old-connection'}});
+ await waitFor(()=>expect(screen.queryByText('Replaying…')).toBeNull());
+ expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+test('invalid execution identity fails before the write request',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');dataPipelineAPI.replay.mockClear();
+ dataPipelineAPI.executionIdentity.mockResolvedValueOnce({data:{}});
+ render(<DataFlowPage/>);await screen.findByText('configured');fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
+ fireEvent.change(await screen.findByLabelText('Action approver'),{target:{value:'pipeline-steward'}});fireEvent.click(screen.getByRole('button',{name:'Confirm replay retained run'}));
+ await screen.findByText(/Execution identity could not be verified/);expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+
+test('queued and running runs cannot submit another replay', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.replay.mockClear();
+  dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[
+    {run_id:'queued-input',job_id:'queued-job',status:'queued'},
+    {run_id:'running-input',job_id:'running-job',status:'running'}]}});
+  render(<DataFlowPage />);
+  await screen.findByText('queued-job');
+  for(const button of screen.getAllByRole('button',{name:'Replay',exact:true})) {
+    expect(button).toBeDisabled(); fireEvent.click(button);
+  }
+  expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
+});
+
+
+test('workspace is deep linked and follows browser history without replaying', async () => {
+  window.history.replaceState(null,'','#/data-flow?view=quality&run_id=historical');
+  render(<DataFlowPage />);
+  expect(screen.getByRole('tab',{name:'Quality & evidence'})).toHaveAttribute('aria-selected','true');
+  fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+  expect(window.location.hash).toContain('view=pipelines');
+  expect(window.location.hash).toContain('run_id=historical');
+  window.history.replaceState(null,'','#/data-flow?view=events');
+  fireEvent(window,new PopStateEvent('popstate'));
+  expect(screen.getByRole('tab',{name:'Event reviews'})).toHaveAttribute('aria-selected','true');
+});
+
+test('leaving Data Flow aborts all owned read requests', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.health.mockImplementationOnce(()=>new Promise(()=>{}));
+  const {unmount}=render(<DataFlowPage />);
+  const options=dataPipelineAPI.health.mock.calls.at(-1)[0];
+  expect(options.signal.aborted).toBe(false);
+  unmount();expect(options.signal.aborted).toBe(true);
+});
+
+test('definition approval requires a visible reviewer setup before sending a request',async()=>{
+ const {dataPipelineAPI}=await import('../services/apiClient');
+ dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'review-required',version:'1',name:'Review required',lifecycle_state:'draft'}]}});
+ render(<DataFlowPage/>);
+ fireEvent.click(screen.getByRole('tab',{name:'Pipeline jobs'}));
+ expect(await screen.findByRole('button',{name:'Approve',exact:true})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'Set reviewer for approvals'}));
+ expect(screen.getByRole('tab',{name:'Approval & publication'})).toHaveAttribute('aria-selected','true');
+ expect(screen.getByLabelText('Replay approver')).toBeVisible();
 });

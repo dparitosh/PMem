@@ -18,6 +18,9 @@ def client(monkeypatch):
     monkeypatch.setenv('GRAPH_READ_TOKEN', 'reader')
     monkeypatch.setenv('GRAPH_SERVICE_URL', 'http://graph/api/v1')
     monkeypatch.setattr(router, 'companion_job_store', InMemoryRegistry('lifecycle-chat-jobs'))
+    # The SQL-backed scope query has its own contract suite; lifecycle tests
+    # replace that persistence boundary rather than invoking SQL on this stub.
+    monkeypatch.setattr(router, '_session_turns', lambda *args, **kwargs: [])
     monkeypatch.setattr(router, 'workflow_controls', InMemoryRegistry('lifecycle-controls'))
     monkeypatch.setattr(router, 'workflow_heartbeats', InMemoryRegistry('lifecycle-heartbeats'))
     monkeypatch.setattr(router.AgentMemoryService, 'recent_context', lambda *args: {'enabled': False, 'messages': []})
@@ -201,7 +204,8 @@ def test_telemetry_failure_does_not_change_completed_tool(client, monkeypatch):
 
 def test_companion_uses_credential_scoped_memory(client, monkeypatch):
     queries, recorded = [], []
-    monkeypatch.setattr(router.AgentMemoryService, 'recent_context', lambda *args: {'messages': [{'role': 'user', 'text': 'Motor assembly'}]})
+    monkeypatch.setattr(router.AgentMemoryService, 'enabled', lambda: True)
+    monkeypatch.setattr(router, '_session_turns', lambda *args: [{'user_request':'Motor assembly','graph_context':{}}])
     monkeypatch.setattr(router.AgentMemoryService, 'record_chat_turn', lambda **kwargs: recorded.append(kwargs))
     async def ask(query, **kwargs):
         queries.append(query)

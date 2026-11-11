@@ -77,6 +77,8 @@ class OllamaRestRunnable(Runnable):
         if type(body.get('stream', False)) is not bool:
             raise ValueError('Ollama stream must be a boolean')
         bounded_prompt_json(body)
+        from .payload_limits import check_model_budget
+        check_model_budget(body)
         ollama_headers(self.endpoint)
         budget = self.timeout if self.timeout is not None else ollama_timeout()
         operation = current_operation()

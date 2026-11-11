@@ -110,7 +110,7 @@ class BusinessContextService:
         return {"object_id": object_id, "used_by": incoming, "count": len(incoming)}
 
     def search(self, query: str, limit: int = 50) -> dict[str, Any]:
-        self._load_persisted_state()
+        self._load_persisted_state(require_persistence=True)
         query = str(query or "").strip()
         if not query:
             raise ValueError("query is required")

@@ -1,9 +1,21 @@
 """Parameterized, read-only Cypher queries used by graph read surfaces."""
 from __future__ import annotations
+from .business_types import business_instance_filter
 
 # Older ingestion writes typed nodes directly, without an OntologyResource
 # projection. Keep its counts distinct from explicit RDF declarations.
-LEGACY_NODE_FILTER = "(n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:OntologyResource"
+LEGACY_NODE_FILTER = "(n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty OR n:AnnotationProperty OR n:NamedIndividual) AND NOT n:OntologyResource AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity"
+# Structural imports are business records even before ontology linking. Require
+# both ingestion identity markers; never broaden overview to every Neo4j node
+# (which would expose worker, memory, credential and audit records).
+IMPORTED_INSTANCE_FILTER = "(n.import_id IS NOT NULL AND n.import_row_key IS NOT NULL) AND NOT (n:OntologyResource OR n:StagedOntologyResource OR n:RetainedOntologyIdentity OR n:OntologyPublication OR n:GraphChunk OR n:DatasheetChunk)"
+IMPORTED_INSTANCE_OVERVIEW = (
+    'MATCH (n) WHERE ' + IMPORTED_INSTANCE_FILTER + ' '
+    'RETURN elementId(n) AS id, coalesce(n.name, n.label, n.iri, n.uri) AS label, '
+    "coalesce(n.element_type, head(labels(n)), 'Individual') AS type, "
+    'n.iri AS iri, coalesce(n.ontology_id, n.source_ontology, n.ontology_prefix) AS ontology_id '
+    'ORDER BY label, id LIMIT $limit'
+)
 LEGACY_SCOPE_FILTER = "(($ontology_id = '' AND $ontology_prefix = '') OR ($ontology_id <> '' AND (n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id)) OR ($ontology_prefix <> '' AND (n.prefix = $ontology_prefix OR n.source_ontology = $ontology_prefix) AND ($ontology_id = '' OR (n.ontology_id IS NULL AND (n.source_ontology IS NULL OR n.source_ontology = $ontology_prefix)))))"
 LEGACY_METRICS = (
     "CALL { MATCH (n) WHERE " + LEGACY_NODE_FILTER + " AND " + LEGACY_SCOPE_FILTER + " "
@@ -22,14 +34,16 @@ LEGACY_SEARCH = (
     "MATCH (n) WHERE " + LEGACY_NODE_FILTER + " AND " + LEGACY_SCOPE_FILTER + " "
     "WITH n, coalesce(n.name, n.label, n.uri, n.iri, '') AS label, "
     "coalesce(n.uri, n.iri, '') AS iri "
-    "WITH n, label, reduce(score = 0, term IN $terms | score + CASE "
+    "WITH n, label, iri, reduce(score = 0, term IN $terms | score + CASE "
     "WHEN toLower(label) = term THEN 5 "
     "WHEN toLower(label) CONTAINS term OR toLower(iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 RETURN elementId(n) AS id, label, "
     "coalesce(n.concept_type, head(labels(n)), 'resource') AS type, "
-    "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, score "
-    "ORDER BY score DESC, label LIMIT $limit"
+    "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, iri, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "ORDER BY score DESC, label, id LIMIT $limit"
 )
+IMPORTED_INSTANCE_SEARCH = LEGACY_SEARCH.replace(LEGACY_NODE_FILTER, IMPORTED_INSTANCE_FILTER)
+LEGACY_BUSINESS_SEARCH = LEGACY_SEARCH.replace(LEGACY_NODE_FILTER, '('+LEGACY_NODE_FILTER+') AND ('+business_instance_filter('n')+')')
 LEGACY_OVERVIEW = (
     'MATCH (n) WHERE ' + LEGACY_NODE_FILTER + ' '
     'RETURN elementId(n) AS id, coalesce(n.name, n.label, n.uri, n.iri) AS label, '
@@ -80,15 +94,21 @@ ONTOLOGY_TRAVERSAL_EDGES = (
     "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type, elementId(r) AS edge_id, r.predicate AS predicate LIMIT $limit"
 )
 ONTOLOGY_SEARCH_NODES = (
-    "MATCH (n:OntologyResource) "
-    "WHERE ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
+    "UNWIND $terms AS term CALL { WITH term "
+    "MATCH (n:OntologyResource) WHERE n.search_label CONTAINS toString(term) "
+    "AND ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
+    "RETURN n LIMIT $candidate_limit UNION WITH term "
+    "MATCH (n:OntologyResource) WHERE n.search_iri CONTAINS toString(term) "
+    "AND ($ontology_id = '' OR n.ontology_id = $ontology_id) AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix) "
+    "RETURN n LIMIT $candidate_limit } WITH DISTINCT n "
     "WITH n, reduce(score = 0, term IN $terms | score + CASE "
-    "WHEN toLower(coalesce(n.label, '')) = term OR toLower(n.iri) ENDS WITH '/' + term OR toLower(n.iri) ENDS WITH '#' + term THEN 5 "
-    "WHEN toLower(coalesce(n.label, '')) CONTAINS term OR toLower(n.iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
+    "WHEN n.search_label = term OR n.search_iri ENDS WITH '/' + term OR n.search_iri ENDS WITH '#' + term THEN 5 "
+    "WHEN n.search_label CONTAINS term OR n.search_iri CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 "
-    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, score "
-    "ORDER BY score DESC, label LIMIT $limit"
+    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "ORDER BY score DESC, label, id LIMIT $limit"
 )
+ONTOLOGY_BUSINESS_SEARCH = ONTOLOGY_SEARCH_NODES.replace('RETURN n LIMIT $candidate_limit', 'AND ('+business_instance_filter('n')+') RETURN n LIMIT $candidate_limit')
 
 
 # Complete bounded mapping targets; executed only by the Graph data service.

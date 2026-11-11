@@ -13,7 +13,8 @@ class OSLCClient:
     def __init__(self) -> None:
         self.base_url = os.getenv("OSLC_REMOTE_BASE_URL", "").strip().rstrip("/")
         self.token = os.getenv("OSLC_REMOTE_TOKEN", "").strip()
-        self.timeout = float(os.getenv("OSLC_CLIENT_TIMEOUT_SECONDS", "20"))
+        from backend.depo_platform.network import bounded_timeout_seconds
+        self.timeout = bounded_timeout_seconds("OSLC_CLIENT_TIMEOUT_SECONDS", default=20, maximum=3600)
 
     def _request(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.base_url:

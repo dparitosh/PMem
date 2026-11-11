@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
 from backend.artifact_store import ArtifactStore
 from backend.ceim.contract import contract
@@ -24,7 +25,7 @@ from backend.depo_platform.semantic_registry import resolve_approved_release
 
 
 router = APIRouter(prefix="/ceim", tags=["ceim"])
-MAX_BATCH_RECORDS = 5_000
+from backend.ceim.limits import MAX_BATCH_RECORDS
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
 _ONTOLOGY_ID = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 
@@ -236,7 +237,7 @@ async def publish_graph(payload: CeimBatchBody, request: Request) -> dict[str, A
     approved_by = approval_identity(request, payload, token_env="CEIM_PUBLISH_APPROVAL_TOKEN")
     try:
         semantic_release = await resolve_approved_release(payload.get("semantic_release"))
-        normalized = normalize_batch({
+        normalized = await run_in_threadpool(normalize_batch, {
             "standard": standard, "entities": entities, "relationships": relationships,
             "representation": payload.get("representation"), "ceim_version": payload.get("ceim_version"), "resolution_case_ids": payload.get("resolution_case_ids"),
         })
@@ -248,10 +249,10 @@ async def publish_graph(payload: CeimBatchBody, request: Request) -> dict[str, A
         if mode == 'scoped':
             normalized['entities'], normalized['relationships'] = scope_batch(
                 normalized['entities'], normalized['relationships'], source_system=payload.get('source_system',''), required=production)
-        validation = contract.validate_projection(entities=list(normalized["entities"]), relationships=list(normalized["relationships"]))
+        validation = await run_in_threadpool(contract.validate_projection, entities=list(normalized["entities"]), relationships=list(normalized["relationships"]))
         if not validation.get("conforms"):
             raise HTTPException(status_code=422, detail={"message": "CEIM SHACL validation failed; graph publication was not attempted", "validation": validation})
-        turtle = contract.turtle_projection(entities=list(normalized["entities"]), relationships=list(normalized["relationships"]), decision={"approved_by": approved_by, "semantic_release": semantic_release})
+        turtle = await run_in_threadpool(contract.turtle_projection, entities=list(normalized["entities"]), relationships=list(normalized["relationships"]), decision={"approved_by": approved_by, "semantic_release": semantic_release})
         publication_id = str(payload.get("publication_id") or "").strip() or None
         publication = await _publish_to_graph(turtle=turtle, ontology_id=ontology_id, prefix=prefix, publication_id=publication_id)
         return {

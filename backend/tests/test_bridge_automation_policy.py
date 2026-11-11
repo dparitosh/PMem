@@ -18,6 +18,9 @@ class Source:
 
 class AutomatedBridgeTests(unittest.TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        policy = patch("backend.depo_platform.decision_policy.assess_decisions", return_value={"status":"not_configured", "blocking":False, "checks":[]})
+        policy.start(); self.addCleanup(policy.stop)
         self.source, self.graph = Source(), Graph()
         self.jobs = BridgeJobs(InMemoryRegistry(), self.source, self.graph)
     def preview(self): return self.jobs.preview('ontology', 'import', 'actor')['job_id']

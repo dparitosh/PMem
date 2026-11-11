@@ -3,15 +3,35 @@ import argparse
 from pathlib import Path, PurePosixPath
 import subprocess
 import zipfile
+import hashlib
+import json
 
 EXCLUDED = {'.git', '.codex', 'logs', 'ontology_uploads', 'uploads',
             'node_modules', '__pycache__', '.pytest_cache', '.release-test-tmp',
             '.dt_venv', '.venv', 'venv', '.mypy_cache', '.ruff_cache', 'release-dist',
-            '.codex-build', '.codex-pptx-build', '.pptx-review-build'}
+            '.codex-build', '.codex-pptx-build', '.pptx-review-build',
+            '.vite', '.vite-temp', '.cache', 'audit-shots', 'release-evidence', 'target',
+            'outputs', 'deliverables'}
+
+DEVELOPMENT_ONLY = {'scripts/load_ontology_to_neo4j.py',
+                    'scripts/load_mbse_xmi_instances.py', 'scripts/load_xpdmxml_instances.py',
+                    'scripts/generate_lifecycle_demo.py', 'scripts/generate_engineering_demo.py',
+                    'scripts/synthetic_analytics.py', 'scripts/synthetic-kpis.example.json',
+                    'scripts/Test-SyntheticAnalytics.ps1', 'infra/windows/test-depo-demo-readiness.ps1'}
 
 
 def allowed(name):
     path = PurePosixPath(name)
+    # Authoring and generated demonstration assets are never customer runtime inputs.
+    if path.parts[:2] in {('scripts', 'presentations'), ('tools', 'documentation'),
+                          ('backend', 'tests'), ('docs', 'demo-narratives')}:
+        return False
+    if name in DEVELOPMENT_ONLY or path.parts[:2] == ('tools', 'import') or name == 'frontend/tools/check_backend.js':
+        return False
+    # Captured prompts, test XML and browser snapshots are workstation evidence,
+    # not runtime resources. Keep authored Markdown audits and source fixtures.
+    if name != 'docs/audits/api-crud-inventory-2026-10-10.json' and path.parts[:2] == ('docs', 'audits') and path.suffix.lower() in {'.json', '.xml', '.png', '.jpg', '.jpeg', '.webp', '.html'}:
+        return False
     return (not any(part in EXCLUDED or part.startswith('.dt_venv-') for part in path.parts)
             and path.name not in {'.env', '.env.local', '.env.production', '.env.development', '.env.test'}
             and not path.name.endswith('.local')
@@ -38,11 +58,44 @@ def package(root, output=None):
                 'ontology/bill_of_characteristics.ttl', 'ontology/qif_ap242_boc_alignment.ttl'}
     if not required.issubset(files):
         raise ValueError('Tracked release is missing required installation or ontology assets')
+    if (root/'backend/ontology_service/owl_dl.py').exists():
+        foundation_files = {'backend/ontology_service/owl_dl.py','backend/ontology_service/foundation.py',
+            'backend/ontology_service/resources/foundation/manifest.json',
+            'backend/ontology_service/resources/foundation/ido-core-4.2.ttl',
+            'backend/ontology_service/resources/foundation/depo-business-core.ttl',
+            'backend/ontology_service/resources/foundation/NOTICE.md',
+            'backend/ontology_service/resources/reasoner/manifest.json',
+            'infra/reasoner/THIRD_PARTY.md','infra/reasoner/pom.xml','infra/reasoner/build.ps1',
+            'infra/reasoner/src/main/java/org/depo/reasoner/Main.java'}
+        if not foundation_files.issubset(files): raise ValueError('Track the complete embedded foundation/reasoner source and notices before packaging')
+        foundation_dir = root/'backend/ontology_service/resources/foundation'
+        foundation = json.loads((foundation_dir/'manifest.json').read_text())
+        for module in foundation.get('modules', []):
+            for key, digest_key in [('file', 'sha256'), ('license_file', 'license_sha256')]:
+                name = module[key]
+                path = (foundation_dir / name).resolve()
+                relative = 'backend/ontology_service/resources/foundation/' + name
+                if (not path.is_relative_to(foundation_dir.resolve()) or relative not in files or
+                        hashlib.sha256(path.read_bytes()).hexdigest() != module[digest_key]):
+                    raise ValueError('Track the complete verified foundation module and license before packaging')
+        for filename, expected in [('ido-core-4.2.ttl',foundation['sha256']),('depo-business-core.ttl',foundation['depo_module_sha256'])]:
+            if hashlib.sha256((foundation_dir/filename).read_bytes()).hexdigest() != expected:
+                raise ValueError('Embedded foundation checksum mismatch; restore the reviewed resource')
+        jar_name = 'backend/ontology_service/resources/reasoner/depo-owl-dl.jar'
+        jar = root/jar_name
+        reasoner = json.loads((jar.parent/'manifest.json').read_text(encoding='utf-8-sig'))
+        if not jar.is_file() or jar.is_symlink() or hashlib.sha256(jar.read_bytes()).hexdigest() != reasoner['sha256']:
+            raise ValueError('Build the verified OWL-DL worker before creating a customer release')
+        files = sorted(set(files) | {jar_name})
     for name in files:
         path = root / name
         if not path.resolve().is_relative_to(root) or not path.is_file() or path.is_symlink():
             raise ValueError(f'Release source is missing or unsafe: {name}')
     if output:
+        # Do not mix modified tracked files with an incomplete tracked file list.
+        status = subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all', '-z'], cwd=root)
+        if status.strip():
+            raise ValueError('Commit the complete reviewed change set before creating a customer ZIP; working tree is not clean')
         output = Path(output).resolve()
         if output.exists():
             raise ValueError('Output already exists; choose a new ZIP filename')

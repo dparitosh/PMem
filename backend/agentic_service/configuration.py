@@ -16,11 +16,14 @@ def configuration_status(*, check_workers=True):
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
         ('AGENTIC_WORKER_CONCURRENCY', '4', 1, 16),
+        ('ENGINEERING_CONVERSION_MAX_CONCURRENCY', '2', 1, 8),
+        ('AGENT_GOAL_MAX_DECISIONS', '8', 3, 16),
         ('OLLAMA_MAX_CONCURRENCY', '4', 1, 32),
         ('OLLAMA_FAILURE_THRESHOLD', '3', 1, 20),
         ('OLLAMA_CIRCUIT_COOLDOWN_SECONDS', '30', 1, 300),
         ('DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS', '30', 1, 300),
         ('LLM_REQUEST_TIMEOUT_SECONDS', '300', 1, 900),
+        ('COMPANION_MAX_OUTPUT_TOKENS', '768', 128, 4096),
         ('AGENT_MEMORY_RETENTION_DAYS', '30', 1, 3650),
     ):
         try:
@@ -107,7 +110,9 @@ def configuration_status(*, check_workers=True):
             errors.append(flag)
     # Validate the same URL and authentication rules used by the clients.
     # Invalid REST settings should fail readiness rather than the first prompt.
-    if os.getenv('USE_LLM', 'ollama').strip().lower() == 'ollama':
+    provider = os.getenv('USE_LLM', 'ollama').strip().lower()
+    embedder = os.getenv('USE_EMBEDDER', provider).strip().lower()
+    if 'ollama' in {provider, embedder}:
         from backend.core.ollama_auth import (
             ollama_base_url, ollama_headers, ollama_tool_chat_root,
         )
@@ -120,14 +125,37 @@ def configuration_status(*, check_workers=True):
                 ollama_headers(base)
             except ValueError:
                 errors.append('OLLAMA_API_KEY_HEADER/OLLAMA_REQUIRE_HTTPS')
-        if os.getenv('OLLAMA_CHAT_API_URL', '').strip():
+        if provider == 'ollama' and os.getenv('OLLAMA_CHAT_API_URL', '').strip():
             try:
                 ollama_tool_chat_root()
             except ValueError:
                 errors.append('OLLAMA_CHAT_API_URL')
-        for key in ('LLM_MODEL_NAME', 'EMBED_MODEL_NAME'):
+        local_models = (['LLM_MODEL_NAME'] if provider == 'ollama' else []) + (['EMBED_MODEL_NAME'] if embedder == 'ollama' else [])
+        for key in local_models:
             if key in os.environ and not os.environ[key].strip():
                 errors.append(key)
+    from backend.core.llm_providers import PROVIDERS, CLOUD_PROVIDERS, cloud_settings
+    provider = os.getenv('USE_LLM', 'ollama').strip().lower()
+    embedder = os.getenv('USE_EMBEDDER', provider).strip().lower()
+    if provider not in PROVIDERS:
+        errors.append('USE_LLM')
+    if embedder not in PROVIDERS:
+        errors.append('USE_EMBEDDER')
+    for selected, embedding in ((provider, False), (embedder, True)):
+        if selected in CLOUD_PROVIDERS:
+            try:
+                cloud_settings(selected, embeddings=embedding)
+            except ValueError as exc:
+                errors.append(str(exc))
+    if os.getenv('USE_UNSTRUCTURED_LLM', 'false').strip().lower() == 'true':
+        vision_provider = os.getenv('UNSTRUCTURED_LLM_TYPE', 'azure').strip().lower()
+        if vision_provider not in PROVIDERS:
+            errors.append('UNSTRUCTURED_LLM_TYPE')
+        elif vision_provider in CLOUD_PROVIDERS:
+            try:
+                cloud_settings(vision_provider, unstructured=True)
+            except ValueError as exc:
+                errors.append(str(exc))
     try:
         ontology_limit = int(os.getenv('ONTOLOGY_AGENT_MAX_BYTES', str(25 * 1024 * 1024)))
         if ontology_limit <= 0:
@@ -160,8 +188,26 @@ def configuration_status(*, check_workers=True):
     except (ValueError, OSError, KeyError, TypeError):
         errors.append('AGENTIC_CATALOG_PATH')
     from backend.depo_platform.network import timeout_configuration_warnings
+    actions = {}
+    for key in ('DT_AGENT_GATEWAY_URL', 'DT_AGENT_GATEWAY_TOKEN'):
+        if key in errors:
+            actions[key] = (
+                'DT_AGENT_ENABLED=true enables the separate external DT current-plan integration. '
+                'If that integration is not used, set DT_AGENT_ENABLED=false in the selected root environment file. '
+                'Otherwise configure its HTTPS URL and token. These settings are unrelated to the AOI Wrapper adapter; '
+                'AOI uses USE_LLM=aoi, AOI_BASE_URL, AOI_MODEL and AOI_GATEWAY_TOKEN.'
+            )
+    if 'OLLAMA_CHAT_API_URL' in errors:
+        actions['OLLAMA_CHAT_API_URL'] = (
+            'USE_LLM selects ollama. Set OLLAMA_CHAT_API_URL to the native HTTP(S) API root '
+            'or /api/chat endpoint, without embedded credentials, query or fragment; '
+            'do not use /api/generate. If chat is unavailable, leave this optional setting '
+            'blank; generate-only text remains available but chat-dependent capabilities '
+            'remain unavailable. To use AOI instead, explicitly configure USE_LLM=aoi '
+            'and the AOI gateway settings; startup never switches providers automatically.'
+        )
     return {'configuration': {'status': 'unavailable' if errors else 'ready', 'invalid_settings': sorted(set(errors)),
-                              'warnings': timeout_configuration_warnings()}}
+                              'warnings': timeout_configuration_warnings(), 'actions': actions}}
 
 
 if __name__ == '__main__':

@@ -9,6 +9,13 @@ param(
   [switch]$LocalInsecureDemo
 )
 $ErrorActionPreference = 'Stop'
+if ((Get-ExecutionPolicy) -ne 'Bypass') {
+  try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop }
+  catch { throw 'PowerShell policy blocked diagnostics. Use Setup-DEPO.cmd or an approved signed release; machine policy was not changed.' }
+  if ((Get-ExecutionPolicy) -ne 'Bypass') { throw 'Process bypass is overridden by organization policy. Use an approved signed release.' }
+}
+. (Join-Path $PSScriptRoot 'infra/windows/native-install-command.ps1')
+Invoke-DepoLoggedAction -Root $PSScriptRoot -Name ('diagnose-'+$Phase) -AuditEnvFile $EnvFile -Action {
 $root = $PSScriptRoot
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 
@@ -27,7 +34,7 @@ if ($Phase -in @('Package','Prerequisites','All')) {
 }
 if ($Phase -in @('Prerequisites','All')) {
   Invoke-Diagnostic 'software prerequisites' {
-    & (Join-Path $root 'infra\windows\install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -CheckPrerequisites
+    & (Join-Path $root 'infra\windows\install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -CheckPrerequisites -EnvFile $envPath
   }
 }
 if ($Phase -in @('Configuration','Runtime','All')) {
@@ -61,3 +68,4 @@ if ($Phase -in @('Runtime','All')) {
   }
 }
 Write-Host "`nDEPO diagnostics completed successfully for phase: $Phase" -ForegroundColor Green
+}

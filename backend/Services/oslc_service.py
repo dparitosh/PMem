@@ -236,6 +236,7 @@ class OSLCService:
                 "domain": service_domain,
                 "queryCapabilities": [{
                     "resourceType": resource_type,
+                    "resourceTypeUri": cls.DOMAIN_SHAPES[resource_type]['describes'],
                     "queryBase": query_base,
                     "resourceShape": f"{cfg.base_url}/oslc/shapes/{resource_type}",
                 } for capability_domain, resource_type, query_base in [
@@ -822,7 +823,7 @@ class OSLCService:
             }
             for item in classes
         ]
-        shape_source = "owlready2_semantics"
+        shape_source = "asserted_ontology_semantics"
         if not describes and not semantic_terms:
             taxonomy = OntologyTaxonomyService.get_taxonomy(normalized_shape_id)
             describes = [

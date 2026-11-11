@@ -5,6 +5,7 @@ import { apiClient, dataPipelineAPI } from '../services/apiClient';
 import { graphApi } from '../services/graphApi';
 import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
 import { useOntologies } from '../contexts/OntologyContext';
+import { graphStateOf } from '../utils/ontologyRegistry';
 import KpiStrip from '../widgets/KpiStrip';
 import ReportsAnalytics from './ReportsAnalytics';
 import OntologyOslcReport from './OntologyOslcReport';
@@ -442,7 +443,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
     prefix: ontology.prefix || ontology.ontology_prefix || '',
     ontology_id: ontology.ontology_id || ontology.value || '',
     status: ontology.status || '',
-    availability: ontology.graph_available === false ? 'registered only' : (ontology.availability || 'available'),
+    availability: graphStateOf(ontology).inGraph ? (ontology.availability || 'available') : 'registered only',
     type: ontology.type || '',
     namespace: ontology.namespace || ontology.target_namespace || ontology.source_namespace || '',
     nodes: ontology.node_count ?? '—',

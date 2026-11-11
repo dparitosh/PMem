@@ -80,6 +80,14 @@ class BrowserCredentialTests(unittest.TestCase):
             with self.subTest(profile=profile), self.assertRaises(Rejected):
                 self.verify(record, profile, digest)
 
+    def test_missing_execution_scope_does_not_masquerade_as_revoked_session(self):
+        _, record = self.create()
+        with self.assertRaises(Rejected) as failure:
+            self.verify(record, 'DATA_JOB_EXECUTION_TOKEN', 'execution-digest')
+        self.assertEqual(failure.exception.status_code, 403)
+        self.assertIn('lacks required scope: DATA_JOB_EXECUTION_TOKEN', failure.exception.detail)
+        self.assertEqual(self.verify(record), 'admin-actor')
+
     def test_expired_session_and_revoked_admin_are_rejected(self):
         _, record = self.create()
         with self.assertRaises(Rejected):

@@ -244,7 +244,7 @@ class StagedPublicationTests(unittest.TestCase):
             resource_query='UNWIND $rows AS row MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})',
             timeout=180, activation_timeout=60, unit_of_work=lambda **kw: lambda fn: fn,
             query_factory=lambda query, timeout: reads.append(timeout) or query)
-        self.assertEqual(len(reads), 1)
+        self.assertEqual(len(reads), 2)  # Active-projection check and retained receipt read are both bounded.
         self.assertTrue(all(0 < timeout <= 10 for timeout in reads))
 
 

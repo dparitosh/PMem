@@ -14,6 +14,8 @@ PURPOSES = {
     'data-product-governor': 'Preview, publish and revoke approved retained evidence packages.',
     'ceim-mapper': 'Normalize supplied records against the CEIM contract.',
     'data-quality-monitor': 'Inspect pipeline telemetry and request approved transformations.',
+    'ontology-steward': 'Assess proposed mappings and merges for ambiguity, validation evidence and policy; do not grant approval.',
+    'ontology-inference': 'Inspect recorded ontology reasoning and bounded inference evidence; distinguish unknown results from verified consistency.',
     'dt-intake': 'Inspect engineering inputs, register approved ontologies and discover configured data jobs.',
     'dt-domain-identifier': 'Read domain contracts and business context; produce a reviewable classification.',
     'dt-structure-review': 'Select approved profiling jobs and inspect their retained evidence.',
@@ -36,7 +38,8 @@ def describe(source):
         allowed = agent.get('tools', [])
         if any(identifier not in tools for identifier in allowed):
             raise ValueError('Agent references a missing tool')
-        rows.append({**agent, 'description': agent.get('description') or PURPOSES.get(agent['id'], agent.get('name', agent['id'])),
+        public_agent = {key: agent[key] for key in ('id', 'name', 'tools', 'approval_required', 'prompt_policy_version', 'execution_contract') if key in agent}
+        rows.append({**public_agent, 'description': agent.get('description') or PURPOSES.get(agent['id'], agent.get('name', agent['id'])),
             'family': 'dt-service-role' if agent['id'].startswith('dt-') else 'platform-role',
             'registration_status': 'registered; live dependencies unverified',
             'execution_boundary': 'approved mutations use persisted workflows; reads are bounded operations',

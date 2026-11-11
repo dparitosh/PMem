@@ -62,7 +62,7 @@ class SemanticWorkflowService:
     AUTO_APPLY_CONFIDENCE = 0.82
     REVIEW_CONFIDENCE = 0.55
     AMBIGUITY_DELTA = 0.08
-    TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type")
+    TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "source_element_name")
     FALLBACK_FIELDS = ("name",)
     METADATA_FIELDS = (
         ("manifest.filename", "filename", 0.55),
@@ -149,7 +149,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def _semantic_terms_for_ontology(cls, ontology_id: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Prefer Owlready2 semantic terms over raw ontology text scanning."""
+        """Prefer asserted semantic terms over raw ontology text scanning."""
         try:
             reasoning = OntologyReasoningService.get_reasoning(ontology_id)
             terms: List[Dict[str, Any]] = []
@@ -172,12 +172,12 @@ class SemanticWorkflowService:
                     "domain": item.get("domain") or [],
                     "range": item.get("range") or [],
                     "definition": item.get("definition") or item.get("comment") or "",
-                    "source": "owlready2",
+                    "source": reasoning.get("engine") or "asserted_rdf",
                 })
             if terms:
                 return sorted(terms, key=lambda item: (item.get("semantic_type", ""), item["term"].lower()))[:500]
         except Exception as exc:
-            logger.info("Owlready2 term extraction fallback for %s: %s", ontology_id, exc)
+            logger.info("semantic runtime term extraction fallback for %s: %s", ontology_id, exc)
 
         terms = cls._extract_terms(cls._read_ontology_file(meta))
         for term in terms:
@@ -320,6 +320,13 @@ class SemanticWorkflowService:
             for key in ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "name")
             if row.get(key)
         ]
+        # Imported XML entities carry provenance and reference-valued attributes.
+        # Those fields do not turn the entity itself into a relationship or
+        # metadata record. Explicit edge rows still take precedence.
+        if any(value in {"relationship", "relations", "edge", "link"} for value in values):
+            return "Relationship"
+        if row.get("source_element_name") and (row.get("import_row_key") or row.get("id")):
+            return "Entity"
         relationship_markers = (
             "ref",
             "refs",

@@ -25,10 +25,7 @@ from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
-try:
-    from .owlready_runtime import OwlreadyOntologyRuntime
-except Exception:  # pragma: no cover - optional dependency or import path issue
-    OwlreadyOntologyRuntime = None
+from .ontology_semantic_runtime import OntologySemanticRuntime
 
 # In-process TTL cache is opt-in because it is not shared between workers.
 _owl_storage: Dict[str, str] = {}
@@ -84,60 +81,41 @@ def _normalize_base_uri(namespace: str, fallback: str) -> str:
 
 
 def _derive_prefix_from_namespace(namespace: str, fallback: str = "xsd") -> str:
-    """Derive a stable ontology prefix from a namespace URI.
-
-    Prefer a namespace-local token over the filename stem so XSD-generated
-    ontology metadata stays aligned with the XSD header and downstream import
-    stages can stamp the correct ontology_prefix.
-    """
-    text = (namespace or "").strip()
-    if not text:
-        return fallback
-    cleaned = text.rstrip("#/").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-    cleaned = "".join(ch if ch.isalnum() else "_" for ch in cleaned).strip("_").lower()
-    if cleaned:
-        return cleaned[:32]
-    return fallback
+    from backend.depo_platform.ontology_namespace import ontology_prefix
+    return ontology_prefix(namespace, fallback)
 
 
-def _inspect_with_owlready(ttl_str: str, stem: str) -> Dict[str, Any]:
-    """Run Owlready2 reasoning on generated TTL and return a compact summary."""
-    if OwlreadyOntologyRuntime is None or not getattr(OwlreadyOntologyRuntime, "is_available", lambda: False)():
-        return {
-            "available": False,
-            "engine": "owlready2",
-            "status": "unavailable",
-            "message": "owlready2 is not installed or not importable in this environment.",
-            "summary": {},
-            "diagnostics": [],
-            "ontology_iri": "",
-        }
-
+def _inspect_semantics(ttl_str: str, stem: str) -> Dict[str, Any]:
+    """Inspect generated TTL and return its asserted semantic structure."""
     tmp_path: Optional[Path] = None
     try:
         with tempfile.NamedTemporaryFile("w", suffix=f"_{stem}.ttl", delete=False, encoding="utf-8") as tmp:
             tmp.write(ttl_str)
             tmp_path = Path(tmp.name)
-        result = OwlreadyOntologyRuntime.inspect_ontology(tmp_path, stem)
+        result = OntologySemanticRuntime.inspect_ontology(tmp_path, stem)
         return {
             "available": result.get("available", True),
-            "engine": result.get("engine", "owlready2"),
+            "engine": result.get("engine", "semantica"),
             "status": result.get("status", "success"),
             "summary": result.get("summary", {}),
             "diagnostics": result.get("diagnostics", []),
             "ontology_iri": result.get("ontology_iri", ""),
+            "structural_validation": result.get("structural_validation", {}),
+            "reasoning_mode": result.get("reasoning_mode", "asserted_semantic_inspection"),
+            "deductive_reasoner_executed": False,
+            "consistency_verified": False,
         }
     except Exception as exc:
         return {
             "available": True,
-            "engine": "owlready2",
+            "engine": "semantica",
             "status": "error",
             "message": str(exc),
             "summary": {},
             "diagnostics": [{
                 "severity": "warning",
-                "category": "owlready2",
-                "message": f"Owlready2 inspection failed: {exc}",
+                "category": "semantica",
+                "message": f"semantic runtime inspection failed: {exc}",
             }],
         }
     finally:
@@ -154,8 +132,8 @@ class OWLGenerationService:
     @staticmethod
     def generate_owl(file_content: bytes, filename: str, *, schema_files: dict[str, bytes] | None = None) -> Tuple[str, Dict[str, Any]]:
         """Route to the format-specific engine based on filename extension."""
-        from backend.Services.schema_upload_paths import validate_schema_upload
-        validate_schema_upload(filename, file_content, schema_files)
+        from backend.Services.schema_dependencies import resolve_schema_dependencies
+        file_content, schema_files = resolve_schema_dependencies(filename, file_content, schema_files)
         ext = Path(filename).suffix.lower().lstrip(".")
         dispatch = {
             "exp":     OWLGenerationService.generate_owl_from_express,
@@ -214,7 +192,7 @@ class OWLGenerationService:
                 "reference_count": len(schema.references),
                 "ttl_lines": owl_ttl.count("\n"),
                 "validation": {},
-                "owlready2": _inspect_with_owlready(owl_ttl, f"express_{schema.name}"),
+                "semantica": _inspect_semantics(owl_ttl, f"express_{schema.name}"),
             }
             return owl_ttl, metadata
         except Exception as e:
@@ -268,7 +246,7 @@ class OWLGenerationService:
                 "entity_count": int(flat_stats.get("entity_count") or flat_stats.get("entities_processed") or 0),
                 "validation": report,
             }
-            metadata["owlready2"] = _inspect_with_owlready(ttl_str, f"step_{Path(filename).stem}")
+            metadata["semantica"] = _inspect_semantics(ttl_str, f"step_{Path(filename).stem}")
             return ttl_str, metadata
         except Exception as e:
             logger.error(f"STEP OWL generation failed: {e}")
@@ -283,8 +261,8 @@ class OWLGenerationService:
         """XSD schema -> OWL2/Turtle with full SKOS/SHACL/OSLC via owl_xsd_engine."""
         tmp_dir: Optional[Path] = None
         try:
-            from backend.Services.schema_upload_paths import validate_schema_upload
-            dependencies = validate_schema_upload(filename, file_content, schema_files)
+            from backend.Services.schema_dependencies import resolve_schema_dependencies
+            file_content, dependencies = resolve_schema_dependencies(filename, file_content, schema_files)
             tmp_dir = Path(tempfile.mkdtemp())
             for name, data in dependencies.items():
                 dependency = tmp_dir / name
@@ -313,6 +291,9 @@ class OWLGenerationService:
             cfg.target_files = [Path(filename).stem]
             cfg.source_ns = target_namespace
             cfg.source_standard = target_namespace or "XML Schema"
+            # Preserve the source's declared version; do not invent a standard
+            # release number for the generated ontology header.
+            cfg.version_info = ET.fromstring(file_content).get('version', '').strip()
             from .xsd_semantics import inspect_conversion_schemas
             conversion_limitations = inspect_conversion_schemas([xsd_path, *[tmp_dir / name for name in dependencies]])
             result_path = convert_xsd_to_owl(cfg)
@@ -329,7 +310,7 @@ class OWLGenerationService:
                 "validation": report,
                 "conversion_limitations": conversion_limitations,
                 "constraint_profile": "OWL property/cardinality semantics and open SHACL shapes; full XSD conformance remains source-schema validation",
-                "owlready2": _inspect_with_owlready(ttl_str, f"xsd_{stem}"),
+                "semantica": _inspect_semantics(ttl_str, f"xsd_{stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -363,7 +344,7 @@ class OWLGenerationService:
                 "schema_name": Path(filename).stem,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
-                "owlready2": _inspect_with_owlready(ttl_str, f"xmi_{Path(filename).stem}"),
+                "semantica": _inspect_semantics(ttl_str, f"xmi_{Path(filename).stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -397,7 +378,7 @@ class OWLGenerationService:
                 "schema_name": stem,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
-                "owlready2": _inspect_with_owlready(ttl_str, f"csv_{stem}"),
+                "semantica": _inspect_semantics(ttl_str, f"csv_{stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -428,7 +409,7 @@ class OWLGenerationService:
                 "schema_name": Path(filename).stem,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
-                "owlready2": _inspect_with_owlready(ttl_str, f"plmxml_{Path(filename).stem}"),
+                "semantica": _inspect_semantics(ttl_str, f"plmxml_{Path(filename).stem}"),
             }
             return ttl_str, metadata
         except Exception as e:
@@ -460,7 +441,7 @@ class OWLGenerationService:
                 shacl_graph = rdflib.Graph()
                 shacl_graph.parse(data=default_shapes_ttl, format="turtle")
             if ontology_context is None:
-                ontology_context = _inspect_with_owlready(ttl_content, "shacl_validation")
+                ontology_context = _inspect_semantics(ttl_content, "shacl_validation")
             return svc.validate_graph(
                 data_graph,
                 shacl_graph,

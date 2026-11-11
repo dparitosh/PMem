@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import GraphHEB from '../Components/GraphHEB';
+import GraphWorkspace from "../features/graph/GraphWorkspace.js";
 import GraphWidget from '../widgets/GraphWidget';
 import { platformAPI } from '../services/apiClient';
 
@@ -42,8 +42,8 @@ export default function GraphExplorerPage(props) {
 
   return (
     <div className="depo-page" style={{ height: '100%', minHeight: 'calc(100dvh - 120px)' }}>
-      <GraphWidget minHeight={680}>
-        <GraphHEB {...props} />
+      <GraphWidget appearance="embedded" minHeight={680}>
+        <GraphWorkspace {...props} />
       </GraphWidget>
     </div>
   );

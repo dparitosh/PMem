@@ -16,6 +16,31 @@ class ApprovalBody(RequestBody, total=False):
     approved_by: str
     approval_token: str
 
+class ReplayBody(ApprovalBody, total=False):
+    idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
+
+class RestSourceBody(ApprovalBody, total=False):
+    source_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+    name: Required[Annotated[str, Field(min_length=1, max_length=500)]]
+    endpoint: Required[Annotated[str, Field(min_length=1, max_length=500)]]
+    credential_ref: Annotated[str, Field(max_length=100)]
+    auth_header: Literal['Authorization', 'X-API-Key', 'api-key']
+    records_path: Annotated[str, Field(max_length=500)]
+    target_model: Annotated[str, Field(max_length=500)]
+
+class ConnectorSourceBody(ApprovalBody, total=False):
+    source_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+    name: Required[Annotated[str, Field(min_length=1, max_length=200)]]
+    profile_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+    resource: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
+
+class OntologyReleaseBody(ApprovalBody, total=False):
+    family_id: Required[Text]
+    version: Required[Text]
+    predecessor_id: str | None
+    change_kind: Required[Literal['initial', 'breaking', 'additive', 'corrective']]
+    change_notes: Required[Annotated[str, Field(min_length=1, max_length=8000)]]
+
 class BridgeSourceBody(RequestBody, total=False):
     operation: Required[Literal['snapshot', 'preview', 'manual']]
     ontology_id: Required[Text]
@@ -57,6 +82,7 @@ class QualityGateBody(RequestBody, total=False):
     deduplicate: bool
     conflict_property: str | None
     merge_strategy: str
+    deduplication_mode: str
 
 class VersionBody(RequestBody, total=False):
     __pydantic_config__ = ConfigDict(strict=True, extra="allow", json_schema_extra={"anyOf": [{"required": ["ontology"]}, {"required": ["version_id"]}]})
@@ -81,9 +107,12 @@ class PolicyBody(RequestBody, total=False):
     policy_id: Text
     name: Text
     rules: Required[dict[str, Any]]
+    operations: list[str]
     active: bool
 
 class EvaluatePoliciesBody(RequestBody, total=False):
+    operation: str
+    decisions: Annotated[list[dict[str, Any]], Field(min_length=1, max_length=2000)]
     decision: dict[str, Any]
     exception_policy_ids: list[str]
 
@@ -92,6 +121,8 @@ class EntityMapping(RequestBody, total=False):
     target_iri: Required[Text]
 
 class MergePreviewBody(RequestBody, total=False):
+    background: bool
+    owl_dl_check: bool
     source_ontology_ids: Required[Annotated[list[Text], Field(min_length=2, max_length=16)]]
     entity_mappings: Annotated[list[EntityMapping], Field(max_length=200)]
     ontology_name: str
@@ -119,6 +150,7 @@ class GraphScope(RequestBody, total=False):
     ontology_id: str
 
 class ContextBody(RequestBody, total=False):
+    analysis: Literal['change-impact', 'similar-parts', 'manufacturing']
     scope: GraphScope
     change_name: str
     part_name: str
@@ -299,14 +331,29 @@ class LegacyCleanupBody(RequestBody, total=False):
     batch_size: Annotated[int, Field(ge=1)]
     confirm: str
 
+class TaskPageContext(TypedDict, total=False):
+    __pydantic_config__ = ConfigDict(strict=True, extra="forbid")
+    page: Required[Annotated[str, Field(min_length=1, max_length=32)]]
+    ontology_id: Annotated[str, Field(max_length=256)]
+    ontology_prefix: Annotated[str, Field(max_length=256)]
+    import_task_id: Annotated[str, Field(max_length=256)]
+    product_id: Annotated[str, Field(max_length=256)]
+    reconciliation_id: Annotated[str, Field(max_length=256)]
+    run_id: Annotated[str, Field(max_length=256)]
+    node_id: Annotated[str, Field(max_length=256)]
+
+
 class ToolRunBody(AgentPlanBody, ApprovalBody, total=False):
+    page_context: TaskPageContext | None
     inputs: dict[str, Any]
 
 class WorkflowRunBody(WorkflowPlanBody, ApprovalBody, total=False):
+    page_context: TaskPageContext | None
     inputs: dict[str, Any]
     step_inputs: list[dict[str, Any]] | None
 
 class ToolSuggestionBody(RequestBody, total=False):
+    submission_id: Annotated[str, Field(pattern=r"^[a-f0-9-]{36}$")]
     task: Required[Text]
     context: dict[str, Any] | None
     attachment: dict[str, Any] | None
@@ -436,7 +483,9 @@ class AnalyticsMeasure(RequestBody, total=False):
 class AnalyticsBusinessView(RequestBody, total=False):
     name: Required[Text]
     entity_id: Required[Text]
-    kind: Literal['aggregate', 'fact', 'dimension']
+    kind: Literal['aggregate', 'fact', 'dimension', 'kpi']
+    description: Annotated[str,Field(max_length=500)]
+    unit: Annotated[str,Field(max_length=500)]
     grain: Required[Literal['entity-instance', 'business-key']]
     group_by: list[Text]
     measures: list[AnalyticsMeasure]
@@ -445,7 +494,45 @@ class AnalyticsBusinessView(RequestBody, total=False):
     history_policy: Literal['immutable']
 
 
+class ConfigurationSelection(RequestBody):
+    role: Literal["source","ontology","mappings","kpi","shapes"]
+    source_id: Text
+    artifact_id: Annotated[str,Field(pattern=r"^sha256:[0-9a-f]{64}$")]
+
+
+class BusinessAnalyticsModel(RequestBody, total=False):
+    product_class: Required[Annotated[str,Field(min_length=1,max_length=800)]]
+    part_class: Required[Annotated[str,Field(min_length=1,max_length=800)]]
+    requirement_class: Annotated[str,Field(max_length=800)]
+    process_class: Annotated[str,Field(max_length=800)]
+    product_part_property: Annotated[str,Field(max_length=800)]
+    classification_properties: Annotated[list[Annotated[str,Field(min_length=1,max_length=800)]],Field(max_length=6)]
+    requirement_property: Annotated[str,Field(max_length=800)]
+    bom_property: Annotated[str,Field(max_length=800)]
+    process_property: Annotated[str,Field(max_length=800)]
+
+class AnalyticsModelBody(ApprovalBody, total=False):
+    dataset_id: Required[Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]]
+    name: Required[Annotated[str,Field(min_length=1,max_length=200)]]
+    version: Required[Annotated[str,Field(pattern=r"^\d+\.\d+\.\d+$")]]
+    definition: Required[dict[str,Any]]
+
 class JobInputBody(ApprovalBody, total=False):
+    ontology_id: Annotated[str,Field(min_length=1,max_length=256)]
+    namespace: Annotated[str,Field(max_length=800)]
+    graph_publication_id: Annotated[str,Field(min_length=1,max_length=256)]
+    analytics_model_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
+    business_model: BusinessAnalyticsModel
+    configuration_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
+    configuration_inputs: Annotated[list[ConfigurationSelection],Field(max_length=19)]
+    shape_source_id: str
+    shape_artifact_id: str
+    dataset_id: Annotated[str,Field(pattern=r"^[0-9a-f]{64}$")]
+    class_iri: Annotated[str,Field(min_length=1,max_length=2000)]
+    property_iris: Annotated[list[Annotated[str,Field(min_length=1,max_length=2000)]],Field(max_length=20)]
+    algorithm: Literal["profile","frequency","numeric-summary","correlation","dimension-preview","business-overview","business-mart","graph-snapshot"]
+    idempotency_key: Annotated[str, Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')]
+    source_id: str
     schema_prefix: str
     constraint_policy: Literal['strict', 'validated-source']
     business_views: Annotated[list[AnalyticsBusinessView], Field(max_length=20)]

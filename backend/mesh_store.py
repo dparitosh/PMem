@@ -61,6 +61,15 @@ class PostgresRegistry:
             cursor.execute("SELECT key, value FROM depo_registry WHERE namespace = %s", (self.namespace,))
             return {key: value for key, value in cursor.fetchall()}
 
+    def prefix_items(self, prefix: str, *, limit: int = 1000) -> dict[str, Any]:
+        """Read bounded configuration keys without loading unrelated version/audit records."""
+        if not isinstance(prefix, str) or not prefix or type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError('Invalid registry prefix lookup')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT key, value FROM depo_registry WHERE namespace=%s AND left(key, length(%s))=%s ORDER BY key LIMIT %s",
+                           (self.namespace, prefix, prefix, limit))
+            return dict(cursor.fetchall())
+
     def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         """Bounded identity lookup without counting an entire namespace."""
         if not 1 <= limit <= 100:
@@ -88,15 +97,28 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
-    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None, exclude_superseded=False):
+    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None, exclude_superseded=False, projection=None):
         """Bounded, deterministic database pagination over JSON registry records."""
         if offset < 0 or not 1 <= limit <= 1000:
             raise ValueError('Invalid registry page')
+        selection, selection_args = 'value', []
+        if projection is not None:
+            if not isinstance(projection, dict) or not 1 <= len(projection) <= 64 or any(
+                not isinstance(name, str) or not isinstance(path, list) or not path or
+                any(not isinstance(part, str) for part in path) for name, path in projection.items()
+            ):
+                raise ValueError('Invalid registry projection')
+            selection = 'jsonb_build_object(' + ','.join('%s::text, value #> %s::text[]' for _ in projection) + ')'
+            selection_args = [item for name, path in projection.items() for item in (name, path)]
         where = 'namespace=%s'
         args = [self.namespace]
         if field is not None:
-            where += ' AND value->>%s=%s'
-            args.extend([field, value])
+            if field == 'status':
+                where += " AND value->>'status'=%s"
+                args.append(value)
+            else:
+                where += ' AND value->>%s=%s'
+                args.extend([field, value])
         if exclude_latest:
             where += " AND right(key,7) <> ':latest'"
         if exclude_superseded:
@@ -105,10 +127,28 @@ class PostgresRegistry:
             cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
             cursor.execute('SELECT count(*) FROM depo_registry WHERE '+where, args)
             total = cursor.fetchone()[0]
-            ordering = 'updated_at DESC, key DESC' if order_field is None else "COALESCE(value->>%s,'') DESC, key DESC"
+            ordering = 'updated_at DESC, key' if order_field is None else "COALESCE(value->>%s,'') DESC, key DESC"
             order_args = [] if order_field is None else [order_field]
-            cursor.execute('SELECT value FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*args,*order_args,limit,offset])
+            cursor.execute('SELECT '+selection+' FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*selection_args,*args,*order_args,limit,offset])
             return total, [row[0] for row in cursor.fetchall()]
+
+    def transition_bundle(self, key, value, *, related_store, expected_rows, updated_rows, expected_value):
+        """CAS related registry rows and a receipt in one PostgreSQL transaction."""
+        ensure_execution_allowed()
+        if set(expected_rows)!=set(updated_rows) or not 1<=len(expected_rows)<=500:
+            raise ValueError('Invalid related transition set')
+        with self._connect() as db, db.transaction(), db.cursor() as cursor:
+            cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND key=%s FOR UPDATE',(self.namespace,key))
+            current=cursor.fetchone()
+            if not current or current[0]!=expected_value:return False
+            cursor.execute('SELECT key,value FROM depo_registry WHERE namespace=%s AND key=ANY(%s) ORDER BY key FOR UPDATE',
+                           (related_store.namespace,sorted(expected_rows)))
+            if dict(cursor.fetchall())!=expected_rows:return False
+            cursor.executemany('UPDATE depo_registry SET value=%s::jsonb,updated_at=now() WHERE namespace=%s AND key=%s',
+                [(json.dumps(updated_rows[row]),related_store.namespace,row) for row in sorted(updated_rows)])
+            cursor.execute('INSERT INTO depo_registry(namespace,key,value) VALUES(%s,%s,%s::jsonb) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value,updated_at=now()',
+                           (self.namespace,key,json.dumps(value)))
+        return True
 
     def put_with_related(self, key, value, *, related_namespace, related_key, related_value):
         """Commit a product and its approval evidence as one database unit."""
@@ -130,11 +170,11 @@ class PostgresRegistry:
 
     def prune_completed(self, retention_days: int) -> int:
         """Expire completed records in this namespace, using database timestamps."""
-        if not 1 <= retention_days <= 3650:
+        if type(retention_days) is not int or not 1 <= retention_days <= 3650:
             raise ValueError('Retention must be between 1 and 3650 days')
         ensure_execution_allowed()
         with self._connect() as connection, connection.cursor() as cursor:
-            cursor.execute("DELETE FROM depo_registry WHERE namespace=%s AND value->>'status'='completed' AND updated_at < now() - %s * interval '1 day'",
+            cursor.execute("DELETE FROM depo_registry WHERE namespace=%s AND value->>'status'='completed' AND coalesce(value->>'legal_hold', 'false')='false' AND updated_at < now() - %s * interval '1 day'",
                            (self.namespace, retention_days))
             return cursor.rowcount
 
@@ -303,6 +343,8 @@ class InMemoryRegistry:
         self.namespace = namespace
         self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
+    def prefix_items(self, prefix: str, *, limit: int = 1000) -> dict[str, Any]:
+        return dict(sorted((key,value) for key,value in self.values.items() if key.startswith(prefix))[:limit])
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
     def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         if not 1 <= limit <= 100:
@@ -329,6 +371,11 @@ class InMemoryRegistry:
     def due_pending(self, limit=100):
         current = datetime.now(timezone.utc)
         return [(k,v) for k,v in self.values.items() if v.get('status') == 'pending_catalog_registration' and (not v.get('next_catalog_attempt_at') or datetime.fromisoformat(v['next_catalog_attempt_at']) <= current)][:max(1,min(int(limit),1000))]
+    def transition_bundle(self, key, value, *, related_store, expected_rows, updated_rows, expected_value):
+        if self.get(key)!=expected_value or {row:related_store.get(row) for row in expected_rows}!=expected_rows:return False
+        related_store.values.update(updated_rows)
+        self.values[key]=value
+        return True
     def compare_and_put(self, key, expected, value):
         if self.values.get(key) != expected: return False
         self.values[key] = value

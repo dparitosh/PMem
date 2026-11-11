@@ -5,7 +5,8 @@ from typing import Any, Dict, Optional
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Form
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 try:
@@ -478,3 +479,59 @@ def metadata_asset_history(asset_id: str, limit: int = Query(default=100, ge=1, 
         if not exists:
             raise HTTPException(status_code=404, detail="Metadata asset not found")
     return {"events": [dict(row.get("event") or row) for row in rows], "count": len(rows)}
+
+
+@router.post('/rdf-sources', status_code=201, summary='Register an uploaded RDF source as a retained metadata draft')
+async def register_rdf_source(file: UploadFile = File(...), name: str = Form(..., min_length=1, max_length=300),
+                              actor: str = Depends(_metadata_registry_identity)):
+    from pathlib import Path
+    import hashlib
+    from backend.artifact_store import ArtifactStore
+    from backend.data_pipeline_service.semantic_datasets import FORMATS, MAX_BYTES, parse_records
+    filename = file.filename or ''
+    if Path(filename).name != filename or any(char in filename for char in ('\\', ':')) or Path(filename).suffix.lower() not in FORMATS:
+        await file.close()
+        raise HTTPException(422, 'Choose a plain .ttl, .nt, .rdf, .owl or .jsonld filename')
+    content = bytearray()
+    try:
+        while block := await file.read(1024 * 1024):
+            content.extend(block)
+            if len(content) > MAX_BYTES:
+                raise HTTPException(413, 'RDF sources must not exceed 25 MiB; supply a bounded partition')
+    finally:
+        await file.close()
+    if not content:
+        raise HTTPException(422, 'Choose a nonempty RDF file')
+    if not name.strip():
+        raise HTTPException(422, 'Enter a source name')
+    def register():
+        try:
+            parse_records(bytes(content), FORMATS[Path(filename).suffix.lower()])
+        except Exception as exc:
+            from rdflib.exceptions import ParserError
+            from xml.sax import SAXException
+            if isinstance(exc, (ValueError, SyntaxError, ParserError, SAXException)):
+                raise HTTPException(422, 'RDF syntax or safety checks failed; review the selected file') from exc
+            raise
+        artifact = ArtifactStore().ingest_bytes(bytes(content), filename=filename, kind='registered-rdf-source',
+                    provenance={'registered_by':actor,'validation':'bounded RDF syntax; semantic approval not granted'})
+        identity='rdf-'+hashlib.sha256((actor+'\0'+name.strip()+'\0'+artifact['artifact_id']).encode()).hexdigest()[:40]
+        try:
+            existing=get_metadata_asset(identity)
+        except HTTPException as exc:
+            if exc.status_code != 404:raise
+            existing=None
+        if existing:
+            if existing.get('implementation_ref') != artifact['artifact_id']:
+                raise HTTPException(409, 'Registered source identity differs; inspect the retained record')
+            return {'asset':existing,'source_id':'metadata:'+identity,'artifact_id':artifact['artifact_id'],'approval_status':'not_granted'}
+        request=MetadataAssetRequest(asset_id=identity,name=name.strip(),definition='Uploaded RDF source; syntax checked. Semantic release approval and analytics preparation are separate operations.',
+                  asset_type='RDFSource',owner=actor,steward=actor,implementation_ref=artifact['artifact_id'])
+        try:
+            asset=create_metadata_asset(request,actor)
+        except HTTPException as exc:
+            if exc.status_code != 409:raise
+            asset=get_metadata_asset(identity)
+            if asset.get('implementation_ref') != artifact['artifact_id']:raise
+        return {'asset':asset,'source_id':'metadata:'+identity,'artifact_id':artifact['artifact_id'],'approval_status':'not_granted'}
+    return await run_in_threadpool(register)

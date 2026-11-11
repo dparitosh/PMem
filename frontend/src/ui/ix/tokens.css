@@ -1,0 +1,71 @@
+/*
+ * Status colour tokens for the shared Siemens IX UI layer (src/ui/ix).
+ *
+ * Usage:
+ *   color: var(--ui-status-success);          text / icon colour
+ *   background: var(--ui-status-success-bg);  soft tinted background
+ *   .ui-status-text--warning                  utility class, same colours
+ *
+ * Every value resolves through the IX theme variables (--theme-color-*), which
+ * IX switches for light and dark colour schemes via data-ix-color-schema on
+ * <html>. Do not add hex values here; add a new IX theme reference instead.
+ */
+:root {
+  --ui-status-success: var(--theme-color-success);
+  --ui-status-success-bg: color-mix(in srgb, var(--theme-color-success) 14%, transparent);
+  --ui-status-warning: var(--theme-color-warning);
+  --ui-status-warning-bg: color-mix(in srgb, var(--theme-color-warning) 16%, transparent);
+  --ui-status-danger: var(--theme-color-alarm);
+  --ui-status-danger-bg: color-mix(in srgb, var(--theme-color-alarm) 14%, transparent);
+  --ui-status-info: var(--theme-color-info);
+  --ui-status-info-bg: color-mix(in srgb, var(--theme-color-info) 14%, transparent);
+  --ui-status-neutral: var(--theme-color-neutral);
+  --ui-status-neutral-bg: color-mix(in srgb, var(--theme-color-neutral) 14%, transparent);
+}
+
+.ui-status-text--success { color: var(--ui-status-success); }
+.ui-status-text--warning { color: var(--ui-status-warning); }
+.ui-status-text--danger { color: var(--ui-status-danger); }
+.ui-status-text--info { color: var(--ui-status-info); }
+.ui-status-text--neutral { color: var(--ui-status-neutral); }
+
+.ui-data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ui-data-table caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 8px;
+}
+.ui-data-table th,
+.ui-data-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--theme-color-soft-separator, var(--theme-color-neutral-40));
+  vertical-align: top;
+}
+.ui-data-table th {
+  font-weight: 600;
+}
+.ui-data-table__empty {
+  color: var(--theme-text-caption, inherit);
+  text-align: center;
+  padding: 16px 12px;
+}
+
+.ui-tabs-bar {
+  margin-bottom: 8px;
+}
+
+.ui-form-help {
+  color: var(--theme-text-caption, inherit);
+  font-size: 0.875rem;
+  margin-top: 4px;
+}
+.ui-form-error {
+  color: var(--ui-status-danger);
+  font-size: 0.875rem;
+  margin-top: 4px;
+}

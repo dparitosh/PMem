@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from unittest.mock import MagicMock
 from urllib.parse import urlsplit
 
@@ -91,7 +91,9 @@ class TransportBoundaryTests(unittest.TestCase):
         Client.payload={'nodes':[{'elementId':str(i),'properties':{'label':'Pump','search_score':10-i}} for i in range(9)],
                         'relationships':[{'start':'0','end':'8','type':'SEMANTIC_RELATION'},
                                          {'start':'0','end':'1','type':'SEMANTIC_RELATION','properties':{'predicate':'urn:hasPart'}}]}
-        with patch.dict(os.environ,{'COMPANION_LLM_ENABLED':'false'}):
+        with patch.dict(os.environ,{'COMPANION_LLM_ENABLED':'false'}), \
+             patch('backend.agentic_service.companion_context.mapping_context', AsyncMock(return_value={'status':'not_requested','evidence':[]})), \
+             patch('backend.agentic_service.companion_context.document_context', AsyncMock(return_value={'status':'no_evidence','evidence':[]})):
             # Descriptive property helper is defined outside the production class.
             service_scope=service.ask.__func__.__globals__
             service_scope['descriptive_properties']=lambda properties:{}

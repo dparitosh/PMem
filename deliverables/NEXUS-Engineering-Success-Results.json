@@ -1,0 +1,78 @@
+{
+  "ontology_id": "engineering_lifecycle_de13ea35eb5844c9",
+  "fixture_records": 20,
+  "customer_approved": false,
+  "checks": [
+    {
+      "id": "bearing-requirement",
+      "status": "passed",
+      "detail": "Direct recorded requirement, distinct from indirect paths."
+    },
+    {
+      "id": "bearing-pmi",
+      "status": "passed",
+      "detail": "Nominal 25 mm, datum A, tolerance 0.01 mm."
+    },
+    {
+      "id": "quality-limits",
+      "status": "passed",
+      "detail": "25.006 mm within illustrative 24.99\u201325.01 mm limits; no source/customer approval."
+    },
+    {
+      "id": "cad-shape",
+      "status": "passed",
+      "detail": "CAD reference and bore feature retained separately; no mesh."
+    },
+    {
+      "id": "mbse-allocation",
+      "status": "passed",
+      "detail": "Subsystem allocation and direct requirement link."
+    },
+    {
+      "id": "manufacturing-bom",
+      "status": "passed",
+      "detail": "Two BOM lines, each quantity 1."
+    },
+    {
+      "id": "reuse-negative-control",
+      "status": "passed",
+      "detail": "Steel and aluminium differ; no interchangeability certificate."
+    },
+    {
+      "id": "shaft-change",
+      "status": "passed",
+      "detail": {
+        "http_status": 200,
+        "engineering_action_authorized": false
+      }
+    },
+    {
+      "id": "similarity",
+      "status": "passed",
+      "detail": {
+        "http_status": 200,
+        "engineering_action_authorized": false
+      }
+    },
+    {
+      "id": "manufacturing",
+      "status": "passed",
+      "detail": {
+        "http_status": 200,
+        "engineering_action_authorized": false
+      }
+    },
+    {
+      "id": "model-evidence",
+      "status": "passed",
+      "detail": "consistent"
+    }
+  ],
+  "all_checked_passed": true,
+  "not_established": [
+    "Customer engineering acceptance",
+    "CAD mesh and computed simulation",
+    "Approved reusable learning lesson",
+    "Free-form agent investigation completion"
+  ]
+}

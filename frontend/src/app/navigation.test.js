@@ -1,4 +1,8 @@
-import { normalizePage, pageLabel } from './navigation';
+import { navigationItems, normalizePage, pageLabel } from './navigation';
+
+test('every navigation destination uses a distinct icon',()=>{
+ expect(new Set(navigationItems.map(item=>item.icon)).size).toBe(navigationItems.length);
+});
 
 test('normalizes aliases and rejects unknown or malformed pages', () => {
   expect(normalizePage(' metadata-registry ')).toBe('registry');

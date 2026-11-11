@@ -1,0 +1,4 @@
+.recommendation-provenance { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--ui-border, #d9e2ec); border-radius: 6px; background: var(--ui-surface, #fff); font-size: 13px; }
+.recommendation-provenance div { display: flex; gap: 6px; }
+.recommendation-provenance dt { font-weight: 600; color: var(--ui-muted, #526679); }
+.recommendation-provenance dd { margin: 0; color: var(--ui-text, #243746); }

@@ -80,8 +80,6 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
     term_index = []
     indexed_counts: dict[str, int] = {}
     for kind, term in typed_terms:
-        if indexed_counts.get(kind, 0) >= 500:
-            continue
         indexed_counts[kind] = indexed_counts.get(kind, 0) + 1
         label = next((str(value) for predicate in (SKOS.prefLabel, RDFS.label)
                       for value in graph.objects(term, predicate) if str(value).strip()), "")
@@ -122,7 +120,7 @@ def _resolve_ontology_path(ontology_path: str, ontology_id: str | None) -> str:
         metadata = catalog.get(ontology_id)
         if metadata:
             # Resolve only catalog-owned paths, preserving directory containment.
-            artifact = Path(str(metadata["artifact_path"])).resolve()
+            artifact = catalog.resolve_artifact_path(ontology_id, metadata)
             if not artifact.is_relative_to((catalog.root / ontology_id).resolve()) or not artifact.is_file():
                 raise ValueError("Native ontology artifact is missing or outside its catalog directory")
             return str(artifact)
@@ -149,13 +147,34 @@ def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | No
     task = UnifiedDataImportService._restore_task(import_task_id)
     if not task:
         raise ValueError("The selected import task was not found")
-    rows = task.get("parsed_rows") or []
+    rows = task.get("parsed_rows")
+    if rows is None:
+        # Persisted task snapshots hold rows in a separate, content-addressed file.
+        # A worker/service restart must not turn real instance evidence into an empty review.
+        snapshot = UnifiedDataImportService._task_snapshot_path(import_task_id)
+        name = task.get('_parsed_rows_file') or (snapshot.name + '.parsed_rows.json')
+        if (not isinstance(name, str) or Path(name).name != name or
+                not re.fullmatch(re.escape(snapshot.name) + r'\.parsed_rows(?:\.[0-9a-f]{64})?\.json', name)):
+            raise ValueError('The selected import task has invalid parsed row data')
+        sidecar = snapshot.parent / name
+        if sidecar.resolve().parent != snapshot.parent.resolve():
+            raise ValueError('The selected import task has invalid parsed row data')
+        try:
+            content = sidecar.read_bytes()
+        except OSError as exc:
+            raise ValueError('The selected import task retained parsed rows are unavailable') from exc
+        if name != snapshot.name + '.parsed_rows.json' and hashlib.sha256(content).hexdigest() != name.rsplit('.', 2)[1]:
+            raise ValueError('The selected import task has invalid parsed row data')
+        try:
+            rows = json.loads(content)
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError('The selected import task has invalid parsed row data') from exc
     if not isinstance(rows, list):
         raise ValueError("The selected import task has invalid parsed row data")
     entities: list[str] = []
     attributes: list[str] = []
     relationships: list[str] = []
-    for row in rows[:1000]:
+    for row in rows:
         if not isinstance(row, dict):
             continue
         for key, value in row.items():
@@ -263,7 +282,7 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
         "status": "review_required" if any(item["status"] != "candidate" for item in items) or summary.get("term_index_truncated") else "ready_for_mapping",
         "publication": "requires_human_approval",
-        "llm": _llm_suggestion(plan, instance_metadata, {"terms": summary.get("term_index", [])[:30], "candidates": candidates[:20],
+        "llm": _llm_suggestion(plan, instance_metadata, {"terms": sorted(summary.get("term_index", []), key=lambda term: term["iri"] not in {item["target_iri"] for item in candidates[:20]})[:30], "candidates": candidates[:20],
             "artifact_digest": summary.get("artifact_digest"), "term_index_truncated": summary.get("term_index_truncated", False)}),
     }
     return result
@@ -296,10 +315,11 @@ def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
     ontology_path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
     summary = inspect_ontology(ontology_path)
+    summary['data_source'] = 'retained-rdf-artifact'
     steps = [{"agent": "ontology_intake_agent", "status": "completed", "result": summary}]
     if workflow_id == "ontology_review":
         steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": _review_summary(summary)})
-    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": bridge_plan({**payload, "instance_metadata": metadata})})
+    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_summary=summary)})
     return {"workflow_id": workflow_id, "steps": steps, "status": "completed", "publication": "requires_human_approval"}
 
 
@@ -332,7 +352,7 @@ def graph_planning_summary(ontology_id: str) -> dict[str, Any]:
     import hashlib, json
     return {"engine": "neo4j", "data_source": "graph-service", "ontology_id": ontology_id,
             "graph_digest": hashlib.sha256(json.dumps(indexed, sort_keys=True).encode()).hexdigest(),
-            "term_index": indexed[:2000], "term_index_truncated": len(indexed) > 2000,
+            "term_index": indexed, "term_index_truncated": False,
             "ontology_iris": [], "warnings": ['Graph projection is not a complete RDF/OWL reasoning model'],
             "formal_reasoning_performed": False}
 

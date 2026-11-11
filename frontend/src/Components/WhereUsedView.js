@@ -13,7 +13,7 @@ import { UI_COLORS } from '../styles/uiTokens';
 //
 // Shared UI configuration
 //   The first property found on a node is used as the display name.
-//   Set to [] (empty array) to rely solely on the Neo4j label.
+//   Set to [] (empty array) to rely solely on the knowledge graph label.
 const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'id'];
 //
 // Shared UI configuration
@@ -35,6 +35,18 @@ const SEARCHABLE_NODE_KEYS = [
 const normalizeSearchValue = (value) => String(value || '').trim().toLowerCase();
 
 const getNodeProps = (node) => node?.properties || node || {};
+
+const vocabularyName = value => String(value || '').split(/[#/:]/).pop().replace(/[^a-z0-9]/gi, '').toLowerCase();
+const businessTypes = new Set(['part','product','productrevision','productinstance','component','item','itemrevision','assembly','requirement','requirementspecification','process','operation','manufacturingprocess','document','change','changerequest','changenotice']);
+const businessNode = node => {
+  const props = getNodeProps(node);
+  if (/^urn:depo:(assertion|evidence):/i.test(String(props.iri || props.uri || props.name || ''))) return false;
+  return [...(node?.labels || []), ...(Array.isArray(props.rdf_types) ? props.rdf_types : []), props.semantic_role, props.element_type, props.entity_type]
+    .some(value => businessTypes.has(vocabularyName(value).replace(/type$/, '')));
+};
+// Direction is defined by the predicate, not by the drawing's arrow orientation.
+const parentToChild = new Set(['haspart','hascomponent','assemblycontains','contains','haschild','haschildinstance','parentof','uses','masterref','masterreference','revisionref','productref','partref','instanceref','instancedref']);
+const childToParent = new Set(['partof','childof','usedby','belongsto']);
 
 const getNodeLabel = (node) => node?.labels?.[0] || node?.label || 'Node';
 
@@ -100,7 +112,7 @@ const resolveDisplayProp = (props) => {
   return null;
 };
 
-// Helper: format a display string from a Neo4j label and a property value
+// Helper: format a display string from a knowledge graph label and a property value
 const formatNodeDisplay = (label, propValue) => {
   switch (DISPLAY_MODE) {
     case 'label-only':
@@ -176,6 +188,7 @@ const buttonStyle = {
 
 const WhereUsedView = ({
     data,
+    remoteSearch = false,
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     // Local hierarchy search results (distinct from global graph searchResults passed via props)
@@ -188,50 +201,17 @@ const WhereUsedView = ({
     const [autoExpanded, setAutoExpanded] = useState(false);
     const [expansionError, setExpansionError] = useState(null);
     const [levels, setLevels] = useState([]); // Array of arrays: ancestors by distance
-    const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
-    const [graphLoading, setGraphLoading] = useState(false);
-    const [graphError, setGraphError] = useState('');
     const [sessionRevision, setSessionRevision] = useState(0);
     const searchAbortRef = useRef(null);
     const expansionAbortRef = useRef(null);
-    const overviewAbortRef = useRef(null);
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
 
-    const effectiveGraphData = useMemo(() => {
-        const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
-        return hasPrimaryGraph && sessionRevision === 0 ? data : fallbackGraphData;
-    }, [data, fallbackGraphData, sessionRevision]);
-
-    useEffect(() => {
-        const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
-        if ((hasPrimaryGraph && sessionRevision === 0) || (fallbackGraphData.nodes || []).length > 0) return undefined;
-
-        let cancelled = false;
-        const controller = new AbortController();
-        overviewAbortRef.current = controller;
-        const loadGraph = async () => {
-            setGraphLoading(true);
-            setGraphError('');
-            try {
-                const response = await graphApi.getOverview(1200, controller.signal);
-                const normalized = normalizeGraphDatasetShared(response.data);
-                if (!cancelled && !controller.signal.aborted) setFallbackGraphData(normalized);
-            } catch (error) {
-                if (controller.signal.aborted) return;
-                if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for Where Used.');
-            } finally {
-                if (!cancelled) setGraphLoading(false);
-            }
-        };
-
-        loadGraph();
-        return () => { cancelled = true; controller.abort(); };
-    }, [data, fallbackGraphData.nodes, sessionRevision]);
+    const suppliedSnapshot = !remoteSearch && sessionRevision === 0 && Boolean(data?.nodes?.length || data?.links?.length);
+    const effectiveGraphData = suppliedSnapshot ? data : {nodes: [], links: []};
 
     useEffect(() => {
         const reset = () => {
-            overviewAbortRef.current?.abort();
             searchAbortRef.current?.abort();
             expansionAbortRef.current?.abort();
             expansionAbortRef.current = null;
@@ -244,22 +224,24 @@ const WhereUsedView = ({
             setIsExpandingUpwards(false);
             setSearchError(null);
             setExpansionError(null);
-            setFallbackGraphData({ nodes: [], links: [] });
             setSessionRevision(value => value + 1);
         };
-        window.addEventListener('depo:credentials-changed', reset);
-        window.addEventListener('depo:credentials-cleared', reset);
+        const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
+        events.forEach(event => window.addEventListener(event, reset));
         return () => {
-            window.removeEventListener('depo:credentials-changed', reset);
-            window.removeEventListener('depo:credentials-cleared', reset);
-            overviewAbortRef.current?.abort();
+            events.forEach(event => window.removeEventListener(event, reset));
             searchAbortRef.current?.abort();
             expansionAbortRef.current?.abort();
         };
     }, []);
     
-    // Search the bounded standalone graph projection used by Graph Explorer.
+    // Standalone search resolves business objects independently of the overview cap.
     const handleSearch = async () => {
+        expansionAbortRef.current?.abort();
+        expansionAbortRef.current = null;
+        setIsExpandingUpwards(false);
+        setExpansionError(null);
+        setAutoExpanded(false);
         const term = searchTerm.trim();
         if (!term) return;
         searchAbortRef.current?.abort();
@@ -268,21 +250,21 @@ const WhereUsedView = ({
         setIsSearching(true);
         setSearchError(null);
         try {
-            const nodes = (effectiveGraphData?.nodes || [])
+            let sourceNodes = effectiveGraphData?.nodes || [];
+            if (!suppliedSnapshot) {
+                const response = await graphApi.searchBusiness(term, controller.signal);
+                if (controller.signal.aborted || searchAbortRef.current !== controller) return;
+                sourceNodes = normalizeGraphDatasetShared(response.data).nodes;
+            }
+            const nodes = sourceNodes
                 .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
                 .filter(({ score }) => score > 0)
                 .sort((a, b) => b.score - a.score)
                 .map(({ node }) => node);
 
-            const localFallbackNodes = (effectiveGraphData?.nodes || [])
-                .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
-                .filter(({ score }) => score > 0)
-                .sort((a, b) => b.score - a.score)
-                .map(({ node }) => node);
-
-            const finalNodes = nodes.length > 0 ? nodes : localFallbackNodes;
-            if (nodes.length === 0 && localFallbackNodes.length > 0) {
-                setSearchError('Server search returned no ranked matches. Showing local graph matches.');
+            const finalNodes = nodes;
+            if (finalNodes.length === 0) {
+                setSearchError(suppliedSnapshot ? 'No matching business objects in the loaded graph snapshot. This does not prove the object is absent from the full graph.' : 'No matching business objects in this bounded graph search. A missing match does not prove that an entity is unused.');
             }
 
             setHierarchySearchResults(finalNodes);
@@ -295,26 +277,12 @@ const WhereUsedView = ({
             }
         } catch (err) {
             if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
-            logger.search('Search error (server):', err);
-            try {
-                const fallbackNodes = (effectiveGraphData?.nodes || [])
-                    .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
-                    .filter(({ score }) => score > 0)
-                    .sort((a, b) => b.score - a.score)
-                    .map(({ node }) => node);
-                setHierarchySearchResults(fallbackNodes);
-                setSearchError('Server search failed. Showing local filtered results.');
-                if (fallbackNodes.length > 0) {
-                    handleNodeSelect(fallbackNodes[0]);
-                } else {
-                    setSelectedNode(null);
-                    setTreeData(null);
-                    setLevels([]);
-                }
-            } catch (_fe) {
-                setHierarchySearchResults([]);
-                setSearchError('Search failed.');
-            }
+            logger.search('Loaded graph search failed:', err);
+            setHierarchySearchResults([]);
+            setSelectedNode(null);
+            setTreeData(null);
+            setLevels([]);
+            setSearchError('Unable to search business objects. Check graph access and retry.');
         } finally {
             if (!controller.signal.aborted) setIsSearching(false);
             if (searchAbortRef.current === controller) searchAbortRef.current = null;
@@ -366,26 +334,31 @@ const WhereUsedView = ({
                         const targetId = getLinkEndpointId(relationship.end ?? relationship.target);
                         if (!sourceId || !targetId) return;
 
-                        if (targetId === currentNodeId) {
-                            const parent = nodes.find(node => node?.elementId === sourceId);
-                            if (!ancestorMap.has(sourceId)) {
-                                if (!parent) return;
+                        const predicate = vocabularyName(relationship.properties?.predicate || relationship.predicate || relationship.type || relationship.label);
+                        const parentId = targetId === currentNodeId && parentToChild.has(predicate) ? sourceId
+                            : sourceId === currentNodeId && childToParent.has(predicate) ? targetId : null;
+                        if (parentId) {
+                            const parent = nodes.find(node => node?.elementId === parentId);
+                            if (!businessNode(parent)) return;
+                            if (!ancestorMap.has(parentId)) {
                                 if (ancestorMap.size >= 1000) { bounded = true; return; }
-                                ancestorMap.set(sourceId, parent);
+                                ancestorMap.set(parentId, parent);
                             }
                             const key = buildRelationshipKey({ ...relationship, source: sourceId, target: targetId });
                             if (!linkSet.has(key)) {
                                 linkSet.set(key, {
                                     elementId: relationship.elementId || key,
-                                    source: sourceId,
-                                    target: targetId,
-                                    type: relationship.type || relationship.label || 'RELATED',
+                                    source: parentId,
+                                    target: currentNodeId,
+                                    originalSource: sourceId,
+                                    originalTarget: targetId,
+                                    type: relationship.properties?.predicate || relationship.predicate || relationship.type || relationship.label || 'RELATED',
                                     properties: relationship.properties || {},
                                 });
                             }
-                            if (!depths.has(sourceId)) {
-                                depths.set(sourceId, (depths.get(currentNodeId) || 0) + 1);
-                                queue.push(sourceId);
+                            if (!depths.has(parentId)) {
+                                depths.set(parentId, (depths.get(currentNodeId) || 0) + 1);
+                                queue.push(parentId);
                             }
                         }
                     });
@@ -430,6 +403,7 @@ const WhereUsedView = ({
             logger.data('  Total links: %d', parentLinks.length);
             logger.data('  Levels: %d', sortedLevels.length);
 
+            if (controller.signal.aborted || expansionAbortRef.current !== controller) return;
             setLevels(sortedLevels);
             setTreeData({
                 nodes: Array.from(ancestorMap.values()),
@@ -497,6 +471,9 @@ const WhereUsedView = ({
             id: node.elementId,
             displayName: getNodeDisplayName(node),
             label: nodeLabel,
+            sourceFile: node.properties?.source_filename || '',
+            sourceType: node.properties?.part_type || node.properties?.source_element_name || nodeLabel,
+            revision: node.properties?.revision || '',
             properties: Object.keys(node.properties || node).filter(k => !['elementId', 'labels', 'label'].includes(k)).length,
             node,
         };
@@ -527,6 +504,9 @@ const WhereUsedView = ({
     const searchGridColumns = useMemo(() => [
         { headerName: 'Node', field: 'displayName', flex: 1.5, minWidth: 260, tooltipField: 'displayName' },
         { headerName: 'Label', field: 'label', flex: 0.7, minWidth: 160 },
+        { headerName: 'Source type', field: 'sourceType', minWidth: 180 },
+        { headerName: 'Revision', field: 'revision', width: 100 },
+        { headerName: 'Source file', field: 'sourceFile', minWidth: 240, tooltipField: 'sourceFile' },
         { headerName: 'Properties', field: 'properties', width: 120, type: 'numericColumn' },
         {
             headerName: 'Action',
@@ -558,8 +538,10 @@ const WhereUsedView = ({
         if (!selectedNode || !treeData?.nodes?.length) return '';
 
         const selectedId = selectedNode.elementId;
-        const directParents = (treeData.links || [])
-            .filter((link) => link?.target === selectedId)
+        const incoming = (treeData.links || []).filter((link) => link?.target === selectedId);
+        const usageTypes = new Set(['uses','contains','haspart','haschild','haschildinstance','hascomponent','assemblycontains','parentof',...childToParent]);
+        const usageLinks = incoming.filter(link => usageTypes.has(vocabularyName(link.type)));
+        const directParents = (usageLinks.length ? usageLinks : incoming)
             .map((link) => treeData.nodes.find((node) => node.elementId === link.source))
             .filter(Boolean);
 
@@ -571,12 +553,14 @@ const WhereUsedView = ({
 
         const selectedName = getNodeDisplayName(selectedNode);
         if (!uniqueParents.length) {
-            return `${selectedName} is not currently shown as used by another loaded business object.`;
+            return `No upstream references were returned for ${selectedName} in this loaded scope. This does not establish that the object is unused.`;
         }
 
         const preview = uniqueParents.slice(0, 3).join(', ');
         const suffix = uniqueParents.length > 3 ? ` and ${uniqueParents.length - 3} more` : '';
-        return `${selectedName} is used in ${preview}${suffix}.`;
+        return usageLinks.length
+            ? `Source-provided usage links connect ${selectedName} to ${preview}${suffix}. Review the relationship types before assessing assembly impact.`
+            : `Upstream source references connect ${selectedName} to ${preview}${suffix}. Revision/master references do not establish physical assembly usage.`;
     }, [selectedNode, treeData, getNodeDisplayName]);
 
     const hierarchyGridColumns = useMemo(() => [
@@ -615,13 +599,13 @@ const WhereUsedView = ({
 
     return (
         <>
-        <p role="status">Search covers only the loaded graph snapshot (up to 1200 nodes for the overview). A missing match does not prove that an entity is unused.</p>
+        <p role="status">{suppliedSnapshot ? 'Search covers only the supplied graph snapshot. A missing match does not prove that an entity is unused.' : 'Search queries business objects directly, independently of the overview slice. Results are bounded to 80 candidates; upward traversal has separate depth and time limits.'}</p>
         <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>
             <div style={{ ...panelStyle, marginBottom: 12, padding: '10px 12px' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
                 <div style={{ fontSize: 12, color: WU.muted, lineHeight: 1.5 }}>Search for a part, requirement, instance, or named business object. We rank matches, select the best one, then build its upward usage chain from the graph.</div>
-                <div style={{ marginTop: 8, fontSize: 11, color: graphError ? WU.error : WU.subtle, fontWeight: 600 }}>
-                    {graphLoading ? 'Loading graph context...' : graphError ? graphError : `${totalSearchableNodes} business-object candidates are available for local fallback search.`}
+                <div style={{ marginTop: 8, fontSize: 11, color: WU.subtle, fontWeight: 600 }}>
+                    {suppliedSnapshot ? `${totalSearchableNodes} business-object candidates are available in the supplied snapshot.` : 'Enter a business object name to find recorded usage.'}
                 </div>
             </div>
             <div style={{ ...panelStyle, marginBottom: 12 }}>
@@ -631,7 +615,14 @@ const WhereUsedView = ({
                         <input
                             type="text"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => {
+                                searchAbortRef.current?.abort();
+                                expansionAbortRef.current?.abort();
+                                setIsSearching(false); setIsExpandingUpwards(false);
+                                setHierarchySearchResults([]); setSelectedNode(null);
+                                setTreeData(null); setLevels([]); setSearchError(null);
+                                setSearchTerm(e.target.value);
+                            }}
                             placeholder="Enter part, class, instance, requirement, or property name"
                             style={inputStyle}
                             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -650,7 +641,7 @@ const WhereUsedView = ({
                     </button>
                 </div>
                 {searchError && (
-                    <div style={{ marginTop: 8, color: WU.error, fontSize: 12, fontWeight: 600 }}>{searchError}</div>
+                    <div role="status" aria-label="Search outcome" style={{ marginTop: 8, color: WU.muted, fontSize: 12, fontWeight: 600 }}>{searchError}</div>
                 )}
             </div>
             {/* Search Results */}
@@ -675,8 +666,8 @@ const WhereUsedView = ({
                             <div style={fieldLabelStyle}>Business object</div>
                             <div style={{ fontSize: 14, color: WU.text, fontWeight: 800, marginTop: 4 }}>{getNodeDisplayName(selectedNode)}</div>
                         </div>
-                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Usage levels {levels.length}</span>
-                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Ancestors {treeData.nodes.length - 1}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Reference levels {levels.length}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Upstream records {treeData.nodes.length - 1}</span>
                         <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Links {treeData.links.length}</span>
                         {isExpandingUpwards && <span style={{ color: WU.primary, fontSize: 12, fontWeight: 700 }}>Expanding...</span>}
                         {expansionError && <span style={{ color: WU.error, fontSize: 12, fontWeight: 700 }}>Error: {expansionError}</span>}

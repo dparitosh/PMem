@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from .workflow_errors import workflow_error
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
@@ -65,18 +65,52 @@ async def memory_status(request: Request):
     graph_read_identity(request)
     return await _agent_io(AgentMemoryService.status, probe=True)
 
+
+@router.get('/memory/maintenance', summary='Read the latest bounded memory-maintenance receipt', dependencies=[Depends(graph_read_identity)])
+async def memory_maintenance_status():
+    record = await _agent_io(PostgresRegistry('agentic_memory_maintenance').get, 'latest')
+    return record or {'status': 'not_run', 'steps': []}
+
+
+def _memory_report(owner):
+    """Owner-filtered retained conversations; never expose registry payloads."""
+    store = PostgresRegistry('agentic_companion_jobs')
+    with store._connect() as db, db.transaction(), db.cursor() as cursor:
+        cursor.execute('SET TRANSACTION READ ONLY')
+        cursor.execute("SET LOCAL statement_timeout='5s'")
+        cursor.execute("SELECT value FROM depo_registry WHERE namespace=%s AND value->>'owner'=%s AND value->>'status'='completed' ORDER BY value->>'finished_at' DESC,key DESC LIMIT 25", [store.namespace, owner])
+        items = [row[0] for row in cursor.fetchall()]
+    fields = ('job_id', 'user_request', 'resolved_query', 'response', 'evidence', 'graph_context', 'finished_at', 'answerable')
+    return {'records': [{key: item.get(key) for key in fields} for item in items],
+            'limit': 25, 'scope': 'current_authenticated_owner',
+            'storage': {'conversation': 'PostgreSQL: semantic.depo_registry / agentic_companion_jobs',
+                        'context': 'Selected ontology and business identity retained with each turn',
+                        'knowledge': 'Published engineering graph; separate from conversation history'},
+            'notice': 'Saved answers are historical evidence, not refreshed facts or approved lessons.'}
+
+
+@router.get('/memory/records', dependencies=[Depends(graph_read_identity)])
+async def memory_records(request: Request):
+    actor = graph_read_identity(request)
+    return await _agent_io(_memory_report, sessions.owner(request, actor))
+
 class Catalog:
     def __init__(self) -> None:
         configured = os.getenv("AGENTIC_CATALOG_PATH", "")
         self.path = Path(configured) if configured else Path(__file__).with_name("catalog.json")
     def read(self) -> dict[str, Any]:
         from .catalog_loader import load_catalog
-        return load_catalog(self.path)
-    def item(self, kind: str, identifier: str) -> dict[str, Any]:
+        try:
+            return load_catalog(self.path)
+        except (OSError, ValueError, KeyError, TypeError):
+            logger.exception('Agent registry configuration is unavailable')
+            raise HTTPException(503, 'Agent registry is unavailable; verify the configured catalog and consult service logs using the request ID') from None
+    def item(self, kind: str, identifier: str, *, source=None) -> dict[str, Any]:
+        snapshot = self.read() if source is None else source
         if kind == 'workflows' and identifier.startswith('single-tool:'):
             from .single_tool import definition
-            return definition(self.read(), identifier)
-        for value in self.read()[kind]:
+            return definition(snapshot, identifier)
+        for value in snapshot[kind]:
             if value.get("id") == identifier: return value
         raise ValueError(f"Unknown {kind[:-1]}: {identifier}")
 
@@ -131,22 +165,31 @@ def _render(path: str, values: dict[str, Any]) -> str:
         result.append(quote(value, safe=''))
     return ''.join(result)
 
-@router.get("/agents")
+@router.get('/agent-registry', dependencies=[Depends(graph_read_identity)])
+def agent_registry() -> dict:
+    from .registry_view import registry_view
+    return registry_view(catalog.read())
+
+
+@router.get("/agents", dependencies=[Depends(graph_read_identity)])
 def agents() -> dict:
-    from .agent_usage import describe
-    return {"agents": describe(catalog.read())}
+    view = agent_registry()
+    return {"agents": view['agents'], 'registry': view['registry']}
 
 
 @router.get('/agent-architecture', dependencies=[Depends(graph_read_identity)])
 def agent_architecture() -> dict:
     from .agent_usage import architecture
     return architecture(catalog.read())
-@router.get("/tools")
-def tools() -> dict: return {"tools": catalog.read()["tools"]}
-@router.get("/mcp-servers")
-def mcp_servers() -> dict: return {"mcp_servers": catalog.read()["mcp_servers"]}
-@router.get("/workflows")
-def workflows() -> dict: return {"workflows": catalog.read()["workflows"]}
+@router.get("/tools", dependencies=[Depends(graph_read_identity)])
+def tools() -> dict:
+    view = agent_registry()
+    return {"tools": view['tools'], 'registry': view['registry'],
+            "read_goal_capabilities": {"recommendation_evidence": 1, "engine": "existing-read-goal-worker"}}
+@router.get("/mcp-servers", dependencies=[Depends(graph_read_identity)])
+def mcp_servers() -> dict: return {"mcp_servers": agent_registry()['mcp_servers']}
+@router.get("/workflows", dependencies=[Depends(graph_read_identity)])
+def workflows() -> dict: return {"workflows": agent_registry()['workflows']}
 
 
 @router.post("/integrations/dt-requirements-design/compatibility")
@@ -294,16 +337,10 @@ def ontology_agent_bridge_plan(payload: OntologyAgentBody) -> dict:
     return _ontology_agent_call(bridge_plan, payload)
 
 
-_COMPANION_PROMPTS = [
-    "Find ontology resources matching product",
-    "Find ontology resources matching requirement",
-    "Find ontology resources matching measurement",
-]
-
-
 @router.get("/chat/sample-queries")
-def companion_sample_queries() -> dict:
-    return {"queries": _COMPANION_PROMPTS, "data_available": None, "mode": "ontology-search"}
+def companion_sample_queries(page: str = 'home') -> dict:
+    from .companion_prompts import sample_queries
+    return sample_queries(page)
 
 
 @router.post("/chat/validate", dependencies=[Depends(graph_read_identity)])
@@ -321,19 +358,39 @@ async def companion_chat(payload: ChatRequest, request: Request) -> dict:
     return await _companion_chat(payload, request)
 
 
-def _session_turns(session, limit=20):
-    """Bounded PostgreSQL history; never return another principal's turns."""
-    _, items = companion_job_store.page(limit=limit, field='session_id', value=session['session_id'], order_field='finished_at')
-    return [item for item in items if item.get('owner') == session['owner'] and item.get('status') == 'completed']
+def _session_turns(session, limit=20, scope=None, successful_only=False):
+    """Filter owner, successful status and business scope before limiting history."""
+    if scope is None:  # Compatibility callers retain their existing bounded view.
+        _, items = companion_job_store.page(limit=limit, field='session_id', value=session['session_id'], order_field='finished_at')
+        return [item for item in items if item.get('owner') == session['owner'] and item.get('status') == 'completed']
+    from .context_scope import companion_scope
+    selected = companion_scope(scope)
+    where = "namespace=%s AND value->>'session_id'=%s AND value->>'owner'=%s AND value->>'status'='completed'"
+    if successful_only: where += " AND COALESCE(value->>'answerable','true') <> 'false'"
+    args = [companion_job_store.namespace, session['session_id'], session['owner']]
+    anchored = any(selected[key] for key in ('node_id','run_id','product_id','reconciliation_id'))
+    for key, value in selected.items():
+        if key == 'page' and anchored: continue
+        where += " AND COALESCE(value->'graph_context'->>%s,'')=%s"
+        args.extend([key, value])
+    with companion_job_store._connect() as db, db.transaction(), db.cursor() as cursor:
+        cursor.execute('SET TRANSACTION READ ONLY')
+        cursor.execute("SET LOCAL statement_timeout='5s'")
+        cursor.execute("SELECT value FROM depo_registry WHERE " + where + " ORDER BY COALESCE(value->>'finished_at','') DESC,key DESC LIMIT %s", [*args, max(1,min(limit,50))])
+        return [row[0] for row in cursor.fetchall()]
 
 
 @router.get('/chat/sessions/{session_id}/history', dependencies=[Depends(graph_read_identity)])
-async def companion_history(session_id: str, request: Request):
+async def companion_history(session_id: str, request: Request, ontology_id: str = '', ontology_prefix: str = '', page: str = '', node_id: str = Query(default='', max_length=256), run_id: str = Query(default='', max_length=256), product_id: str = Query(default='', max_length=256), product_version: str = Query(default='', max_length=256), reconciliation_id: str = Query(default='',max_length=256)):
     actor = graph_read_identity(request)
     session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
-    turns = await run_in_threadpool(_session_turns, session)
+    from .context_scope import same_companion_scope
+    selected = {'ontology': ontology_id, 'ontology_prefix': ontology_prefix, 'page': page, 'node_id': node_id,
+                'run_id': run_id, 'product_id': product_id, 'product_version': product_version,'reconciliation_id':reconciliation_id}
+    turns = await run_in_threadpool(_session_turns, session, 20, selected)
+    turns = [turn for turn in turns if same_companion_scope(turn.get('graph_context'), selected)]
     return {'session_id': session_id, 'turns': [
-        {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'finished_at')}
+        {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'answerable', 'retrieval', 'graph_context', 'finished_at')}
         for item in reversed(turns)]}
 
 
@@ -352,49 +409,77 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
     try:
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
         memory_key = sessions.memory_id(session)
-        context = await run_in_threadpool(AgentMemoryService.recent_context, memory_key, 6)
-        if not context.get('messages'):
-            turns = await run_in_threadpool(_session_turns, session, 6)
-            context = {'messages': [{'role': 'user', 'text': turn.get('user_request', '')} for turn in turns]}
-        # History supports follow-up retrieval only; graph evidence remains the
-        # answer authority and memory text cannot authorize tools or writes.
-        query = message
-        if len(message.split()) <= 4:
-            prior = next((item['text'] for item in context.get('messages', []) if item.get('role') == 'user'), '')
-            if prior:
-                query = f'{str(prior)[:1000]} {message}'
+        from .companion_memory import retrieval_query
+        turns = await run_in_threadpool(_session_turns, session, 50, payload.get('graph_context') or {}, True)
+        query = await run_in_threadpool(retrieval_query, message, turns, payload.get('graph_context') or {})
         generation_budget = 0
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             from .local_llm import settings
-            generation_budget = settings()[3]
-        async with asyncio.timeout(bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
+            try:
+                generation_budget = settings()[3]
+            except ValueError:
+                # Invalid optional model settings must not suppress retrieval.
+                generation_budget = 0
+        async with asyncio.timeout(5 * bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
             kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
             if (payload.get('graph_context') or {}).get('ontology_prefix'):
                 kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
-            if on_token:
-                kwargs['on_token'] = on_token
+            if (payload.get('graph_context') or {}).get('page'):
+                kwargs['page']=payload['graph_context']['page']
+            if (payload.get('graph_context') or {}).get('node_id'):
+                kwargs['node_id']=payload['graph_context']['node_id']
+            for key in ('run_id', 'product_id', 'product_version','reconciliation_id'):
+                if (payload.get('graph_context') or {}).get(key):
+                    kwargs[key] = payload['graph_context'][key]
+            # Do not emit answer text before its required evidence record has
+            # committed. A failed save must not leave a seemingly valid stream.
             result = await companion.ask(query, **kwargs)
         if (not isinstance(result, dict) or not isinstance(result.get('response'), str)
                 or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
                 or not isinstance(result.get('answerable'), bool)):
             raise RuntimeError('Knowledge companion returned an invalid evidence response')
-        await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
-            user_message=message, assistant_response=result['response'], generation=result.get('generation'))
         retained_id = 'companion-turn-' + observation['run_id']
+        from .context_envelope import assemble
+        selected_context = payload.get('graph_context') or {}
+        envelope = assemble(owner=session['owner'] if session.get('owner') else sessions.owner(request, actor),
+            run_id=observation['run_id'], purpose='knowledge_companion',
+            context={'ontology_id': selected_context.get('ontology', ''),
+                     'ontology_prefix': selected_context.get('ontology_prefix', ''),
+                     'node_id': selected_context.get('node_id', ''),
+                     **{key: selected_context.get(key, '') for key in ('run_id', 'product_id', 'product_version','reconciliation_id')}},
+            deadline_at=session['expires_at'])
         await _agent_io(companion_job_store.put, retained_id, {
             'job_id': retained_id, 'status': 'completed', 'session_id': session['session_id'],
             'owner': sessions.owner(request, graph_read_identity(request)),
-            'user_request': message, 'response': result['response'], 'generation': result.get('generation'),
-            'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'finished_at': _now()})
+            'context_envelope': envelope,
+            'user_request': message, 'resolved_query': query, 'response': result['response'], 'generation': result.get('generation'),
+            'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'retrieval': result.get('retrieval'), 'graph_context': payload.get('graph_context') or {}, 'finished_at': _now()})
+        # PostgreSQL evidence is mandatory. Optional graph enrichment must never
+        # prevent retention or turn a completed answer into a failed execution.
+        memory_status = 'disabled'
+        try:
+            if AgentMemoryService.enabled():
+                written = await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
+                    user_message=message, assistant_response=result['response'],
+                    graph_context=selected_context, generation=result.get('generation'))
+                memory_status = 'available' if written else 'unavailable'
+        except Exception:
+            memory_status = 'unavailable'
         await _agent_io(_finish_observation,
             observation,
             observed_at,
             status="completed",
             evidence_count=len(result.get("evidence") or []),
         )
-        return {**result, 'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
+        if on_token:
+            await on_token(result['response'])
+        return {**result, 'retention': {'status': 'retained', 'backend': 'postgresql', 'record_id': retained_id},
+                'memory_enrichment': {'status': memory_status, 'required': False},
+                'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
                 'session_idle_seconds': int(bounded_timeout_seconds('AGENT_SESSION_IDLE_SECONDS', default=1800, maximum=86400)), 'mode': 'evidence-grounded'}
     except BaseException as exc:
+        import traceback
+        logger.error('Companion request failed: type=%s missing_module=%s frames=%s',type(exc).__name__, getattr(exc,'name','') if isinstance(exc,ModuleNotFoundError) else '', [(f.name,f.lineno) for f in traceback.extract_tb(exc.__traceback__)][-8:])
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         await _agent_io(_finish_observation, observation, observed_at, status=status, error_type=type(exc).__name__)
         if isinstance(exc, (asyncio.CancelledError, HTTPException)) or not isinstance(exc, Exception):
@@ -424,13 +509,13 @@ def companion_job_status(job_id: str, request: Request) -> dict:
     if record.get('owner') != sessions.owner(request, graph_read_identity(request)):
         raise HTTPException(403, 'Chat job belongs to another identity')
     # Reading an owned retained result does not reopen its conversation session.
-    return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
+    return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'context_envelope'}}
 
 
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': False, 'generation_delivery': 'buffered-until-citations-validated', 'job_execution': 'synchronous', "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "evidence-grounded-retrieval", "streaming": True, 'incremental_generation': False, 'generation_delivery': 'buffered-until-evidence-retained', 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get('/llm/health', dependencies=[Depends(graph_read_identity)])
@@ -441,7 +526,9 @@ async def local_llm_health() -> dict:
 
 @router.get("/chat/capabilities")
 def companion_capabilities() -> dict:
-    return {"name": "knowledge-companion", "mode": "ontology-search", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'evidence-and-optional-generation-tokens', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False}
+    return {"name": "knowledge-companion", "mode": "evidence-grounded-retrieval", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'evidence-and-optional-generation-tokens', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False,
+            'business_intents':['associated_requirements','parts_with_pmi','product_assembly'],
+            'selected_node_context':True, 'semantic_entailment_verified':False}
 
 
 @router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
@@ -493,8 +580,9 @@ async def suggest_agent_tool(agent_id: str, payload: ToolSuggestionBody, request
     from .local_llm import suggest_tool, failure_status
     prompt_details = {}
     try:
-        agent = catalog.item('agents', agent_id)
-        selected = [catalog.item('tools', identifier) for identifier in agent.get('tools', [])]
+        source = catalog.read()
+        agent = catalog.item('agents', agent_id, source=source)
+        selected = [catalog.item('tools', identifier, source=source) for identifier in agent.get('tools', [])]
         attachment = payload.get('attachment')
         if attachment is not None:
             try:
@@ -559,22 +647,34 @@ def saved_recommendation(recommendation_id: str, request: Request) -> dict:
         raise HTTPException(503, 'Recommendation storage unavailable') from exc
 
 
-@router.post("/plans")
+@router.post("/plans", dependencies=[Depends(graph_read_identity)])
 def plan(payload: AgentPlanBody) -> dict:
+    return _plan(payload, catalog.read())
+
+
+def _plan(payload, source) -> dict:
     try:
-        agent, tool = catalog.item("agents", str(payload["agent_id"])), catalog.item("tools", str(payload["tool_id"]))
+        agent = catalog.item('agents', str(payload['agent_id']), source=source)
+        tool = catalog.item('tools', str(payload['tool_id']), source=source)
         if tool["id"] not in agent.get("tools", []): raise ValueError("Tool is not allowlisted for this agent")
         requires_approval = bool(agent.get("approval_required") or tool.get("mutates") or tool["id"] in APPROVAL_TOKENS or payload.get("approval_required"))
         return {"valid": True, "agent": agent["id"], "tool": tool, "requires_approval": requires_approval}
     except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-@router.post("/workflow-plans")
+@router.post("/workflow-plans", dependencies=[Depends(graph_read_identity)])
 def workflow_plan(payload: WorkflowPlanBody) -> dict:
     try:
-        workflow = catalog.item("workflows", str(payload["workflow_id"]))
+        source = catalog.read()
+        workflow = catalog.item("workflows", str(payload["workflow_id"]), source=source)
+        governance = workflow.get('governance')
+        if governance is not None:
+            from .catalog_contract import validate_procedure_governance
+            validate_procedure_governance(governance)
+            if governance['status'] != 'approved':
+                raise ValueError('Procedure is proposed or retired; select an approved version')
         steps = []
         for index, step in enumerate(workflow.get("steps", []), start=1):
-            result = plan(step)
+            result = _plan(step, source)
             steps.append({"sequence": index, **result, "requires_approval": bool(result["requires_approval"] or step.get("approval_required"))})
         if not steps: raise ValueError("Workflow has no steps")
         return {"valid": True, "workflow": workflow["id"], "steps": steps}
@@ -835,8 +935,13 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
-        raise HTTPException(status_code=status if 400 <= status < 600 else 502,
-                            detail=f'Downstream tool rejected the request (HTTP {status})') from exc
+        failure = HTTPException(status_code=status if 400 <= status < 600 else 502,
+                                detail=f'Downstream tool rejected the request (HTTP {status})')
+        failure.__cause__ = exc
+        diagnostics = workflow_error(failure, tool['id'])
+        if diagnostics['error_code'].startswith('merge_'):
+            failure.detail = {'message': diagnostics['error_message'], 'code': diagnostics['error_code']}
+        raise failure from exc
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail="Downstream tool request failed; inspect service status before retrying") from exc
 
 
@@ -847,10 +952,18 @@ async def run(payload: ToolRunBody, request: Request) -> dict:
         approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
     else:
         graph_read_identity(request)
+    from .page_tasks import page_binding
+    page_binding('validation', payload.get('page_context'))
     if planned['tool'].get('mutates'):
         from .single_tool import execute
         return await execute(payload, request)
+    from .page_tasks import page_binding
+    task_owner = _workflow_owner(request, 'agent-reader')
+    task_page = page_binding(task_owner, payload.get('page_context'))
     observation, started = await _agent_io(telemetry.start, operation='tool', request_id=getattr(request.state, 'request_id', ''))
+    observation.update(owner=task_owner, agent_id=payload.get('agent_id'), task_label=payload.get('tool_id'))
+    observation.update(task_page)
+    await _agent_io(telemetry.store.put, observation['run_id'], observation)
     try:
         from backend.depo_platform.network import agent_run_timeout_seconds
         async with asyncio.timeout(agent_run_timeout_seconds()):
@@ -860,6 +973,8 @@ async def run(payload: ToolRunBody, request: Request) -> dict:
         return {**result, 'status': 'completed', 'execution_kind': 'agent',
                 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id']}
     except BaseException as exc:
+        import traceback
+        logger.error('Companion request failed: type=%s missing_module=%s frames=%s',type(exc).__name__, getattr(exc,'name','') if isinstance(exc,ModuleNotFoundError) else '', [(f.name,f.lineno) for f in traceback.extract_tb(exc.__traceback__)][-8:])
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         try:
             await _agent_io(_tool_span, observation, tool_id=str(payload.get('tool_id', '')), attempt=1, status=status, duration_ms=(time.perf_counter()-started)*1000, error_type=type(exc).__name__)
@@ -868,8 +983,14 @@ async def run(payload: ToolRunBody, request: Request) -> dict:
             logger.exception('Unable to persist terminal tool telemetry')
         if isinstance(exc, TimeoutError):
             raise HTTPException(504, 'Tool deadline exceeded; reconcile any downstream write before retrying', headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
+        read_only = not planned['tool'].get('mutates')
+        if read_only and isinstance(exc, (ValueError, KeyError, TypeError)):
+            # Deterministic input failures will fail again: do not present them as transient.
+            raise HTTPException(422, 'Tool input was rejected; check the parameters before retrying', headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
         if isinstance(exc, Exception) and not isinstance(exc, HTTPException):
-            raise HTTPException(503, 'Tool execution failed; reconcile any downstream write before retrying', headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
+            detail = ('Tool execution failed; retry after checking service status' if read_only
+                      else 'Tool execution failed; reconcile any downstream write before retrying')
+            raise HTTPException(503, detail, headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
         if isinstance(exc, HTTPException):
             exc.headers = {**(exc.headers or {}), 'X-DEPO-Run-ID': observation['run_id']}
         raise
@@ -887,6 +1008,8 @@ def tool_run(run_id: str) -> dict:
 
 @router.post('/workflow-runs')
 async def run_workflow(payload: WorkflowRunBody, request: Request) -> dict:
+    from .page_tasks import page_binding
+    page_binding('validation', payload.get('page_context'))
     from .durable_workflows import execution_mode, enqueue
     if execution_mode() == 'worker':
         try: return await enqueue(payload,request)
@@ -952,6 +1075,8 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
         record = {'owner': _workflow_owner(request, actor), 'run_id': run_id, 'telemetry_run_id': observation['run_id'], 'workflow_id': workflow['id'], 'request_id': request_id,
                   'status': 'running', 'started_at': _now(), 'updated_at': _now(),
                   'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat(), 'traces': []}
+        from .page_tasks import page_binding
+        record.update(page_binding(record['owner'], payload.get('page_context')))
         from .recovery import execution_payload, fingerprint
         definition = {'workflow': workflow, 'steps': planned['steps']}
         record.update(execution_id=uuid4().hex, execution_payload=execution_payload(payload),
@@ -1025,7 +1150,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
         record.update(status='completed', finished_at=_now(), updated_at=_now())
         await _persist_workflow(record)
         await _agent_io(_finish_observation, observation, observed_at, status='completed')
-        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}}
+        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints', 'context_envelope'}}
     except BaseException as exc:
         status = 'cancelled' if isinstance(exc, WorkflowCancelled) else 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         if record is not None:
@@ -1043,6 +1168,9 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                 diagnostics = workflow_error(exc, active_step['tool_id'])
                 record.update(diagnostics)
                 record['traces'].append({'sequence': len(record['traces'])+1, 'tool_id': active_step['tool_id'], 'attempt': attempt, 'status': status, 'error_type': type(exc).__name__, **diagnostics})
+                logger.warning('Workflow failed run_id=%s tool_id=%s http_status=%s error_code=%s message=%s',
+                               record['run_id'], active_step['tool_id'], diagnostics.get('http_status'),
+                               diagnostics['error_code'], diagnostics['error_message'])
             # Persist state and telemetry independently. A DB outage must not
             # replace the original exception; deadline-based reads expose an
             # interrupted process even if final persistence could not succeed.
@@ -1059,7 +1187,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
             except Exception:
                 logger.exception('Unable to persist terminal workflow telemetry')
         if isinstance(exc, WorkflowCancelled) and record:
-            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}}
+            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints', 'context_envelope'}}
         if isinstance(exc, (KeyError, ValueError, TypeError)):
             raise HTTPException(422, str(exc), headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
         if isinstance(exc, TimeoutError):
@@ -1151,13 +1279,19 @@ async def compensate_workflow(run_id: str, payload: CompensationBody, request: R
 @router.post('/workflow-runs/{run_id}/recover')
 async def recover_workflow(run_id: str, payload: ApprovalBody, request: Request) -> dict:
     from .recovery import prepare_recovery
-    approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    try:
+        approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    except HTTPException as exc:
+        if exc.status_code not in {401, 403}:
+            raise
+        graph_read_identity(request)
     record = await _agent_io(workflow_store.get, run_id)
     if not record:
         raise HTTPException(404, 'Workflow run not found')
     try:
         workflow = catalog.item('workflows', record['workflow_id'])
         definition = {'workflow': workflow, 'steps': workflow_plan({'workflow_id': record['workflow_id']})['steps']}
+        _authorize_workflow_review_control(request, record, definition, payload)
         heartbeat = await _agent_io(workflow_heartbeats.get, f"{run_id}:{record.get('execution_id', '')}")
         recovery = prepare_recovery(record, definition, activity_at=last_activity(record, heartbeat))
     except ValueError as exc:
@@ -1173,16 +1307,41 @@ async def recover_workflow(run_id: str, payload: ApprovalBody, request: Request)
     return await _keep_workflow_running(_execute_workflow(command, request, recovery=recovery))
 
 
+def _authorize_workflow_review_control(request, record, definition, payload):
+    from .recovery import read_only_ontology_review
+    if read_only_ontology_review(definition):
+        try:
+            actor = graph_read_identity(request)
+            if record.get('owner') == sessions.owner(request, actor):
+                return actor
+        except HTTPException as exc:
+            if exc.status_code not in {401, 403}:
+                raise
+    return approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+
+
 @router.post("/workflow-runs/{run_id}/control", summary="Pause, resume or cancel at the next tool boundary")
 def control_workflow(run_id: str, payload: WorkflowControlBody, request: Request) -> dict:
     from backend.depo_platform.authorization import service_write_identity
-    actor = service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
+    try:
+        service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
+    except HTTPException as exc:
+        if exc.status_code not in {401, 403}:
+            raise
+        graph_read_identity(request)
     action = payload.get("action")
     if not isinstance(action, str) or action not in {"pause", "resume", "cancel"}:
         raise HTTPException(422, "action must be pause, resume or cancel")
     record = workflow_store.get(run_id)
     if not record:
         raise HTTPException(404, "Workflow run not found")
+    workflow = catalog.item('workflows', record['workflow_id'])
+    definition = {'workflow': workflow, 'steps': workflow_plan({'workflow_id': record['workflow_id']})['steps']}
+    from .recovery import read_only_ontology_review
+    if read_only_ontology_review(definition):
+        actor = _authorize_workflow_review_control(request, record, definition, {'approved_by': 'workflow-supervisor'})
+    else:
+        actor = service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
     if record.get("status") not in {'running','queued'} or datetime.now(timezone.utc) >= datetime.fromisoformat(record["deadline_at"]):
         raise HTTPException(409, "Only an active workflow can be controlled")
     with workflow_controls.advisory_lock(run_id) as acquired:

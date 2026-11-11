@@ -340,6 +340,8 @@ class AP239XMIParser:
         if not candidates:
             # lxml: iterate all and filter by local tag
             for elem in root.iter():
+                if not isinstance(elem.tag, str):
+                    continue  # comments / processing instructions
                 tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
                 if tag != "Class":
                     continue

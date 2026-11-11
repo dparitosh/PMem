@@ -15,4 +15,14 @@ FOR (n:RetainedOntologyIdentity) ON (n.ontology_id, n.iri);
 // Scope-only catalog/metrics reads cannot rely on an IRI value being supplied.
 CREATE INDEX idx_depo_ontologyresource_scope IF NOT EXISTS
 FOR (n:OntologyResource) ON (n.ontology_id);
+// Legacy mapped resources may retain their owning scope as source_ontology.
+CREATE INDEX idx_depo_ontologyresource_source_scope IF NOT EXISTS
+FOR (n:OntologyResource) ON (n.source_ontology);
+CALL db.awaitIndexes(60);
+CREATE TEXT INDEX idx_depo_resource_search_label IF NOT EXISTS
+FOR (n:OntologyResource) ON (n.search_label);
+CREATE TEXT INDEX idx_depo_resource_search_iri IF NOT EXISTS
+FOR (n:OntologyResource) ON (n.search_iri);
+CREATE FULLTEXT INDEX idx_depo_context_evidence IF NOT EXISTS
+FOR (n:GraphChunk|DatasheetChunk) ON EACH [n.content];
 CALL db.awaitIndexes(60);

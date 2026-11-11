@@ -42,7 +42,7 @@ class InferenceDeadlineTests(unittest.IsolatedAsyncioTestCase):
             async def __aenter__(self): return self
             async def __aexit__(self, *args): pass
         async def post(*args): raise TimeoutError()
-        scope = functions('backend/agentic_service/local_llm.py', {'suggest_tool'}, {
+        scope = functions('backend/agentic_service/local_llm.py', {'suggest_tool', '_tool_endpoint'}, {
             '__package__': 'backend.agentic_service', 'os': os,
             'bounded_prompt_json': bounded_prompt_json,
             'settings': lambda: ('ollama', 'fixture-model', 'http://host', 30, {}),
@@ -104,6 +104,7 @@ class RetainedResultTests(unittest.TestCase):
             self.assertEqual(registry.prune_completed(30), 2)
         sql, args = cursor.execute.call_args.args
         self.assertIn("value->>'status'='completed'", sql)
+        self.assertIn("coalesce(value->>'legal_hold', 'false')='false'", sql)
         self.assertIn('namespace=%s', sql)
         self.assertEqual(args, ('agentic_companion_jobs', 30))
         with self.assertRaises(ValueError): registry.prune_completed(0)

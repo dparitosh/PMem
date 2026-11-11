@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from backend.depo_platform.release_code_check import check
+from backend.depo_platform.release_code_check import check, REQUIRED_MODULES
 
 
 class ReleaseCheckTests(unittest.TestCase):
@@ -10,6 +10,8 @@ class ReleaseCheckTests(unittest.TestCase):
         (root/'backend/Services').mkdir(parents=True)
         (root/'backend/Services/xsd_semantics.py').write_text('def qualify_schema_types(): pass\ndef validate_xsd_schema_set(): pass\n')
         (root/'backend/Services/owl_xsd_engine.py').write_text('def _collect_simple_types(paths, schema_roots=None): pass\n')
+        for relative in REQUIRED_MODULES:
+            path=root/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('# isolated release fixture\n')
         return root
 
     def test_fingerprint_changes_when_backend_changes(self):
@@ -36,7 +38,7 @@ class ReleaseCheckTests(unittest.TestCase):
                 (package / '__init__.py').write_text('dependency_version = 1\n')
             self.assertEqual(before, check(root)['backend_fingerprint'])
             source = root / 'backend/ontology_service'
-            source.mkdir()
+            source.mkdir(exist_ok=True)
             (source / 'app.py').write_text('source_version = 2\n')
             self.assertNotEqual(before, check(root)['backend_fingerprint'])
 
@@ -57,3 +59,21 @@ class ReleaseCheckTests(unittest.TestCase):
             (root/'backend/Services/owl_xsd_engine.py').write_text('def _collect_simple_types(paths): pass\n')
             with self.assertRaisesRegex(ValueError, 'Mixed converter'):
                 check(root)
+
+
+def test_missing_context_module_is_rejected_before_service_launch(tmp_path):
+    root=ReleaseCheckTests().fixture(tmp_path)
+    (root/'backend/agentic_service/context_envelope.py').unlink()
+    import pytest
+    with pytest.raises(ValueError,match='context_envelope.py'):check(root)
+
+
+def test_partial_semantic_worker_release_is_rejected(tmp_path):
+    import pytest
+    for relative in ('backend/data_pipeline_service/connector_semantics.py',
+                     'backend/data_pipeline_service/speed_path.py',
+                     'backend/agentic_service/companion_memory.py'):
+        root=ReleaseCheckTests().fixture(tmp_path / Path(relative).stem)
+        (root/relative).unlink()
+        with pytest.raises(ValueError, match=Path(relative).name):
+            check(root)

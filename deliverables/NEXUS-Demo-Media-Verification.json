@@ -1,0 +1,20 @@
+{
+  "duration_seconds": 180.0,
+  "resolution": "1920x1080",
+  "video": "H.264",
+  "audio": "AAC stereo",
+  "narration_rms": 2166.62,
+  "qa_frames_seconds": [
+    3,
+    33,
+    63,
+    79,
+    83,
+    103,
+    113,
+    133,
+    163,
+    177
+  ],
+  "bytes": 5481792
+}

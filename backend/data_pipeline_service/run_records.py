@@ -16,6 +16,7 @@ from typing import Any
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.ontology_maintenance import ontology_writer
 
 
 store = PostgresRegistry("data_job_runs")
@@ -50,8 +51,12 @@ def _input_count(payload: dict[str, Any]) -> int:
     return len(list(payload.get("entities") or [])) + len(list(payload.get("relationships") or []))
 
 
-def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running") -> dict[str, Any]:
-    run_id = str(uuid.uuid4())
+@ontology_writer
+def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running", run_id: str | None = None) -> dict[str, Any]:
+    run_id = run_id or str(uuid.uuid4())
+    if definition['job_type'] == 'rdf-semantic-materialize':
+        from .semantic_configuration import pin_preparation_input
+        payload = pin_preparation_input(payload)
     checkpoint = payload.get("checkpoint")
     if checkpoint is not None and not isinstance(checkpoint, dict):
         raise ValueError("checkpoint must be an object when supplied")
@@ -103,6 +108,7 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
             "record_count": _input_count(payload),
             "artifact_ids": sorted(set([*supplied_artifact_ids, raw_artifact["artifact_id"]])),
             "raw_payload_artifact_id": raw_artifact["artifact_id"],
+            **({'configuration_id': payload['configuration_id']} if payload.get('configuration_id') else {}),
         },
         "checkpoint": checkpoint,
         "output_manifest": None,
@@ -111,9 +117,9 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
     return store.put(run_id, record)
 
 
-def enqueue(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+def enqueue(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, run_id: str | None = None) -> dict[str, Any]:
     """Persist work before acknowledging submission to the caller."""
-    return start(definition, payload, correlation_id=correlation_id, status="queued")
+    return start(definition, payload, correlation_id=correlation_id, status="queued", **({'run_id':run_id} if run_id else {}))
 
 
 def claim_next(*, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | None:
@@ -162,6 +168,15 @@ def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 30
 def _persist_execution(record: dict[str, Any], updated: dict[str, Any]) -> dict[str, Any]:
     if record.get("worker_id") and hasattr(store, "transition_owned"):
         return store.transition_owned(record["run_id"], record, updated)
+    # Unowned (inline) executions must not overwrite a record that a racing
+    # writer already retained, e.g. a completion that landed before a late failure.
+    if hasattr(store, "compare_and_put"):
+        if store.compare_and_put(record["run_id"], record, updated):
+            return updated
+        current = store.get(record["run_id"])
+        if current is None:
+            raise ValueError("Run record disappeared during an unowned transition")
+        return current
     return store.put(record["run_id"], updated)
 
 
@@ -187,6 +202,17 @@ def replay_payload(record: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Retained run input is unreadable") from exc
     if not isinstance(payload, dict):
         raise ValueError("Retained run input must be an object")
+    if record.get('job_type') == 'rdf-semantic-materialize':
+        identifier = (record.get('input_manifest') or {}).get('configuration_id')
+        identifier = identifier or (record.get('output_manifest') or {}).get('configuration_id')
+        identifier = identifier or ((record.get('output_manifest') or {}).get('semantic_dataset') or {}).get('configuration_id')
+        if payload.get('configuration_id') and identifier and payload['configuration_id'] != identifier:
+            raise ValueError('Retained input and manifest configuration bindings disagree')
+        identifier = payload.get('configuration_id') or identifier
+        if not identifier:
+            raise ValueError('This legacy preparation has no verified baseline binding; submit a new preparation after reviewing its sources')
+        payload = {**payload, 'configuration_id': identifier}
+        payload.pop('configuration_inputs', None)
     return {**payload, "replay_of": record["run_id"]}
 
 
@@ -202,6 +228,7 @@ def _retain_analytics_evidence_pending(record, result):
     return _persist_execution(record, {**record, 'status': 'completed', 'completed_at': _now(), 'output_manifest': output})
 
 
+@ontology_writer
 def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     if record.get('job_type') == 'xml-analytics-materialize' and result.get('evidence_status') == 'pending':
         return _retain_analytics_evidence_pending(record, result)
@@ -222,6 +249,9 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         provenance={"run_id": record["run_id"], "job_id": record["job_id"], "job_version": record["job_version"], "correlation_id": record.get("correlation_id")},
     )
     contracts = {
+        "rest-source-ingest": "rest-source-records-v1",
+        "registered-source-ingest": "connector-records-v1",
+        "connector-ceim-normalize": "semantic-validation-report-v1",
         "normalize-ceim": "normalized-ceim-batch-v1",
         "data-quality-assessment": "data-quality-report-v1",
         "schema-analytics-product": "schema-analytics-data-product-draft-v1",
@@ -230,6 +260,11 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         "normalize-unstructured-ceim": "semantic-validation-report-v1",
         "validate-unstructured-evidence": "validated-unstructured-evidence-v1",
         "enrich-document-evidence": "document-graph-proposal-v1",
+        "rdf-semantic-materialize":"semantic-dataset-v1",
+        "semantic-dataset-analysis":"semantic-analysis-v1",
+        "semantic-business-mart":"semantic-analysis-v1",
+        "graph-source-snapshot":"semantic-analysis-v1",
+        "semantic-source-review":"semantic-refresh-assessment-v1",
         "rdf-quality-statistics": "rdf-quality-report-v1",
         "rdf-deduplicate-serialize": "canonical-ntriples-v1",
     }
@@ -237,11 +272,15 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         "contract": contracts.get(record["job_type"], "quality-summary-v1"),
         "result_digest": _digest(result),
         "result_artifact_id": result_artifact["artifact_id"],
+        "result_artifact_usage_id": result_artifact.get("usage_id"),
         "counts": dict(result.get("counts") or result.get("quality") or {}),
         "partition_artifacts": dict(result.get("partition_artifacts") or {}),
     }
     if record.get('job_type') == 'xml-analytics-materialize' and result.get('ods_receipt'):
         output.update(ods_receipt=result['ods_receipt'], evidence_status='available', load_status='completed')
+    if isinstance(result.get("semantic_dataset"),dict):output["semantic_dataset"]=result["semantic_dataset"]
+    if result.get("configuration_id"):output["configuration_id"]=result["configuration_id"]
+    if result.get('assessment_status'):output['assessment_status']=result['assessment_status']
     source_standard = result.get("standard") or record.get("source_standard")
     if source_standard:
         output["source_standard"] = str(source_standard)
@@ -255,6 +294,7 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         draft = result["data_product_draft"]
         output["data_product_draft"] = {
             **{key: draft.get(key) for key in ('product_kind', 'analytics_readiness', 'domain')},
+            **{key: draft[key] for key in ('configuration_id', 'configuration_context') if key in draft},
             "contract": draft.get("contract"), "name": draft.get("name"),
             "artifacts": list(draft.get("artifacts") or []),
             "quality_status": draft.get("quality_status"),

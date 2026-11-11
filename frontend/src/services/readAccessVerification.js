@@ -5,7 +5,8 @@ import { getCredentialProfile, handleSessionRejection, serviceAuthHeaders } from
 export async function verifyStoredAccess(options = {}) {
   const read = await verifyStoredReadAccess(options);
   const key = getCredentialProfile('ADMIN_API_KEY');
-  if (!key) return { ...read, message: `${read.message} Admin maintenance is not connected.` };
+  // Optional destructive-maintenance access is explained in Admin, not global read status.
+  if (!key) return read;
   const services = Object.keys(config.semanticServiceUrls || {}).filter(service => config.semanticServiceUrls[service]);
   const checks = await Promise.all(services.map(async service => {
     try {
@@ -30,7 +31,8 @@ export async function verifyStoredAccess(options = {}) {
     : `Admin maintenance verified: ${services.join(', ')}.`;
   const status = read.status === 'reconnect_required' || failures.some(check => check.rejected) ? 'reconnect_required'
     : read.status !== 'verified' || failures.length || changed || !services.length ? 'unverified' : 'verified';
-  return { status, message: `${read.message} ${maintenance}` };
+  const summary = status === 'verified' ? read.message : `${read.message} ${maintenance}`;
+  return { status, message: summary, detail: [read.detail || read.message, maintenance].join(' ') };
 }
 
 export async function verifyStoredReadAccess({ signal, subscription } = {}) {
@@ -55,5 +57,5 @@ export async function verifyStoredReadAccess({ signal, subscription } = {}) {
   const current = getCredentialProfile('GRAPH_READ_TOKEN');
   if (current !== token) return { status: current ? 'unverified' : 'reconnect_required', message: [failures.map(check => check.message).join('; '), 'Access changed or expired during verification. Reconnect or verify the current session.'].filter(Boolean).join(' ') };
   return failures.length ? { status: failures.some(check => check.rejected) ? 'reconnect_required' : 'unverified', message: failures.map(check => check.message).join('; ') }
-    : { status: 'verified', message: `Read access verified: ${services.join(', ')}.` };
+    : { status: 'verified', message: `Connected to ${services.length} ${services.length === 1 ? 'service' : 'services'}.`, detail: `Read access verified: ${services.join(', ')}.` };
 }

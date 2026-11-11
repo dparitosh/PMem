@@ -37,17 +37,18 @@ def apply_values(values, replace=False):
         for profile, key, actor, expiry in prepared:
             cursor.execute('SELECT salt,digest,revoked,actor,expires_at FROM depo_api_credentials WHERE profile=%s FOR UPDATE', (profile,))
             existing = cursor.fetchone()
-            if existing and not replace:
+            if existing:
                 reasons = []
                 if existing[2]: reasons.append('revoked')
                 if existing[3] != actor: reasons.append('actor mismatch')
                 if existing[4] != expiry: reasons.append('expiry mismatch')
                 if not hmac.compare_digest(key_digest(existing[0], key), existing[1]): reasons.append('key mismatch')
-                if reasons:
+                if reasons and not replace:
                     conflicts.append(profile + ': ' + ', '.join(reasons))
                     continue
-                results.append({'profile': profile, 'status': 'unchanged'})
-                continue
+                if not reasons:
+                    results.append({'profile': profile, 'status': 'unchanged'})
+                    continue
             register_key(profile, key, actor, expiry, db=db, audit_actor='deployment-import', bootstrap=not replace)
             # Insert-only default also protects against writers that do not use
             # the application advisory lock. Never silently overwrite a key.
@@ -75,15 +76,19 @@ def main():
     try:
         if not uses_postgres():
             raise ImportValidationError('Set DEPO_CREDENTIAL_STORE=postgres in the selected root environment file')
-        values = json.loads(sys.stdin.buffer.read().decode('utf-8'))
+        # utf-8-sig accepts the byte-order mark that Windows PowerShell adds to piped input.
+        values = json.loads(sys.stdin.buffer.read().decode('utf-8-sig'))
         results = apply_values(values, args.replace_existing)
         print(json.dumps({'status': 'ok', 'profiles': results}))
         return 0
     except ImportValidationError as exc:
         # Validation messages contain profile names only, never values.
         print(json.dumps({'status': 'failed', 'action': str(exc)}))
-    except Exception:
-        print(json.dumps({'status': 'failed', 'action': 'Credential import failed and was rolled back. Verify migration 008, database connectivity and table privileges.'}))
+    except Exception as exc:
+        # Report the exception type and traceback (never key values) so the real cause is visible.
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        print(json.dumps({'status': 'failed', 'action': f'Credential import failed and was rolled back ({type(exc).__name__}). Check the traceback in the start log, then database connectivity and table privileges.'}))
     return 1
 
 

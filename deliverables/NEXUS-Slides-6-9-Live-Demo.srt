@@ -1,0 +1,91 @@
+1
+00:00:00,000 --> 00:00:22,000
+The Companion answers a bearing question using the selected business context and cited records.
+
+2
+00:00:22,000 --> 00:00:39,000
+A follow-up about its PMI retains the bearing context and returns the recorded dimensional limits.
+
+3
+00:00:39,000 --> 00:00:57,000
+The saved question, answer and resolved context can be inspected after the conversation.
+
+4
+00:00:57,000 --> 00:01:14,000
+Conversation records are retained in PostgreSQL while engineering knowledge remains in the published graph.
+
+5
+00:01:14,000 --> 00:01:31,000
+Change Control retains publication decisions and their execution status for review.
+
+6
+00:01:31,000 --> 00:01:48,000
+The retained receipt identifies the execution actor and outcome without inventing an approval.
+
+7
+00:01:48,000 --> 00:02:04,000
+The shaft record preserves revision B, its material and a 40 mm nominal diameter.
+
+8
+00:02:04,000 --> 00:02:22,000
+Expanding the shaft reveals its previous revision, requirement, PMI, inspection and manufacturing links.
+
+9
+00:02:22,000 --> 00:02:38,000
+The quality record retains a measured 40.006 mm diameter and its pending engineering sign-off.
+
+10
+00:02:38,000 --> 00:02:58,000
+The Governor prepares a retained merge proposal from the selected Teamcenter and QIF vocabularies.
+
+11
+00:02:58,000 --> 00:03:16,000
+Reviewers compare definitions and property context because a high lexical score does not establish equivalence.
+
+12
+00:03:16,000 --> 00:03:32,000
+The retained validation evidence blocks publication until the imported vocabulary defects are resolved.
+
+13
+00:03:32,000 --> 00:03:48,000
+The bearing requirement records a 25 mm bore and the evidence needed for verification.
+
+14
+00:03:48,000 --> 00:04:04,000
+The MBSE block identifies the bearing subsystem separately from its managed product records.
+
+15
+00:04:04,000 --> 00:04:20,000
+Expanding the subsystem exposes its recorded assembly allocation and requirement relationship.
+
+16
+00:04:20,000 --> 00:04:36,000
+The inner race retains its part number, revision A and 25 mm bore diameter.
+
+17
+00:04:36,000 --> 00:04:54,000
+The manufacturing BOM connects component identities and individual BOM lines for traceability review.
+
+18
+00:04:54,000 --> 00:05:10,000
+The linked CAD reference retains its document identity and the brg_2001_A.jt file name.
+
+19
+00:05:10,000 --> 00:05:26,000
+The cylindrical bore is represented separately from the part with its 25 mm nominal dimension.
+
+20
+00:05:26,000 --> 00:05:42,000
+The bore PMI records datum A and dimensional limits from 24.99 to 25.01 mm.
+
+21
+00:05:42,000 --> 00:05:58,000
+The inspection records a measured 25.006 mm bore within the stated dimensional limits.
+
+22
+00:05:58,000 --> 00:06:14,000
+Expanding the inspection returns to the inspected part and its verification requirement.
+
+23
+00:06:14,000 --> 00:06:32,000
+Recorded relationships connect requirements, parts, CAD, PMI, manufacturing and quality for engineering review.

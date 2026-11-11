@@ -22,6 +22,8 @@ class SchemaTerm:
     value_type: str = ""
     min_occurs: str = ""
     max_occurs: str = ""
+    variety: str = ""
+    source_name: str = ""
 
 
 def _documentation(node) -> str:
@@ -60,6 +62,37 @@ def inspect_schema_set(paths: Iterable[Path]) -> dict:
             errors.append({'file': path.name, 'error': str(exc)})
     from backend.Services.xsd_semantics import qualify_schema_types
     qualify_schema_types(roots, contexts, namespaces)
+    global_declarations = {}
+    for path, root in roots.items():
+        for kind in ('element', 'attribute'):
+            for node in root.findall(XS + kind):
+                global_declarations[(namespaces[path], kind, node.get('name'))] = node
+
+    def property_type(node):
+        if node.get('type'):
+            return _local_name(node.get('type'))
+        reference = node.get('ref')
+        if reference:
+            scope = contexts[id(node)]
+            if ':' in reference:
+                prefix, name = reference.split(':', 1)
+                namespace = scope.get(prefix)
+                if namespace is None:
+                    raise ValueError(f'Unbound declaration prefix: {prefix}')
+            else:
+                name, namespace = reference, scope.get('', '')
+            declaration = global_declarations.get((namespace, node.tag.removeprefix(XS), name))
+            # Qualification can replace a QName by a unique internal identity.
+            if declaration is None and reference.startswith('element_'):
+                candidates = [value for (ns, kind, local), value in global_declarations.items()
+                              if kind == 'element' and local == reference]
+                declaration = candidates[0] if len(candidates) == 1 else None
+            if declaration is None:
+                raise ValueError(f'Unresolved XSD declaration reference: {reference}')
+            if not declaration.get('type'):
+                raise ValueError(f'Referenced XSD declaration needs an explicit supported type: {reference}')
+            return _local_name(declaration.get('type'))
+        raise ValueError(f'XSD property needs an explicit supported type: {node.get("name", "unnamed")}')
     for path in selected:
         source_files.append(path.name)
         try:
@@ -86,6 +119,8 @@ def inspect_schema_set(paths: Iterable[Path]) -> dict:
                 terms.append(SchemaTerm(
                     name=name, kind=kind, source=path.name, namespace=target_namespace,
                     documentation=_documentation(node), base=_local_name(base), value_type=_local_name(node.get("type", "")),
+                    variety='list' if node.find(f'.//{XS}list') is not None else 'union' if node.find(f'.//{XS}union') is not None else '',
+                    source_name=node.get('{urn:pmem:conversion}sourceName', name),
                 ))
 
         for owner in root.findall(f"{XS}complexType"):
@@ -98,7 +133,7 @@ def inspect_schema_set(paths: Iterable[Path]) -> dict:
                     terms.append(SchemaTerm(
                         name=_local_name(name), kind="property", source=path.name, namespace=target_namespace,
                         documentation=_documentation(node), base=owner_name,
-                        value_type=_local_name(node.get("type", "")),
+                        value_type=property_type(node),
                         min_occurs=("1" if node.get("use") == "required" else "0") if node.tag == f"{XS}attribute" else node.get("minOccurs", "1"),
                         max_occurs=("0" if node.get("use") == "prohibited" else "1") if node.tag == f"{XS}attribute" else node.get("maxOccurs", "1"),
                     ))
@@ -207,9 +242,6 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
 
 
 def build_ontology_turtle(inspection: dict, prefix: str) -> tuple[bytes, dict]:
-    """Create a reusable RDF/OWL artifact through the Semantica engine."""
-    try:
-        from ..ontology_service.semantica_adapter import semantica
-    except ImportError:  # pragma: no cover - standalone script mode
-        from ontology_service.semantica_adapter import semantica
-    return semantica.generate_from_xsd_inspection(inspection, prefix)
+    """Project authoritative schema declarations without heuristic inference."""
+    from backend.qif.rdf_projection import project_schema_ontology
+    return project_schema_ontology(inspection, prefix)

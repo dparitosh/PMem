@@ -1,5 +1,5 @@
 const fs = require('fs');
-const path = 'src/Components/GraphHEB.js';
+const path = 'src/features/graph/GraphWorkspace.js';
 const s = fs.readFileSync(path, 'utf8');
 const re = /<([A-Za-z0-9_\-]+)([^>]*)>/g;
 let m;

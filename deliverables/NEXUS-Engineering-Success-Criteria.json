@@ -1,0 +1,50 @@
+{
+  "illustrative": true,
+  "customer_approved": false,
+  "criteria": [
+    {
+      "id": "bearing-requirement",
+      "expected": "Inner race has a direct recorded requirement REQ-BRG-001 with its description."
+    },
+    {
+      "id": "bearing-pmi",
+      "expected": "Inner race owns its explicit PMI link: datum A, nominal 25 mm, tolerance 0.01 mm."
+    },
+    {
+      "id": "quality-limits",
+      "expected": "Recorded inspection 25.006 mm lies between illustrative limits 24.99 and 25.01 mm; this is not engineering sign-off."
+    },
+    {
+      "id": "cad-shape",
+      "expected": "The CAD reference and cylindrical bore feature are separate linked records; no mesh or solver result is claimed."
+    },
+    {
+      "id": "mbse-allocation",
+      "expected": "Bearing support subsystem allocates to the bearing assembly and links to REQ-BRG-001."
+    },
+    {
+      "id": "manufacturing-bom",
+      "expected": "Two explicit BOM lines retain distinct shaft and race identities with quantity 1 each."
+    },
+    {
+      "id": "shaft-change",
+      "expected": "Shaft revision B is linked to two assemblies and the finish-grinding process in bounded dependency analysis."
+    },
+    {
+      "id": "reuse-negative-control",
+      "expected": "The aluminium comparison shaft must not be certified interchangeable with the steel shaft."
+    },
+    {
+      "id": "revision-negative-control",
+      "expected": "Revisions A and B retain distinct identities; missing effectivity is reported as unassessed."
+    },
+    {
+      "id": "conversation-memory",
+      "expected": "The PMI follow-up keeps selected identity without inheriting requirement intent; retained answers are visible only to their authorized owner."
+    },
+    {
+      "id": "model-evidence",
+      "expected": "OWL-DL profile validation and consistency check execute successfully on the retained corrected artifact."
+    }
+  ]
+}

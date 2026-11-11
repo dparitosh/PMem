@@ -1,19 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import { IxModal, IxModalContent, IxModalFooter, IxModalHeader } from '@siemens/ix-react';
+import { DangerButton, SecondaryButton } from '../ui/ix';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 import { UI_COLORS } from '../styles/uiTokens';
 import { getCredentialProfile } from '../services/serviceAuth';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 
+// Status colours come from the shared IX token layer (ui/ix/tokens.css).
 const colors = {
   blue: UI_COLORS.primaryText,
   border: UI_COLORS.border,
   text: UI_COLORS.textPrimary,
   muted: UI_COLORS.textSec,
   bg: UI_COLORS.bg,
-  danger: '#b42318',
-  dangerBg: '#fff1f0',
-  ok: '#1f7a4d',
+  danger: 'var(--ui-status-danger)',
+  dangerBg: 'var(--ui-status-danger-bg)',
+  dangerBorder: 'var(--ui-status-danger)',
+  ok: 'var(--ui-status-success)',
+  okBg: 'var(--ui-status-success-bg)',
+  neutralBg: 'var(--ui-surface-alt)',
 };
 
 const cardStyle = {
@@ -24,7 +31,7 @@ const cardStyle = {
 };
 
 const buttonStyle = {
-  border: '1px solid #c8d3df',
+  border: `1px solid ${UI_COLORS.border}`,
   borderRadius: 5,
   background: UI_COLORS.surface,
   color: colors.text,
@@ -52,8 +59,8 @@ function Message({ tone, children }) {
   return (
     <div
       style={{
-        border: `1px solid ${isError ? '#ffccc7' : '#b7ebc6'}`,
-        background: isError ? colors.dangerBg : '#f0fff4',
+        border: `1px solid ${isError ? colors.dangerBorder : colors.ok}`,
+        background: isError ? colors.dangerBg : colors.okBg,
         color: isError ? colors.danger : colors.ok,
         borderRadius: 6,
         padding: '8px 10px',
@@ -66,35 +73,55 @@ function Message({ tone, children }) {
   );
 }
 
+// Destructive confirmation on the shared IX modal (role="dialog"). Focus moves to
+// the phrase field when one is required, otherwise to Cancel, so Enter never
+// confirms by accident. Escape and the header close button resolve false.
+// Shared ConfirmDialog has no input or disabled-confirm slot, so the phrase gate
+// is built here from the same IX primitives.
 export function ConfirmationDialog({ confirmation, onResolve }) {
   const [typed, setTyped] = useState('');
-  const confirmRef = useRef(null);
+  const modalRef = useRef(null);
+  const focusRef = useRef(null);
   useEffect(() => {
     setTyped('');
     if (!confirmation) return undefined;
-    confirmRef.current?.focus();
+    const modal = modalRef.current;
     const onKeyDown = (event) => {
       if (event.key === 'Escape') onResolve(false);
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    Promise.resolve(modal?.showModal?.()).then(() => focusRef.current?.focus?.());
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      modal?.closeModal?.('closed');
+    };
   }, [confirmation, onResolve]);
   if (!confirmation) return null;
   const phraseAccepted = !confirmation.phrase || typed === confirmation.phrase;
   return (
-    <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'grid', placeItems: 'center', padding: 16, background: 'rgba(15, 23, 42, .55)' }}>
-      <section role="alertdialog" aria-modal="true" aria-labelledby="admin-confirm-title" aria-describedby="admin-confirm-description" style={{ width: 'min(520px, 100%)', borderRadius: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', boxShadow: '0 18px 48px rgba(0,0,0,.25)', padding: 20 }}>
-        <h2 id="admin-confirm-title" style={{ margin: '0 0 8px', fontSize: 20 }}>{confirmation.title}</h2>
-        <p id="admin-confirm-description" style={{ color: colors.muted }}>{confirmation.description}</p>
+    <IxModal
+      ref={modalRef}
+      role="dialog"
+      aria-labelledby="admin-confirm-title"
+      aria-describedby="admin-confirm-description"
+      size="480"
+      closeOnBackdropClick={false}
+      onDialogDismiss={() => onResolve(false)}
+    >
+      <IxModalHeader onCloseClick={() => onResolve(false)}>
+        <span id="admin-confirm-title">{confirmation.title}</span>
+      </IxModalHeader>
+      <IxModalContent>
+        <p id="admin-confirm-description">{confirmation.description}</p>
         {confirmation.phrase && <label style={{ display: 'grid', gap: 6, fontWeight: 700 }}>Type <code>{confirmation.phrase}</code> to continue
-          <input ref={confirmRef} value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" aria-label="Confirmation phrase" style={{ padding: 9, border: `1px solid ${colors.border}`, borderRadius: 5 }} />
+          <input ref={focusRef} value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" aria-label="Confirmation phrase" style={{ padding: 9, border: `1px solid ${colors.border}`, borderRadius: 5 }} />
         </label>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
-          <button ref={confirmation.phrase ? undefined : confirmRef} type="button" style={buttonStyle} onClick={() => onResolve(false)}>Cancel</button>
-          <button type="button" disabled={!phraseAccepted} style={{ ...buttonStyle, borderColor: colors.danger, background: phraseAccepted ? colors.danger : '#eee', color: phraseAccepted ? '#fff' : colors.muted }} onClick={() => onResolve(true)}>{confirmation.confirmLabel || 'Confirm'}</button>
-        </div>
-      </section>
-    </div>
+      </IxModalContent>
+      <IxModalFooter>
+        <SecondaryButton ref={confirmation.phrase ? undefined : focusRef} onClick={() => onResolve(false)}>Cancel</SecondaryButton>
+        <DangerButton disabled={!phraseAccepted} onClick={() => onResolve(true)}>{confirmation.confirmLabel || 'Confirm'}</DangerButton>
+      </IxModalFooter>
+    </IxModal>
   );
 }
 
@@ -113,6 +140,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const [deleteBatchSize, setDeleteBatchSize] = useState(10000);
   const [deletePreview, setDeletePreview] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
+  const [vanillaPreview, setVanillaPreview] = useState(null);
+  const vanillaBusy = useRef(false);
   const adminLoadControllerRef = useRef(null);
   const confirmationResolverRef = useRef(null);
   const resolveConfirmation = useCallback((accepted) => {
@@ -158,7 +187,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
         const detail =
           statsRes.reason?.response?.data?.detail ||
           statsRes.reason?.message ||
-          'Unable to load Neo4j schema stats.';
+          'Unable to load knowledge graph schema stats.';
         setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
       if (agentOpsRes.status === 'fulfilled') {
@@ -184,11 +213,68 @@ export default function AdminPanel({ onSchemaCleaned }) {
     };
   }, [loadAdminState]);
 
+  const clearImportWorkflows = useCallback(async () => {
+    const accepted = await requestConfirmation({
+      title: 'Clear Import workflows?',
+      description: 'Delete quiescent instance-import and schema-set workflows, task-owned files and PostgreSQL artifact manifests. Active or uncertain tasks block cleanup. Graph data, published ontologies and separate agent history are retained.',
+      phrase: 'CLEAR IMPORT WORKFLOWS', confirmLabel: 'Clear workflows',
+    });
+    if (!accepted) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const response = await API_METHODS.admin.clearImportWorkflows();
+      if (response.data?.status !== 'success') throw new Error('Import cleanup is incomplete. Inspect service logs and retry; deletion fences prevent cleared tasks from being restored.');
+      window.localStorage.removeItem('depo.import.jobs.v2');
+      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      setMessage(`Import workflows cleared: ${response.data.deleted_count || 0}. Task snapshots, owned artifact folders and PostgreSQL manifests were removed. Graph data was retained.`);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Import cleanup failed';
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally { setLoading(false); }
+  }, [requestConfirmation]);
+
+  const previewVanillaReset = async () => {
+    if (vanillaBusy.current) return;
+    vanillaBusy.current = true;
+    setLoading(true); setError(''); setVanillaPreview(null);
+    try {
+      const response = await API_METHODS.admin.previewVanillaReset();
+      setVanillaPreview(response.data);
+    } catch (err) { setError(apiErrorMessage(err, 'Reset preview unavailable')); }
+    finally { vanillaBusy.current = false; setLoading(false); }
+  };
+  const resetVanilla = async () => {
+    if (vanillaBusy.current || !vanillaPreview?.can_execute) return;
+    vanillaBusy.current = true;
+    try {
+      const accepted = await requestConfirmation({ title: 'Reset Nexus to vanilla state?',
+        description: 'Permanently delete application graph data, application records, workflow and agent history, and retained uploads shown in the preview. Preserve credentials, configuration, embedded foundation and installation/reset logs. This cannot be undone.',
+        phrase: 'RESET NEXUS TO VANILLA', confirmLabel: 'Delete application data' });
+      if (!accepted) return;
+      setLoading(true); setError(''); setMessage('');
+      const { data } = await API_METHODS.admin.resetVanilla(vanillaPreview.preview_digest);
+      if (data.status !== 'completed') throw new Error(`Reset incomplete. Receipt: ${data.run_id}. Keep maintenance isolated and inspect logs/vanilla-reset before recovery.`);
+      try {
+        for (const key of ['depo.import.jobs.v2', 'depo.import.ontologies.v1']) window.localStorage.removeItem(key);
+        for (const key of Object.keys(window.sessionStorage)) {
+          if (key.startsWith('depo:') || key.startsWith('["depo:') || key.startsWith('bridge-') || ['depo.sessionId.v1', 'depo.sessionScope.v1'].includes(key)) window.sessionStorage.removeItem(key);
+        }
+      } catch { setError('Server reset completed. Browser storage could not be cleared; close this tab and reconnect after normal startup.'); }
+      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
+      setMessage(`Vanilla reset completed. Receipt: ${data.run_id}. Close the maintenance host and start Nexus normally. Credentials and embedded foundation were preserved.`);
+      setVanillaPreview(null);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Reset outcome unavailable. Inspect logs/vanilla-reset before retrying.'));
+      setVanillaPreview(null); // Never replay using an old confirmation.
+    } finally { vanillaBusy.current = false; setLoading(false); }
+  };
+
   const cleanSchema = useCallback(async () => {
     const accepted = await requestConfirmation({
-      title: 'Clean the complete Neo4j schema?',
-      description: 'This deletes graph data, indexes, constraints, and uploaded ontology registry metadata. Run the Neo4j bootstrap script afterward before publishing again. Use Reset Graph Only to retain operational schema.',
-      phrase: 'CLEAN NEO4J',
+      title: 'Clean the complete knowledge graph schema?',
+      description: 'This deletes graph data, indexes, constraints, uploaded ontology registry metadata and quiescent instance-import workflows with their owned files and PostgreSQL artifact manifests. Active or uncertain imports block cleanup. Governed ontology artifacts and separate agent history remain. Run the knowledge graph bootstrap script before publishing again.',
+      phrase: 'CLEAN KNOWLEDGE GRAPH',
       confirmLabel: 'Clean schema',
     });
     if (!accepted) {
@@ -202,9 +288,11 @@ export default function AdminPanel({ onSchemaCleaned }) {
     try {
       const res = await API_METHODS.admin.cleanSchema();
       const metadataCleared = res.data?.metadata_cleared ?? 0;
-      const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
-      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
-      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
+      const graphMessage = res.data?.message || 'knowledge graph reset completed.';
+      const receipt = res.data?.cleanup_receipt;
+      const progress = receipt ? ` Cleanup ${receipt.run_id}: ${Object.entries(receipt.phases || {}).map(([phase, status]) => `${phase.replaceAll('_', ' ')}: ${status}`).join('; ')}.` : '';
+      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Import workflows cleared: ${res.data?.import_cleanup?.deleted_count ?? 0}. Before publishing again, ask your administrator to restore the publication constraints using the installation guide.${progress}`);
+      const cleanupWarning = res.data?.status === 'partial' ? res.data?.graph_cleanup_message || res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || (res.data?.import_cleanup?.status === 'partial' ? 'Import workflow cleanup is incomplete. Review the cleanup receipt and use Clear Import Workflows to reconcile remaining tasks. Do not repeat the graph reset blindly.' : 'Graph reset completed, but cleanup is incomplete.') : '';
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
       await fetchOntologies(true);
@@ -215,7 +303,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
       if (cleanupWarning) setError(cleanupWarning);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Schema cleanup failed.';
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      const cleanupId = err?.response?.headers?.['x-depo-cleanup-id'];
+      const recovery = cleanupId ? ` Cleanup receipt: ${cleanupId}. Inspect its status before any further destructive action.` : '';
+      setError((typeof detail === 'string' ? detail : JSON.stringify(detail)) + recovery);
     } finally {
       setLoading(false);
     }
@@ -224,7 +314,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const resetGraphDatabase = useCallback(async () => {
     const accepted = await requestConfirmation({
       title: 'Reset the graph database?',
-      description: 'This deletes Neo4j nodes and relationships and recreates operational indexes. Uploaded ontology files remain available.',
+      description: 'This deletes knowledge graph nodes and relationships and recreates operational indexes. Uploaded ontology files remain available.',
       phrase: 'RESET GRAPH',
       confirmLabel: 'Reset graph',
     });
@@ -241,7 +331,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const resetStatus = String(res.data?.status || '').toUpperCase();
       if (!['SUCCESS', 'PARTIAL'].includes(resetStatus)) throw new Error(res.data?.message || 'Graph reset did not complete.');
       const warning = resetStatus === 'PARTIAL' ? res.data?.message || 'Graph data was reset, but registry reconciliation is incomplete.' : '';
-      setMessage(`Graph reset completed. ${res.data?.message || 'Neo4j data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
+      setMessage(`Graph reset completed. ${res.data?.message || 'knowledge graph data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
       window.dispatchEvent(new Event('dt-schema-cleaned'));
@@ -272,8 +362,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
       ].filter(Boolean);
       const cacheWarning = res.data?.status === 'partial' || parts.length === 0 ? res.data?.message || 'Some caches could not be cleared.' : '';
       setMessage(parts.length > 0
-        ? `Cache cleanup completed: ${parts.join(', ')}. No Neo4j graph data or ontology files were deleted.`
-        : res.data?.message || 'Application caches cleared. No Neo4j graph data or ontology files were deleted.');
+        ? `Cache cleanup completed: ${parts.join(', ')}. No knowledge graph data or ontology files were deleted.`
+        : res.data?.message || 'Application caches cleared. No knowledge graph data or ontology files were deleted.');
       await loadAdminState();
       await fetchOntologies(true);
       window.dispatchEvent(new Event('depo:ontologies-changed'));
@@ -301,7 +391,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
         return;
       }
 
-      const ok = await requestConfirmation({ title: 'Delete old XSD schemas?', description: `Delete ${count} old ingested XSD schema entries from storage and Neo4j?`, confirmLabel: 'Delete schemas' });
+      const ok = await requestConfirmation({ title: 'Delete old XSD schemas?', description: `Delete ${count} old ingested XSD schema entries from storage and knowledge graph?`, confirmLabel: 'Delete schemas' });
       if (!ok) return;
 
       const result = await API_METHODS.ontology.cleanupOldXsd({
@@ -312,7 +402,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const deleted = result?.data?.deleted_count || 0;
       const deletedNodes = result?.data?.neo4j_deleted_nodes || 0;
       const cleanupWarning = result?.data?.status === 'partial' ? 'Old XSD cleanup was partial. Some catalog registrations could not be removed; inspect service logs.' : '';
-      setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. Neo4j schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
+      setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. knowledge graph schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.dispatchEvent(new Event('depo:ontologies-changed'));
       await fetchOntologies(true);
@@ -333,7 +423,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     const batchSize = Number(deleteBatchSize) || 10000;
 
     if (!label && !prefix) {
-      return { error: 'Enter a Neo4j label or ontology prefix.' };
+      return { error: 'Enter a knowledge graph label or ontology prefix.' };
     }
     if (label && prefix) {
       return { error: 'Use either label or prefix, not both.' };
@@ -472,7 +562,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
           <section style={cardStyle}>
             <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
-              Neo4j Schema Snapshot
+              Knowledge graph schema
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
               <Stat label="Nodes" value={stats?.total_nodes} />
@@ -484,24 +574,27 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
           <section style={cardStyle} aria-label="Agent operations telemetry">
             <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
-              Agent Operations — Retained history{agentOps?.status === 'degraded' ? ' — Historical alerts' : ''}
+              Agent Operations — Retained history
             </div>
             <div style={{ fontSize: 11, color: colors.muted, marginBottom: 8 }}>
               PostgreSQL retains agent run and tool history after cache, schema and graph cleanup.
-              These totals cover the latest {agentOps?.window_limit || 500} recorded runs, not the current Neo4j graph.
+              These totals cover the latest {agentOps?.window_limit || 500} recorded runs, not the current knowledge graph.
               Historical failures do not by themselves indicate a current service outage.
             </div>
             {agentOps ? (
+              <details><summary>View historical execution statistics — includes earlier deployments</summary>
+              <p>These statistics are not a health assessment of the current release. Deployment-specific rates are unavailable in this history.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
                 <Stat label="Runs" value={agentOps.runs} />
                 <Stat label="Running" value={agentOps.running} />
                 <Stat label="Failures" value={agentOps.failed} />
-                <Stat label="Failure rate" value={`${((agentOps.failure_rate || 0) * 100).toFixed(1)}%`} />
+                <Stat label="Historical failed-run rate" value={`${((agentOps.failure_rate || 0) * 100).toFixed(1)}%`} />
                 <Stat label="Avg latency" value={`${Math.round(agentOps.average_duration_ms || 0)} ms`} />
                 <Stat label="Tool calls" value={agentOps.tool_calls} />
                 <Stat label="Tool failures" value={agentOps.tool_failures} />
                 <Stat label="Evidence" value={agentOps.evidence_total} />
               </div>
+              </details>
             ) : (
               <div style={{ fontSize: 11, color: colors.muted }}>
                 Configure the Agentic service to display durable run and tool telemetry.
@@ -515,7 +608,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             Targeted Graph Cleanup
           </div>
           <div style={{ fontSize: 11, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
-            Preview and delete a scoped set of Neo4j nodes. This does not delete uploaded ontology files or registry metadata.
+            Preview and delete a scoped set of knowledge graph nodes. This does not delete uploaded ontology files or registry metadata.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 8 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
@@ -586,7 +679,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
               type="button"
               onClick={deleteDataByLabel}
               disabled={loading || !maintenanceConnected || (!deleteLabel.trim() && !deletePrefix.trim()) || !deletePreview}
-              style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
+              style={{ ...buttonStyle, borderColor: colors.dangerBorder, color: colors.danger }}
             >
               <Trash2 size={10} />
               Delete Scoped Nodes
@@ -614,23 +707,49 @@ export default function AdminPanel({ onSchemaCleaned }) {
           {!ingestionConnected && <p>Old XSD cleanup requires ingestion write access. Connect workflow scopes in API access.</p>}
         </section>
 
-        <section style={{ ...cardStyle, borderColor: '#ffb4a8', background: colors.dangerBg }}>
+        <section style={{ ...cardStyle, borderColor: colors.dangerBorder, background: colors.dangerBg }}>
           <div style={{ fontSize: 11, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
             Destructive Reset Actions
           </div>
           <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
-            Graph Reset clears Neo4j and invalidates publication records while retaining uploaded files. Full Schema Cleanup also removes legacy upload directories. Governed PostgreSQL catalog artifacts and audit history remain retained.
+            Graph Reset retains Import history. Full Schema Cleanup also clears quiescent instance-import tasks and owned files.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button type="button" onClick={resetGraphDatabase} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
+            <button type="button" onClick={resetGraphDatabase} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: colors.dangerBorder, color: colors.danger }}>
               <Trash2 size={10} />
               Reset Graph Only
             </button>
-            <button type="button" onClick={cleanSchema} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
+            <button type="button" onClick={clearImportWorkflows} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: colors.dangerBorder, color: colors.danger }}>
+              <Trash2 size={10} /> Clear Import Workflows
+            </button>
+            <button type="button" onClick={cleanSchema} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: colors.dangerBorder, color: colors.danger }}>
               <Trash2 size={10} />
               Full Schema Cleanup
             </button>
           </div>
+        </section>
+
+        <section aria-labelledby="admin-danger-zone" style={{ ...cardStyle, borderColor: colors.dangerBorder, background: colors.dangerBg }}>
+          <div id="admin-danger-zone" style={{ fontSize: 11, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
+            Danger zone
+          </div>
+          <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
+            Vanilla reset also clears application records, agent history and retained ontology artifacts, while preserving credentials and the embedded foundation. Preview first to see exactly what will be deleted. The reset then asks you to type a confirmation phrase.
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" onClick={previewVanillaReset} disabled={loading || !maintenanceConnected} style={buttonStyle}>
+              Preview vanilla reset
+            </button>
+          </div>
+          {vanillaPreview && <section aria-label="Vanilla reset preview" style={{ marginTop: 12 }}>
+            <h3>Reset Nexus to vanilla state</h3>
+            <p>Deletes application graph data, workflow and agent history, application records and retained uploads. Credentials and the embedded foundation remain.</p>
+            <table><thead><tr><th>Storage</th><th>Records or files to delete</th></tr></thead><tbody>
+              {Object.entries({ ...vanillaPreview.registry_records, ...vanillaPreview.table_rows, ...vanillaPreview.retained_files }).map(([name, count]) => <tr key={name}><td>{name}</td><td>{count}</td></tr>)}
+            </tbody></table>
+            {!vanillaPreview.can_execute && <p role="status">{vanillaPreview.maintenance_instruction}</p>}
+            <DangerButton onClick={resetVanilla} disabled={loading || !maintenanceConnected || !vanillaPreview.can_execute}>Reset Nexus to vanilla state</DangerButton>
+          </section>}
         </section>
       </div>
     </div>

@@ -1,0 +1,15 @@
+NEXUS | Six-minute business demonstration | 4 November 2026
+
+Sequence: landing page 00:00; decision support 00:45; memory examples 02:00; contextual graph/chat 03:30; PLMXML/AP242 governed merge review 05:00.
+
+The main video uses timestamped live application interaction captures (approximately three captured frames per second, encoded at twelve frames per second) and short illustrative excerpts from the MP4 saved 3 November. It is an edited recording, not an uninterrupted six-minute session. Captured typing, navigation, asynchronous responses, graph focus changes, reload and evidence inspection are preserved. No motion was fabricated from static screenshots. A short explanatory memory graphic is illustrative. Technical source naming in the landing-page presentation is obscured; underlying provenance remains unchanged.
+
+Visible captions and an original, gently audible 108 BPM rhythmic music bed are included. Spoken narration was removed at user request. The SRT files are also supplied separately.
+
+Memory: follow-up continuity, selected-object scope and retained conversation after reload were demonstrated. This does not establish automatic model training or approved engineering lessons.
+
+Traceability includes CAD and shape records, MBSE allocation, requirement description, manufacturing activity, parent assembly and PMI quality information. A simulation document is a recorded reference, not a computed result. Recorded links do not establish satisfaction, completeness or manufacturing approval.
+
+Merge review: Teamcenter PLMXML and AP242; 200 candidate pairs retained; lexical/structural score components and ambiguity are visible. Semantic validation was pending during recording. No identity consolidations were selected or approved. No new merged ontology was published by this demonstration. Governor coordinates the plan/tools; Steward assessment depends on cleared validation and governance evidence. Similarity is not equivalence or LLM confidence.
+
+Final audio/caption revision: gentle original piano only, without percussion or spoken narration. Each caption is a complete sentence, displayed entirely within one screen using no more than two lines. Both video durations are unchanged.

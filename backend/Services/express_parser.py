@@ -158,7 +158,7 @@ _RE_ATTR = re.compile(
     r"^\s*(\w+)\s*:\s*"
     r"(OPTIONAL\s+)?"
     r"((?:SET|LIST|BAG|ARRAY)\s*\[([0-9?:]+)\]\s+OF\s+)?"  # Capture aggregate type and bounds
-    r"(\w+)\s*;"
+    r"(\w+)(?:\s*\([^)]*\))?\s*;"  # allow bounded simple types, e.g. STRING(255)
     r"\s*$",
     re.IGNORECASE,
 )
@@ -178,7 +178,7 @@ _RE_INVERSE_ATTR = re.compile(
 # UNIQUE: UR1: attr1, attr2;
 _RE_UNIQUE = re.compile(
     r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^;]+);",
-    re.IGNORECASE
+    re.IGNORECASE | re.MULTILINE  # without MULTILINE only the first UNIQUE rule matched
 )
 
 _RE_SUPERTYPE_OF = re.compile(r"SUPERTYPE\s+OF\s*\(ONEOF\(([^)]+)\)\)", re.IGNORECASE | re.DOTALL)
@@ -192,7 +192,7 @@ _RE_SUBTYPE_OF = re.compile(r"SUBTYPE\s+OF\s*\(([^)]+)\)", re.IGNORECASE | re.DO
 
 def _strip_comments(text: str) -> str:
     """Remove (* ... *) block comments and -- line comments from EXPRESS text."""
-    text = re.sub(r"\(\*.*?\*\)", " ", text, flags=re.DOTALL)  # block comments
+    text = re.sub(r"\(\*.*?(?:\*\)|\Z)", " ", text, flags=re.DOTALL)  # block comments (unterminated runs to EOF; avoids quadratic rescans)
     text = re.sub(r"--[^\n]*", " ", text)                        # line comments
     return text
 
@@ -276,12 +276,19 @@ def _parse_entity_block(name: str, body: str) -> ExpressEntity:
         if stripped and not stripped.startswith("--"):  # Skip empty and comment lines
             sections[current_section].append(line)
     
-    # Parse attributes (regular and derived)
-    for line in sections['attributes']:
+    # Parse attributes (regular and derived). A declaration may wrap across lines,
+    # so accumulate lines until the terminating ';'.
+    pending: List[str] = []
+    for raw_line in sections['attributes']:
+        pending.append(raw_line.strip())
+        if not raw_line.rstrip().endswith(";"):
+            continue
+        line = " ".join(pending)
+        pending = []
         stripped = line.strip()
         if stripped.upper().startswith("SELF\\"):  # Skip inherited attribute refinements
             continue
-        
+
         m_attr = _RE_ATTR.match(line)
         if m_attr:
             attr_name = m_attr.group(1)

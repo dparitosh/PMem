@@ -1,3 +1,5 @@
+import { pageTaskContext } from './pageTasks';
+import {prepareSessionRequest,trackSessionRequest,releaseRequest,staleRequest} from './requestSession';
 import axios from 'axios';
 import { openApiPreview } from './openApiPreview';
 import { reportRunRecovery } from './runRecovery';
@@ -12,23 +14,43 @@ const agenticClient = axios.create({
 });
 
 export function applyAgenticAuth(requestConfig) {
+  try {
+  prepareSessionRequest(requestConfig);
   requestConfig.headers = requestConfig.headers || {};
+  if (String(requestConfig.method).toLowerCase() === 'post' && /\/api\/v1\/(runs|workflow-runs)$/.test(String(requestConfig.url).split('?')[0]) && requestConfig.data && typeof requestConfig.data === 'object') {
+    requestConfig.data = { ...requestConfig.data, page_context: pageTaskContext(requestConfig.data.page_context || {}) };
+  }
   // A call may provide a scoped credential (for example, the ontology review
   // read token). Keep it ahead of the app-wide bootstrap token.
-  const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
+  const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization || requestConfig.headers.authorization;
   const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
-  if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
+  if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key'] || requestConfig.headers['x-api-key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
   Object.assign(requestConfig.headers, credentials);
   requireServiceReadAccess(requestConfig);
+  trackSessionRequest(requestConfig);
   return requestConfig;
+  } catch (failure) {
+    releaseRequest(requestConfig);
+    throw failure;
+  }
 }
 
 agenticClient.interceptors.request.use(applyAgenticAuth);
-agenticClient.interceptors.response.use(response => response, error => {
+agenticClient.interceptors.response.use(response => {
+  releaseRequest(response.config);
+  if(staleRequest(response.config))return Promise.reject(new axios.CanceledError('Discarded agent response from previous credentials'));
+  if (String(response.config?.method).toLowerCase() === 'post' && response.data?.run_id) {
+    window.dispatchEvent(new CustomEvent('depo:page-task-updated'));
+  }
+  return response;
+}, error => {
+  releaseRequest(error.config);
+  if(staleRequest(error.config))return Promise.reject(new axios.CanceledError('Credentials changed; previous agent request discarded'));
   error.apiError = { status: error.response?.status, requestId: apiRequestId(error),
     message: apiErrorMessage(error) };
   const authorization = error.config?.headers?.get?.('Authorization') || error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
-  handleSessionRejection(error.response?.status, authorization, error.response?.data?.detail);
+  const apiKey=error.config?.headers?.get?.('X-API-Key')||error.config?.headers?.['X-API-Key']||error.config?.headers?.['x-api-key']||'';
+  handleSessionRejection(error.response?.status, String(apiKey).startsWith('depo_session_')?apiKey:authorization, error.response?.data?.detail);
   reportRunRecovery(error); return Promise.reject(error);
 });
 
@@ -37,6 +59,8 @@ function agenticUrl(endpoint) {
 }
 
 export const agenticAPI = {
+  pageTasks: (page, offset = 0, options = {}) => agenticClient.get(agenticUrl('/api/v1/page-tasks'), { ...options, params: {page,offset,limit:20} }),
+  pageTask: (kind, id, options = {}) => agenticClient.get(agenticUrl(`/api/v1/page-tasks/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`), options),
   importOpenApi: async (document, filename) => ({ data: openApiPreview(document, filename) }),
   controlWorkflow: (id, action, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/control`), { action }, options),
   recoverWorkflow: (id, identity, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/recover`), identity, options),
@@ -46,6 +70,7 @@ export const agenticAPI = {
   isConfigured: () => Boolean(config.semanticServiceUrls?.agentic),
   health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),
   listAgents: (options = {}) => agenticClient.get(agenticUrl(API.agentic.agents), options),
+  registry: (options = {}) => agenticClient.get(agenticUrl('/api/v1/agent-registry'), options),
   listTools: (options = {}) => agenticClient.get(agenticUrl(API.agentic.tools), options),
   runAgent: (agentId, toolId, inputs = {}, approval = {}, options = {}) => agenticClient.post(
     agenticUrl(API.agentic.runAgent),

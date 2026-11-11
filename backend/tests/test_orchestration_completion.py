@@ -322,7 +322,7 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
         transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=Body()))
         async def emit(token):chunks.append(token)
         with patch.dict(os.environ,{'USE_LLM':'ollama','OLLAMA_API_URL':'http://fixture/api/chat','OLLAMA_BASE_URL':'','OLLAMA_STREAMING_ENABLED':'true'}), patch.object(local_llm.httpx,'AsyncClient',lambda **kw:real_client(transport=transport,**kw)):
-            result=await local_llm.summarize('question',[{'id':'evidence'}],on_token=emit)
+            result=await local_llm.summarize('question',[{'resource_id':'evidence'}],on_token=emit)
         self.assertEqual(result,'first second [evidence:evidence]')
         self.assertEqual(chunks,[result])
 

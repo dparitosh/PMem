@@ -6,12 +6,14 @@ import unittest
 import logging
 import time
 import httpx
+from backend.mesh_store import InMemoryRegistry
+from backend.ontology_service.releases import OntologyReleases
 
 class ApiError(Exception):
     def __init__(self, status, detail): self.status_code, self.detail = status, detail
 
 class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
-    def operation(self, approved=True, valid=True, lookup_body=None, response_body=None, existing=None):
+    def operation(self, approved=True, valid=True, lookup_body=None, response_body=None, existing=None, declared_digest=None):
         content = b'<urn:Part> <urn:label> "Part" .'
         records, calls = dict(existing or {}), []
         class Response:
@@ -33,6 +35,10 @@ class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
                  'httpx': SimpleNamespace(AsyncClient=Client, HTTPError=httpx.HTTPError, HTTPStatusError=httpx.HTTPStatusError),
                  'catalog': SimpleNamespace(get=lambda key: {'lifecycle_status': 'approved' if approved else 'draft', 'prefix': 'demo', 'validation': {'rdf_format': 'turtle'}}, read_artifact=lambda key: ({'lifecycle_status': 'approved' if approved else 'draft'}, content), artifact_digest=lambda key: hashlib.sha256(content).hexdigest()),
                  'graph_publications': SimpleNamespace(get=records.get, put=lambda key, value: records.update({key: value}))}
+        release_store = InMemoryRegistry()
+        if declared_digest:
+            release_store.put('ontology:demo', {'artifact_sha256': declared_digest})
+        scope['releases'] = OntologyReleases(scope['catalog'], release_store)
         tree = ast.parse(Path('backend/ontology_service/router.py').read_text(encoding='utf-8'))
         nodes = [node for node in tree.body if getattr(node, 'name', '') in {'ontology_publication_status', '_publish_registered_ontology'}]
         for node in nodes: node.decorator_list = []
@@ -44,6 +50,14 @@ class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ApiError) as failure: await operation('demo', {}, object())
         self.assertEqual(failure.exception.status_code, 409)
         self.assertEqual(calls, [])
+
+    async def test_changed_release_cannot_reach_graph_publication(self):
+        operation, records, calls = self.operation(declared_digest='a'*64)
+        with self.assertRaises(ApiError) as failure:
+            await operation('demo', {}, object())
+        self.assertEqual(failure.exception.status_code, 409)
+        self.assertEqual(calls, [])
+        self.assertEqual(records, {})
 
     async def test_exact_receipt_required_before_reporting_success(self):
         operation, records, calls = self.operation()

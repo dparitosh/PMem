@@ -53,7 +53,7 @@ class AuditRegressions(unittest.TestCase):
         async def thread(function,*args):return function(*args)
         scope={'__name__':'backend.ontology_service.router','__package__':'backend.ontology_service',
                'hashlib':hashlib,'graph_publications':SimpleNamespace(get=lambda key:values[key],compare_and_put=compare),
-               'catalog':SimpleNamespace(read_artifact=lambda _:({},content)), 'run_in_threadpool':thread,
+               'catalog':SimpleNamespace(read_artifact=lambda _:({},content),artifact_digest=lambda _:digest), 'run_in_threadpool':thread,
                'service_url':lambda *args:'http://graph','service_bearer_headers':lambda *args,**kwargs:{},
                'httpx':SimpleNamespace(AsyncClient=lambda **kwargs:Client(),HTTPError=RuntimeError)}
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<status>','exec'),scope)

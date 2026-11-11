@@ -1,0 +1,48 @@
+/*
+ * Semantic Bridge job panel (SemanticBridgeJobs). Colours come from the IX status
+ * tokens in ui/ix/tokens.css or IX theme variables; no hard-coded hex values.
+ */
+
+.bridge-primary {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.bridge-stages {
+  margin: 0;
+}
+
+.bridge-action {
+  margin: 8px 8px 0 0;
+  padding: 8px 12px;
+}
+
+.bridge-recovery {
+  margin-top: 8px;
+}
+
+.bridge-recovery summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.bridge-candidates {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.bridge-agent-report {
+  margin-top: 8px;
+  padding: 8px;
+  color: var(--ui-text, inherit);
+  background: var(--ui-status-neutral-bg, transparent);
+  border: 1px solid var(--ui-status-neutral, currentColor);
+}
+
+.bridge-prompt-details {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow: auto;
+}

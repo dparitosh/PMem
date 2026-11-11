@@ -1,16 +1,113 @@
 import { setCredentialProfile, getCredentialProfile } from '../services/serviceAuth';
 import React from 'react';
 import { vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor,act } from '@testing-library/react';
 import { TextDecoder } from 'util';
 import Chatbot from './Chatbot';
-import { setClientSessionId } from '../services/apiClient';
+import { setClientSessionId,getClientSessionId } from '../services/apiClient';
 
 global.TextDecoder = TextDecoder;
 
+test('selected run travels to Companion and changing it cancels an in-flight answer', async () => {
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','record-scope-key');
+ let sent, signal;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sent=JSON.parse(options.body);signal=options.signal;
+  return new Promise(()=>{});
+ });
+ const view=render(<Chatbot pageId="data-flow" runId="run-A"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain selected evidence'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sent?.graph_context.run_id).toBe('run-A'));
+ view.rerender(<Chatbot pageId="data-flow" runId="run-B"/>);
+ await waitFor(()=>expect(signal.aborted).toBe(true));
+ expect(screen.queryByText('Explain selected evidence')).not.toBeInTheDocument();
+});
+
+test('product scope includes the exact selected version', async () => {
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','product-scope-key');
+ let sent;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sent=JSON.parse(options.body);return new Promise(()=>{});
+ });
+ render(<Chatbot pageId="data-products" productId="plant" productVersion="2.0.0"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain selected product'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sent?.graph_context).toMatchObject({product_id:'plant',product_version:'2.0.0'}));
+});
+
+test('prefix-only graph scope is not sent as an ontology identity',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','scope-key');
+ let sentBody;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sentBody=JSON.parse(options.body);
+  return Promise.resolve({ok:false,status:503,headers:{get:()=>null},json:async()=>({detail:'fixture stop'})});
+ });
+ render(<Chatbot graphData={{view:{ontology_prefix:'qif'}}} pageId="graph"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Housing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sentBody).toBeDefined());
+ expect(sentBody.graph_context.ontology).toBe('');
+ expect(sentBody.graph_context.ontology_prefix).toBe('qif');
+});
+
+test('selected business identity travels with the request and changes reset the conversation',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','node-scope-key');
+ let sentBody;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});
+  sentBody=JSON.parse(options.body);
+  return Promise.resolve({ok:false,status:503,headers:{get:()=>null},json:async()=>({detail:'fixture stop'})});
+ });
+ const view=render(<Chatbot graphData={{root_node_id:'selected'}} pageId="graph"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Tell me more'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sentBody?.graph_context.node_id).toBe('selected'));
+ view.rerender(<Chatbot graphData={{root_node_id:'another'}} pageId="graph"/>);
+ await waitFor(()=>expect(screen.queryByText('Tell me more')).not.toBeInTheDocument());
+});
+
+test('reconnect releases a stalled chat and ignores its late session-retry response',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','old-key');
+ let resolveRetry,posts=0;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,headers:{get:()=>null},json:async()=>({turns:[],queries:[]})});
+  posts+=1;
+  if(posts===1)return Promise.resolve({ok:false,status:403,headers:{get:()=> 'retry-session'}});
+  return new Promise(resolve=>{resolveRetry=resolve;});
+ });
+ render(<Chatbot/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Find bearing'}});
+ fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(posts).toBe(2));
+ setCredentialProfile('GRAPH_READ_TOKEN','new-key');
+ fireEvent(window,new Event('depo:session-replaced'));
+ const current=getClientSessionId();
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Find current part'}});
+ expect(screen.getByRole('button',{name:'Send chat question'})).toBeEnabled();
+ await act(async()=>{resolveRetry({ok:true,status:200,headers:{get:()=> 'late-old-session'}});});
+ await waitFor(()=>expect(getClientSessionId()).toBe(current));
+ expect(getClientSessionId()).not.toBe('late-old-session');
+});
+
+test('late sample queries cannot adopt a conversation from previous credentials',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','samples-old');
+ let resolveSamples;
+ global.fetch=vi.fn(()=>new Promise(resolve=>{resolveSamples=resolve;}));
+ render(<Chatbot/>);
+ setCredentialProfile('GRAPH_READ_TOKEN','samples-new');
+ fireEvent(window,new Event('depo:credentials-changed'));
+ await act(async()=>{resolveSamples({ok:true,headers:{get:()=> 'old-sample-session'},json:async()=>({queries:['Old identity prompt']})});});
+ expect(getClientSessionId()).toBeNull();
+ expect(screen.queryByText('Old identity prompt')).toBeNull();
+});
+
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 
-test('completed chat shows generation status and the telemetry run', async () => {
+test('completed chat shows generation status without internal agent diagnostics', async () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'read-fixture');
   let sent = false;
   global.fetch = vi.fn((_url, options = {}) => {
@@ -24,11 +121,13 @@ test('completed chat shows generation status and the telemetry run', async () =>
   render(<Chatbot />);
   fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Find product' } });
   fireEvent.click(screen.getByLabelText('Send chat question'));
-  await screen.findByText('Model generation: unavailable');
+  await screen.findByText('Verified evidence');
+    expect(screen.queryByText(/Model generation:/)).not.toBeInTheDocument();
   const post = global.fetch.mock.calls.find(([, options]) => options?.method === 'POST');
   expect(post[1]).toMatchObject({ credentials: 'omit', redirect: 'error' });
-  expect(screen.getByText('Agent run: chat-run-1')).toBeInTheDocument();
-  expect(screen.getByText('Saved conversation result: saved-chat-1')).toBeInTheDocument();
+  expect(screen.queryByText(/chat-run-1/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/saved-chat-1/)).not.toBeInTheDocument();
+  expect(screen.queryByText('Prompt details')).not.toBeInTheDocument();
   expect(screen.getByText('You · Question 1')).toBeVisible();
   expect(screen.getByText('Companion · Response 1')).toBeVisible();
   const history = screen.getByRole('log', { name: 'Conversation history' });
@@ -93,7 +192,7 @@ test('scope changes abort old evidence and clear the previous server session', a
   rerender(<Chatbot setChatResults={results} ontologyId="second" graphData={graphData} />);
   await waitFor(() => expect(request.signal.aborted).toBe(true));
   expect(screen.queryByText('Old scope answer')).not.toBeInTheDocument();
-  expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBeNull();
+  expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBe('old-session');
   expect(screen.getByLabelText('Chat question')).not.toBeDisabled();
   expect(results).toHaveBeenLastCalledWith([]);
 });
@@ -131,6 +230,7 @@ test('read-key rotation discards the old credential-owned session', async () => 
 
 test('expired chat session retries retrieval once without its old identifier', async () => {
   window.sessionStorage.clear();
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-key');
   setClientSessionId('expired-session');
   let submissions = 0;
   global.fetch = jest.fn((_url, options = {}) => {
@@ -239,4 +339,104 @@ test('malformed sample-query responses retain safe prompts',async()=>{
  render(<Chatbot />);
  await waitFor(()=>expect(global.fetch).toHaveBeenCalled());
  expect(screen.getByRole('button',{name:'Send chat question'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Show MBSE blocks, functions, interfaces and their recorded requirement relationships.'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Find ontology resources matching product'})).not.toBeInTheDocument();
+});
+
+test('samples follow the active page and refresh when the page changes',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ global.fetch=vi.fn().mockImplementation(url=>Promise.resolve({ok:true,headers:{get:()=>null},json:async()=>({queries:new URL(url).searchParams.get('page')==='catalog'?['Which catalog sources are recorded?']:['What processing jobs are recorded?']})}));
+ const view=render(<Chatbot pageId="catalog"/>);
+ expect(await screen.findByRole('button',{name:'Which catalog sources are recorded?'})).toBeVisible();
+ view.rerender(<Chatbot pageId="data-flow"/>);
+ expect(await screen.findByRole('button',{name:'What processing jobs are recorded?'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Which catalog sources are recorded?'})).not.toBeInTheDocument();
+});
+
+
+test('provider failures retain the grounded answer and show an actionable diagnosis',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ let sent=false;
+ global.fetch=vi.fn((_url,options={})=> options.method!=='POST' ? Promise.resolve({ok:true,json:async()=>({queries:[]})}) : Promise.resolve({ok:true,status:200,headers:{get:()=>null},body:{getReader:()=>({read:async()=>{
+  if(sent)return {done:true};sent=true;
+  return {done:false,value:bytes('data: '+JSON.stringify({response:'198 proposals; zero selected consolidations.',evidence:[{resource_id:'review',label:'AP242 to QIF'}],sources:[],answerable:true,generation:{status:'rate_limited',provider:'openai',action:'Check provider quota and billing.'}})+'\n\ndata: {"done":true}\n\n')};
+ }})}}));
+ render(<Chatbot/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'AP242 QIF mappings'}});
+ fireEvent.click(screen.getByLabelText('Send chat question'));
+ expect(await screen.findByText('198 proposals; zero selected consolidations.')).toBeVisible();
+ expect(screen.queryByText(/Model generation:/)).not.toBeInTheDocument();
+ expect(screen.queryByText('Check provider quota and billing.')).not.toBeInTheDocument();
+});
+
+
+test('restored answers are scoped and labelled as historical evidence',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ setClientSessionId('restore-fixture');
+ global.fetch=vi.fn(url=>Promise.resolve({ok:true,status:200,json:async()=>String(url).includes('/history?') ? {turns:[{job_id:'private-result-id',user_request:'Find measurement',response:'Saved cited answer',evidence:[]}]} : {queries:[]}}));
+ render(<Chatbot ontologyId="qif-version" ontologyPrefix="qif"/>);
+ expect(await screen.findByText('Saved cited answer')).toBeVisible();
+ expect(screen.getByText('Saved answer — evidence has not been refreshed.')).toBeVisible();
+ expect(global.fetch.mock.calls.some(([url])=>String(url).includes('ontology_id=qif-version&ontology_prefix=qif'))).toBe(true);
+ expect(screen.queryByText(/private-result-id/)).not.toBeInTheDocument();
+});
+
+
+test('Companion sends a page hint and clears evidence when changing pages',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');let sent=false;
+ global.fetch=vi.fn((_url,options={})=>options.method!=='POST' ? Promise.resolve({ok:true,json:async()=>({queries:[]})}) : Promise.resolve({ok:true,status:200,headers:{get:()=>null},body:{getReader:()=>({read:async()=>{
+  if(sent)return {done:true};sent=true;
+  return {done:false,value:bytes('data: {"response":"Catalog context","evidence":[],"sources":[],"answerable":true}\n\ndata: {"done":true}\n\n')};
+ }})}}));
+ const view=render(<Chatbot pageId="catalog"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'List products'}});fireEvent.click(screen.getByLabelText('Send chat question'));
+ expect(await screen.findByText('Catalog context')).toBeVisible();
+ const request=global.fetch.mock.calls.find(([,options])=>options?.method==='POST')[1];
+ expect(JSON.parse(request.body).graph_context.page).toBe('catalog');
+ view.rerender(<Chatbot pageId="data-flow"/>);
+ await waitFor(()=>expect(screen.queryByText('Catalog context')).not.toBeInTheDocument());
+});
+
+
+test('selected event review travels in conversation scope and cancels on selection change',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','fixture-review');let sent,signal;
+ global.fetch=vi.fn((_url,options={})=>{if(options.method!=='POST')return Promise.resolve({ok:true,json:async()=>({queries:[],turns:[]})});sent=JSON.parse(options.body);signal=options.signal;return new Promise(()=>{});});
+ const view=render(<Chatbot pageId="data-flow" reconciliationId="review-one"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Explain these semantic checks'}});fireEvent.click(screen.getByRole('button',{name:'Send chat question'}));
+ await waitFor(()=>expect(sent.graph_context.reconciliation_id).toBe('review-one'));
+ view.rerender(<Chatbot pageId="data-flow" reconciliationId="review-two"/>);await waitFor(()=>expect(signal.aborted).toBe(true));
+});
+
+
+test('navigation restores only the selected page history without losing the conversation id',async()=>{
+ window.sessionStorage.clear();setCredentialProfile('GRAPH_READ_TOKEN','fixture-navigation');setClientSessionId('retained-navigation');
+ const fetcher=vi.fn(async url=>({ok:true,status:200,json:async()=>({turns:String(url).includes('page=home')?[{job_id:'turn-home',user_request:'Motor question',response:'Retained motor evidence'}]:[]})}));
+ vi.stubGlobal('fetch',fetcher);
+ const {rerender}=render(<Chatbot pageId="home"/>);
+ expect(await screen.findByText('Retained motor evidence')).toBeVisible();
+ rerender(<Chatbot pageId="graph"/>);
+ await waitFor(()=>expect(screen.queryByText('Retained motor evidence')).toBeNull());
+ expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBe('retained-navigation');
+ rerender(<Chatbot pageId="home"/>);
+ expect(await screen.findByText('Retained motor evidence')).toBeVisible();
+ expect(fetcher.mock.calls.some(([url])=>String(url).includes('page=graph'))).toBe(true);
+});
+
+
+test('completed graph answers focus retained identities in the selected scope', async () => {
+ setCredentialProfile('GRAPH_READ_TOKEN','focus-fixture');
+ const observed=vi.fn();window.addEventListener('nexus:companion-graph-evidence',observed);
+ let sent=false;
+ global.fetch=vi.fn((_url,options={})=>{
+  if(options.method!=='POST')return Promise.resolve({ok:true,headers:{get:()=>null},json:async()=>({queries:[]})});
+  const evidence=[{evidence_type:'business_answer',rows:[{subject_id:'part',requirement_id:'req'}]}];
+  const frames='data: '+JSON.stringify({response:'Recorded requirement',evidence,answerable:true})+'\n\ndata: {"done":true}\n\n';
+  return Promise.resolve({ok:true,status:200,headers:{get:()=>null},body:{getReader:()=>({read:async()=>{if(sent)return {done:true};sent=true;return {done:false,value:bytes(frames)};}})}});
+ });
+ render(<Chatbot pageId="graph" nodeId="part" ontologyId="ontology-A" ontologyPrefix="demo"/>);
+ fireEvent.change(screen.getByLabelText('Chat question'),{target:{value:'Which requirements are associated with this part?'}});
+ fireEvent.click(screen.getByLabelText('Send chat question'));
+ await waitFor(()=>expect(observed).toHaveBeenCalledTimes(1));
+ expect(observed.mock.calls[0][0].detail).toEqual({ids:['part','req'],rootId:'part',ontologyId:'ontology-A',ontologyPrefix:'demo'});
+ window.removeEventListener('nexus:companion-graph-evidence',observed);
 });

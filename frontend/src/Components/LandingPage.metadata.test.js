@@ -8,13 +8,13 @@ import { OntologyList, ontologyTypeLabel, ExistingOntologyMetrics, GraphProfileM
 test('landing shows the namespace prefix separately from immutable identity', () => {
   const rows = normalizeOntologyRows([{ ontology_id: 'uuid-123', prefix: 'qif', file_type: 'xsd' }]);
   render(<OntologyList ontologies={rows} />);
-  expect(screen.getByRole('columnheader', { name: 'Prefix' })).toBeVisible();
-  expect(screen.getAllByText('qif')).toHaveLength(2);
-  expect(screen.queryByText('uuid-123')).not.toBeInTheDocument();
+  expect(screen.getByText('Prefix')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'qif' })).toHaveAttribute('href', '#/ontology?target=uuid-123');
+  expect(screen.getByText('uuid-123')).toBeInTheDocument();
   expect(rows[0].ontology_id).toBe('uuid-123');
 });
 
-test('unknown prefix is not fabricated from an ID and Neo4j is not a format', () => {
+test('unknown prefix is not fabricated from an ID and knowledge graph is not a format', () => {
   const [row] = normalizeOntologyRows([{ ontology_id: 'uuid-123', file_type: 'neo4j' }]);
   expect(row.prefix).toBe('');
   expect(ontologyTypeLabel(row)).toBe('Ontology');
@@ -22,7 +22,7 @@ test('unknown prefix is not fabricated from an ID and Neo4j is not a format', ()
 });
 
 test('existing graph records are visible without presenting them as declared RDF counts', () => {
-  render(<ExistingOntologyMetrics metrics={{ resources: 125, classes: 75, object_properties: 30, data_properties: 20, definition: 'Existing ingestion records counted by Neo4j labels.' }} />);
+  render(<ExistingOntologyMetrics metrics={{ resources: 125, classes: 75, object_properties: 30, data_properties: 20, definition: 'Existing ingestion records counted by knowledge graph labels.' }} />);
   expect(screen.getByText('125')).toBeVisible();
   expect(screen.getByText('Class records')).toBeVisible();
   expect(screen.getByText(/Chat searches these records/)).toBeVisible();
@@ -33,7 +33,7 @@ test('unpublished scope leads with populated records and hides empty projection 
   render(<GraphProfileMetrics metrics={{ resources: 0, existing_ontology: { resources: 342, classes: 128, object_properties: 116, data_properties: 98, relationships: 418 } }} />);
   expect(screen.getByText('342')).toBeVisible();
   expect(screen.getByText('128')).toBeVisible();
-  expect(screen.getByRole('status')).toHaveTextContent('RDF projection not published');
+  expect(screen.getByRole('status')).toHaveTextContent('No published RDF resources');
   expect(screen.queryByLabelText('Published ontology metrics')).not.toBeInTheDocument();
   expect(screen.queryByText('Graph resources by ontology')).not.toBeInTheDocument();
 });
@@ -42,11 +42,35 @@ test('published scope retains declared RDF counts', () => {
   render(<GraphProfileMetrics metrics={{ resources: 50, classes: 12, ontology_breakdown: [] }} />);
   expect(screen.getByLabelText('Published ontology metrics')).toBeVisible();
   expect(screen.getByText('12')).toBeVisible();
-  expect(screen.queryByText(/RDF projection not published/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/No published RDF resources/)).not.toBeInTheDocument();
+});
+
+test('annotation declarations and business instance records remain distinct', () => {
+  render(<GraphProfileMetrics metrics={{ resources: 50, annotation_properties: 0, named_individuals: 0, business_instances: 18, ontology_breakdown: [] }} />);
+  expect(screen.getByText('Declared annotation properties')).toBeVisible();
+  expect(screen.getByText('Declared named individuals')).toBeVisible();
+  expect(screen.getByText('Business instance records')).toBeVisible();
+  expect(screen.getByText('18')).toBeVisible();
+  expect(screen.getByText(/Zero annotation-property declarations does not mean/)).toBeVisible();
 });
 
 test('empty scope states missing records without a misleading zero metric grid', () => {
   render(<GraphProfileMetrics metrics={{ resources: 0, existing_ontology: { resources: 0 } }} />);
-  expect(screen.getByText('No ontology graph records are available for this scope.')).toBeVisible();
+  expect(screen.getByText('Registry registration and graph publication are separate. Review the publication status in Models & Vocabularies; if it is published, refresh data and check the selected version.')).toBeVisible();
   expect(screen.queryByLabelText('Published ontology metrics')).not.toBeInTheDocument();
 });
+
+ test('registry distinguishes merge provenance and does not fabricate usage or publication', () => {
+  render(<OntologyList ontologies={[{ontology_id:'merge/a',label:'Reviewed vocabulary',status:'merged',source:'governed-merge:receipt',created_at:'invalid'}]} />);
+  expect(screen.getByText('Merged vocabulary')).toBeVisible();
+  expect(screen.getByRole('link', {name:'Reviewed vocabulary'})).toHaveAttribute('href','#/ontology?target=merge%2Fa');
+  expect(screen.queryByText('Uses')).not.toBeInTheDocument();
+  expect(screen.queryByText('Invalid Date')).not.toBeInTheDocument();
+  expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  expect(screen.getByText(/Registration does not establish/)).toBeInTheDocument();
+ });
+ test('refresh retains usable ontology links', () => {
+  render(<OntologyList loading ontologies={[{ontology_id:'one',label:'Plant vocabulary'}]} />);
+  expect(screen.getByRole('link', {name:'Plant vocabulary'})).toBeVisible();
+  expect(screen.getByRole('status')).toHaveTextContent('Refreshing registry');
+ });

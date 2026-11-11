@@ -2,7 +2,19 @@ import React from 'react';
 import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MetadataRegistryPage from './MetadataRegistryPage';
+vi.mock('@siemens/ix-react', () => import('../ui/ix/ixReact.mock.js'));
 import { API_METHODS } from '../services/apiClient';
+
+it('does not report a registry outage while its initial request is pending', async () => {
+  let finish;
+  API_METHODS.metadataRegistry.list.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  render(<MetadataRegistryPage />);
+  expect(screen.getByText('Loading governed registry assets…')).toBeVisible();
+  expect(screen.queryByText(/The governed registry is unavailable/)).toBeNull();
+  finish({data:{assets:[],has_more:false}});
+  await waitFor(() => expect(screen.queryByText('Loading governed registry assets…')).toBeNull());
+  expect(screen.getByText('No governed metadata assets are registered yet.')).toBeVisible();
+});
 
 vi.mock('../contexts/OntologyContext', () => ({
   useOntologies: () => ({
@@ -28,7 +40,28 @@ vi.mock('../services/apiClient', () => ({
 }));
 
 beforeEach(() => {
+  window.history.replaceState(null,'','#/registry');
   jest.clearAllMocks();
+});
+
+test('dictionary pages bound rendering and filtering returns to the first page', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
+  API_METHODS.ontology.getDataDictionary.mockResolvedValue({data:{entities:Object.fromEntries(
+    Array.from({length:26},(_,i)=>[`Term${i}`,{definition:'Definition '.repeat(40)}]))}});
+  render(<MetadataRegistryPage />);
+  fireEvent.click(screen.getByRole('tab',{name:'Terms'}));
+  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'),{target:{value:'onto-1'}});
+  await screen.findByText('Term0');
+  expect(screen.getAllByRole('button',{name:'Prepare draft registration'})).toHaveLength(25);
+  fireEvent.click(screen.getByRole('button',{name:'Next',exact:true}));
+  expect(screen.getByText('Term25')).toBeVisible();
+  expect(screen.queryByText('Term0')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Filter terms'),{target:{value:'Term0'}});
+  expect(screen.getByText('Term0')).toBeVisible();
+  expect(screen.getByRole('button',{name:'Previous',exact:true})).toBeDisabled();
+  fireEvent(window,new Event('depo:access-verified'));
+  await waitFor(()=>expect(API_METHODS.ontology.getDataDictionary).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('Select registry source for Data Dictionary')).toHaveValue('onto-1');
 });
 
 test('metadata asset pagination requests the next offset and describes page-local counts', async () => {
@@ -49,9 +82,11 @@ test('dictionary preserves a supplied IRI in draft registration', async () => {
   API_METHODS.metadataRegistry.create.mockResolvedValue({ data: { asset_id: 'retained-term', name: 'Part', lifecycle_status: 'draft' } });
   API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Part: { iri: 'urn:engineering:Part' } } } });
   render(<MetadataRegistryPage />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Terms' }));
   fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
-  expect(await screen.findByText('urn:engineering:Part')).toBeVisible();
+  await screen.findByText('urn:engineering:Part');
+  fireEvent.click(screen.getByText('Term identity'));
+  expect(screen.getByText('urn:engineering:Part')).toBeVisible();
   fireEvent.click(await screen.findByRole('button', { name: 'Prepare draft registration' }));
   fireEvent.click(screen.getByRole('button', { name: 'Register', exact: true }));
   await waitFor(() => expect(API_METHODS.metadataRegistry.create).toHaveBeenCalledWith(
@@ -71,7 +106,7 @@ test('dictionary prepares a source-linked draft without writing until Register',
   API_METHODS.metadataRegistry.create.mockResolvedValue({ data: { asset_id: 'registered', name: 'Part', lifecycle_status: 'draft', version: '1.0.0' } });
   render(<MetadataRegistryPage />);
   await screen.findByText('No governed metadata assets are registered yet.');
-  fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Terms' }));
   fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
   fireEvent.click(await screen.findByRole('button', { name: 'Prepare draft registration' }));
   expect(API_METHODS.metadataRegistry.create).not.toHaveBeenCalled();
@@ -87,7 +122,7 @@ test('catalog refresh reloads the dictionary selected in the active tab', async 
   API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Part: {} }, properties: {}, relationships: {} } });
   render(<MetadataRegistryPage />);
   await screen.findByText('No governed metadata assets are registered yet.');
-  fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Terms' }));
   fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
   await screen.findByText('Part');
   fireEvent.click(screen.getByRole('button', { name: 'Refresh catalog' }));
@@ -157,7 +192,7 @@ test('tabs stay available during a dictionary read and cleared selection rejects
  let resolve;
  API_METHODS.ontology.getDataDictionary.mockReturnValue(new Promise(done=>{resolve=done;}));
  render(<MetadataRegistryPage/>);
- fireEvent.click(screen.getByRole('tab',{name:'Data Dictionary'}));
+ fireEvent.click(screen.getByRole('tab',{name:'Terms'}));
  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'),{target:{value:'onto-1'}});
  expect(screen.getByRole('tab',{name:'Registry assets'})).toBeEnabled();
  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'),{target:{value:''}});
@@ -170,7 +205,7 @@ test('direct dictionary payload is displayed and malformed payload is reported',
  API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
  API_METHODS.ontology.getDataDictionary.mockResolvedValueOnce({data:{entities:{Part:{definition:'A component'}}}}).mockResolvedValueOnce({data:{status:'ok'}});
  render(<MetadataRegistryPage/>);
- fireEvent.click(screen.getByRole('tab',{name:'Data Dictionary'}));
+ fireEvent.click(screen.getByRole('tab',{name:'Terms'}));
  const select=screen.getByLabelText('Select registry source for Data Dictionary');
  fireEvent.change(select,{target:{value:'onto-1'}});
  await screen.findByText('A component');
@@ -192,4 +227,14 @@ test('credential changes abort the old registry request and reload without stale
   expect(oldSignal.aborted).toBe(true);
   finishOld({ data: { assets: [{ asset_id: 'old', name: 'Previous session asset' }] } });
   await waitFor(() => expect(screen.queryByText('Previous session asset')).toBeNull());
+});
+
+test('dictionary view follows the URL and back/forward events',async()=>{
+ API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[],has_more:false}});
+ window.history.replaceState(null,'','#/registry?view=dictionary');
+ render(<MetadataRegistryPage/>);
+ expect(screen.getByRole('tab',{name:'Terms'})).toHaveAttribute('aria-selected','true');
+ window.history.replaceState(null,'','#/registry?view=assets');
+ fireEvent(window,new PopStateEvent('popstate'));
+ expect(screen.getByRole('tab',{name:'Registry assets'})).toHaveAttribute('aria-selected','true');
 });

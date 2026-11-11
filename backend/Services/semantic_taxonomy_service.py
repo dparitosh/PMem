@@ -1,7 +1,7 @@
 """SKOS taxonomy services for ontology-adjacent vocabulary.
 
 This module intentionally keeps SKOS concepts separate from OWL classes and
-instance data. OWL is still handled by Owlready2/RDFLib services; this layer is
+instance data. OWL is still handled by semantic runtime/RDFLib services; this layer is
 for concept schemes, labels, synonyms, hierarchy, mappings, validation, search,
 and Neo4j storage plans.
 """

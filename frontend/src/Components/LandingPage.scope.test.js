@@ -20,4 +20,8 @@ test('scope selection refreshes metrics using identity and namespace prefix', as
   await waitFor(() => expect(mocks.getMetrics).toHaveBeenLastCalledWith('qif-id', expect.any(AbortSignal), 'qif'));
   expect(screen.getByRole('region', { name: 'Graph profile metrics' })).toHaveAttribute('tabindex', '0');
   expect(screen.getByText('Chat ready')).toBeVisible();
+  const reads = mocks.getMetrics.mock.calls.length;
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => expect(mocks.getMetrics.mock.calls.length).toBe(reads + 1));
+  expect(mocks.getMetrics).toHaveBeenLastCalledWith('qif-id', expect.any(AbortSignal), 'qif');
 });

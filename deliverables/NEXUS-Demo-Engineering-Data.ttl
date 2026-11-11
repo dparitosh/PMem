@@ -1,0 +1,148 @@
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix demo: <https://example.org/nexus/synthetic-demo/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ceim:allocatedTo a owl:ObjectProperty ;
+    rdfs:label "allocated to" .
+
+ceim:datum a owl:DatatypeProperty .
+
+ceim:diameter a owl:DatatypeProperty .
+
+ceim:hasDocument a owl:ObjectProperty ;
+    rdfs:label "has design evidence" .
+
+ceim:hasPMI a owl:ObjectProperty ;
+    rdfs:label "has PMI" .
+
+ceim:hasPart a owl:ObjectProperty ;
+    rdfs:label "has component" .
+
+ceim:hasRequirement a owl:ObjectProperty ;
+    rdfs:label "has recorded requirement" .
+
+ceim:hasShape a owl:ObjectProperty ;
+    rdfs:label "has shape representation" .
+
+ceim:manufacturedBy a owl:ObjectProperty ;
+    rdfs:label "has manufacturing activity" .
+
+ceim:material a owl:DatatypeProperty .
+
+ceim:partNumber a owl:DatatypeProperty .
+
+ceim:revision a owl:DatatypeProperty .
+
+ceim:unit a owl:DatatypeProperty .
+
+ceim:value a owl:DatatypeProperty .
+
+demo:alternative a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "SYN Housing P1002" ;
+    ceim:description "Comparison candidate; engineering approval required" ;
+    ceim:diameter 40 ;
+    ceim:material "Steel" ;
+    ceim:partNumber "SYN-P1002" ;
+    ceim:revision "B" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+demo:assembly a owl:NamedIndividual,
+        ceim:Assembly ;
+    rdfs:label "SYN Pump Assembly" ;
+    ceim:description "Synthetic pump assembly, revision B" ;
+    ceim:hasPart demo:housing,
+        demo:shaft ;
+    ceim:synthetic true .
+
+demo:block a owl:NamedIndividual,
+        ceim:SystemComponent ;
+    rdfs:label "SYN Pump subsystem" ;
+    ceim:allocatedTo demo:housing ;
+    ceim:description "MBSE subsystem allocation" ;
+    ceim:synthetic true .
+
+demo:ontology a owl:Ontology ;
+    rdfs:label "SYNTHETIC Nexus engineering demo — not customer evidence" .
+
+ceim:Assembly a owl:Class .
+
+ceim:ManufacturingProcess a owl:Class .
+
+ceim:PMIAnnotation a owl:Class .
+
+ceim:Requirement a owl:Class .
+
+ceim:ShapeRepresentation a owl:Class .
+
+ceim:SystemComponent a owl:Class .
+
+demo:cad a owl:NamedIndividual,
+        ceim:EngineeringDocument ;
+    rdfs:label "SYN Housing CAD model" ;
+    ceim:description "Synthetic design reference; no actual CAD file supplied" ;
+    ceim:synthetic true .
+
+demo:pmi a owl:NamedIndividual,
+        ceim:PMIAnnotation ;
+    rdfs:label "SYN Bore tolerance" ;
+    ceim:datum "A" ;
+    ceim:description "Synthetic dimensional annotation" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" ;
+    ceim:value 2e-02 .
+
+demo:process a owl:NamedIndividual,
+        ceim:ManufacturingProcess ;
+    rdfs:label "SYN Bore machining" ;
+    ceim:description "Manufacturing activity for housing" ;
+    ceim:synthetic true .
+
+demo:req a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "SYN REQ-001 Continuous operation" ;
+    ceim:description "Operate continuously for eight hours; verification not demonstrated" ;
+    ceim:synthetic true .
+
+demo:shaft a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "SYN Shaft P2001" ;
+    ceim:description "Synthetic rotor shaft" ;
+    ceim:synthetic true .
+
+demo:shape a owl:NamedIndividual,
+        ceim:ShapeRepresentation ;
+    rdfs:label "SYN Housing shape" ;
+    ceim:description "Illustrative cylindrical housing representation" ;
+    ceim:synthetic true .
+
+demo:simulation a owl:NamedIndividual,
+        ceim:EngineeringDocument ;
+    rdfs:label "SYN Thermal simulation" ;
+    ceim:description "Illustrative dataset reference; no computed result supplied" ;
+    ceim:synthetic true .
+
+ceim:EngineeringDocument a owl:Class .
+
+demo:housing a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "SYN Housing P1001" ;
+    ceim:description "Machined pump housing, revision B" ;
+    ceim:diameter 40 ;
+    ceim:hasDocument demo:cad,
+        demo:simulation ;
+    ceim:hasPMI demo:pmi ;
+    ceim:hasRequirement demo:req ;
+    ceim:hasShape demo:shape ;
+    ceim:manufacturedBy demo:process ;
+    ceim:material "Steel" ;
+    ceim:partNumber "SYN-P1001" ;
+    ceim:revision "B" ;
+    ceim:synthetic true ;
+    ceim:unit "mm" .
+
+ceim:Part a owl:Class .
+

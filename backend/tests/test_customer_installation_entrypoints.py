@@ -5,13 +5,50 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def installation_documentation():
+    return '\n'.join((ROOT / path).read_text(encoding='utf-8') for path in (
+        'INSTALLATION.md', 'docs/installation/OPERATOR_REFERENCE.md'))
+
+
+def test_customer_guide_is_concise_and_links_complete_operator_reference():
+    guide = (ROOT / 'INSTALLATION.md').read_text(encoding='utf-8')
+    assert len(guide.splitlines()) < 300
+    assert 'docs/installation/OPERATOR_REFERENCE.md' in guide
+    assert 'Setup-DEPO.cmd' in guide
+    assert '## 1. Prepare the machine' in guide
+    assert '## 6. Resolve errors' in guide
+    for retired in ('repair-depo-xsd-release.ps1', 'start-zeppelin.ps1'):
+        assert not (ROOT / 'infra/windows' / retired).exists()
+        assert retired not in installation_documentation()
+
+
+def test_detailed_installation_topics_remain_linked_with_examples_and_safeguards():
+    guide = (ROOT / 'INSTALLATION.md').read_text(encoding='utf-8')
+    reference = (ROOT / 'docs/installation/OPERATOR_REFERENCE.md').read_text(encoding='utf-8')
+    for anchor, heading in (
+        ('public-access-through-apim-or-a-reverse-proxy', 'Public access through APIM or a reverse proxy'),
+        ('customer-browser-errors-after-an-update', 'Customer browser errors after an update'),
+        ('deploying-the-page-reliability-and-authorization-fixes', 'Deploying the page reliability and authorization fixes'),
+        ('large-ontology-configuration', 'Large ontology configuration'),
+        ('xsd-schemas-with-remote-dependencies', 'XSD schemas with remote dependencies'),
+    ):
+        assert 'docs/installation/OPERATOR_REFERENCE.md#' + anchor in guide
+        assert '### ' + heading in reference
+    for detail in ('idx_depo_ontologyresource_source_scope', 'Run Steward assessment',
+                   'XSD_REMOTE_SCHEMA_HOSTS=', 'https://schemas.example.com/product/common.xsd',
+                   'crypto.randomUUID is not a function', 'GRAPH_READ_TOKEN'):
+        assert detail in reference
+    assert '[customer installation runbook](../../INSTALLATION.md)' in reference
+    assert '(../page-audit-remediation-20261027.md)' in reference
+
+
 def test_customer_entrypoints_exist_and_guide_does_not_expose_internal_lifecycle_commands():
     for name in ("configure-depo.ps1", "install-depo.ps1", "diagnose-depo.ps1", "manage-depo.ps1", "certify-depo-release.ps1"):
         assert (ROOT / name).is_file(), name
     for name in ("update-postgres-schema.ps1", "test-postgres-schema.ps1"):
         assert (ROOT / "infra" / "postgres" / name).is_file(), name
         assert not (ROOT / name).exists(), f"duplicate root schema command: {name}"
-    guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
+    guide = installation_documentation()
     assert ".\\install-depo.ps1" in guide
     assert ".\\diagnose-depo.ps1 -Phase All" in guide
     assert ".\\manage-depo.ps1 -Action Start" in guide
@@ -27,7 +64,7 @@ def test_windows_frontend_has_documented_start_and_stop_lifecycle():
     assert "frontend\\dist" in start
     assert "frontend.pid" in start
     assert "Get-NetTCPConnection" in start
-    guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
+    guide = installation_documentation()
     assert "-File .\\infra\\windows\\start-depo-frontend.ps1" in guide
     assert "-File .\\infra\\windows\\stop-depo-frontend.ps1" in guide
     for setting in (
@@ -42,7 +79,7 @@ def test_windows_frontend_has_documented_start_and_stop_lifecycle():
 
 
 def test_installer_provisions_neo4j_before_start_and_runs_read_only_preflight_afterward():
-    installer = (ROOT / "infra" / "windows" / "install-depo-windows.ps1").read_text(encoding="utf-8")
+    installer = (ROOT / "install-depo.ps1").read_text(encoding="utf-8")
     provision = installer.index("test-depo-neo4j.ps1') -EnvFile $envPath -Bootstrap")
     start = installer.index("Service startup and endpoint validation")
     preflight = installer.index("Release preflight")
@@ -94,6 +131,9 @@ def test_diagnostics_include_offline_release_package_integrity():
     assert package_check.is_file()
     assert "'Package','Prerequisites','Configuration','Runtime','All'" in diagnostic
     assert "test-installation-package.ps1" in diagnostic
+    assert '-CheckPrerequisites -EnvFile $envPath' in diagnostic
+    package_text = package_check.read_text(encoding='utf-8')
+    assert 'docs/installation/OPERATOR_REFERENCE.md' in package_text
 
 
 def test_linux_spark_runbook_has_executable_lifecycle_and_safe_configuration():
@@ -113,7 +153,7 @@ def test_linux_spark_runbook_has_executable_lifecycle_and_safe_configuration():
     installer = (linux / "install-depo-linux.sh").read_text(encoding="utf-8")
     assert "requirements-linux-lock.txt" in installer
     assert "--require-hashes" in installer
-    guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
+    guide = installation_documentation()
     assert "Copy-and-paste example: Ubuntu application VM" in guide
     assert "bash infra/linux/configure-depo-linux.sh" in guide
     assert "bash infra/linux/install-spark-linux.sh" in guide
@@ -123,8 +163,9 @@ def test_linux_spark_runbook_has_executable_lifecycle_and_safe_configuration():
 def test_customer_installer_forwards_rotation_and_rebuilds_without_installing():
     root = (ROOT / 'install-depo.ps1').read_text(encoding='utf-8')
     assert '[switch]$ReplaceExistingCredentials' in root
-    assert '@PSBoundParameters' in root
-    installer = (ROOT / 'infra/windows/install-depo-windows.ps1').read_text(encoding='utf-8')
+    assert '-ReplaceExisting:$ReplaceExistingCredentials' in root
+    assert not (ROOT / 'infra/windows/install-depo-windows.ps1').exists()
+    installer = (ROOT / 'install-depo.ps1').read_text(encoding='utf-8')
     rebuild = installer.index('if ($SkipDependencyInstall -and -not $SkipFrontend)')
     start = installer.index("Invoke-DepoStage 'Service startup and endpoint validation'")
     assert rebuild < start
@@ -132,3 +173,51 @@ def test_customer_installer_forwards_rotation_and_rebuilds_without_installing():
     assert 'build-depo-frontend.ps1' in section
     assert 'frontend/dist/index.html' in section
     assert 'npm.cmd ci' not in section
+
+
+def test_manager_orders_frontend_and_backend_and_stops_on_failure(tmp_path):
+    import shutil
+    import subprocess
+    import pytest
+    powershell = shutil.which('powershell.exe')
+    if not powershell:
+        pytest.skip('Windows PowerShell is required')
+    (tmp_path / 'infra/windows').mkdir(parents=True)
+    (tmp_path / 'infra/deployment').mkdir(parents=True)
+    shutil.copyfile(ROOT / 'manage-depo.ps1', tmp_path / 'manage-depo.ps1')
+    shutil.copyfile(ROOT / 'infra/windows/native-install-command.ps1', tmp_path / 'infra/windows/native-install-command.ps1')
+    # Process visibility is covered separately; keep this ordering fixture local.
+    (tmp_path / 'infra/windows/process-control.ps1').write_text('function Invoke-DepoVisibleManagement { param($Root,$Action,$EnvFile,$Profile,$ElevatedRetry) return $false }')
+    trace = tmp_path / 'trace.txt'
+    for phase in ['start','stop']:
+        (tmp_path / f'infra/windows/{phase}-depo-frontend.ps1').write_text(f"param([string]$EnvFile)\nAdd-Content -LiteralPath '{trace}' -Value 'frontend-{phase}'\n$global:LASTEXITCODE=0\n")
+    lifecycle = tmp_path / 'infra/deployment/invoke-depo-lifecycle.ps1'
+    lifecycle.write_text(f"param([string]$Action,[string]$EnvFile,[string]$Profile)\nAdd-Content -LiteralPath '{trace}' -Value ('backend-'+$Action)\n$global:LASTEXITCODE=0\n")
+    # This fixture checks ordering, not organization execution policy. The
+    # restricted runner cannot import Microsoft.PowerShell.Security; the real
+    # child already starts with process Bypass. Isolate that read-only query.
+    command="function Get-ExecutionPolicy { 'Bypass' }; & '"+str(tmp_path/'manage-depo.ps1')+"'"
+    args=[powershell,'-NoProfile','-ExecutionPolicy','Bypass','-Command',command]
+    result=subprocess.run(args+['-Action','Restart'],capture_output=True,text=True)
+    assert result.returncode == 0, result.stderr
+    assert trace.read_text().splitlines() == ['frontend-stop','backend-Stop','backend-Start','frontend-start']
+    trace.write_text('')
+    lifecycle.write_text(f"param([string]$Action,[string]$EnvFile,[string]$Profile)\nAdd-Content -LiteralPath '{trace}' -Value 'backend-failed'\n$global:LASTEXITCODE=17\n")
+    result=subprocess.run(args+['-Action','Start'],capture_output=True,text=True)
+    assert result.returncode != 0
+    assert trace.read_text().splitlines() == ['backend-failed']
+
+
+def test_customer_update_retains_shared_migrations_and_adds_nonpublishing_pmi_review():
+    wrapper=(ROOT/'update-depo.ps1').read_text(encoding='utf-8')
+    update=(ROOT/'infra/windows/update-depo-windows.ps1').read_text(encoding='utf-8')
+    assert 'update-depo-windows.ps1' in wrapper
+    assert update.index('if ($PreflightOnly)') < update.index('Backend shutdown')
+    installer=(ROOT/'install-depo.ps1').read_text(encoding='utf-8')
+    assert '--ceim-review' in installer
+    assert installer.index("if ($script:depoDetectedMode -eq 'existing')") < installer.index('--ceim-review')
+    assert 'install-depo.ps1' in update and '-SkipBaselineProvisioning' in update
+    assert 'AP242 PMI mapping upgrade review (no graph publication)' in installer
+    assert '--stage' not in update
+    gate=(ROOT/'infra/deployment/test-installation-package.ps1').read_text(encoding='utf-8')
+    assert 'verified_pmi_characteristic.relationship' in gate

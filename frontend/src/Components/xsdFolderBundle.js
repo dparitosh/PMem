@@ -14,7 +14,7 @@ export async function combineXsdFiles(selected, available = selected, preflight 
   const ordered = [...selected].sort((a, b) => a.name.localeCompare(b.name, 'en'));
   const selectedPaths = [];
   const selectedFiles = [];
-  let namespace;
+  const entries = [];
   for (const original of ordered) {
     const candidates = available.map((file, index) => ({ file, path: paths[index] }));
     const originalPath = original.webkitRelativePath ? folderPaths([original])[0] : null;
@@ -26,11 +26,34 @@ export async function combineXsdFiles(selected, available = selected, preflight 
     selectedPaths.push(path);
     selectedFiles.push(file);
     const text = await readText(file);
-    if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error('DTD/entities are not permitted in schemas.');
+    if (/<!DOCTYPE|<!ENTITY/i.test(text.replace(/<!--[\s\S]*?-->/g, ''))) throw new Error('DTD/entities are not permitted in schemas.');
     const xml = new DOMParser().parseFromString(text, 'application/xml');
     if (xml.querySelector('parsererror') || xml.documentElement.namespaceURI !== XSD || xml.documentElement.localName !== 'schema') throw new Error(`Invalid XML Schema: ${file.name}`);
     const ns = xml.documentElement.getAttribute('targetNamespace') || '';
-    if (namespace === undefined) { namespace = ns; if (ns) document.documentElement.setAttribute('targetNamespace', ns); }
+    entries.push({ xml, ns, path });
+  }
+  const referenced = new Set();
+  for (const { xml, path } of entries) {
+    for (const ref of Array.from(xml.documentElement.children).filter(node => node.namespaceURI === XSD && ['include', 'import', 'redefine'].includes(node.localName))) {
+      const location = ref.getAttribute('schemaLocation');
+      if (!location) continue;
+      let dependency;
+      if (/^https?:\/\//i.test(location)) {
+        const basename = decodeURIComponent(new URL(location).pathname.split('/').at(-1));
+        const matches = entries.filter(entry => entry.path.split('/').at(-1) === basename);
+        if (matches.length === 1) dependency = matches[0].path;
+      } else {
+        dependency = resolvePath(path, location);
+      }
+      if (dependency && dependency !== path) referenced.add(dependency);
+    }
+  }
+  const roots = entries.filter(entry => !referenced.has(entry.path));
+  const namespaces = new Set((roots.length ? roots : entries).map(entry => entry.ns));
+  if (namespaces.size !== 1) throw new Error('Selected XSDs have multiple independent root namespaces. Select one root schema and supply the others as companion dependencies.');
+  const namespace = [...namespaces][0];
+  if (namespace) document.documentElement.setAttribute('targetNamespace', namespace);
+  for (const { ns, path } of entries) {
     const reference = document.createElementNS(XSD, ns === namespace ? 'xs:include' : 'xs:import');
     if (ns !== namespace && ns) reference.setAttribute('namespace', ns);
     reference.setAttribute('schemaLocation', path);
@@ -69,7 +92,7 @@ export async function prepareXsdFolder(files, rootPath) {
     size += file.size;
     if (documents.size >= 64 || size > 25 * 1024 * 1024) throw new Error('Schema set exceeds 64 files or 25 MiB.');
     const text = await readText(file);
-    if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw new Error('DTD/entities are not permitted in schemas.');
+    if (/<!DOCTYPE|<!ENTITY/i.test(text.replace(/<!--[\s\S]*?-->/g, ''))) throw new Error('DTD/entities are not permitted in schemas.');
     const xml = new DOMParser().parseFromString(text, 'application/xml');
     if (xml.querySelector('parsererror') || xml.documentElement.namespaceURI !== XSD || xml.documentElement.localName !== 'schema') throw new Error(`Invalid XML Schema: ${path}`);
     const refs = [];
@@ -80,7 +103,10 @@ export async function prepareXsdFolder(files, rootPath) {
         const url = new URL(location);
         const name = decodeURIComponent(url.pathname.split('/').at(-1));
         const matches = paths.filter(candidate => candidate.split('/').at(-1) === name && candidate !== path);
-        if (!name.endsWith('.xsd') || matches.length !== 1) throw new Error(`Select exactly one local companion XSD named ${name || '(missing filename)'} for ${path}. External schemas are not downloaded.`);
+        // Keep unresolved URLs for the bounded server resolver. Browsers must
+        // not download schema closures (CORS, credentials and inconsistent limits).
+        if (!matches.length) continue;
+        if (!name.toLowerCase().endsWith('.xsd') || matches.length !== 1) throw new Error(`Select exactly one local companion XSD named ${name || '(missing filename)'} for ${path}.`);
         dependency = matches[0];
         if (size + source.get(dependency).size > 25 * 1024 * 1024) throw new Error('Schema set exceeds 25 MiB.');
         const companion = new DOMParser().parseFromString(await readText(source.get(dependency)), 'application/xml');

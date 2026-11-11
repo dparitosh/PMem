@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import XmlAnalyticsLoader from './XmlAnalyticsLoader';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
-vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn() }, dataPipelineAPI: { definitions: vi.fn(), runDefinition: vi.fn(), getRun: vi.fn(), reconcileAnalytics: vi.fn() } }));
+vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn(), get: vi.fn() }, dataPipelineAPI: { definitions: vi.fn(), executionIdentity:vi.fn(), runs:vi.fn(), runDefinition: vi.fn(), getRun: vi.fn(), reconcileAnalytics: vi.fn() } }));
 vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'test-token' }));
 vi.mock('../config', () => ({ buildSemanticServiceUrl: (_service, path) => path }));
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); });
@@ -15,14 +15,14 @@ test('only approved XML jobs are selectable and submission uses retained referen
   ] } });
   dataPipelineAPI.runDefinition.mockResolvedValue({ data: { status: 'queued', run_manifest: { run_id: 'run-xml' } } });
   render(<XmlAnalyticsLoader />);
-  fireEvent.click(screen.getByText('Load approved XML jobs'));
+  fireEvent.click(screen.getByText('Refresh loading processes'));
   await screen.findByText('XML load (1.0.0)');
   expect(screen.queryByText('Unapproved (1.0.0)')).toBeNull();
-  fireEvent.change(screen.getByLabelText('Approved XML job'), { target: { value: 'load:1.0.0' } });
+  fireEvent.change(screen.getByLabelText('Loading process'), { target: { value: 'load:1.0.0' } });
   fireEvent.change(screen.getByLabelText('Retained XSD artifact ID'), { target: { value: 'sha256:xsd' } });
   fireEvent.change(screen.getByLabelText('Retained XML artifact ID'), { target: { value: 'sha256:xml' } });
-  fireEvent.change(screen.getByLabelText('Execution identity'), { target: { value: 'steward' } });
-  fireEvent.click(screen.getByText('Validate and load XML'));
+  fireEvent.change(screen.getByLabelText('Requested by'), { target: { value: 'steward' } });
+  fireEvent.click(screen.getByText('Check and prepare data'));
   await screen.findByRole('link', { name: 'View load run and evidence' });
   expect(screen.getByRole('link', { name: 'View load run and evidence' })).toHaveAttribute('href', '#/data-flow/run-xml');
   expect(dataPipelineAPI.runDefinition).toHaveBeenCalledWith('load', '1.0.0', expect.objectContaining({ schema_artifact_id: 'sha256:xsd', xml_artifact_id: 'sha256:xml', business_views: [] }), { approved_by: 'steward', approval_token: 'test-token' });
@@ -30,7 +30,7 @@ test('only approved XML jobs are selectable and submission uses retained referen
     fireEvent.click(screen.getByText('Prepare another analytics task'));
     fireEvent.change(screen.getByLabelText(label), { target: { value: label.startsWith('Schema') ? '{"other.xsd":"sha256:dep"}' : '[] ' } });
     expect(screen.queryByRole('link', { name: 'View load run and evidence' })).toBeNull();
-    fireEvent.click(screen.getByText('Validate and load XML'));
+    fireEvent.click(screen.getByText('Check and prepare data'));
     await screen.findByRole('link', { name: 'View load run and evidence' });
   }
 });
@@ -38,31 +38,55 @@ test('only approved XML jobs are selectable and submission uses retained referen
 test('XML upload supplies its retained artifact identity without marking validation complete', async () => {
   apiClient.post.mockResolvedValue({ data: { artifact: { artifact_id: 'sha256:retained' }, instance_validation: 'not_performed' } });
   render(<XmlAnalyticsLoader />);
-  fireEvent.change(screen.getByLabelText('XML instance file'), { target: { files: [new File(['<Root/>'], 'instance.xml')] } });
-  fireEvent.click(screen.getByText('Retain XML instance'));
+  fireEvent.change(screen.getByLabelText('Data file (XML)'), { target: { files: [new File(['<Root/>'], 'instance.xml')] } });
+  fireEvent.click(screen.getByText('Attach data file'));
   await waitFor(() => expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('sha256:retained'));
   expect(apiClient.post.mock.calls[0][0]).toBe('/api/v1/analytics/xml-artifacts');
   expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
 });
 
+test('completed run evidence fills schema and XML artifacts without manual lookup', async () => {
+  const view = render(<XmlAnalyticsLoader runEvidence={{ artifacts: [
+    { artifact_id: 'sha256:run-schema', kind: 'schema' },
+    { artifact_id: 'sha256:run-xml', kind: 'instance' },
+  ] }} />);
+  await waitFor(() => expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('sha256:run-schema'));
+  expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('sha256:run-xml');
+  view.rerender(<XmlAnalyticsLoader runEvidence={{ artifacts: [] }} />);
+  await waitFor(() => expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue(''));
+  expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('');
+});
+
 async function prepareSubmission() {
   dataPipelineAPI.definitions.mockResolvedValue({ data: { definitions: [{ job_id: 'load', version: '1.0.0', name: 'XML load', job_type: 'xml-analytics-materialize', lifecycle_state: 'approved', enabled: true }] } });
   const view = render(<XmlAnalyticsLoader />);
-  fireEvent.click(screen.getByText('Load approved XML jobs'));
+  fireEvent.click(screen.getByText('Refresh loading processes'));
   await screen.findByText('XML load (1.0.0)');
-  fireEvent.change(screen.getByLabelText('Approved XML job'), { target: { value: 'load:1.0.0' } });
+  fireEvent.change(screen.getByLabelText('Loading process'), { target: { value: 'load:1.0.0' } });
   fireEvent.change(screen.getByLabelText('Retained XSD artifact ID'), { target: { value: 'sha256:xsd' } });
   fireEvent.change(screen.getByLabelText('Retained XML artifact ID'), { target: { value: 'sha256:xml' } });
-  fireEvent.change(screen.getByLabelText('Execution identity'), { target: { value: 'steward' } });
+  fireEvent.change(screen.getByLabelText('Requested by'), { target: { value: 'steward' } });
   return view;
 }
+
+test('reconnect rejects late job definitions from the previous session', async () => {
+  let finish;
+  dataPipelineAPI.definitions.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  render(<XmlAnalyticsLoader />);
+  fireEvent.click(screen.getByText('Refresh loading processes'));
+  fireEvent(window, new Event('depo:session-replaced'));
+  finish({data:{definitions:[{job_id:'old',version:'1',name:'Stale job',job_type:'xml-analytics-materialize',lifecycle_state:'approved',enabled:true}]}});
+  await waitFor(()=>expect(screen.getByText('Refresh loading processes')).not.toBeDisabled());
+  expect(screen.queryByText('Stale job (1)')).toBeNull();
+  expect(screen.getByRole('alert')).toHaveTextContent('Access changed');
+});
 
 test('unknown submission survives remount and must be reconciled before retrying', async () => {
   dataPipelineAPI.runDefinition.mockRejectedValue(new Error('network timeout'));
   const view = await prepareSubmission();
-  fireEvent.click(screen.getByText('Validate and load XML'));
+  fireEvent.click(screen.getByText('Check and prepare data'));
   await screen.findByText('Submission is unconfirmed. Check Data Flow history before retrying.');
-  expect(screen.getByText('Validate and load XML')).toBeDisabled();
+  expect(screen.getByText('Check and prepare data')).toBeDisabled();
   expect(dataPipelineAPI.runDefinition).toHaveBeenCalledTimes(1);
   view.unmount();
   render(<XmlAnalyticsLoader />);
@@ -78,13 +102,13 @@ test('unknown submission survives remount and must be reconciled before retrying
 test('a server error run ID leads to evidence recovery without resubmitting XML', async () => {
   dataPipelineAPI.runDefinition.mockRejectedValue({ response: { status: 422, headers: { 'x-depo-run-id': 'committed-run' } } });
   await prepareSubmission();
-  fireEvent.click(screen.getByText('Validate and load XML'));
+  fireEvent.click(screen.getByText('Check and prepare data'));
   await screen.findByText('Retained run: committed-run');
   dataPipelineAPI.getRun.mockResolvedValue({ data: { run_id: 'committed-run', status: 'completed', output_manifest: { evidence_status: 'pending', load_status: 'completed' } } });
   fireEvent.click(screen.getByText('Refresh analytics run'));
   await screen.findByText('Rebuild analytics evidence');
   // Editing the approver must not hide recovery for the retained run.
-  fireEvent.change(screen.getByLabelText('Execution identity'), { target: { value: 'recoverer' } });
+  fireEvent.change(screen.getByLabelText('Requested by'), { target: { value: 'recoverer' } });
   dataPipelineAPI.reconcileAnalytics.mockResolvedValue({ data: { status: 'completed', evidence_status: 'available', run_manifest: { run_id: 'committed-run', status: 'completed', output_manifest: { evidence_status: 'available' } } } });
   fireEvent.click(screen.getByText('Rebuild analytics evidence'));
   await waitFor(() => expect(screen.queryByText('Rebuild analytics evidence')).toBeNull());
@@ -95,20 +119,47 @@ test('a server error run ID leads to evidence recovery without resubmitting XML'
 test('a rejected request without a retained run may be corrected and resubmitted', async () => {
   dataPipelineAPI.runDefinition.mockRejectedValue({ message: 'Denied', response: { status: 403, headers: {} } });
   await prepareSubmission();
-  fireEvent.click(screen.getByText('Validate and load XML'));
+  fireEvent.click(screen.getByText('Check and prepare data'));
   await screen.findByRole('alert');
-  await waitFor(() => expect(screen.getByText('Validate and load XML')).not.toBeDisabled());
+  await waitFor(() => expect(screen.getByText('Check and prepare data')).not.toBeDisabled());
   expect(screen.queryByLabelText('Retained analytics task')).toBeNull();
 });
 
 test('an unknown submission can be released only after checking history', async () => {
   dataPipelineAPI.runDefinition.mockRejectedValue(new Error('network timeout'));
   await prepareSubmission();
-  fireEvent.click(screen.getByText('Validate and load XML'));
+  fireEvent.click(screen.getByText('Check and prepare data'));
   await screen.findByText('Submission is unconfirmed. Check Data Flow history before retrying.');
   expect(screen.getByText('Prepare another analytics task')).toBeDisabled();
   fireEvent.click(screen.getByLabelText('I checked history and no matching run exists'));
   fireEvent.click(screen.getByText('Prepare another analytics task'));
-  expect(screen.getByText('Validate and load XML')).not.toBeDisabled();
+  expect(screen.getByText('Check and prepare data')).not.toBeDisabled();
   expect(dataPipelineAPI.runDefinition).toHaveBeenCalledTimes(1);
+});
+
+
+test('named schema selection resolves retained reference without copying an artifact ID',async()=>{
+ apiClient.get.mockResolvedValue({data:{schema_artifact_id:'sha256:resolved'}});
+ render(<XmlAnalyticsLoader sources={[{ontology_id:'parts-v1',label:'Parts schema'}]}/>);
+ fireEvent.change(screen.getByLabelText('Data source'),{target:{value:'parts-v1'}});
+ fireEvent.click(screen.getByText('Confirm source'));
+ await waitFor(()=>expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('sha256:resolved'));
+ expect(apiClient.get).toHaveBeenCalledWith('/api/v1/reports/xsd-relational',expect.objectContaining({params:{ontology_id:'parts-v1'}}));
+ expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
+});
+
+
+test('business form selects retained data and resolves requester without typing identity',async()=>{
+ dataPipelineAPI.definitions.mockResolvedValue({data:{definitions:[{job_id:'load',version:'1',name:'Prepare records',job_type:'xml-analytics-materialize',lifecycle_state:'approved',enabled:true}]}});
+ dataPipelineAPI.executionIdentity.mockResolvedValue({data:{actor:'verified-operator',source:'authenticated-connection'}});
+ dataPipelineAPI.runs.mockResolvedValue({data:{runs:[{run_id:'old-run',job_id:'load',status:'completed',job_type:'xml-analytics-materialize'}]}});
+ dataPipelineAPI.getRun.mockResolvedValue({data:{run_id:'old-run',status:'completed',analytics_inputs:{xml_artifact_id:'sha256:existing-data'}}});
+ render(<XmlAnalyticsLoader expanded/>);
+ await screen.findByText('verified-operator');
+ expect(screen.queryByRole('textbox',{name:'Requested by'})).not.toBeInTheDocument();
+ expect(screen.getByLabelText('Loading process')).toHaveValue('load:1');
+ fireEvent.change(screen.getByLabelText('Use previously prepared data'),{target:{value:'old-run'}});
+ fireEvent.click(screen.getByText('Use this data'));
+ await waitFor(()=>expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('sha256:existing-data'));
+ expect(dataPipelineAPI.runDefinition).not.toHaveBeenCalled();
 });

@@ -11,9 +11,22 @@ import KpiStrip from '../widgets/KpiStrip';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
 import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
-import WorkspaceTabs from '../Components/WorkspaceTabs';
+import { IxTabsBar } from '../ui/ix';
+import RestSourcesPanel from '../Components/RestSourcesPanel';
+import IngestorCapabilities from '../Components/IngestorCapabilities';
+import ConnectorSourcesPanel from '../Components/ConnectorSourcesPanel';
 
-const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
+const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
+
+// One-line description shown under the tab strip for each admin section.
+const TAB_DESCRIPTIONS = {
+  overview: 'Service health and operational summary.',
+  access: 'Connect registered credentials, verify stored access, or reconnect an expired session.',
+  sources: 'Register REST sources, preview records and submit approved acquisition jobs.',
+  agents: 'Review agent recommendations and monitor workflow execution.',
+  services: 'Browse service, data-source, configuration and API catalogs.',
+  maintenance: 'Controlled cleanup and current knowledge graph schema status.',
+};
 
 const routeColumns = [
   { field: 'method', width: 100 },
@@ -134,17 +147,25 @@ export default function AdminPage({ onSchemaCleaned }) {
     const controller = new AbortController();
     agenticControllerRef.current = controller;
     setAgenticLoading(true);
+    setAgenticCatalog(null);
     setAgenticError('');
     try {
-      const [agentsResponse, toolsResponse] = await Promise.all([
-        agenticAPI.listAgents({ signal: controller.signal }),
-        agenticAPI.listTools({ signal: controller.signal }),
-      ]);
+      const response = await agenticAPI.registry({ signal: controller.signal });
       if (controller.signal.aborted) return;
+      const data = response.data;
+      const validEntries = rows => Array.isArray(rows) &&
+        rows.every(row => row && typeof row === 'object' && typeof row.id === 'string' && row.id.trim()) &&
+        new Set(rows.map(row => row.id)).size === rows.length;
+      if (!data || !validEntries(data.agents) || !validEntries(data.tools) || !validEntries(data.workflows) ||
+          data.registry?.schema_version !== 1 || !/^[a-f0-9]{64}$/.test(data.registry?.revision || '') ||
+          data.registry.agent_count !== data.agents.length || data.registry.tool_count !== data.tools.length ||
+          data.registry.workflow_count !== data.workflows.length) {
+        throw new Error('Agent registry response is incomplete. Refresh after updating the agentic service.');
+      }
       setAgenticCatalog({
-        agents: agentsResponse.data?.agents || [],
-        tools: toolsResponse.data?.tools || [],
-        invalidExports: toolsResponse.data?.invalid_exports || [],
+        agents: data.agents,
+        tools: data.tools,
+        registry: data.registry,
       });
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -244,10 +265,10 @@ export default function AdminPage({ onSchemaCleaned }) {
 
   return (
     <div className="depo-page">
-      <WorkspaceTabs label="Admin sections" tabs={adminTabs} value={section} onChange={setSection} idPrefix="depo-admin" />
+      <IxTabsBar tabs={adminTabs} active={section} onChange={setSection} ariaLabel="Admin sections" idPrefix="depo-admin" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12, color: widgetColors.muted, lineHeight: 1.4, maxWidth: 720 }}>
-          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current Neo4j schema status.'}[section]}
+          {TAB_DESCRIPTIONS[section]}
         </div>
         <button
           type="button"
@@ -256,7 +277,7 @@ export default function AdminPage({ onSchemaCleaned }) {
           disabled={loading}
           style={{
             border: `1px solid ${widgetColors.blue}`,
-            background: 'var(--ui-surface, #fff)',
+            background: 'var(--ui-surface)',
             color: widgetColors.blue,
             borderRadius: 5,
             fontSize: 12,
@@ -276,6 +297,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       )}
 
       <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
+      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /></>}
       <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip
@@ -294,13 +316,13 @@ export default function AdminPage({ onSchemaCleaned }) {
       {section === 'agents' && agenticConfigured && <AgentProposalPanel />}
       {section === 'agents' && agenticConfigured && <AgentControlPanel />}
 
-      <section className="depo-panel depo-agentic-catalog" style={{ marginBottom: 12 }}>
+      <section className="depo-panel depo-agentic-catalog" aria-busy={agenticLoading} style={{ marginBottom: 12 }}>
         <div className="depo-panel__header">
           <div>
-            <div className="depo-panel__title">Agentic Components</div>
+            <div className="depo-panel__title">Agent Registry</div>
             <div className="depo-panel__meta">
               {agenticEnabled
-                ? 'Tool contracts and agent specifications available to a low-code/no-code orchestrator.'
+                ? 'Registered agents, their responsibilities and permitted actions. Registration does not verify model or service readiness.'
                 : 'Disabled. Set VITE_AGENTIC_ENABLED=true and rebuild the frontend to enable this optional service.'}
             </div>
           </div>
@@ -315,13 +337,22 @@ export default function AdminPage({ onSchemaCleaned }) {
           </div>
         </div>
         {agenticError && <div className="depo-alert depo-alert--warning">{agenticError}</div>}
+        {agenticLoading && <p role="status">Loading registered agents…</p>}
+        {agenticCatalog && <p>Registry revision: <code title={agenticCatalog.registry.revision}>{agenticCatalog.registry.revision.slice(0, 12)}</code> · Source: {agenticCatalog.registry.source} · Readiness: not verified</p>}
         {agenticCatalog && (
-          <div className="depo-agentic-catalog__grids">
+          <div className="depo-agentic-catalog__grids" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
             <RegistryWidget
               title={`Agents (${agenticCatalog.agents.length})`}
               rows={agenticCatalog.agents}
-              columns={[{ field: 'name', flex: 1.2 }, { field: 'id', headerName: 'Agent ID', flex: 1 }, { field: 'tools', headerName: 'Allowed tools', flex: 1.5, valueFormatter: params => Array.isArray(params.value) ? params.value.join(', ') : (params.value || '—') }]}
-              height={250}
+              columns={[
+                { field: 'name', headerName: 'Agent', minWidth: 160, flex: 1 },
+                { field: 'description', headerName: 'Responsibility', minWidth: 260, flex: 2 },
+                { field: 'registration_status', headerName: 'Registration / readiness', minWidth: 200, flex: 1.2 },
+                { field: 'workflow_ids', headerName: 'Workflow use', minWidth: 170, flex: 1, valueFormatter: p => p.value?.length ? p.value.join(', ') : 'Standalone / caller-selected' },
+                { field: 'mutating_tools', headerName: 'Write boundary', minWidth: 180, flex: 1, valueFormatter: p => p.value?.length ? 'Authorized workflow required' : 'Read-only tools' },
+                { field: 'tools', headerName: 'Permitted tools', minWidth: 180, flex: 1, valueFormatter: p => Array.isArray(p.value) ? p.value.join(', ') : 'Unavailable' },
+              ]}
+              height={360}
             />
             <RegistryWidget
               title={`Tools (${agenticCatalog.tools.length})`}
@@ -356,7 +387,7 @@ export default function AdminPage({ onSchemaCleaned }) {
           <div className="depo-panel__header">
             <div>
               <div className="depo-panel__title">Operations</div>
-              <div className="depo-panel__meta">Controlled cleanup and current Neo4j schema status.</div>
+              <div className="depo-panel__meta">Controlled cleanup and current knowledge graph schema status.</div>
             </div>
           </div>
           {section === 'maintenance' && <AdminPanel onSchemaCleaned={onSchemaCleaned} />}
@@ -379,7 +410,7 @@ export default function AdminPage({ onSchemaCleaned }) {
                 border: `1px solid ${widgetColors.border}`,
                 borderRadius: 10,
                 padding: '10px 12px',
-                background: 'var(--ui-surface, #f8fafc)',
+                background: 'var(--ui-surface-alt)',
               }}
             >
               <div style={{ fontSize: 11, color: widgetColors.muted, marginBottom: 4 }}>{catalog.title}</div>
@@ -389,7 +420,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
           {secondaryCatalogs.map((catalog) => (
-            <details key={catalog.title} style={{ border: `1px solid ${widgetColors.border}`, borderRadius: 10, padding: 10, background: 'var(--ui-surface, #fff)' }}>
+            <details key={catalog.title} style={{ border: `1px solid ${widgetColors.border}`, borderRadius: 10, padding: 10, background: 'var(--ui-surface)' }}>
               <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 13, fontWeight: 800 }}>
                 {catalog.title} ({catalog.count})
               </summary>

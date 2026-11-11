@@ -243,9 +243,11 @@ def test_xsd_report_honors_optional_attributes_and_nested_type_ownership(tmp_pat
         encoding="utf-8",
     )
     report = build_xsd_relational_report(path)
-    columns = {item["name"]: item for item in report["columns"]}
-    assert columns["note"]["required"] is False
-    assert "inner" not in columns
+    outer = next(table for table in report['tables'] if table['name'] == 'Outer')
+    columns = {item['name']: item for item in outer['columns']}
+    assert columns['note']['required'] is False
+    assert 'inner' not in columns
+    assert any(column['name'] == 'inner' for table in report['tables'] if table is not outer for column in table['columns'])
 
 
 def test_quality_report_detects_standard_xsd_range_and_turtle_owl(tmp_path):

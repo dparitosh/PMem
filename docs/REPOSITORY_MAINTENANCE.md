@@ -128,6 +128,8 @@ they can have live database references and are excluded from customer packaging.
 The cleanup recorded 4,104 files and 215,224,275 bytes in
 customer-release-cleanup-2026-10-10.json. Every recorded path was verified absent.
 Windows denied access to .pytest_cache; it remains locally and is excluded from
-the release. tools/build_customer_release.py creates an installation source ZIP
-with a file hash manifest and without local credentials, runtime data or test
-outputs. Test source remains in the repository for maintenance.
+the release. infra/deployment/build-release-package.py is the canonical installation source
+packager; tools/build_customer_release.py delegates to it. Customer ZIP creation
+requires a clean committed checkout. Local credentials, runtime data and generated
+audit captures are excluded. Direct graph loaders and legacy import helpers are
+development-only and are excluded from customer packages. Test source remains in the repository for maintenance.

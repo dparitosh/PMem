@@ -1,4 +1,5 @@
 import {
+  isCadBusinessObjectNode,
   deduplicateNodesAndLinks,
   getOneHopNeighborhood,
   isMetadataWrapperNode,
@@ -475,4 +476,32 @@ test('isRelationshipCarrierNode flags general relation carriers but not business
     labels: ['Part'],
     properties: { name: 'Rotor', part_number: 'P-100' },
   })).toBe(false);
+});
+
+
+test('distinct relationship carriers retain separate evidence after display relabeling', () => {
+  const nodes = [
+    { elementId: 'a', labels: ['Part'], properties: { name: 'Motor' } },
+    { elementId: 'b', labels: ['Part'], properties: { name: 'Bearing' } },
+    ...['trace1', 'trace2'].map(elementId => ({
+      elementId, labels: ['GeneralRelation'], properties: { name: elementId },
+    })),
+  ];
+  const links = ['trace1', 'trace2'].flatMap(id => [
+    { elementId: `${id}-a`, source: 'a', target: id, type: 'FND_TRACELINK' },
+    { elementId: `${id}-b`, source: id, target: 'b', type: 'RELATEDREFS' },
+  ]);
+  const projected = normalizeGraphDataset({ nodes, links }, { collapseHiddenBridges: true });
+  expect(projected.links).toHaveLength(2);
+  const displayed = projected.links.map(link => ({ ...link, type: 'SOURCE_PATH' }));
+  const result = deduplicateNodesAndLinks(projected.nodes, displayed);
+  expect(result.links.map(link => link.properties.via_node_id).sort()).toEqual(['trace1', 'trace2']);
+  const reversed = { ...displayed[0], source: displayed[0].target, target: displayed[0].source };
+  expect(deduplicateNodesAndLinks(projected.nodes, [...displayed, reversed]).links).toHaveLength(2);
+});
+
+test('canonical instances are recognized by exact RDF types, without admitting vocabulary classes',()=>{
+ expect(isCadBusinessObjectNode({labels:['OntologyResource'],properties:{rdf_types:['https://depo.example.org/ceim/0.1/Product']}})).toBe(true);
+ expect(isCadBusinessObjectNode({labels:['OntologyResource'],properties:{rdf_types:['http://www.w3.org/2002/07/owl#Class']}})).toBe(false);
+ expect(isCadBusinessObjectNode({labels:['OntologyResource'],properties:{rdf_types:['https://untrusted.example/ceim/0.1/Product']}})).toBe(false);
 });

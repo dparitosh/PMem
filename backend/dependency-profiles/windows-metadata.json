@@ -1092,15 +1092,15 @@
     "source": "https://pypi.org/pypi/kiwisolver/1.5.1/json"
   },
   "langchain": {
-    "version": "0.3.27",
+    "version": "0.3.30",
     "requires_dist": [
-      "langchain-core<1.0.0,>=0.3.72",
+      "langchain-core<1.0.0,>=0.3.85",
       "langchain-text-splitters<1.0.0,>=0.3.9",
-      "langsmith>=0.1.17",
+      "langsmith<1.0.0,>=0.1.17",
       "pydantic<3.0.0,>=2.7.4",
-      "SQLAlchemy<3,>=1.4",
-      "requests<3,>=2",
-      "PyYAML>=5.3",
+      "SQLAlchemy<3.0.0,>=1.4.0",
+      "requests<3.0.0,>=2.0.0",
+      "PyYAML<7.0.0,>=5.3.0",
       "async-timeout<5.0.0,>=4.0.0; python_version < \"3.11\"",
       "langchain-community; extra == \"community\"",
       "langchain-anthropic; extra == \"anthropic\"",
@@ -1120,24 +1120,25 @@
       "langchain-xai; extra == \"xai\"",
       "langchain-perplexity; extra == \"perplexity\""
     ],
-    "artifact_sha256": "7b20c4f338826acb148d885b20a73a16e410ede9ee4f19bb02011852d5f98798",
-    "artifact": "langchain-0.3.27-py3-none-any.whl",
-    "source": "https://pypi.org/pypi/langchain/0.3.27/json"
+    "artifact_sha256": "37e6fcce92faf70cc7bac23739d13d6c3b9a3282da4dbcc06cb7e78330ed406a",
+    "artifact": "langchain-0.3.30-py3-none-any.whl",
+    "source": "https://pypi.org/pypi/langchain/0.3.30/json"
   },
   "langchain-core": {
-    "version": "0.3.76",
+    "version": "0.3.86",
     "requires_dist": [
-      "langsmith>=0.3.45",
+      "langsmith<1.0.0,>=0.3.45",
       "tenacity!=8.4.0,<10.0.0,>=8.1.0",
-      "jsonpatch<2.0,>=1.33",
-      "PyYAML>=5.3",
-      "typing-extensions>=4.7",
-      "packaging>=23.2",
-      "pydantic>=2.7.4"
+      "jsonpatch<2.0.0,>=1.33.0",
+      "PyYAML<7.0.0,>=5.3.0",
+      "typing-extensions<5.0.0,>=4.7.0",
+      "packaging<26.0.0,>=23.2.0",
+      "pydantic<3.0.0,>=2.7.4",
+      "uuid-utils<1.0,>=0.12.0"
     ],
-    "artifact_sha256": "46e0eb48c7ac532432d51f8ca1ece1804c82afe9ae3dcf027b867edadf82b3ec",
-    "artifact": "langchain_core-0.3.76-py3-none-any.whl",
-    "source": "https://pypi.org/pypi/langchain-core/0.3.76/json"
+    "artifact_sha256": "7d2a1c50d2d2a139dbc6465cd339f32d14aa43db5ac9bd232e5b567a238709e8",
+    "artifact": "langchain_core-0.3.86-py3-none-any.whl",
+    "source": "https://pypi.org/pypi/langchain-core/0.3.86/json"
   },
   "langchain-neo4j": {
     "version": "0.5.0",
@@ -1782,11 +1783,11 @@
     "source": "https://pypi.org/pypi/owlrl/7.6.2/json"
   },
   "packaging": {
-    "version": "26.3",
+    "version": "25.0",
     "requires_dist": [],
-    "artifact_sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
-    "artifact": "packaging-26.3-py3-none-any.whl",
-    "source": "https://pypi.org/pypi/packaging/26.3/json"
+    "artifact_sha256": "29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484",
+    "artifact": "packaging-25.0-py3-none-any.whl",
+    "source": "https://pypi.org/pypi/packaging/25.0/json"
   },
   "pandas": {
     "version": "3.0.6",

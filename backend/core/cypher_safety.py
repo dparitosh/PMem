@@ -16,11 +16,31 @@ _WRITE_CLAUSE = re.compile(
 
 
 def _without_literals_and_comments(query: str) -> str:
-    text = re.sub(r"/\*.*?\*/", " ", str(query or ""), flags=re.DOTALL)
-    text = re.sub(r"//[^\r\n]*", " ", text)
-    text = re.sub(r"'(?:\\.|''|[^'])*'", "''", text)
-    text = re.sub(r'"(?:\\.|""|[^"])*"', '""', text)
-    return text
+    # Comments and strings must be recognized in one pass. Removing comments
+    # first lets a URL or comment marker inside a string hide later clauses.
+    text, output, index = str(query or ''), [], 0
+    while index < len(text):
+        if text.startswith('//',index):
+            end=re.search(r'[\r\n]',text[index+2:])
+            index=len(text) if end is None else index+2+end.start()
+            output.append(' ')
+        elif text.startswith('/*',index):
+            end=text.find('*/',index+2)
+            if end<0:raise UnsafeCypherError('Unterminated Cypher comment')
+            index=end+2;output.append(' ')
+        elif text[index] in {'\"',"'",'`'}:
+            quote=text[index];index+=1;closed=False
+            while index<len(text):
+                if text[index]=='\\' and quote!='`':index+=2;continue
+                if text[index]==quote:
+                    if index+1<len(text) and text[index+1]==quote:index+=2;continue
+                    index+=1;closed=True;break
+                index+=1
+            if not closed:raise UnsafeCypherError('Unterminated Cypher literal or identifier')
+            output.append(' ')
+        else:
+            output.append(text[index]);index+=1
+    return ''.join(output)
 
 
 def assert_read_only_cypher(query: str) -> str:

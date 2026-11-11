@@ -1,4 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ReadGoalPanel from '../ReadGoalPanel';
+import { ResultProvenance } from '../../features/recommendations/ResultProvenance';
+import OntologyFoundationPanel from './OntologyFoundationPanel';
 import { UI_COLORS as C } from '../../styles/uiTokens';
 
 const INFERENCE_RULES = [
@@ -30,8 +33,12 @@ export default function OntologyInferenceWorkbench(props) {
     filter,
   } = props;
 
+  const [question, setQuestion] = useState('Explain the inferred statements, supporting declarations, disjointness findings and limitations for this ontology.');
+  const investigationKey = JSON.stringify([selectedOntologyApi, inferenceRules, inferenceLimit]);
+
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', minHeight: '360px' }}>
+      <OntologyFoundationPanel ontologyId={selectedOntologyApi} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
         <div>
           <div style={{ fontSize: '14px', fontWeight: 800, color: C.textPrimary }}>Ontology inference preview</div>
@@ -40,12 +47,23 @@ export default function OntologyInferenceWorkbench(props) {
         <button
           type="button"
           onClick={runInferencePreview}
-          disabled={inferenceBusy || !selectedOntologyApi}
+          disabled={inferenceBusy || !selectedOntologyApi || !Object.values(inferenceRules || {}).some(Boolean)}
           style={{ padding: '8px 14px', borderRadius: '6px', border: 'none', background: inferenceBusy || !selectedOntologyApi ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 800, cursor: inferenceBusy || !selectedOntologyApi ? 'not-allowed' : 'pointer' }}
         >
           {inferenceBusy ? 'Previewing' : 'Run preview'}
         </button>
       </div>
+
+      <section aria-label="Inference agent" style={{ padding: 12, marginBottom: 12, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+        <h3>Ontology Inference Advisor</h3>
+        <p>Ask the agent to plan an investigation, run the selected inference rules and explain evidence using ontology IRIs. The model-assisted explanation remains separate from the structural rule preview.</p>
+        <label htmlFor="inference-agent-question">What would you like to understand?</label>
+        <textarea id="inference-agent-question" value={question} onChange={event => setQuestion(event.target.value)} maxLength={8000} rows={2} style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} />
+        {selectedOntologyApi ? <ReadGoalPanel key={investigationKey} storageKey={`depo:inference-goal:${investigationKey}`} agent="ontology-inference" task={question}
+          context={{ ontology_id: selectedOntologyApi, rules: inferenceRules, limit: Number(inferenceLimit) }} />
+          : <p>Select an active ontology to investigate its inferences.</p>}
+        <p>Requires a configured OpenAI, Mistral or Ollama model and the agent worker. Plans, tool evidence and conclusions are retained; no graph changes are made.</p>
+      </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 360px) 1fr', gap: '12px', alignItems: 'start' }}>
         <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', background: C.bg }}>
@@ -63,6 +81,7 @@ export default function OntologyInferenceWorkbench(props) {
             <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>SWRL-style rule editor</div>
             <p>Validation checks the supported rule syntax only. This expression is not executed by Run preview.</p>
             <textarea
+              aria-label="SWRL-style rule expression"
               value={swrlExpression}
               onChange={(e) => setSwrlExpression(e.target.value)}
               rows={4}
@@ -89,6 +108,7 @@ export default function OntologyInferenceWorkbench(props) {
           </div>
           <label style={{ display: 'block', marginTop: '10px', fontSize: '11px', fontWeight: 800, color: C.textSec }}>Preview limit</label>
           <input
+            aria-label="Inference preview limit"
             type="number"
             min="25"
             max="1000"
@@ -104,10 +124,10 @@ export default function OntologyInferenceWorkbench(props) {
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
             {[
-              ['Candidates', inferenceResult?.summary?.inferred_candidates ?? 0],
-              ['Classes', inferenceResult?.summary?.classes ?? reasoning?.summary?.classes ?? 0],
-              ['Properties', (inferenceResult?.summary?.object_properties ?? reasoning?.summary?.object_properties ?? 0) + (inferenceResult?.summary?.datatype_properties ?? reasoning?.summary?.datatype_properties ?? 0)],
-              ['Individuals', inferenceResult?.summary?.individuals ?? reasoning?.summary?.individuals ?? 0],
+              ['Candidates', inferenceResult?.summary?.inferred_candidates ?? 'Not run'],
+              ['Classes', inferenceResult?.summary?.classes ?? reasoning?.summary?.classes ?? 'Unavailable'],
+              ['Properties', (inferenceResult?.summary || reasoning?.summary) ? ((inferenceResult?.summary?.object_properties ?? reasoning?.summary?.object_properties ?? 0) + (inferenceResult?.summary?.datatype_properties ?? reasoning?.summary?.datatype_properties ?? 0)) : 'Unavailable'],
+              ['Individuals', inferenceResult?.summary?.individuals ?? reasoning?.summary?.individuals ?? 'Unavailable'],
             ].map(([label, value]) => (
               <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
             ))}
@@ -115,6 +135,7 @@ export default function OntologyInferenceWorkbench(props) {
           {(inferenceResult?.warnings || []).map((warning, idx) => (
             <div key={idx} style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F7C948', background: 'var(--ui-surface)' , color: 'var(--ui-text)' , fontSize: '12px', fontWeight: 700 }}>{warning}</div>
           ))}
+          {inferenceResult && <ResultProvenance mode="graph" policy={inferenceResult.decision_policy} />}
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden', background: C.surface }}>
             <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', gap: 0, background: C.primary, color: '#fff', fontSize: '11px', fontWeight: 800 }}>
               {['Rule', 'Subject', 'Predicate', 'Object', 'Support'].map((header) => <div key={header} style={{ padding: '9px 10px' }}>{header}</div>)}

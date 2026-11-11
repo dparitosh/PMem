@@ -25,9 +25,9 @@ except ImportError:
     from ontology_utils import safe_fragment  # type: ignore
 
 try:
-    from .plmxml_parser import parse_plmxml_file, _rflp_layer
+    from .plmxml_parser import parse_plmxml_file, _rflp_layer, business_properties, xsd_datatype_for
 except ImportError:
-    from plmxml_parser import parse_plmxml_file, _rflp_layer  # type: ignore
+    from plmxml_parser import parse_plmxml_file, _rflp_layer, business_properties, xsd_datatype_for  # type: ignore
 
 # Managed deployments use only the injected root configuration.
 if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
@@ -368,11 +368,40 @@ def _link_refs(graph: Graph, subject: URIRef, predicate: URIRef, refs: list[str]
             graph.add((subject, predicate, target_uri))
 
 
+def _emit_entity(graph: Graph, subject: URIRef, doc, entity, source_tag: str) -> None:
+    """Write an entity's raw properties, then its owned business attributes as typed RDF literals."""
+    _add_properties_blob(graph, subject, dict(getattr(entity, "properties", {}) or {}), source_tag)
+    cache = getattr(doc, "_business_by_owner", None)
+    if cache is None:
+        cache = business_properties(doc)
+        doc._business_by_owner = cache
+    for name, (value, plm_type) in cache.get(getattr(entity, "id", ""), {}).items():
+        text = str(value).strip()
+        if not text:
+            continue
+        datatype = xsd_datatype_for(plm_type)
+        literal = Literal(text)
+        if datatype:
+            try:
+                if datatype == "integer":
+                    int(text)
+                elif datatype == "double":
+                    float(text)
+                elif datatype == "boolean":
+                    if text.lower() not in {"true", "false", "1", "0"}:
+                        raise ValueError(text)
+                literal = Literal(text, datatype=XSD[datatype])
+            except ValueError:
+                literal = Literal(text)  # keep the source text when it does not match its declared type
+        graph.add((subject, _PLMXML_NS[name], literal))
+
+
 def _emit_document(graph: Graph, doc, file_path: Path) -> None:
     file_uri = _entity_uri("PLMXMLFile", file_path.name)
     graph.add((file_uri, RDF.type, OWL.NamedIndividual))
     graph.add((file_uri, RDF.type, _CLASSES["PLMXMLFile"]))
     graph.add((file_uri, RDFS.label, Literal(file_path.name)))
+    _add_properties_blob(graph, file_uri, dict(getattr(doc, "root_attributes", {}) or {}), "PLMXMLFile")
     _add_literal(graph, file_uri, _DATA_PROPS["schemaVersion"], doc.schema_version)
     _add_literal(graph, file_uri, _DATA_PROPS["author"], doc.author)
     _add_literal(graph, file_uri, _DATA_PROPS["date"], doc.date)
@@ -402,7 +431,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         _add_literal(graph, uri, _DATA_PROPS["revision"], part.revision)
         _add_literal(graph, uri, _DATA_PROPS["description"], part.description)
         _add_literal(graph, uri, _DATA_PROPS["type"], part.part_type)
-        _add_properties_blob(graph, uri, part.properties, part.part_type or "Part")
+        _emit_entity(graph, uri, doc, part, part.part_type or "Part")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for view in doc.product_views.values():
@@ -414,7 +443,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         graph.add((uri, RDFS.label, Literal(view.name or view.id)))
         _add_literal(graph, uri, _DATA_PROPS["type"], view.view_type)
         _add_literal(graph, uri, _DATA_PROPS["structureType"], view.structure_type)
-        _add_properties_blob(graph, uri, view.properties, view.view_type or "ProductView")
+        _emit_entity(graph, uri, doc, view, view.view_type or "ProductView")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for instance in doc.product_instances:
@@ -425,7 +454,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         graph.add((uri, RDF.type, _CLASSES["ProductInstance"]))
         graph.add((uri, RDFS.label, Literal(instance.name or instance.id)))
         graph.add((uri, _DATA_PROPS["quantity"], Literal(instance.quantity, datatype=XSD.integer)))
-        _add_properties_blob(graph, uri, instance.properties, "ProductInstance")
+        _emit_entity(graph, uri, doc, instance, "ProductInstance")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for process in doc.processes.values():
@@ -439,7 +468,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         _add_literal(graph, uri, _DATA_PROPS["description"], process.description)
         if process.time_required is not None:
             graph.add((uri, _DATA_PROPS["timeRequired"], Literal(process.time_required, datatype=XSD.decimal)))
-        _add_properties_blob(graph, uri, process.properties, process.process_type or "Process")
+        _emit_entity(graph, uri, doc, process, process.process_type or "Process")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for process_view in doc.process_views.values():
@@ -449,7 +478,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         graph.add((uri, RDF.type, OWL.NamedIndividual))
         graph.add((uri, RDF.type, _CLASSES["ProcessView"]))
         graph.add((uri, RDFS.label, Literal(process_view.name or process_view.id)))
-        _add_properties_blob(graph, uri, process_view.properties, "ProcessView")
+        _emit_entity(graph, uri, doc, process_view, "ProcessView")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for process_instance in doc.process_instances:
@@ -459,7 +488,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         graph.add((uri, RDF.type, OWL.NamedIndividual))
         graph.add((uri, RDF.type, _CLASSES["ProcessInstance"]))
         graph.add((uri, RDFS.label, Literal(process_instance.id)))
-        _add_properties_blob(graph, uri, process_instance.properties, "ProcessInstance")
+        _emit_entity(graph, uri, doc, process_instance, "ProcessInstance")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for change_notice in doc.change_notices.values():
@@ -474,7 +503,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         _add_literal(graph, uri, _DATA_PROPS["description"], change_notice.description)
         _add_literal(graph, uri, _DATA_PROPS["date"], change_notice.date)
         _add_literal(graph, uri, _DATA_PROPS["author"], change_notice.author)
-        _add_properties_blob(graph, uri, change_notice.properties, change_notice.change_type or "ChangeNotice")
+        _emit_entity(graph, uri, doc, change_notice, change_notice.change_type or "ChangeNotice")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for revision in doc.revisions.values():
@@ -488,7 +517,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         _add_literal(graph, uri, _DATA_PROPS["type"], revision.revision_type)
         _add_literal(graph, uri, _DATA_PROPS["description"], revision.description)
         _add_literal(graph, uri, _DATA_PROPS["date"], revision.date)
-        _add_properties_blob(graph, uri, revision.properties, revision.revision_type or "Revision")
+        _emit_entity(graph, uri, doc, revision, revision.revision_type or "Revision")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for transform in doc.transforms.values():
@@ -524,7 +553,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         _add_literal(graph, uri, _DATA_PROPS["type"], document.document_type)
         _add_literal(graph, uri, _DATA_PROPS["description"], document.description)
         _add_literal(graph, uri, _DATA_PROPS["revision"], document.revision)
-        _add_properties_blob(graph, uri, document.properties, document.document_type or "Document")
+        _emit_entity(graph, uri, doc, document, document.document_type or "Document")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for external_file in doc.external_files.values():
@@ -537,7 +566,7 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
         _add_literal(graph, uri, _DATA_PROPS["location"], external_file.location)
         _add_literal(graph, uri, _DATA_PROPS["format"], external_file.format)
         _add_literal(graph, uri, _DATA_PROPS["mimeType"], external_file.mime_type)
-        _add_properties_blob(graph, uri, external_file.properties, "ExternalFile")
+        _emit_entity(graph, uri, doc, external_file, "ExternalFile")
         graph.add((file_uri, _OBJECT_PROPS["contains"], uri))
 
     for view in doc.product_views.values():
@@ -668,6 +697,13 @@ def _emit_document(graph: Graph, doc, file_path: Path) -> None:
                 graph.add((gr_uri, _OBJECT_PROPS["target"], target_r))
         elif len(resolved) == 1:
             graph.add((gr_uri, _OBJECT_PROPS["source"], resolved[0]))
+
+    # Generic entities (e.g. AssociatedAttachment, AssociatedDataSet) are business objects too.
+    for item in doc.generic_entities.values():
+        uri = _entity_uri("PLMXMLEntity", item.id)
+        graph.add((uri, RDF.type, OWL.NamedIndividual))
+        graph.add((uri, RDFS.label, Literal(item.name or item.tag or item.id)))
+        _emit_entity(graph, uri, doc, item, item.tag or "PLMXMLEntity")
 
     # ── Forms (ItemRevision Master attributes) ──────────────────────────
     for form in doc.forms.values():
@@ -991,6 +1027,24 @@ def _doc_to_csv_rows(doc, file_path: Path) -> list[dict]:
             "Document", "", doc_item.document_type, doc_item.id, doc_item.name,
             revision=doc_item.revision, description=doc_item.description,
         ))
+
+    # Captured records that have no entity row of their own: one row each, full data in raw_attributes.
+    for ref in getattr(doc, "application_refs", []) or []:
+        rows.append(_row(
+            "ApplicationRef", "", ref.get("application", ""), ref.get("owner_id", ""), ref.get("label", ""),
+            revision=ref.get("version", ""),
+            raw_attributes=json.dumps(ref, sort_keys=True, separators=(",", ":")),
+        ))
+    for value in getattr(doc, "user_values", []) or []:
+        rows.append(_row(
+            "UserValue", "", value.get("type", ""), value.get("owner_id", ""), value.get("title", ""),
+            description=value.get("value", ""),
+            raw_attributes=json.dumps(value, sort_keys=True, separators=(",", ":")),
+        ))
+    rows.append(_row(
+        "PLMXMLFile", "", "", "", file_path.name,
+        raw_attributes=json.dumps(dict(getattr(doc, "root_attributes", {}) or {}), sort_keys=True, separators=(",", ":")),
+    ))
 
     return rows
 

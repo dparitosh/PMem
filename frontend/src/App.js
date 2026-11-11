@@ -3,7 +3,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import './CSS/TCSColors.css';
 import ErrorBoundary from './Components/ErrorBoundary';
-import LandingPage from './Components/LandingPage';
+import BrowserAccessBoundary from './Components/BrowserAccessBoundary';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
@@ -12,7 +12,9 @@ import AppPageOutlet from './app/AppPageOutlet';
 import { normalizePage } from './app/navigation';
 import { platformAPI } from './services/apiClient';
 
+const PageTaskWorkspace = lazy(() => import('./Components/PageTaskWorkspace'));
 const Chatbot = lazy(() => import('./Components/Chatbot'));
+const LandingPage = lazy(() => import('./Components/LandingPage'));
 
 
 const NAV_STORAGE_KEY = 'depo.activePage';
@@ -63,15 +65,7 @@ function persistActivePage(value) {
 
 function PageFallback() {
   return (
-    <div style={{
-      height: '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: '#52606d',
-      fontSize: 13,
-      fontWeight: 600,
-    }}>
+    <div className="depo-page-loading" role="status" aria-busy="true">
       Loading page...
     </div>
   );
@@ -82,6 +76,9 @@ function App() {
   const [page, setPage] = useState(initialActivePage === 'home' ? 'home' : 'app');
   const [activePage, setActivePage] = useState(initialActivePage === 'home' ? 'graph' : initialActivePage);
   const [data, setData] = useState();
+  const [companionSelection, setCompanionSelection] = useState(null);
+  const [ontologyCompanionSelection, setOntologyCompanionSelection] = useState(null);
+  const [recordCompanionSelection, setRecordCompanionSelection] = useState(null);
   const [searchResults, setSearchResults] = useState(null);
   const [chatResults, setChatResults] = useState(null);
   const [showChat, setShowChat] = useState(false);
@@ -127,15 +124,15 @@ function App() {
       const controller = new AbortController();
       currentController = controller;
       try {
-        const health = await platformAPI.coreHealth({ signal: controller.signal, timeout: 5000 });
+        const health = await platformAPI.coreHealth({ signal: controller.signal, timeout: 15000 });
         const onlineCount = Object.values(health).filter(Boolean).length;
-        if (!onlineCount) throw new Error('All required DEPO services are unavailable.');
-        if (active) {
+        if (!onlineCount) throw new Error('All required Nexus services are unavailable.');
+        if (active && !controller.signal.aborted) {
           setServiceStatus(onlineCount === Object.keys(health).length ? 'online' : 'degraded');
           retryDelayMs = 30000;
         }
       } catch (error) {
-        if (active && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
+        if (active && !controller.signal.aborted && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
           setServiceStatus('offline');
           retryDelayMs = Math.min(retryDelayMs * 2, 300000);
         }
@@ -143,12 +140,15 @@ function App() {
         inFlight = false;
         if (currentController === controller) currentController = null;
         if (active) {
-          retryTimer = window.setTimeout(checkHealth, retryDelayMs);
+          retryTimer = window.setTimeout(checkHealth, controller.signal.aborted ? 0 : retryDelayMs);
         }
       }
     };
+    const verifyHealth = () => { if (!inFlight) void checkHealth(); else currentController?.abort(); };
+    window.addEventListener('depo:access-verified', verifyHealth);
     checkHealth();
     return () => {
+      window.removeEventListener('depo:access-verified', verifyHealth);
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
       currentController?.abort();
@@ -181,6 +181,7 @@ function App() {
   }, []);
 
   const handleSchemaCleaned = useCallback(() => {
+    setCompanionSelection(null);
     setData({ nodes: [], links: [] });
     setSearchResults(null);
     setChatResults(null);
@@ -189,6 +190,7 @@ function App() {
 
   const [serviceAuthRevision, setServiceAuthRevision] = useState(0);
   const handleServiceAuthChange = useCallback(() => {
+    setCompanionSelection(null);
     setData(undefined);
     setSearchResults(null);
     setChatResults(null);
@@ -196,6 +198,7 @@ function App() {
     setServiceAuthRevision(revision => revision + 1);
   }, []);
   const graphProps = useMemo(() => ({
+    onBusinessSelection: setCompanionSelection,
     graphData: data,
     setData,
     searchResults,
@@ -211,6 +214,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <BrowserAccessBoundary>
       <OntologyProvider>
         <SchemaProvider key={`schema-${serviceAuthRevision}`}>
           <div style={{ minHeight: '100dvh' }}>
@@ -229,17 +233,27 @@ function App() {
             rightDrawer={(
               <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>
-                    <Chatbot
+                    {page !== 'home' && activePage === 'change-control' ? <p>Change Control shows retained cross-workspace evidence. Open the owning workflow to investigate a selected proposal with its Governor or Steward. This view does not grant approval or execute changes.</p> : <Chatbot
                       key={`chat-${serviceAuthRevision}`}
-                    graphData={data}
+                    graphData={page !== 'home' && ['graph','whereused'].includes(activePage) ? data : undefined}
+                    pageId={page === 'home' ? 'home' : activePage}
+                    reconciliationId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.reconciliation_id || '' : ''}
+                    runId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.run_id || '' : ''}
+                    productId={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_id || '' : ''}
+                    productVersion={page !== 'home' && recordCompanionSelection?.page === activePage ? recordCompanionSelection.product_version || '' : ''}
+                    nodeId={page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.node_id || '' : ''}
+                    ontologyId={page !== 'home' && recordCompanionSelection?.page === activePage && recordCompanionSelection?.ontology_id ? recordCompanionSelection.ontology_id : page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_id || '' : page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.ontology_id || '' : ''}
+                    ontologyPrefix={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.ontology_prefix || '' : page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.ontology_prefix || '' : ''}
+                    contextLabel={page !== 'home' && activePage === 'ontology' ? ontologyCompanionSelection?.label || '' : page !== 'home' && ['graph','modeling'].includes(activePage) ? companionSelection?.label || '' : ''}
                     setChatResults={setChatResults}
-                  />
+                  />}
                 </Suspense>
               </ErrorBoundary>
             )}
             >
+              <Suspense fallback={null}><PageTaskWorkspace key={`tasks-${page === 'home' ? 'home' : activePage}-${serviceAuthRevision}`} page={page === 'home' ? 'home' : activePage} /></Suspense>
               {page === 'home' ? (
-                <LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} />
+                <Suspense fallback={<PageFallback />}><LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} /></Suspense>
               ) : (
                 <AppPageOutlet
                   key={`${activePage}-${serviceAuthRevision}`}
@@ -251,6 +265,8 @@ function App() {
                     graphProps,
                     onNavigate: handleNavigate,
                     onSchemaCleaned: handleSchemaCleaned,
+                    onOntologyContextChange: setOntologyCompanionSelection,
+                    onCompanionRecordChange: setRecordCompanionSelection,
                   }}
                 />
               )}
@@ -258,6 +274,7 @@ function App() {
           </div>
         </SchemaProvider>
       </OntologyProvider>
+      </BrowserAccessBoundary>
     </ErrorBoundary>
   );
 }

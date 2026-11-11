@@ -1,0 +1,37 @@
+NEXUS — Slides 6–9 live workflow recording
+Recorded 5 November 2026, local installation.
+
+Presentation alignment
+6. Conversation context, retained answers, storage explanation and decision receipts.
+7. Shaft revision and inspection context; Governor mapping plan; definitions, domains,
+   ranges and score evidence; retained Steward validation hold.
+8. Bearing requirements, SysML subsystem allocation, part revision and manufacturing BOM.
+9. CAD document reference, cylindrical geometry, dimensional PMI, quality result and
+   backward traceability to the inspected part and requirement.
+
+Production
+Actual timestamped application interactions, including live expansion and navigation.
+Reuses the existing capture/encoding pipeline and relevant previously recorded live
+engineering sequences. It is not a screenshot slide presentation or fabricated UI.
+Full viewport is retained in a TCS-style frame. Complete-sentence captions, quiet
+piano, no spoken narration. See the SRT for the ordered caption script.
+
+Important verification boundaries
+The Teamcenter + QIF merge review completed, but the new merge was NOT published.
+The retained report contains 4,035 findings: 1,549 violations and 2,486 warnings.
+Custom semantic constraints passed; authored ontology metadata failed. An observed
+example is the missing rdfs:range on QIF ActualProductTraceabilityType_Attributes.
+The approval button remained disabled. No rule was disabled, no equivalence was
+invented and no successful publication receipt is claimed for this proposal.
+The source/target candidates are heuristic similarity proposals, not proven matches.
+The recorded CAD reference does not constitute a rendered JT model.
+Recorded verification links do not themselves establish requirement satisfaction.
+The local engineering fixture is generated test evidence, not customer-approved data.
+Long-term published graph retrieval is separate from retained conversation storage;
+the film does not claim to show a newly approved advisory lesson or model training.
+
+Next engineering work before a successful merge recording
+Repair the source conversion using authoritative QIF schema types/ranges, preserve
+source provenance in a new version, and rerun SHACL and logical-import checks.
+Review any proposed identity consolidation against domain meaning, then execute
+the ordinary authorized publication workflow and verify its graph receipt.

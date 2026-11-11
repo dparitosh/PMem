@@ -38,6 +38,16 @@ def _properties(values: list[str], field: str = "property") -> list[str]:
     return [_identifier(value, field) for value in values]
 
 
+def _reject_duplicate_headers(headers: list[str]) -> None:
+    # Duplicate column names would silently overwrite each other in the row dicts.
+    named = [header for header in headers if header]
+    if len(set(named)) != len(named):
+        raise ValueError("Tabular header contains duplicate column names")
+    # Several unnamed columns share the empty-string key and would overwrite each other.
+    if len(headers) - len(named) > 1:
+        raise ValueError("Tabular header has more than one unnamed column")
+
+
 def load_table(content: bytes, filename: str) -> list[dict[str, Any]]:
     """Read bounded CSV/XLSX records without pandas/numpy.
 
@@ -48,17 +58,34 @@ def load_table(content: bytes, filename: str) -> list[dict[str, Any]]:
     suffix = str(filename or "").lower()
     if suffix.endswith(".csv"):
         reader = csv.DictReader(io.TextIOWrapper(io.BytesIO(content), encoding="utf-8-sig", newline=""))
-        rows = [{str(key or "").strip(): _clean(value) for key, value in row.items()} for row in reader]
+        _reject_duplicate_headers([str(key or "").strip() for key in (reader.fieldnames or [])])
+        rows = []
+        for number, row in enumerate(reader, start=2):
+            extra = row.pop(None, None)  # cells beyond the header; empty trailing cells are ignored
+            if extra and any(str(value).strip() for value in extra):
+                raise ValueError(f"CSV row {number} has more cells than the header")
+            rows.append({str(key or "").strip(): _clean(value) for key, value in row.items()})
     elif suffix.endswith(".xlsx"):
         from openpyxl import load_workbook
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-        sheet = workbook.active
-        values = sheet.iter_rows(values_only=True)
-        headers = [str(value or "").strip() for value in next(values, ())]
-        if not headers or any(not header for header in headers):
-            raise ValueError("XLSX requires a non-empty header row")
-        rows = [{headers[index]: _clean(value) for index, value in enumerate(record)} for record in values]
-        workbook.close()
+        try:
+            sheet = workbook.active
+            # Do not trust producer-supplied dimensions: they can truncate data.
+            sheet.reset_dimensions()
+            values = sheet.iter_rows(values_only=True)
+            headers = [str(value or "").strip() for value in next(values, ())]
+            if not headers or any(not header for header in headers):
+                raise ValueError("XLSX requires a non-empty header row")
+            if len(set(headers)) != len(headers):
+                raise ValueError("XLSX requires unique column headers")
+            rows = []
+            for row_number, record in enumerate(values, 2):
+                if any(_clean(value) is not None for value in record[len(headers):]):
+                    raise ValueError(f"XLSX row {row_number} contains values without column headers")
+                rows.append({header: _clean(record[index]) if index < len(record) else None
+                             for index, header in enumerate(headers)})
+        finally:
+            workbook.close()
     elif suffix.endswith(".xls"):
         raise ValueError("Legacy XLS is not supported by the lean runtime; convert it to XLSX")
     else:

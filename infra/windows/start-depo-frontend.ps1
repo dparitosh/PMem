@@ -15,14 +15,18 @@ $stdout = Join-Path $stateDir 'frontend.out.log'
 $stderr = Join-Path $stateDir 'frontend.err.log'
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-  throw "Project Python runtime was not found: $python. Run infra/windows/install-depo.ps1 first."
+  throw "Project Python runtime was not found: $python. Complete the repository-root install-depo.ps1 first."
 }
 if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
-  throw "Built frontend was not found: $index. Run infra/windows/install-depo.ps1 or npm run build first."
+  throw "Built frontend was not found: $index. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile after dependency installation."
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
+. (Join-Path $PSScriptRoot 'deployment-process-guards.ps1')
+Assert-DepoWindowsManagementAccess
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+$nodeRuntime = Get-DepoNodeRuntime -Root $root -NodeJsDir $values['DEPO_NODEJS_DIR']
+Write-Host "Frontend prerequisite verified: Node.js $($nodeRuntime.Version)"
 if (-not $BindHost) {
   $BindHost = if ($values['DEPO_FRONTEND_HOST']) { $values['DEPO_FRONTEND_HOST'] } elseif ($values['DEPO_SERVICE_HOST']) { $values['DEPO_SERVICE_HOST'] } else { '127.0.0.1' }
 }
@@ -30,6 +34,12 @@ if (-not $PSBoundParameters.ContainsKey('Port') -and $values['DEPO_FRONTEND_PORT
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'DEPO_FRONTEND_PORT must be between 1 and 65535.' }
 if ($BindHost -notmatch '^[A-Za-z0-9.:-]+$') { throw 'Invalid frontend bind address.' }
 $probeHost = Get-DepoProbeHost $BindHost
+$frontendModule = 'backend.depo_platform.frontend_server'
+$envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+$authMode = if ($values['DEPO_BROWSER_AUTH_MODE']) { $values['DEPO_BROWSER_AUTH_MODE'] } else { 'manual' }
+if ($authMode -notin @('manual','local')) { throw 'DEPO_BROWSER_AUTH_MODE must be manual or local.' }
+if ($authMode -eq 'local' -and $BindHost -notin @('127.0.0.1','::1')) { throw 'Local browser authentication requires a loopback frontend bind.' }
+
 
 $routing = Resolve-DepoRouting $values
 $browserRouting = @{}
@@ -37,7 +47,7 @@ foreach ($key in $routing.Keys) {
   if ($key.StartsWith('VITE_')) { $browserRouting[$key] = $routing[$key] }
 }
 if ($values['DEPO_ROUTING_MODE'] -and (Get-Content -LiteralPath $index -Raw) -notmatch 'depo-runtime-config.js') {
-  throw 'This frontend predates runtime routing. Rebuild once using npm run build in frontend.'
+  throw 'This frontend predates runtime routing. Rebuild using infra/windows/build-depo-frontend.ps1 with the same -EnvFile.'
 }
 $indexFile = Get-Item -LiteralPath $index
 # Configuration, dependency and public asset changes also require a rebuild.
@@ -54,7 +64,7 @@ $buildInputs += @(Get-ChildItem -LiteralPath $frontendRoot -File | Where-Object 
 # Compare content hashes as deployment copies may preserve timestamps.
 $receiptPath = Join-Path $dist 'depo-build-receipt.json'
 if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
-  throw 'Frontend build has no build receipt. Run npm run build in frontend from the current release before starting it.'
+  throw 'Frontend build has no build receipt. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile from the current release before starting it.'
 }
 $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
 if ($receipt.version -ne 1 -or -not $receipt.inputs) { throw 'Invalid frontend build receipt; rebuild frontend.' }
@@ -68,9 +78,17 @@ foreach ($inputFile in $buildInputs) {
     throw "Frontend build does not match input $relativeInput. Rebuild frontend before starting it."
   }
 }
+function Test-DepoLocalBrowserAccess {
+  if ($values['DEPO_BROWSER_AUTH_MODE'] -ne 'local') { return }
+  Push-Location -LiteralPath $root
+  try { $check = & $python -m backend.depo_platform.frontend_server $Port --bind $probeHost --directory $dist --env-file $envPath --verify-local-access; $checkExit = $LASTEXITCODE }
+  finally { Pop-Location }
+  if ($checkExit -ne 0) { throw 'Local browser access verification failed. Check central credential synchronization and the frontend broker configuration.' }
+  Write-Host 'Local browser authentication and ontology reads verified.'
+}
 $indexContent = Get-Content -LiteralPath $index -Raw
 $bundleMatch = [regex]::Match($indexContent, '<script[^>]+src="(/?assets/index-[^"]+\.js)"')
-if (-not $bundleMatch.Success) { throw "Could not identify the production bundle in $index. Run npm run build in frontend." }
+if (-not $bundleMatch.Success) { throw "Could not identify the production bundle in $index. Run infra/windows/build-depo-frontend.ps1 with the same -EnvFile." }
 $bundleRelativePath = $bundleMatch.Groups[1].Value.TrimStart('/').Replace('/', [IO.Path]::DirectorySeparatorChar)
 $bundlePath = Join-Path $dist $bundleRelativePath
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) { throw "Frontend bundle referenced by index.html is missing: $bundlePath" }
@@ -84,18 +102,22 @@ if (Test-Path -LiteralPath $pidFile) {
   $recordedPid = [int](Get-Content -LiteralPath $pidFile)
   $existing = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
   $details = if ($existing) { Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction SilentlyContinue } else { $null }
+  $recordedModule = if ($details -and $details.CommandLine -match 'backend\.depo_platform\.frontend_server') { $frontendModule } else { 'http.server' }
   if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $python.ToLowerInvariant() -and
-      $details.CommandLine -match 'http\.server' -and $details.CommandLine -match 'frontend[\\/]dist') {
+      $details.CommandLine -match '(?:http\.server|backend\.depo_platform\.frontend_server)' -and $details.CommandLine -match 'frontend[\\/]dist') {
     try {
       $response = Invoke-WebRequest -Uri "http://${probeHost}:$Port/" -UseBasicParsing -TimeoutSec 5
-      if ($response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
+      if ($recordedModule -eq $frontendModule -and $details.CreationDate -and
+          (Get-Item -LiteralPath $envPath).LastWriteTimeUtc -le ([datetime]$details.CreationDate).ToUniversalTime() -and
+          $details.CommandLine.Contains($envPath) -and $response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
           $response.Content.Contains($bundleMatch.Groups[1].Value) -and
-          (Test-DepoListener $recordedPid $python 'http.server' $Port $BindHost)) {
+          (Test-DepoListener $recordedPid $python $recordedModule $Port $BindHost)) {
+        Test-DepoLocalBrowserAccess
         Write-Host "DEPO frontend is already ready at http://${probeHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
         return
       }
     } catch {}
-    Stop-DepoProcessTree $recordedPid $python 'http.server'
+    Stop-DepoProcessTree $recordedPid $python $recordedModule
   }
   Remove-Item -LiteralPath $pidFile -Force
 }
@@ -106,7 +128,7 @@ if ($listener) {
 }
 
 $process = Start-Process -FilePath $python `
-  -ArgumentList @('-m', 'http.server', $Port, '--bind', $BindHost, '--directory', 'frontend\dist') `
+  -ArgumentList @('-m', $frontendModule, $Port, '--bind', $BindHost, '--directory', 'frontend\dist', '--env-file', ('"' + $envPath + '"')) `
   -WorkingDirectory $root -WindowStyle Hidden `
   -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
 try {
@@ -121,7 +143,8 @@ do {
     $response = Invoke-WebRequest -Uri "http://${probeHost}:$Port/" -UseBasicParsing -TimeoutSec 3
     if ($response.StatusCode -eq 200 -and $response.Content -match '<div id="root"' -and
         $response.Content.Contains($bundleMatch.Groups[1].Value) -and
-        (Test-DepoListener $process.Id $python 'http.server' $Port $BindHost)) {
+        (Test-DepoListener $process.Id $python $frontendModule $Port $BindHost)) {
+      Test-DepoLocalBrowserAccess
       Write-Host "DEPO frontend is ready at http://${probeHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
       return
     }
@@ -133,7 +156,7 @@ throw "DEPO frontend did not become ready within 30 seconds. Check $stderr."
 
 } catch {
   $startupFailure = $_
-  try { Stop-DepoProcessTree $process.Id $python 'http.server' }
+  try { Stop-DepoProcessTree $process.Id $python $frontendModule }
   catch { throw "Frontend startup failed: $($startupFailure.Exception.Message). Cleanup failed: $($_.Exception.Message). PID tracking is retained." }
   Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
   throw $startupFailure

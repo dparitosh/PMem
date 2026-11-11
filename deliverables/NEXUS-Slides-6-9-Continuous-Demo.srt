@@ -1,0 +1,79 @@
+1
+00:00:00,000 --> 00:00:02,369
+Start from a bearing record with its part number, revision and engineering properties.
+
+2
+00:00:02,369 --> 00:00:18,917
+Start from a bearing record with its part number, revision and engineering properties.
+
+3
+00:00:18,917 --> 00:01:29,926
+The Companion uses the selected bearing and its cited relationships to answer a requirement question.
+
+4
+00:01:29,926 --> 00:02:15,000
+A follow-up about its PMI reuses the bearing context instead of asking the user to identify it again.
+
+5
+00:02:15,000 --> 00:02:24,008
+The saved question retains its resolved business context and historical answer.
+
+6
+00:02:24,008 --> 00:02:29,658
+The saved question retains its resolved business context and historical answer.
+
+7
+00:02:29,658 --> 00:02:51,000
+PostgreSQL retains conversation records and context, while the published graph supplies engineering knowledge.
+
+8
+00:02:51,000 --> 00:03:05,407
+The retained plan preserves source and target identities and records proposals for review.
+
+9
+00:03:05,407 --> 00:03:12,294
+The retained plan preserves source and target identities and records proposals for review.
+
+10
+00:03:12,294 --> 00:03:18,027
+Definitions, domains and ranges explain why lexical similarity is not proof of equivalence.
+
+11
+00:03:18,027 --> 00:03:41,000
+Validation findings hold publication, preserving the review evidence without publishing an unresolved merge.
+
+12
+00:03:41,000 --> 00:03:45,399
+The bearing requirement records its 25 mm nominal bore and the need for verification evidence.
+
+13
+00:03:45,399 --> 00:04:01,164
+The bearing requirement records its 25 mm nominal bore and the need for verification evidence.
+
+14
+00:04:01,164 --> 00:04:29,779
+The SysML subsystem links requirement intent to the managed bearing assembly.
+
+15
+00:04:29,779 --> 00:04:45,966
+The manufacturing BOM preserves revision context and connects the assembly to its parts and BOM lines.
+
+16
+00:04:45,966 --> 00:05:16,740
+The managed part retains its identity, revision and bore diameter separately from system intent.
+
+17
+00:05:16,740 --> 00:05:27,586
+The CAD document retains its design-file identity and recorded relationship to the part.
+
+18
+00:05:27,586 --> 00:05:38,246
+The cylindrical geometry is represented separately with its nominal 25 mm bore.
+
+19
+00:05:38,246 --> 00:06:03,641
+The PMI records datum A, nominal 25 mm and dimensional limits of 24.99 to 25.01 mm.
+
+20
+00:06:03,641 --> 00:06:18,000
+The inspection result records 25.006 mm and links back to the inspected part and verification requirement.

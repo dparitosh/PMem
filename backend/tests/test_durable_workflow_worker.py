@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, patch
 from backend.agentic_service.durable_workflows import credential_snapshot, transport_snapshot, clean_command, execute_candidate, enqueue, _worker_loop
 from backend.agentic_service.recovery import fingerprint, prepare_recovery
 from backend.agentic_service.workflow_receipts import compensation_plan, verify_product_receipt
+# Load real boundary modules before individual fixtures substitute FastAPI.
+# This suite must also pass alone, without another test importing the router.
+from backend.agentic_service import page_tasks, context_envelope
 
 
 class Store:
@@ -33,11 +36,14 @@ class DurableWorkerTests(unittest.TestCase):
             modules.update({sessions.__name__:sessions,fastapi.__name__:fastapi})
             routes._preflight_tools=AsyncMock()
             routes._workflow_owner=lambda *args:'original-owner'
-            with patch.dict(sys.modules,modules):
-                result=asyncio.run(enqueue({'workflow_id':'review','inputs':{'artifact':'retained'},'approval_token':'browser-secret'},object()))
+            import backend.agentic_service as package
+            with patch.dict(sys.modules,modules), patch.object(package, 'router', routes, create=True):
+                result=asyncio.run(enqueue({'workflow_id':'review','inputs':{'artifact':'retained'},'page_context':{'page':'ontology','ontology_id':'selected'},'approval_token':'browser-secret'},object()))
             self.assertEqual(result['status'],'queued')
             self.assertEqual(store.record['owner'],'original-owner')
-            self.assertEqual(store.record['execution_payload'],{'workflow_id':'review','inputs':{'artifact':'retained'}})
+            self.assertEqual(store.record['execution_payload'],{'workflow_id':'review','inputs':{'artifact':'retained'},'page_context':{'page':'ontology','ontology_id':'selected'}})
+            self.assertEqual(store.record['page_context'],{'page':'ontology','ontology_id':'selected'})
+            self.assertTrue(store.record['page_owner'])
             self.assertNotIn('browser-secret',str(store.record))
             self.assertNotIn('server-read',str(store.record))
             routes._preflight_tools.assert_awaited_once()
@@ -70,7 +76,9 @@ class DurableWorkerTests(unittest.TestCase):
         return record,store,routes,modules
 
     def run_candidate(self, record, modules):
-        with patch.dict(sys.modules,modules): asyncio.run(execute_candidate(record))
+        import backend.agentic_service as package
+        with patch.dict(sys.modules,modules), patch.object(package, 'router', modules['backend.agentic_service.router'], create=True):
+            asyncio.run(execute_candidate(record))
 
     def test_queued_job_is_claimed_and_runs_without_persisted_caller_keys(self):
         with patch.dict(os.environ,{'GRAPH_READ_TOKEN':'fixture-read','AGENTIC_APPROVAL_TOKEN':'fixture-supervisor'},clear=True):
@@ -121,7 +129,7 @@ class DurableWorkerTests(unittest.TestCase):
             async def tick(seconds):
                 await real_sleep(0)
                 if len(seen)==2: raise asyncio.CancelledError()
-            with patch.dict(os.environ,{'AGENTIC_EXECUTION_MODE':'worker','AGENTIC_WORKER_CONCURRENCY':'2'},clear=True), patch('backend.agentic_service.durable_workflows.execute_candidate',execute), patch('backend.agentic_service.durable_workflows.asyncio.sleep',tick):
+            with patch.dict(os.environ,{'AGENTIC_EXECUTION_MODE':'worker','AGENTIC_WORKER_CONCURRENCY':'2'},clear=True), patch('backend.agentic_service.goal_routes.candidates',AsyncMock(return_value=[])), patch('backend.agentic_service.durable_workflows.execute_candidate',execute), patch('backend.agentic_service.durable_workflows.asyncio.sleep',tick):
                 with self.assertRaises(asyncio.CancelledError): await _worker_loop(routes,SimpleNamespace(getLogger=lambda *args:SimpleNamespace(warning=lambda *args:None)))
             self.assertEqual(seen,['paused','other'])
         asyncio.run(check())

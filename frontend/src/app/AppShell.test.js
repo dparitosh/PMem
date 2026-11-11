@@ -1,10 +1,10 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor,act } from '@testing-library/react';
 import { vi } from 'vitest';
 import AppShell from './AppShell';
 import { graphApi } from '../services/graphApi';
 vi.mock('../services/graphApi', () => ({ graphApi: { verifyAccess: vi.fn() } }));
-import { clearServiceAuthToken, getServiceAuthToken } from '../services/serviceAuth';
+import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken } from '../services/serviceAuth';
 import { verifyStoredAccess } from '../services/readAccessVerification';
 vi.mock('../services/readAccessVerification', () => ({ verifyStoredAccess: vi.fn() }));
 
@@ -20,6 +20,7 @@ vi.mock('@siemens/ix-react', () => ({
   IxContentHeader: ({ headerTitle }) => <h1>{headerTitle}</h1>,
   IxMenu: ({ children, enableToggleTheme, i18nToggleTheme: _i18nToggleTheme, ...props }) => <nav data-theme-toggle={String(enableToggleTheme)} {...props}>{children}</nav>,
   IxMenuItem: ({ children, active, ...props }) => <button aria-current={active ? 'page' : undefined} {...props}>{children}</button>,
+  IxMenuCategory: ({ children, label, ...props }) => <section aria-label={label} {...props}>{children}</section>,
 }));
 
 beforeEach(() => {
@@ -30,6 +31,17 @@ beforeEach(() => {
   sessionStorage.clear();
   window.localStorage.clear();
   document.documentElement.dataset.ixColorSchema = 'light';
+});
+
+test('late verification cannot overwrite a newer service rejection', async () => {
+  let finish;
+  verifyStoredAccess.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<AppShell activePage="catalog" onPageChange={vi.fn()} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+  fireEvent.click(screen.getByRole('button', {name:'Revalidate or reconnect API access'}));
+  fireEvent(window, new Event('depo:access-rejected'));
+  await act(async () => finish({status:'verified', message:'Obsolete verification'}));
+  expect(screen.queryByText('Obsolete verification')).toBeNull();
+  expect(screen.getByText(/A service rejected the current access/)).toBeVisible();
 });
 
 test('opens central Admin credentials instead of a duplicate key dialog', () => {
@@ -64,7 +76,7 @@ test('exposes active navigation, backend status, chat drawer state, and persiste
     </AppShell>,
   );
 
-  expect(screen.getByRole('button', { name: 'Metadata Registry' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Data Dictionary' })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByRole('status')).toHaveTextContent('Unavailable');
   expect(screen.getByRole('complementary', { name: 'Knowledge Companion' })).toBeInTheDocument();
   const chatButton = screen.getByRole('button', { name: 'Toggle Knowledge Companion' });
@@ -78,7 +90,7 @@ test('exposes active navigation, backend status, chat drawer state, and persiste
   expect(document.documentElement.dataset.ixColorSchema).toBe('dark');
   expect(window.localStorage.getItem('depo.colorSchema')).toBe('dark');
   expect(screen.getByRole('button', { name: 'Use light theme' })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.getByRole('navigation')).toHaveAttribute('data-theme-toggle', 'false');
+  expect(screen.getByRole('navigation', { name: 'Application navigation' })).toHaveAttribute('data-theme-toggle', 'false');
   expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
 });
 
@@ -100,6 +112,31 @@ test('header revalidates stored access without navigating or executing workflows
   expect(verifyStoredAccess).toHaveBeenCalledTimes(1);
 });
 
+test('a restored credential is verified automatically without navigating on rejection', async () => {
+  setServiceAuthToken('read-fixture');
+  verifyStoredAccess.mockResolvedValue({status:'reconnect_required', message:'Stored access was rejected.'});
+  const navigate = vi.fn();
+  render(<AppShell activePage="home" onPageChange={navigate} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+  await screen.findByText('Stored access was rejected.');
+  expect(verifyStoredAccess).toHaveBeenCalledTimes(1);
+  expect(navigate).not.toHaveBeenCalled();
+  verifyStoredAccess.mockResolvedValue({status:'verified', message:'Replacement access verified.'});
+  fireEvent(window, new Event('depo:session-replaced'));
+  await screen.findByText('Replacement access verified.');
+  expect(screen.getByRole('button',{name:'Configure API access'})).toHaveTextContent('API access verified');
+});
+
+test('reconnect aborts old access verification and cannot display its late success',async()=>{
+ let finish;verifyStoredAccess.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
+ fireEvent.click(screen.getByRole('button',{name:'Revalidate or reconnect API access'}));
+ const signal=verifyStoredAccess.mock.calls[0][0].signal;
+ fireEvent(window,new Event('depo:session-replaced'));
+ expect(signal.aborted).toBe(true);
+ await act(async()=>{finish({status:'verified',message:'Old connection authorized'});});
+ await waitFor(()=>expect(screen.queryByText('Old connection authorized')).toBeNull());
+});
+
 test('expired access opens the API access tab for reconnection', async () => {
   verifyStoredAccess.mockResolvedValue({status:'reconnect_required',message:'Session expired. Reconnect registered services.'});
   const navigate = vi.fn();
@@ -117,4 +154,23 @@ test('a subsequent credential rejection invalidates an earlier verified banner',
   fireEvent(window, new Event('depo:access-rejected'));
   expect(screen.queryByText('Read access verified.')).toBeNull();
   expect(screen.getByText(/A service rejected the current access/)).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Configure API access'})).toHaveTextContent('API access needs attention');
+  expect(screen.queryByText('API access configured')).not.toBeInTheDocument();
+});
+
+test('expands the Companion table workspace without remounting its input', () => {
+  render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} showChat onToggleChat={vi.fn()} rightDrawer={<input aria-label="Question fixture" defaultValue="Part PMI" />}><div>Page</div></AppShell>);
+  const input=screen.getByRole('textbox',{name:'Question fixture'});
+  fireEvent.click(screen.getByRole('button',{name:'Expand Knowledge Companion'}));
+  expect(screen.getByRole('button',{name:'Expand Knowledge Companion'})).toHaveAttribute('aria-pressed','true');
+  expect(screen.getByRole('textbox',{name:'Question fixture'})).toBe(input);
+  expect(input).toHaveValue('Part PMI');
+});
+
+
+test('route navigation moves keyboard focus to the main landmark', () => {
+ const props={onPageChange:vi.fn(),onHome:vi.fn(),onToggleChat:vi.fn()};
+ const {rerender}=render(<AppShell {...props} activePage="catalog">Catalog</AppShell>);
+ rerender(<AppShell {...props} activePage="data-flow">Data flow</AppShell>);
+ expect(screen.getByRole('main')).toHaveFocus();
 });

@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
 import ImportPage from './ImportPage';
 
-vi.mock('../Components/DataImportPipeline', () => ({ default: () => <p>Data workspace</p> }));
+vi.mock('../features/import/ImportWorkspace.js', () => ({ default: () => <p>Data workspace</p> }));
 vi.mock('./QifPage', () => ({ default: () => <p>QIF workspace</p> }));
 vi.mock('./SysmlRepositoryImport', () => ({ default: () => <p>SysML workspace</p> }));
 

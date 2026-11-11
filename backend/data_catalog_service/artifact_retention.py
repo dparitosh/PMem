@@ -7,6 +7,8 @@ from typing import Any
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.ontology_maintenance import ontology_operation
+from backend.depo_platform.artifact_references import require_unreferenced
 
 
 TIERS = {"hot", "warm", "cold", "archive"}
@@ -95,7 +97,7 @@ class ArtifactRetentionRegistry:
         ]
 
     def purge(self, artifact_id: str, actor: str, reason: str) -> dict[str, Any]:
-        with self.store.advisory_lock(self._policy_key(artifact_id)) as acquired:
+        with ontology_operation(cleanup=True), self.store.advisory_lock(self._policy_key(artifact_id)) as acquired:
             if not acquired:
                 raise ValueError('Retention operation is in progress; retry after it completes')
             return self._purge_locked(artifact_id, actor, reason)
@@ -112,6 +114,7 @@ class ArtifactRetentionRegistry:
             raise ValueError("Artifact has not reached its retention expiry")
         if not reason.strip():
             raise ValueError("reason is required for purge evidence")
+        require_unreferenced(artifact_id, self.artifact_store)
         if record.get('status') != 'purging':
             metadata, _ = self.artifact_store.resolve(artifact_id)
             intent = {'event_id': str(uuid.uuid4()), 'artifact_id': artifact_id,
@@ -121,7 +124,7 @@ class ArtifactRetentionRegistry:
             # A failed commit must prevent any filesystem deletion.
             self.store.put_many({self._policy_key(artifact_id): record, f"event:{intent['event_id']}": intent})
         intent = record['purge_intent']
-        evidence = self.artifact_store.purge(artifact_id, recovery_metadata={'artifact_id': artifact_id, 'size': intent['size']})
+        evidence = self.artifact_store.purge(artifact_id, recovery_metadata={'artifact_id': artifact_id, 'size': intent['size']}, reference_check=require_unreferenced)
         actor, reason = intent['actor'], intent['reason']
         now = self._now().isoformat()
         purged = {**record, "status": "purged", "purged_at": now, "purged_by": actor, "purge_reason": reason, **evidence}

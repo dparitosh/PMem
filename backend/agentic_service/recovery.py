@@ -9,6 +9,19 @@ def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def read_only_ontology_review(definition):
+    """Only the existing advisory review may use owner read access for controls."""
+    definition = definition or {}
+    if (definition.get('workflow') or {}).get('id') != 'ontology-review-and-bridge-plan':
+        return False
+    steps = definition.get('steps') or []
+    allowed = {'ontology.agent.intake', 'ontology.agent.review', 'ontology.agent.bridge-plan'}
+    return bool(steps) and all(
+        isinstance(step, dict) and step.get('requires_approval') is False and
+        isinstance(step.get('tool'), dict) and step['tool'].get('mutates') is False and
+        step['tool'].get('id') in allowed for step in steps)
+
+
 def execution_payload(payload):
     def clean(value):
         if isinstance(value, dict):
@@ -21,7 +34,7 @@ def execution_payload(payload):
         if isinstance(value, list):
             return [clean(item) for item in value]
         return value
-    return clean({key: payload[key] for key in ('workflow_id', 'inputs', 'step_inputs') if key in payload})
+    return clean({key: payload[key] for key in ('workflow_id', 'inputs', 'step_inputs', 'page_context') if key in payload})
 
 
 def prepare_recovery(record, workflow, activity_at=None):

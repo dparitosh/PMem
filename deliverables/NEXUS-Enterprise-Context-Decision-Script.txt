@@ -1,0 +1,17 @@
+000-030 seconds | The business challenge
+Product decisions cross team boundaries. A component change can affect an assembly, a requirement, a manufacturing activity and quality evidence. People often spend the first part of the review reconstructing that story. NEXUS helps bring the relevant records together, so specialists can spend more time evaluating consequences and less time searching.
+
+030-060 seconds | Ontology protects business meaning
+Connected records need a shared meaning. NEXUS uses an embedded industrial reference and application definitions to distinguish a physical part from its design, and a requirement from evidence of satisfaction. Reviewed mappings connect customer terminology. This gives engineering, manufacturing and quality a more consistent basis for discussion without losing the original source.
+
+060-090 seconds | The 360-degree review
+Follow the product story in both directions. From the housing, explore CAD and shape records, its MBSE subsystem, requirement, manufacturing activity and quality information. Then trace backward through Where Used to the parent assembly. Contextual chat retrieves the recorded tolerance and requirement description. These links support review; they do not prove compliance.
+
+090-120 seconds | Decision intelligence and agentic AI
+For change review, NEXUS investigates recorded dependencies. For reuse, similarity narrows candidate searches and exposes missing engineering properties. Recommendations organize options, evidence and open questions. Agentic AI can plan permitted investigation steps and explain findings. The accountable specialist still decides suitability, approval and the next action; a similarity score never authorizes substitution.
+
+120-150 seconds | Memory makes knowledge reusable
+Context carries the conversation forward. Ask about the housing tolerance, then ask which requirements are associated with it. NEXUS retains the selected business subject and retrieves recorded evidence. The saved answer survives reload. Longer term lessons require their own reviewed scope and access checks; remembering an answer never turns it into engineering approval.
+
+150-180 seconds | Reliable execution and measurable value
+Business services organize the evidence. Workers carry out authorized tasks and retain their outcomes. Specialist agents and defined task skills prepare the review for product, engineering, manufacturing and quality personas. Measure the value in a focused pilot: review preparation effort, evidence coverage and unresolved questions. NEXUS connects knowledge for accountable product decisions.

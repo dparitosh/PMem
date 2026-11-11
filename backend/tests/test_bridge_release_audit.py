@@ -79,7 +79,8 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(len({row['candidate_id'] for batch in batches for row in batch['candidates']}),4001)
         self.assertEqual([batch['partition']['next_offset'] for batch in batches],[2000,4000,None])
 
-    def test_wrong_actor_and_wrong_link_count_receipts_are_rejected(self):
+    @patch('backend.depo_platform.decision_policy.assess_decisions', return_value={'blocking': False, 'status': 'not_configured', 'checks': []})
+    def test_wrong_actor_and_wrong_link_count_receipts_are_rejected(self, policy):
         for changes in ({'applied_links':0},{'applied_links':True},{'approved_by':'another-actor'}):
             graph = Graph(); graph.lose_response = True
             jobs = BridgeJobs(InMemoryRegistry(),Source(),graph)

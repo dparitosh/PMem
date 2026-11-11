@@ -57,13 +57,18 @@ export const OntologyProvider = ({ children }) => {
           if (path !== '/api/v1/ontologies') return apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 });
           const rows = [];
           let offset = 0;
+          const deadline = Date.now() + 60000;
+          let pages = 0;
           do {
-            const response = await apiClient.get(buildUrl(`${path}?limit=200&offset=${offset}`), { signal: controller.signal, timeout: 15000 });
+            const remaining = deadline - Date.now();
+            if (remaining <= 0 || pages++ >= 100 || rows.length >= 20000) throw new Error('Ontology catalog loading limit reached. Narrow the registry scope and retry.');
+            const response = await apiClient.get(buildUrl(`${path}?limit=200&offset=${offset}`), { signal: controller.signal, timeout: Math.min(15000, remaining) });
             // Accept older servers without pagination metadata during upgrades.
             if (!Array.isArray(response.data?.ontologies)) return response;
             rows.push(...response.data.ontologies);
             const next = response.data.next_offset;
             if (next == null) return { data: { ...response.data, ontologies: rows } };
+            if (response.data.ontologies.length === 0) throw new Error('Invalid ontology catalog pagination: empty page has a next offset');
             if (!Number.isSafeInteger(next) || next <= offset) throw new Error('Invalid ontology catalog pagination');
             offset = next;
           } while (!controller.signal.aborted);
@@ -71,14 +76,13 @@ export const OntologyProvider = ({ children }) => {
         }));
         const merged = new Map();
         let successes = 0;
-        let lastError = null;
         const failedSources = [];
         for (const [index, result] of results.entries()) {
           if (controller.signal.aborted) return [];
-          if (result.status === 'rejected') { lastError = result.reason; failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (${apiErrorMessage(result.reason, 'request failed')})`); continue; }
+          if (result.status === 'rejected') { failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (${apiErrorMessage(result.reason, 'request failed')})`); continue; }
           const payload = result.value?.data || {};
           const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
-          if (!Array.isArray(rows)) { lastError = new Error('Registry returned an invalid ontology list.'); failedSources.push(index === 0 ? 'Ontology catalog' : 'Ingestion registry'); continue; }
+          if (!Array.isArray(rows)) { failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (invalid ontology list)`); continue; }
           successes += 1;
           for (const row of normalizeOntologyRows(rows)) {
             if (!row.value) continue;
@@ -90,7 +94,9 @@ export const OntologyProvider = ({ children }) => {
             }
           }
         }
-        if (!successes) throw lastError || new Error('Failed to load ontologies');
+        if (!successes) throw new Error(failedSources.length
+          ? `Failed to load ontology registries: ${failedSources.join('; ')}`
+          : 'Failed to load ontologies');
         if (controller.signal.aborted) return [];
         const ontologyList = [...merged.values()];
         if (mountedRef.current) {
@@ -101,7 +107,7 @@ export const OntologyProvider = ({ children }) => {
         }
         return ontologyList;
       } catch (err) {
-        if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
+        if (controller.signal.aborted || abortRef.current !== controller || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
           return [];
         }
         const errorMsg = apiErrorMessage(err, 'Failed to load ontology registries.');
@@ -130,11 +136,20 @@ export const OntologyProvider = ({ children }) => {
     const changed = () => fetchOntologies(true);
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:session-expired', refresh);
+    window.addEventListener('depo:session-replaced', refresh);
+    // Rechecking the same access is a refresh, not a change of identity.
+    // Retain the last registry until the new read succeeds; expiry, replacement
+    // and cleanup still clear it immediately through their separate events.
+    window.addEventListener('depo:access-verified', changed);
     window.addEventListener('depo:ontologies-changed', changed);
     window.addEventListener('dt-schema-cleaned', refresh);
     return () => {
       window.removeEventListener('depo:credentials-changed', refresh);
       window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:session-expired', refresh);
+      window.removeEventListener('depo:session-replaced', refresh);
+      window.removeEventListener('depo:access-verified', changed);
       window.removeEventListener('depo:ontologies-changed', changed);
       window.removeEventListener('dt-schema-cleaned', refresh);
     };

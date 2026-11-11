@@ -7,12 +7,13 @@ import { setCredentialProfile } from '../services/serviceAuth';
 beforeEach(() => setCredentialProfile('GRAPH_READ_TOKEN', 'reader'));
 
 afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
-test('retained numeric tool progress is visible while a workflow runs', async () => {
+test('workflow review hides technical tool progress', async () => {
   vi.spyOn(agenticAPI, 'runWorkflow').mockResolvedValue({data:{run_id:'progress-run'}});
   vi.spyOn(agenticAPI, 'getRun').mockResolvedValue({data:{run_id:'progress-run',workflow_id:'test',status:'running',pending_step:{progress:{current:2,total:5}}}});
   render(<WorkflowTaskPanel workflowId="test" inputs={{}} label="Start progress" />);
   fireEvent.click(screen.getByRole('button', {name:'Start progress'}));
-  await screen.findByText('Tool progress: 2 of 5');
+  await screen.findByText('Reviewing the available evidence');
+  expect(screen.queryByText('Tool progress: 2 of 5')).not.toBeInTheDocument();
 });
 test('completed automatic merge refreshes ontology context once across status refreshes', async () => {
   setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'approval');
@@ -43,7 +44,7 @@ test('retained failure displays actionable diagnostics outside the raw report', 
   } });
   render(<WorkflowTaskPanel workflowId="merge" inputs={{}} label="Merge" />);
   fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 422: Restore or re-register');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Restore or re-register');
   expect(screen.getByRole('button', { name: 'Prepare a new task' })).toBeEnabled();
 });
 test('restores a retained workflow without submitting another execution', async () => {

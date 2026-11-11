@@ -1,3 +1,4 @@
+import re
 import pytest
 
 from backend.depo_platform import neo4j_setup
@@ -28,9 +29,18 @@ def test_constraint_validation_still_rejects_incompatible_definitions(field, val
 
 def test_publication_schema_contains_only_idempotent_statements():
     statements = neo4j_setup._statements(neo4j_setup.SCHEMA_FILE.read_text(encoding="utf-8"))
-    assert len(statements) == 7
-    assert all("IF NOT EXISTS" in statement for statement in statements[:-1])
-    assert "depo_bridge_publication_id" in statements[2]
+    assert all("IF NOT EXISTS" in statement or statement == "CALL db.awaitIndexes(60)" for statement in statements)
+    creations = {}
+    for statement in statements:
+        if statement == 'CALL db.awaitIndexes(60)':
+            continue
+        match = re.match(r'CREATE (?:CONSTRAINT|(?:TEXT |FULLTEXT )?INDEX) (\w+) IF NOT EXISTS\b', statement)
+        assert match, statement
+        assert match[1] not in creations, 'Duplicate schema object: ' + match[1]
+        creations[match[1]] = statement
+    assert set(creations) == neo4j_setup.REQUIRED_CONSTRAINTS | set(neo4j_setup.REQUIRED_INDEXES)
+    assert 'FOR (n:OntologyResource) ON (n.source_ontology)' in creations['idx_depo_ontologyresource_source_scope']
+    assert neo4j_setup.REQUIRED_INDEXES['idx_depo_ontologyresource_source_scope'] == ('OntologyResource', ['source_ontology'])
     assert statements[-1] == "CALL db.awaitIndexes(60)"
     assert not any(token in statement.upper() for statement in statements for token in (" DELETE ", " DETACH ", " DROP "))
 
@@ -54,3 +64,20 @@ def test_token_auth_requires_both_credential_parts(monkeypatch):
 
 def test_schema_parser_ignores_comments_and_empty_fragments():
     assert neo4j_setup._statements("// comment\nRETURN 1;\n;\n// ignored\nRETURN 2;") == ["RETURN 1", "RETURN 2"]
+
+
+@pytest.mark.parametrize('bad', ['missing','wrong_type','wrong_labels','populating'])
+def test_context_fulltext_index_is_verified(bad):
+    rows=[{'name':name,'state':'ONLINE',
+           'type':'FULLTEXT' if isinstance(label,tuple) else 'TEXT' if name.startswith('idx_depo_resource_search_') else 'RANGE',
+           'labelsOrTypes':list(reversed(label)) if isinstance(label,tuple) else [label],
+           'properties':properties} for name,(label,properties) in neo4j_setup.REQUIRED_INDEXES.items()]
+    neo4j_setup.verify_indexes(rows)
+    fulltext=next(row for row in rows if row['name']=='idx_depo_context_evidence')
+    if bad=='missing':rows.remove(fulltext)
+    elif bad=='wrong_type':fulltext['type']='RANGE'
+    elif bad=='wrong_labels':fulltext['labelsOrTypes']=['GraphChunk']
+    else:fulltext['state']='POPULATING'
+    with pytest.raises(RuntimeError,match='idx_depo_context_evidence'):
+        neo4j_setup.verify_indexes(rows)
+    if bad=='missing':neo4j_setup.verify_indexes(rows,allow_missing=True)

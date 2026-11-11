@@ -254,6 +254,6 @@ def contract_errors(document):
 if __name__ == '__main__':
     import json
     import sys
-    errors = contract_errors(json.load(sys.stdin))
+    errors = contract_errors(json.loads(sys.stdin.buffer.read().decode('utf-8-sig')))
     print(json.dumps({'valid': not errors, 'errors': errors}))
     sys.exit(1 if errors else 0)

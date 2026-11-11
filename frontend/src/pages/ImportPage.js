@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import WorkspaceTabs from '../Components/WorkspaceTabs';
-import DataImportPipeline from '../Components/DataImportPipeline';
+import ImportWorkspace from "../features/import/ImportWorkspace.js";
 import QifPage from './QifPage';
 import SysmlRepositoryImport from './SysmlRepositoryImport';
 import './ImportPage.css';
@@ -10,7 +10,7 @@ export default function ImportPage() {
   return (
     <div className="depo-page">
       <WorkspaceTabs label="Import workspaces" tabs={[{id:'data',label:'Data import'}, {id:'qif',label:'QIF workflow'}, {id:'sysml',label:'SysML repository'}]} value={activeTab} onChange={setActiveTab} />
-      {activeTab === 'data' ? <DataImportPipeline /> : activeTab === 'qif' ? <QifPage workflowMode /> : <SysmlRepositoryImport />}
+      {activeTab === 'data' ? <ImportWorkspace /> : activeTab === 'qif' ? <QifPage workflowMode /> : <SysmlRepositoryImport />}
     </div>
   );
 }

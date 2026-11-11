@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import pytest
 
 from backend.ontology_service.catalog import OntologyCatalog
@@ -9,6 +10,8 @@ def test_workflow_retry_uses_filtered_lookup_and_skips_identical_graph_compariso
     from backend.mesh_store import InMemoryRegistry
     import rdflib.compare
     monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://unused/test')
+    # This catalog test uses an InMemoryRegistry, not a database lock fixture.
+    monkeypatch.setattr('backend.depo_platform.ontology_maintenance.ontology_operation', lambda **_: nullcontext())
     registry = InMemoryRegistry()
     catalog = OntologyCatalog(root=tmp_path, registry=registry)
     content = b'<https://example.test/a> <https://example.test/p> "value" .'
@@ -44,6 +47,7 @@ def test_catalog_validates_rdf_and_records_review_lifecycle(tmp_path):
 def test_filtered_workflow_retry_preserves_governance_checks(tmp_path, monkeypatch, case):
     from backend.mesh_store import InMemoryRegistry
     monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://unused/test')
+    monkeypatch.setattr('backend.depo_platform.ontology_maintenance.ontology_operation', lambda **_: nullcontext())
     registry = InMemoryRegistry()
     catalog = OntologyCatalog(root=tmp_path, registry=registry)
     source = 'engineering-workflow:' + 'b' * 64

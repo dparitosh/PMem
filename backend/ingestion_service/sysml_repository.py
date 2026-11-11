@@ -1,5 +1,6 @@
 """Read a configured SysML repository commit; never publish graph mutations."""
 import json
+import asyncio
 import os
 from urllib.parse import quote, urljoin, urlsplit
 import httpx
@@ -24,7 +25,13 @@ async def read_snapshot(config=None):
         raise ValueError('SysML snapshot byte limit must be positive')
     total_bytes = 0
     seen, elements = set(), []
-    async with httpx.AsyncClient(timeout=cfg.request_timeout_seconds, follow_redirects=False) as client:
+    from backend.depo_platform.network import bounded_timeout_seconds
+    budget = bounded_timeout_seconds('SYSML_V2_SNAPSHOT_TIMEOUT_SECONDS', default=300, maximum=3600)
+    from backend.depo_platform.operations import current_operation
+    operation = current_operation()
+    if operation:
+        budget = operation.timeout(budget)
+    async with asyncio.timeout(budget), httpx.AsyncClient(timeout=cfg.request_timeout_seconds, follow_redirects=False, trust_env=False) as client:
         while url:
             if url in seen or len(seen) >= 1000:
                 raise ValueError('Repository pagination cycle or page limit exceeded')

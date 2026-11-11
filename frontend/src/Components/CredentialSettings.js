@@ -6,7 +6,7 @@ import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getG
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
 import { verifyStoredReadAccess } from '../services/readAccessVerification';
 import './CredentialSettings.css';
-import { installBrowserSession } from '../services/serviceAuth';
+import { installBrowserSession, getBrowserAccessPreferences, setBrowserAccessPreferences } from '../services/serviceAuth';
 
 const profiles = Object.keys(credentialServices);
 export default function CredentialSettings() {
@@ -21,10 +21,12 @@ export default function CredentialSettings() {
   const [expiry, setExpiry] = useState('');
   const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_') ? '' : getCredentialProfile('ADMIN_API_KEY'));
   const [includeMaintenance, setIncludeMaintenance] = useState(() => {
+    const preference = getBrowserAccessPreferences();
+    if (preference) return preference.includeMaintenance;
     const session = getBrowserSessionStatus();
     return session ? session.profiles.includes('ADMIN_API_KEY') : true;
   });
-  const [includeWrites, setIncludeWrites] = useState(() => (getBrowserSessionStatus()?.profiles || []).some(profile => !['GRAPH_READ_TOKEN', 'ADMIN_API_KEY'].includes(profile)));
+  const [includeWrites, setIncludeWrites] = useState(() => getBrowserAccessPreferences()?.includeWrites ?? (getBrowserSessionStatus()?.profiles || []).some(profile => !['GRAPH_READ_TOKEN', 'ADMIN_API_KEY'].includes(profile)));
   const [sessionStatus, setSessionStatus] = useState(() => {
     const session = getBrowserSessionStatus();
     return session ? `Session restored: ${session.profiles.length} delegated scopes. Expires ${new Date(session.expiresAt).toLocaleTimeString()}. Services verify access on each request.` : '';
@@ -48,7 +50,7 @@ export default function CredentialSettings() {
       if (!active) return;
       const current = getCredentialProfile('GRAPH_READ_TOKEN');
       if (current && current !== token) return;
-      const message = result.status === 'verified' ? result.message.replace('Read access verified:', 'Read session verified:') + ' Individual API keys are not displayed.' : result.message;
+      const message = result.status === 'verified' ? (result.detail || result.message).replace('Read access verified:', 'Read session verified:') + ' Individual API keys are not displayed.' : result.message;
       setSessionStatus(message);
       setResults({ GRAPH_READ_TOKEN: message });
     }).finally(() => { clearTimeout(timeout); if (active) setCheckingSession(false); });
@@ -88,11 +90,12 @@ export default function CredentialSettings() {
       const failures = checks.flatMap((check, index) => check.status === 'rejected' ? [`${services[index]}: ${check.reason?.name === 'AbortError' ? 'timed out' : check.reason?.message || 'transport failure'}`] : []);
       if (checks.some(check => check.status === 'rejected' && check.reason?.authenticationRejected)) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
       installBrowserSession(body, subscription);
+      setBrowserAccessPreferences({includeWrites,includeMaintenance});
       pendingSession = null;
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
       setSessionAdminKey('');
-      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}.${failures.length ? ` Unavailable services: ${failures.join('; ')}. Healthy services remain usable.` : ''} Credential rotation still requires the separate admin key.`);
+      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}.${includeWrites && !body.profiles.includes('INGESTION_WRITE_TOKEN') ? ' Upload access is unavailable: the server did not grant INGESTION_WRITE_TOKEN. Check that profile in the central credential store before uploading.' : ''}${failures.length ? ` Unavailable services: ${failures.join('; ')}. Healthy services remain usable.` : ''} Credential rotation still requires the separate admin key.`);
       window.dispatchEvent(new Event('depo:credentials-changed'));
     } catch (error) {
       if (pendingSession && sessionUrl) {
@@ -142,7 +145,7 @@ export default function CredentialSettings() {
     finally { clearTimeout(timeout); setBusy(false); }
   }
   async function register(profile) {
-    if (!window.confirm(`Register or rotate ${profile} in PostgreSQL? Existing keys for this profile will stop working.`)) return;
+    if (!window.confirm(`Save ${profile} to the central registry? The previous key for this profile will stop working.`)) return;
     setBusy(true);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -150,7 +153,8 @@ export default function CredentialSettings() {
       const url = buildSemanticServiceUrl('ontology', `/auth/credentials/${profile}`);
       const headers = { ...serviceAuthHeaders(url), 'Content-Type': 'application/json', 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') };
       delete headers.Authorization;
-      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ key: values[profile].trim(), actor: actor.trim(), expires_at: expiry.trim() || null }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
+      const expiresAt = expiry ? `${expiry}T23:59:59Z` : null;
+      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ key: values[profile].trim(), actor: actor.trim(), expires_at: expiresAt }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(apiErrorMessage({ response: { data: body, headers: response.headers, status: response.status } }, `Registration failed (${response.status}); test the key before retrying`));
       setCredentialProfile(profile, values[profile]);
@@ -160,7 +164,7 @@ export default function CredentialSettings() {
     finally { clearTimeout(timeout); setBusy(false); }
   }
   async function revoke(profile) {
-    if (!window.confirm(`Revoke ${profile}? Calls using this key will be rejected immediately.`)) return;
+    if (!window.confirm(`Remove ${profile} from the central registry? Calls using this key will be rejected immediately.`)) return;
     setBusy(true);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -192,9 +196,9 @@ export default function CredentialSettings() {
     </div>
     <p>Blank API-key fields are expected with a central session: PostgreSQL holds the registered credentials and the browser uses a delegated session. Use Verify current read session to check access. Individual keys are not displayed.</p>
     <p>Use Connect registered services above to apply centrally registered scopes. Testing ADMIN_API_KEY in this table validates administrator access only; it does not sign in to graph, catalog, products or observability. Individual keys below are an alternative. Keys remain in this tab only and are cleared by a full reload.</p>
-    <div className="depo-credential-controls"><label>APIM subscription key (optional)<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
-    <label>Assigned actor for registration<input disabled={busy} value={actor} onChange={e => setActor(e.target.value)} /></label>
-    <label>Optional expiry (UTC ISO timestamp, e.g. 2027-01-01T00:00:00Z)<input disabled={busy} value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
+    <div className="depo-credential-controls"><label>Subscription key<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
+    <label>Registered by<input disabled={busy} value={actor} onChange={e => setActor(e.target.value)} /></label>
+    <label>Expires on (optional)<input type="date" disabled={busy} value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
     </div>
     <div className="depo-credential-table-scroll"><table className="depo-credential-table">
       <caption>Application keys and validation results</caption>
@@ -204,8 +208,8 @@ export default function CredentialSettings() {
       <input aria-label={profile} type="password" autoComplete="off" placeholder={getCredentialProfile(profile).startsWith('depo_session_') ? 'Using central session — key not displayed' : 'Enter individual key (optional)'} disabled={busy} value={values[profile]} onChange={e => { setValues(prev => ({ ...prev, [profile]: e.target.value })); setResults(prev => ({ ...prev, [profile]: '' })); }} /></td>
       <td><div className="depo-credential-actions">
       <button type="button" disabled={busy || !values[profile].trim()} onClick={() => validate(profile)}>Test and apply</button>
-      <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || (!getCredentialProfile('ADMIN_API_KEY') || getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_'))} onClick={() => register(profile)}>Register / rotate in database</button>
-      {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || (!getCredentialProfile('ADMIN_API_KEY') || getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_'))} onClick={() => revoke(profile)}>Revoke in database</button>}
+      <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || (!getCredentialProfile('ADMIN_API_KEY') || getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_'))} onClick={() => register(profile)}>Save key</button>
+      {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || (!getCredentialProfile('ADMIN_API_KEY') || getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_'))} onClick={() => revoke(profile)}>Remove key</button>}
       </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile)?.startsWith('depo_session_') ? 'Delegated scope stored; server validates each operation' : getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not connected')}</span></td>
     </tr>)}</tbody></table></div>
     <button type="button" disabled={busy} onClick={async () => {

@@ -1,0 +1,32 @@
+{
+  "id": "ido-core",
+  "version": "4.2",
+  "ontology_iri": "http://rds.posccaesar.org/ontology/lis14/ont/core",
+  "version_iri": "http://rds.posccaesar.org/ontology/lis14/ont/core/4.2",
+  "file": "ido-core-4.2.ttl",
+  "sha256": "0eca08766b53c0f49eeba705d6f90479ae12f9997b2ef8f6821db4082fd2b3fd",
+  "source": "https://rds.posccaesar.org/ontology/lis14/ont/core",
+  "retrieved": "2026-10-28",
+  "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "copyright": "Copyright POSC Caesar Association",
+  "modifications": "None; original Turtle bytes retained",
+  "status": "Public PCA 4.2 FDIS proposal; embedding is not ISO certification",
+  "depo_module_sha256": "d63da333fb5db12eb093d75b37d1a8fb15b5f3dadc9ea196b7aaf128b4fc269c",
+  "modules": [
+    {
+      "id": "dinen61360",
+      "name": "DIN EN 61360 property model",
+      "version": "2.0.4",
+      "ontology_iri": "http://www.w3id.org/hsu-aut/DINEN61360",
+      "version_iri": "http://www.w3id.org/hsu-aut/DINEN61360/2.0.4",
+      "file": "dinen61360-2.0.4.ttl",
+      "sha256": "4082f0bbc9c1d82e66d257a93f5cda231d6315aefdd296b299a72a52ba54b554",
+      "source": "https://github.com/hsu-aut/IndustrialStandard-ODP-DINEN61360",
+      "source_commit": "47f44693bc161087e735d9a9e51cc0dd3373925b",
+      "license": "MIT",
+      "license_file": "DINEN61360-LICENSE.txt",
+      "license_sha256": "15a28a5b9a2e98e01660f580a4fb9cc37f5efc1e07275fb94d68ea6144b283b6",
+      "status": "Embedded reference pattern; inclusion is not standards certification"
+    }
+  ]
+}

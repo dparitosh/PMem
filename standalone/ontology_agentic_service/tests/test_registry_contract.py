@@ -10,8 +10,8 @@ AGENTS = ROOT / "AgentsRegistry" / "Agents"
 
 
 EXPECTED = {
-    "Ontology Intake Agent": {"ontology_inspect", "owlready2_analyze", "external_registered_ontologies"},
-    "Ontology Review Agent": {"ontology_review", "owlready2_analyze"},
+    "Ontology Intake Agent": {"ontology_inspect", "external_registered_ontologies"},
+    "Ontology Review Agent": {"ontology_review"},
     "Ontology Alignment Agent": {"ontology_alignment_plan", "external_context_graph_search", "neo4j_mcp"},
     "Ontology Export Agent": {"ontology_export"},
 }

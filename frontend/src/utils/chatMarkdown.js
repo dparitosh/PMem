@@ -1,16 +1,22 @@
 import DOMPurify from 'dompurify';
+import { businessText } from './businessText';
 
-export function formatChatMarkdown(text) {
+export function formatChatMarkdown(text, evidence = []) {
   if (!text) return '';
 
   const escapeHtml = (value) => String(value || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  const references = new Map();
+  // Mirror prompt_security.citation_targets: aliases belong to projected records,
+  // never arbitrary nested business-property IDs.
+  evidence.forEach((item, index) => { for (const id of [item.resource_id, item.elementId, item.iri, item.properties?.iri, item.source_id]) if (typeof id === 'string' && id.length > 0 && id.length <= 2000 && !references.has(escapeHtml(id))) references.set(escapeHtml(id), index + 1); });
   const inline = (value) => escapeHtml(value)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[evidence:([^\]\n]+)\]/g, (match, id) => references.has(id) ? `<span class="chat-citation">[${references.get(id)}]</span>` : match);
+  const lines = businessText(text).replace(/\r\n/g, '\n').split('\n');
   let html = '';
   let paragraph = [];
   let listType = null;

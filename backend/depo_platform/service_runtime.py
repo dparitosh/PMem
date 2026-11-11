@@ -9,7 +9,10 @@ from backend.depo_platform.request_bodies import BrowserSessionBody, RotateCrede
 
 import os
 import uuid
+import re
 import logging
+import json
+import time
 from contextlib import asynccontextmanager
 from collections.abc import Collection
 from typing import AsyncIterator, Callable
@@ -20,12 +23,78 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
+JSON_BODY_LIMIT_BYTES = int(os.environ.get('DEPO_JSON_BODY_LIMIT_BYTES', str(10 * 1024 * 1024)))
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+class JsonBodyLimitMiddleware:
+    """Reject oversized JSON request bodies before a handler parses them.
+
+    Multipart uploads are not limited here: they stream to disk through their own
+    size checks. Only application/json bodies, which are parsed in memory, are capped.
+    """
+
+    def __init__(self, app, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http' or scope.get('method') not in ('POST', 'PUT', 'PATCH'):
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get('headers') or [])
+        if b'application/json' not in headers.get(b'content-type', b'').lower():
+            return await self.app(scope, receive, send)
+
+        async def reject() -> None:
+            response = JSONResponse(status_code=413, content={'detail': f'JSON request body exceeds {self.max_bytes} bytes'})
+            await response(scope, receive, send)
+
+        declared = headers.get(b'content-length')
+        if declared is not None:
+            try:
+                if int(declared) > self.max_bytes:
+                    return await reject()
+            except ValueError:
+                return await reject()
+
+        received = 0
+        started = False
+
+        async def counting_receive():
+            nonlocal received
+            message = await receive()
+            if message['type'] == 'http.request':
+                received += len(message.get('body', b''))
+                if received > self.max_bytes:
+                    raise _BodyTooLarge()
+            return message
+
+        async def tracking_send(message):
+            nonlocal started
+            if message['type'] == 'http.response.start':
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, tracking_send)
+        except _BodyTooLarge:
+            if not started:
+                await reject()
+            else:
+                raise
+
+
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Propagate a client request id or add a new one to every response."""
 
     async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        supplied_id = request.headers.get("X-Request-ID", "")
+        request_id = supplied_id if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", supplied_id) else str(uuid.uuid4())
         request.state.request_id = request_id
+        started = time.monotonic()
         try:
             response = await call_next(request)
         except Exception:
@@ -35,6 +104,17 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 'request_id': request_id,
             })
         response.headers["X-Request-ID"] = request_id
+        elapsed_ms = round((time.monotonic() - started) * 1000, 2)
+        # Use the route template, never raw URLs, query strings, bodies or headers.
+        # Failures and writes are operational evidence; routine reads stay DEBUG.
+        route = getattr(request.scope.get('route'), 'path', '<unmatched>')
+        record = {'event': 'http_request_outcome', 'request_id': request_id,
+                  'method': request.method, 'route': route,
+                  'status': response.status_code, 'response_headers_ms': elapsed_ms}
+        level = (logging.ERROR if response.status_code >= 500 else logging.WARNING
+                 if response.status_code >= 400 or elapsed_ms >= 5000 else logging.INFO
+                 if request.method not in {'GET', 'HEAD', 'OPTIONS'} else logging.DEBUG)
+        logging.getLogger(__name__).log(level, json.dumps(record, ensure_ascii=True))
         return response
 
 
@@ -132,6 +212,17 @@ def create_service_app(
 
     # APIM registration is standardized on OpenAPI 3.0.x across all DEPO services.
     app = FastAPI(title=title, version=version, lifespan=lifespan)
+    if os.getenv('DEPO_VANILLA_MAINTENANCE') == 'true':
+        @app.middleware('http')
+        async def isolated_reset_mode(request, call_next):
+            path = request.url.path
+            permitted = (request.method == 'OPTIONS' or path.startswith('/auth/')
+                         or path in {'/healthz', '/readyz', '/openapi.json', '/api/v1/ontologies/health'}
+                         or (request.method == 'GET' and path.startswith('/api/v1/admin/'))
+                         or (request.method == 'POST' and path == '/api/v1/admin/reset-vanilla'))
+            if not permitted:
+                return JSONResponse(status_code=503, content={'detail': 'Isolated reset maintenance is active. Application workflows are stopped.'})
+            return await call_next(request)
     app.openapi_version = "3.0.3"
     from .openapi_contract import normalize_openapi, describe_security
     original_openapi = app.openapi
@@ -156,14 +247,15 @@ def create_service_app(
     from .qos import QoSMiddleware, QoSState
     app.state.qos = QoSState()
     app.add_middleware(QoSMiddleware, state=app.state.qos)
+    app.add_middleware(JsonBodyLimitMiddleware, max_bytes=JSON_BODY_LIMIT_BYTES)
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins(),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
-        expose_headers=["Content-Disposition", "X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "X-DEPO-Run-Kind", "OData-Version"],
+        allow_headers=["Configuration-Context", "Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
+        expose_headers=["Content-Disposition", "X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "X-DEPO-Run-Kind", "X-DEPO-Cleanup-ID", "OData-Version"],
     )
 
     from .authorization import graph_read_identity
@@ -271,7 +363,7 @@ def create_service_app(
         return {"status": "authorized", "service": title}
 
     @app.get("/healthz", include_in_schema=False)
-    def liveness() -> dict[str, str]:
+    async def liveness() -> dict[str, str]:
         """Process liveness probe; never depends on an external dependency."""
         return {"status": "ok", "service": title, "version": version}
 

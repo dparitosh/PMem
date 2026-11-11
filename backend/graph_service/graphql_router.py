@@ -43,7 +43,7 @@ def _validate_complexity(document: str, variables: dict[str, Any] | None = None)
                 variable_defaults[declaration.variable.name.value] = getattr(value, 'value', None)
 
     def argument(selection, name, default):
-        value = next((item.value for item in selection.arguments if item.name.value == name), None)
+        value = next((item.value for item in (selection.arguments or ()) if item.name.value == name), None)
         if value is None:
             return default
         if value.__class__.__name__ == 'VariableNode':

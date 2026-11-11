@@ -7,9 +7,17 @@ try {
   foreach ($folder in @('infra/windows','frontend/node_modules/.bin','frontend/dist')) {
     New-Item -ItemType Directory -Path (Join-Path $workspace $folder) -Force | Out-Null
   }
-  foreach ($name in @('build-depo-frontend.ps1','runtime-config.ps1')) {
+  foreach ($name in @('build-depo-frontend.ps1','runtime-config.ps1','native-install-command.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $workspace "infra/windows/$name")
   }
+  # Runtime discovery is independently tested; this fixture must not require
+  # a customer's installed Node binary or launch a real package build.
+  Add-Content -LiteralPath (Join-Path $workspace 'infra/windows/runtime-config.ps1') -Value @'
+function Get-DepoNodeRuntime {
+  param([string]$Root,[string]$NodeJsDir)
+  return @{Directory=$Root;Node='node';Npm='npm.cmd';Version='v24.0.0'}
+}
+'@
   Set-Content -LiteralPath (Join-Path $workspace 'frontend/node_modules/.bin/vite.cmd') -Value 'stub'
   Set-Content -LiteralPath (Join-Path $workspace '.env.local') -Value @('AUTH_MODE=token','DEPO_ROUTING_MODE=local')
   function global:npm.cmd {

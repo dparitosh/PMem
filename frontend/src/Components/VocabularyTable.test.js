@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { VocabularyTable } from './OntologyMapper';
+import { VocabularyTable } from '../features/ontology/OntologyVocabularyPanel';
 
 const edges = Array.from({length: 60}, (_, i) => ({
   source_term: `source:Term${i + 1}`, target_term: `target:Term${i + 1}`,
@@ -42,7 +42,7 @@ test('page size resets selection and empty filters disable navigation', () => {
 test('relation pills filter actual rows and support keyboard details', () => {
   const rows = [edges[0], {...edges[1], mapping_type:'http://www.w3.org/2004/02/skos/core#exactMatch'}];
   render(<VocabularyTable edges={rows} filter="" truncated />);
-  fireEvent.click(screen.getByRole('button', {name:/exactMatch/}));
+  fireEvent.click(screen.getByRole('button', {name:/Exact match/}));
   expect(screen.getByText('1 of 2 mappings')).toBeInTheDocument();
   expect(screen.queryByText('Source 1')).toBeNull();
   expect(screen.getByText(/Only the first returned mappings/)).toBeInTheDocument();

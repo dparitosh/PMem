@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
-import { clearServiceAuthToken, getBrowserSessionStatus, getCredentialProfile, renewBrowserSession, setBrowserSessionExpiry, setCredentialProfile, installBrowserSession, handleSessionRejection, wasBrowserSessionExpired } from './serviceAuth';
+import { clearServiceAuthToken, getBrowserSessionStatus, getCredentialProfile, renewBrowserSession, setBrowserSessionExpiry, setCredentialProfile, installBrowserSession, handleSessionRejection, wasBrowserSessionExpired, getBrowserAccessPreferences, expireBrowserSession } from './serviceAuth';
 
 vi.mock('../config', () => ({
   config: { semanticServiceUrls: { ontology: 'http://vm:8011' } },
@@ -13,6 +13,16 @@ function connect() {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_test');
   setBrowserSessionExpiry('depo_session_test', new Date(Date.now() + 120000).toISOString(), new Date(Date.now() + 3600000).toISOString());
 }
+
+test('expiry retains scope preferences but clears credentials; explicit sign-out clears both',()=>{
+ installBrowserSession({token:'depo_session_scoped',profiles:['GRAPH_READ_TOKEN','INGESTION_WRITE_TOKEN'],expires_at:new Date(Date.now()+120000).toISOString()});
+ expireBrowserSession('depo_session_scoped');
+ expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('');
+ expect(getBrowserAccessPreferences()).toMatchObject({includeWrites:true,includeMaintenance:false});
+ expect(sessionStorage.getItem('depo.browserAccessPreferences.v1')).not.toContain('depo_session_scoped');
+ clearServiceAuthToken();
+ expect(getBrowserAccessPreferences()).toBeNull();
+});
 
 test('reconnect preserves conversation bookmarks and invalid responses preserve credentials', () => {
   connect();
@@ -142,4 +152,47 @@ test('403 session expired wording invalidates the delegation', () => {
   handleSessionRejection(403, 'Bearer depo_session_test', 'Browser service session expired; reconnect in Admin');
   expect(getBrowserSessionStatus()).toBeNull();
   expect(wasBrowserSessionExpired()).toBe(true);
+});
+
+test('generic credential rejection clears only the presented delegated session for local recovery', () => {
+  connect();
+  handleSessionRejection(403, 'Bearer depo_session_test', 'Required API key is missing or invalid');
+  expect(getBrowserSessionStatus()).toBeNull();
+  expect(wasBrowserSessionExpired()).toBe(true);
+});
+
+test('a delayed rejection from an old delegation cannot reject newly connected access',()=>{
+ connect();
+ installBrowserSession({token:'depo_session_new',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()});
+ const rejected=vi.fn();window.addEventListener('depo:access-rejected',rejected);
+ try{
+  handleSessionRejection(403,'Bearer depo_session_test','Required API key is missing or invalid');
+  expect(rejected).not.toHaveBeenCalled();
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_new');
+ }finally{window.removeEventListener('depo:access-rejected',rejected);}
+});
+
+
+test('cross-tab logout clears access without copying credential material', () => {
+  connect();clearServiceAuthToken();
+  const signal=localStorage.getItem('depo.sessionSignal.v1');
+  expect(signal).not.toContain('depo_session_');
+  connect();
+  const currentSignal=JSON.stringify({...JSON.parse(signal),sentAt:Date.now()});
+  window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:currentSignal}));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('');
+});
+
+test('a different deployment logout signal cannot clear the current session', () => {
+  connect();
+  window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:JSON.stringify({action:'logout',scope:'other-deployment'})}));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_test');
+});
+
+test('a delayed logout cannot clear a freshly reconnected session', () => {
+  connect();clearServiceAuthToken();
+  const message=JSON.parse(localStorage.getItem('depo.sessionSignal.v1'));
+  connect();message.sentAt=Date.now()-1000;
+  window.dispatchEvent(new StorageEvent('storage',{key:'depo.sessionSignal.v1',newValue:JSON.stringify(message)}));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_test');
 });

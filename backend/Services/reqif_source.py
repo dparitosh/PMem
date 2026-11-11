@@ -20,8 +20,12 @@ def reqif_xml(content: bytes, max_bytes: int = 25 * 1024 * 1024) -> bytes:
                 members = [item for item in entries if not item.is_dir() and item.filename.lower().endswith('.xml')]
             if len(members) != 1:
                 raise ValueError('ReqIFZ must contain exactly one ReqIF document; import multiple documents separately')
-            with archive.open(members[0]) as stream:
-                content = stream.read(max_bytes + 1)
+            try:
+                with archive.open(members[0]) as stream:
+                    content = stream.read(max_bytes + 1)
+            except Exception as exc:
+                # Corrupt CRC, encrypted or unsupported member, bad deflate data.
+                raise ValueError('ReqIFZ document could not be read') from exc
             if len(content) > max_bytes:
                 raise ValueError('ReqIFZ document exceeds the expanded-byte limit')
     if b'<!DOCTYPE' in content.replace(b'\x00', b'').upper() or b'<!ENTITY' in content.replace(b'\x00', b'').upper():

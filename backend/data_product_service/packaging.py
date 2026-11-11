@@ -63,6 +63,13 @@ def verify_package(package_dir: Path, zip_path: Path, expected_manifest=None) ->
 
 
 def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dict, Path]]) -> dict:
+    # Hash-addressed artifacts plus staging names can exceed Windows MAX_PATH.
+    # Normalize before constructing either staging or final paths, including UNC roots.
+    if os.name == "nt":
+        absolute = os.path.abspath(str(output_root))
+        if not absolute.startswith("\\\\?\\"):
+            absolute = "\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute
+        output_root = Path(absolute)
     digest = publication_digest(payload, artifacts)
     product_id, version = str(payload["product_id"]), str(payload["version"])
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,127}", product_id):

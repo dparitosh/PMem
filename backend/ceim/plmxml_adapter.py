@@ -51,8 +51,8 @@ def plmxml_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) ->
     temporary_path = ""
     try:
         with tempfile.NamedTemporaryFile(prefix="depo-plmxml-", suffix=".xml", delete=False) as handle:
+            temporary_path = handle.name  # set before writing so a failed write is still cleaned up
             handle.write(content)
-            temporary_path = handle.name
         parsed = DataImportService._parse_plmxml(temporary_path)
     finally:
         if temporary_path:

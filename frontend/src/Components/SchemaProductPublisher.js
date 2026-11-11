@@ -28,6 +28,9 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   const [paths, setPaths] = useState('');
   const [converted, setConverted] = useState(null);
   const [sourceChanged, setSourceChanged] = useState(false);
+  const [approvedReleases, setApprovedReleases] = useState([]);
+  const [releaseLoading, setReleaseLoading] = useState(false);
+  const [releaseError, setReleaseError] = useState('');
   useEffect(() => {
     if (pending.current) return;
     try {
@@ -47,7 +50,19 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     setFields({ name: draft?.name || '', version: '1.0.0', classification: 'internal' });
     setPreview(null); setReceipt(null); setError(''); setConverted(null); setBusy(false);
     setSourceChanged(false); setSource(null); setDependencies([]); setPaths('');
+    setApprovedReleases([]); setReleaseError('');
   }, [draft]);
+  async function loadApprovedReleases() {
+    setReleaseLoading(true); setReleaseError('');
+    try {
+      const response = await apiClient.get(buildSemanticServiceUrl('ontology', '/api/v1/metadata-registry/assets'), { params: { limit: 200, lifecycle_status: 'approved' } });
+      const releases = (response?.data?.assets || response?.assets || []).filter(asset => asset.lifecycle_status === 'approved' && asset.asset_id && asset.version);
+      setApprovedReleases(releases);
+      if (releases.length === 1) setFields(previous => ({ ...previous, asset_id: releases[0].asset_id, release_version: releases[0].version }));
+      if (!releases.length) setReleaseError('No approved semantic releases are available. Open Ontology Junction to review or approve one.');
+    } catch { setReleaseError('Approved semantic releases could not be loaded. Open Ontology Junction to review or approve a release.'); }
+    finally { setReleaseLoading(false); }
+  }
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
     const reset = () => {
@@ -119,7 +134,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   const ontologyEvidence = draft?.product_kind === 'ontology-evidence';
   return <section aria-label={pipeline ? 'Pipeline evidence publication' : 'Schema analytics publication'}>
     <h3>{pipeline ? 'Publish retained pipeline evidence' : ontologyEvidence ? 'Publish ontology evidence' : 'Publish schema design evidence'}</h3>
-    <p>{pipeline ? 'Package the retained run artifacts for steward review. Job completion does not certify their quality.' : ontologyEvidence ? 'Package the retained source and normalized RDF for sharing and review. Product publication does not run Semantic Bridge, merge ontologies or publish the Neo4j graph.' : 'This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics.'} The service verifies the referenced approved semantic release during publication.</p>
+    <p>{pipeline ? 'Package the retained run artifacts for steward review. Job completion does not certify their quality.' : ontologyEvidence ? 'Package the retained source and normalized RDF for sharing and review. Product publication does not run Semantic Bridge, merge ontologies or publish the knowledge graph.' : 'This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics.'} The service verifies the referenced approved semantic release during publication.</p>
     {!pipeline && !ontologyEvidence && <details><summary>Inspect an XSD with dependency files</summary>
       <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setSource(event.target.files[0] || null); }} /></label>
       <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setDependencies(Array.from(event.target.files)); }} /></label>
@@ -131,6 +146,8 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     {activeDraft && <>
       <p>Readiness: {activeDraft.analytics_readiness || 'Requires review'}; quality: {activeDraft.quality_status || 'Not assessed'}</p>
       {converted?.analytics_schema_plan?.ddl_blockers?.length > 0 && <div role="alert">Schema materialization blockers: {converted.analytics_schema_plan.ddl_blockers.join('; ')}</div>}
+      <div className="product-publication__release-help"><strong>Approved semantic release</strong><p>Choose a release already approved in Ontology Junction. Its Asset ID and version are filled automatically; you do not need to find or copy identifiers manually.</p><div><button type="button" className="depo-button depo-button--secondary" disabled={releaseLoading} onClick={loadApprovedReleases}>{releaseLoading ? 'Loading releases…' : 'Load approved releases'}</button> <a href="#/ontology">Open Ontology Junction</a></div>{releaseError&&<span role="alert">{releaseError}</span>}</div>
+      {approvedReleases.length > 0 && <label>Approved semantic release<select aria-label="Approved semantic release" value={`${fields.asset_id || ''}|${fields.release_version || ''}`} disabled={busy || !!pending.current} onChange={event => { const [asset_id, release_version] = event.target.value.split('|'); setFields(previous => ({ ...previous, asset_id, release_version })); setPreview(null); }}><option value="">Select an approved release</option>{approvedReleases.map(release => <option key={`${release.asset_id}|${release.version}`} value={`${release.asset_id}|${release.version}`}>{release.name || release.asset_id} · {release.version}</option>)}</select></label>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
         {Object.entries(labels).map(([key, label]) => <label key={key}>{label}<input style={{ width: '100%' }} value={fields[key] || ''} disabled={busy || !!pending.current}
           onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); setPreview(null); setReceipt(null); }} /></label>)}

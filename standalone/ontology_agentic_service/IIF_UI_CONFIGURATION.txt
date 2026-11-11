@@ -36,11 +36,6 @@ ontology_export
   module: AgentsRegistry.CodedTools.ontology_export
   object: ontology_export
 
-owlready2_analyze
-  type: python
-  module: AgentsRegistry.CodedTools.owlready2_analyze
-  object: owlready2_analyze
-
 external_registered_ontologies
   type: python
   module: AgentsRegistry.CodedTools.external_registered_ontologies
@@ -60,12 +55,10 @@ EXACT AGENT TOOL ASSIGNMENTS
 ----------------------------
 Ontology Intake Agent
   ontology_inspect
-  owlready2_analyze
   external_registered_ontologies
 
 Ontology Review Agent
   ontology_review
-  owlready2_analyze
 
 Ontology Alignment Agent
   ontology_alignment_plan

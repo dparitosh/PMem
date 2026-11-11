@@ -161,11 +161,11 @@ const SERVICE_PATHS = [
   ['ingestion', /^\/api\/v1\/import(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/documents(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/reports(?:\/|$)/],
-  ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
+  ['oslc', /^(?:\/api\/v1\/(?:oslc|change-control)|\/oslc)(?:\/|$)/],
   ['catalog', /^\/api\/v1\/catalog\/(?:products|artifacts)(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
   ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
-  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|observability|metrics|catalog\/validate|chat|chat-stream|ontology-agents)(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|goals|observability|metrics|catalog\/validate|chat|chat-stream|ontology-agents)(?:\/|$)/],
   ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
   ['agentic', /^\/api\/v1\/llm(?:\/|$)/],
   ['graph', /^\/recommendations(?:\/|$)/],
@@ -173,7 +173,8 @@ const SERVICE_PATHS = [
 
 export const getServiceForPath = (endpoint = '', method) => {
   if (typeof endpoint !== 'string' || !endpoint.startsWith('/')) return null;
-  return serviceForContractPath(endpoint.split('?')[0], method) || SERVICE_PATHS.find(([, pattern]) => pattern.test(endpoint))?.[0] || null;
+  const path = endpoint.split(/[?#]/, 1)[0];
+  return serviceForContractPath(path, method) || SERVICE_PATHS.find(([, pattern]) => pattern.test(path))?.[0] || null;
 };
 
 // Deprecated: Keep old property for backward compatibility
@@ -313,6 +314,8 @@ const ADMIN_ENDPOINTS = {
   registry: setting('API_ADMIN_REGISTRY') || '/api/v1/admin/registry',
   cleanSchema: setting('API_ADMIN_CLEAN_SCHEMA') || '/api/v1/admin/clean-schema',
   clearCache: setting('API_ADMIN_CLEAR_CACHE') || '/api/v1/admin/clear-cache',
+    clearImportWorkflows: setting('API_ADMIN_CLEAR_IMPORT_WORKFLOWS') || '/api/v1/admin/clear-import-workflows',
+    vanillaReset: '/api/v1/admin/reset-vanilla',
   deleteData: setting('API_ADMIN_DELETE_DATA') || '/api/v1/admin/delete-data',
   schemaStats: setting('API_ADMIN_SCHEMA_STATS') || '/api/v1/admin/schema-stats',
   resetDatabase: setting('API_ADMIN_RESET_DATABASE') || '/api/v1/admin/reset-database',
@@ -329,6 +332,7 @@ const METADATA_REGISTRY_ENDPOINTS = {
  * Recommendation Endpoints
  */
 const RECOMMENDATION_ENDPOINTS = {
+  resolve: setting('API_RECOMMENDATIONS_RESOLVE') || '/recommendations/resolve',
   changeImpact: setting('API_RECOMMENDATIONS_CHANGE_IMPACT') || '/recommendations/change-impact',
   similarParts: setting('API_RECOMMENDATIONS_SIMILAR_PARTS') || '/recommendations/similar-parts',
   manufacturing: setting('API_RECOMMENDATIONS_MANUFACTURING') || '/recommendations/manufacturing',
@@ -401,6 +405,7 @@ const QIF_ENDPOINTS = {
   commit: setting('API_QIF_COMMIT') || '/api/v1/qif/tasks/{task_id}/commit',
   cancel: setting('API_QIF_CANCEL') || '/api/v1/qif/tasks/{task_id}/cancel',
   retryGraph: setting('API_QIF_RETRY_GRAPH') || '/api/v1/qif/tasks/{task_id}/retry-graph',
+  checkInstance: setting('API_QIF_CHECK_INSTANCE') || '/api/v1/qif/instances/check',
 };
 
 /** Optional ontology-agentic service endpoints. */

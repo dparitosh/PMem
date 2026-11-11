@@ -10,7 +10,7 @@ from backend.postgres_migrations import MIGRATIONS, MIGRATIONS_DIR, migration_ch
 
 def catalog_fixture(schema='semantic'):
     defaults = {('depo_schema_migrations','applied_at'):'now()', ('depo_registry','updated_at'):'now()', ('depo_metadata_assets','updated_at'):'now()', ('depo_metadata_events','created_at'):'now()', ('depo_metadata_outbox','created_at'):'now()', ('depo_metadata_outbox','status'):"'pending'::text", ('depo_chat_messages','message_id'):f"nextval('{schema}.depo_chat_messages_message_id_seq'::regclass)"}
-    attrs = [(table,column,'YES' if table=='depo_ontology_analytics' or column=='checksum' or (table,column)==('depo_api_credentials','expires_at') else 'NO',defaults.get((table,column))) for table,columns in setup.EXPECTED_COLUMNS.items() for column in columns]
+    attrs = [(table,column,'YES' if table=='depo_ontology_analytics' or column=='checksum' or (table,column) in {('depo_api_credentials','expires_at'),('depo_analytics_models','approved_by'),('depo_analytics_models','approved_at'),('depo_analytics_ods_value','numeric_value'),('depo_analytics_fact_kpi','value')} else 'NO',defaults.get((table,column))) for table,columns in setup.EXPECTED_COLUMNS.items() for column in columns]
     credential_defaults = {('depo_api_credentials','revoked'):'false', ('depo_api_credentials','updated_at'):'now()', ('depo_api_credential_events','created_at'):'now()'}
     attrs = [(table,column,nullable,credential_defaults.get((table,column),default)) for table,column,nullable,default in attrs]
     constraints = [(table,name,definition,True,schema if definition.startswith('FOREIGN') else None) for name,(table,definition) in CONSTRAINTS.items()]

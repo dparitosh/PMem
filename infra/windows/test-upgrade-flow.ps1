@@ -15,9 +15,9 @@ $stages = @('infra/deployment/test-installation-package.ps1','infra/deployment/t
   'infra/deployment/test-depo-frontend-config.ps1','infra/windows/install-depo.ps1',
   'infra/windows/initialize-depo-schema.ps1','infra/windows/test-depo-neo4j.ps1',
   'infra/windows/update-depo-runtime-timeouts.ps1','infra/windows/stop-depo-frontend.ps1',
-  'infra/windows/stop-depo-services.ps1','infra/windows/install-depo-windows.ps1','infra/windows/start-depo-frontend.ps1')
+  'infra/windows/stop-depo-services.ps1','install-depo.ps1','infra/windows/start-depo-frontend.ps1')
 foreach ($stage in $stages) {
-  $stub = 'Add-Content -LiteralPath $env:DEPO_UPGRADE_TEST_TRACE -Value $MyInvocation.MyCommand.Name; $global:LASTEXITCODE = 0; if ($env:DEPO_UPGRADE_TEST_FAIL -eq $MyInvocation.MyCommand.Name) { $global:LASTEXITCODE = 17 }'
+  $stub = '$stageName=if($PSScriptRoot -eq (Split-Path $env:DEPO_UPGRADE_TEST_TRACE)){"root-install-depo.ps1"}else{$MyInvocation.MyCommand.Name}; Add-Content -LiteralPath $env:DEPO_UPGRADE_TEST_TRACE -Value $stageName; $global:LASTEXITCODE = 0; if ($env:DEPO_UPGRADE_TEST_FAIL -eq $stageName) { $global:LASTEXITCODE = 17 }'
   Set-Content -LiteralPath (Join-Path $fixture $stage) -Value $stub
 }
 $trace = Join-Path $fixture 'trace.txt'
@@ -28,14 +28,14 @@ try {
   $updater = Join-Path $fixture 'infra/windows/update-depo-windows.ps1'
   & $updater -PreflightOnly
   $steps = @(Get-Content -LiteralPath $trace)
-  if ($steps -contains 'stop-depo-services.ps1' -or $steps -contains 'install-depo-windows.ps1' -or $steps -contains 'update-depo-runtime-timeouts.ps1') { throw 'Preflight performed a mutation stage.' }
+  if ($steps -contains 'stop-depo-services.ps1' -or $steps -contains 'root-install-depo.ps1' -or $steps -contains 'update-depo-runtime-timeouts.ps1') { throw 'Preflight performed a mutation stage.' }
   Set-Content -LiteralPath $trace -Value ''
   & $updater
   $steps = @(Get-Content -LiteralPath $trace)
   if ($steps -contains 'update-depo-runtime-timeouts.ps1') { throw 'Upgrade changed timeout settings without an explicit request.' }
-  if ($steps[-1] -ne 'start-depo-frontend.ps1') { throw 'Upgrade did not complete frontend restart.' }
+  if ($steps[-1] -ne 'root-install-depo.ps1') { throw 'Upgrade did not delegate completion to the root installer.' }
   Set-Content -LiteralPath $trace -Value ''
-  $env:DEPO_UPGRADE_TEST_FAIL = 'install-depo-windows.ps1'
+  $env:DEPO_UPGRADE_TEST_FAIL = 'root-install-depo.ps1'
   $failed = $false
   try { & $updater } catch { $failed = $true }
   if (-not $failed) { throw 'Nonzero child exit was ignored.' }

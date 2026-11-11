@@ -115,7 +115,7 @@ test('revocation requires a reviewed plan and explicit reason, then resets on ru
 test('capability verification displays independent results and clears on credential changes', async () => {
   agenticClient.post.mockResolvedValue({data:{model:'fixture-model',generation:'verified',structured_outputs:'verified',native_tool_calling:'verification_failed'}});
   render(<AgentControlPanel />);
-  fireEvent.click(screen.getByText('Verify Ollama capabilities'));
+  fireEvent.click(screen.getByText('Verify model capabilities'));
   await screen.findByText(/Native tool calling: verification_failed/);
   expect(agenticClient.post.mock.calls[0][0]).toMatch(/llm\/probe$/);
   expect(agenticClient.post.mock.calls[0][1].approval_token).toBe('supervisor-fixture');
@@ -175,4 +175,44 @@ test('completed workflow handoff stops automatic polling', async () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     expect(agenticClient.get).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
+});
+
+
+test('shows optional graph memory separately from durable workflow state', async () => {
+  agenticClient.get.mockResolvedValue({data:{enabled:false,status:'disabled'}});
+  render(<AgentControlPanel />);
+  fireEvent.click(screen.getByRole('button',{name:'Check agent memory'}));
+  await screen.findByText(/Optional graph memory: disabled/);
+  expect(screen.getByText(/scratchpads use PostgreSQL independently/)).toBeInTheDocument();
+});
+
+
+test('invalid memory configuration is not displayed as disabled', async () => {
+  agenticClient.get.mockResolvedValue({data:{enabled:false,status:'configuration_invalid',invalid_setting:'AGENT_MEMORY_SCOPE'}});
+  render(<AgentControlPanel />);
+  fireEvent.click(screen.getByRole('button',{name:'Check agent memory'}));
+  await screen.findByText(/Optional graph memory: configuration_invalid/);
+  expect(screen.queryByText(/Optional graph memory: disabled/)).toBeNull();
+  expect(screen.getByText(/AGENT_MEMORY_SCOPE/)).toBeInTheDocument();
+});
+
+
+test('model configuration does not cancel an independent memory check', async () => {
+  let finishMemory, memorySignal;
+  agenticClient.get.mockImplementation((url, options) => {
+    if (url.endsWith('/memory/status')) {
+      memorySignal=options.signal;
+      return new Promise(resolve => {finishMemory=resolve;});
+    }
+    return Promise.resolve({data:{provider:'openai',status:'generation_unverified',model:'fixture'}});
+  });
+  render(<AgentControlPanel />);
+  fireEvent.click(screen.getByRole('button',{name:'Check agent memory'}));
+  expect(screen.getByRole('button',{name:'Check agent memory'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('button',{name:'Check model configuration'}));
+  await screen.findByText(/generation_unverified/);
+  expect(memorySignal.aborted).toBe(false);
+  await act(async () => finishMemory({data:{enabled:true,status:'available',schema_status:'not_verified',write_status:'not_verified'}}));
+  expect(screen.getByText(/Optional graph memory: available/)).toBeInTheDocument();
+  expect(screen.getByText(/Last recorded schema: not_verified/)).toBeInTheDocument();
 });

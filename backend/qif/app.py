@@ -34,7 +34,7 @@ async def lifespan():
                 pass
 
 
-app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0", dependencies=(), lifespan_hook=lifespan)
+app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0", dependencies=("neo4j", "postgres"), lifespan_hook=lifespan)
 app.include_router(
     create_odata_catalog_router(
         service_name="DEPOEngineeringSchemaSets",

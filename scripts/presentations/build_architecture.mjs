@@ -161,7 +161,7 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 15
 {
- const s=slide('One application installation sequence','A single installer owns frontend dependencies and the backend Python environment.',['INSTALLATION.md','infra/windows/install-depo-windows.ps1','infra/windows/initialize-depo-schema.ps1']);
+ const s=slide('One application installation sequence','A single installer owns frontend dependencies and the backend Python environment.',['INSTALLATION.md','install-depo.ps1','infra/windows/initialize-depo-schema.ps1']);
  flow(s,[['1  Provision','PostgreSQL and Neo4j. Add Spark only when required.'],['2  Configure','Root server env and separate public browser env.'],['3  Install','Python dependencies, npm ci and frontend build.',C.blue],['4  Initialize','Apply migrations and check tables and columns.',C.green]],220,178);
  columns(s,[['Runtime baseline','Python 3.11+, Node.js 24+ and npm 10.2+. PySpark comes from the approved Spark distribution.'],['Start and accept','Start services, serve frontend/dist, run Production preflight and verify the customer browser workflow.']],445);
 }

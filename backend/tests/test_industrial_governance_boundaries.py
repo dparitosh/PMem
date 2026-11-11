@@ -33,8 +33,9 @@ class IndustrialGovernanceTests(unittest.TestCase):
         self.assertEqual(graph.query.call_args.kwargs['params']['actor'],'verified-steward')
 
     def test_context_lookup_supports_mixed_labels_and_rejects_ambiguity(self):
-        scope=dict(Any=Any,HTTPException=HTTPException,publisher=SimpleNamespace(_session_rows=Mock(return_value=[{'id':'a','name':'Part'},{'id':'b','name':'Part'}])))
+        scope=dict(__name__='backend.graph_service.context_router',__package__='backend.graph_service',Any=Any,HTTPException=HTTPException,publisher=SimpleNamespace(_session_rows=Mock(return_value=[{'id':'a','name':'Part'},{'id':'b','name':'Part'}])))
         load('backend/graph_service/context_router.py',{'_ontology_node_clause','_find_node'},scope)
+        scope['publisher'].search=Mock(return_value={'nodes':[{'elementId':value,'properties':{'name':'Part'}} for value in ('a','b')]})
         clause=scope['_ontology_node_clause']()
         self.assertIn('n:OntologyResource',clause)
         self.assertIn('n:OntologyClass',clause)

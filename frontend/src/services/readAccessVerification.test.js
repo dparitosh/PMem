@@ -31,7 +31,7 @@ test('revalidation checks maintenance independently with safe GET requests', asy
   fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'authorized' }) });
   const result = await verifyStoredAccess();
   expect(result.status).toBe('verified');
-  expect(result.message).toContain('Admin maintenance verified:');
+  expect(result.detail).toContain('Admin maintenance verified:');
   const calls = fetch.mock.calls.filter(([url]) => url.endsWith('/auth/admin-access'));
   expect(calls).toHaveLength(2);
   expect(calls.every(([, options]) => options.headers['X-API-Key'] === 'fixture-admin-key' && !options.headers.Authorization && !options.method)).toBe(true);
@@ -45,13 +45,16 @@ test('read success cannot hide rejected maintenance access', async () => {
     : { ok: true, status: 200, json: async () => ({ status: 'authorized' }) });
   const result = await verifyStoredAccess();
   expect(result.status).toBe('reconnect_required');
-  expect(result.message).toContain('Read access verified:');
+  expect(result.detail).toContain('Read access verified:');
   expect(result.message).toContain('Invalid Admin key');
 });
 
-test('read-only revalidation explicitly reports missing maintenance scope', async () => {
+test('read-only access stays verified without optional maintenance scope', async () => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'fixture-read-key');
   fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'authorized' }) });
-  expect((await verifyStoredAccess()).message).toContain('Admin maintenance is not connected');
+  const result = await verifyStoredAccess();
+  expect(result.status).toBe('verified');
+  expect(result.message).not.toContain('maintenance');
+  expect(result.detail).toContain('Read access verified:');
   expect(fetch).toHaveBeenCalledTimes(2);
 });

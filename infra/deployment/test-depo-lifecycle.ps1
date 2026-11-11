@@ -6,6 +6,10 @@ try {
   $windows = Join-Path $workspace 'infra/windows'
   New-Item -ItemType Directory -Path $deployment,$windows -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'invoke-depo-lifecycle.ps1') -Destination $deployment
+  # Stub only configuration reads; never import a real customer environment.
+  Set-Content -LiteralPath (Join-Path $windows 'runtime-config.ps1') -Value @'
+function Read-DepoEnvironment([string]$Root,[string]$EnvFile) { return @{NEO4J_URI='bolt://fixture.invalid:7687'} }
+'@
   $stub = @'
 param([string]$EnvFile,[string]$Profile,[switch]$SkipEndpointChecks,[switch]$EnableSpark,
  [switch]$EnableNeo4jSparkConnector,[switch]$EnablePostgresSparkConnector,[switch]$EnablePipelineScheduler,
@@ -19,7 +23,7 @@ if ((Test-Path -LiteralPath (Join-Path $root 'fail-at')) -and (Get-Content -Lite
   foreach ($name in @('test-depo-deployment','seed-depo-baseline-data-jobs','seed-depo-baseline-semantic-assets')) {
     Set-Content -LiteralPath (Join-Path $deployment "$name.ps1") -Value $stub
   }
-  foreach ($name in @('start-depo-services','stop-depo-services','initialize-depo-schema','test-depo-release')) {
+  foreach ($name in @('start-depo-services','stop-depo-services','initialize-depo-schema','test-depo-release','test-depo-neo4j')) {
     Set-Content -LiteralPath (Join-Path $windows "$name.ps1") -Value $stub
   }
   $script = Join-Path $deployment 'invoke-depo-lifecycle.ps1'
@@ -28,12 +32,18 @@ if ((Test-Path -LiteralPath (Join-Path $root 'fail-at')) -and (Get-Content -Lite
   try {
     & $script -Action Start -EnvFile 'customer.env' -Profile Production -EnableSpark -ServiceStartupTimeoutSeconds 1200
     $calls = @(Get-Content -LiteralPath $log | ForEach-Object { $_ | ConvertFrom-Json })
-    $expected = 'test-depo-deployment-configuration,start-depo-services,test-depo-deployment,seed-depo-baseline-data-jobs,seed-depo-baseline-semantic-assets'
+    $expected = 'test-depo-deployment-configuration,test-depo-neo4j,start-depo-services,test-depo-deployment,seed-depo-baseline-data-jobs,seed-depo-baseline-semantic-assets'
     if (($calls.name -join ',') -ne $expected) { throw 'Lifecycle startup sequence mismatch.' }
     if (@($calls | Where-Object { $_.env -ne (Join-Path $workspace 'customer.env') }).Count) { throw 'Environment path changed with caller directory.' }
-    if (-not $calls[1].spark) { throw 'Spark option was not forwarded.' }
-    if ($calls[1].startup -ne 1200) { throw 'Startup timeout override was not forwarded.' }
-    foreach ($failure in @('test-depo-deployment-configuration','start-depo-services','test-depo-deployment','seed-depo-baseline-data-jobs')) {
+    $startCall = $calls | Where-Object { $_.name -eq 'start-depo-services' }
+    if (-not $startCall.spark) { throw 'Spark option was not forwarded.' }
+    if ($startCall.startup -ne 1200) { throw 'Startup timeout override was not forwarded.' }
+    if (-not ($calls | Where-Object { $_.name -eq 'test-depo-neo4j' }).production) { throw 'Schema verification must be read-only Production mode.' }
+    Set-Content -LiteralPath $log -Value ''
+    & $script -Action Start -EnvFile 'customer.env' -Profile Production -SkipBaselineProvisioning
+    $calls = @(Get-Content -LiteralPath $log | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+    if (($calls.name -join ',') -ne 'test-depo-deployment-configuration,test-depo-neo4j,start-depo-services,test-depo-deployment') { throw 'Baseline suppression changed startup checks or still ran seeds.' }
+    foreach ($failure in @('test-depo-deployment-configuration','test-depo-neo4j','start-depo-services','test-depo-deployment','seed-depo-baseline-data-jobs')) {
       Set-Content -LiteralPath $log -Value ''
       Set-Content -LiteralPath (Join-Path $workspace 'fail-at') -Value $failure
       $caught = $false

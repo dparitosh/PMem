@@ -13,7 +13,8 @@ class ServiceUrls(unittest.TestCase):
     def test_invalid_endpoint_is_rejected(self):
         for url in ('https://user:secret@host/api', 'https://host/api?key=secret',
                     'https://<gateway>/api', 'https://host:bad/api',
-                    'https://host/%2e%2e/api', 'file:///tmp/api'):
+                    'https://host/%2e%2e/api', 'file:///tmp/api', 'http://host:0/api',
+                    'https://{gateway}/api', 'https://*.example/api', 'https://host/api%0aheader'):
             with self.subTest(url=url), patch.dict(os.environ, {'CEIM_SERVICE_URL': url}, clear=True):
                 with self.assertRaises(RuntimeError):
                     service_url('CEIM_SERVICE_URL', '')

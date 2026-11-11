@@ -24,6 +24,13 @@ class ArtifactStore:
             self.root = Path(configured)
         else:
             self.root = Path(__file__).resolve().parents[1] / "data" / "artifacts"
+        # Content-addressed subfolders and atomic temporary names can exceed MAX_PATH
+        # even when the configured root itself is short enough to create.
+        if os.name == "nt":
+            absolute = os.path.abspath(str(self.root))
+            if not absolute.startswith("\\\\?\\"):
+                absolute = "\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute
+            self.root = Path(absolute)
         self.root.mkdir(parents=True, exist_ok=True)
         self.root = self.root.resolve()
 
@@ -149,7 +156,7 @@ class ArtifactStore:
             raise ValueError("Artifact metadata does not match its content address")
         return metadata, content
 
-    def purge(self, artifact_id: str, *, recovery_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def purge(self, artifact_id: str, *, recovery_metadata: dict[str, Any] | None = None, reference_check=None) -> dict[str, Any]:
         """Delete one verified artifact; callers must retain external audit evidence."""
         if not artifact_id.startswith('sha256:'):
             raise ValueError('artifact_id must be a sha256 content address')
@@ -165,10 +172,30 @@ class ArtifactStore:
             else:
                 raise ValueError('artifact_id was not found')
             ensure_execution_allowed()
+            if reference_check is not None:
+                reference_check(artifact_id, self)
             content.unlink(missing_ok=True)
             metadata_path.unlink(missing_ok=True)
             # Preserve the lock inode for concurrent writers and crash recovery.
             return {"artifact_id": artifact_id, "bytes_deleted": int(metadata.get("size") or 0)}
+
+
+    def resolve_usage(self, artifact_id, usage_id):
+        """Verify a run-specific usage receipt without rewriting deduplicated metadata."""
+        import re
+        if not isinstance(usage_id,str) or not re.fullmatch('artifact-usage:[0-9a-f]{64}',usage_id):
+            raise ValueError('Invalid artifact usage identity')
+        metadata,content=self.resolve(artifact_id)
+        path=content.parent / ('usage-'+usage_id.split(':',1)[1]+'.json')
+        if path.is_symlink() or not path.is_file() or path.stat().st_size>65536:
+            raise ValueError('Artifact usage evidence is unavailable')
+        value=json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(value,dict) or value.get('usage_id')!=usage_id or value.get('artifact_id')!=artifact_id:
+            raise ValueError('Artifact usage ownership differs')
+        unsigned={key:item for key,item in value.items() if key!='usage_id'}
+        digest=hashlib.sha256(json.dumps(unsigned,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
+        if usage_id!='artifact-usage:'+digest:raise ValueError('Artifact usage integrity failed')
+        return value,content
 
 
 artifact_store = ArtifactStore()

@@ -52,10 +52,10 @@ class WorkflowAuditRegressions(unittest.TestCase):
     def test_bridge_lookup_persists_verified_receipt_without_publishing_again(self):
         store = InMemoryRegistry()
         job = {'job_id': 'publication', 'status': 'retryable', 'approved_ids': ['candidate'],
-               'request_digest': 'retained-digest', 'error': 'Response lost'}
+               'request_digest': 'retained-digest', 'approved_by': 'reviewer', 'error': 'Response lost'}
         store.put('preview', {'publication_job_id': 'publication'})
         store.put('publication', copy.deepcopy(job))
-        receipt = {'publication_id': 'publication', 'request_digest': 'retained-digest'}
+        receipt = {'publication_id': 'publication', 'request_digest': 'retained-digest', 'approved_by': 'reviewer', 'applied_links': 1}
         graph = SimpleNamespace(receipt=lambda key: receipt,
             publish=lambda command: self.fail('Receipt reconciliation must not publish'))
         jobs = BridgeJobs(store=store, source=object(), graph=graph)

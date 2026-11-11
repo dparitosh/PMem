@@ -10,6 +10,25 @@ from typing import Any, Dict, List, Tuple
 from .import_format_helpers import derive_prefix_from_namespace
 
 
+def _declarations_global_first(elements, root):
+    """Global declarations claim bare names before same-named local declarations."""
+    return sorted(elements, key=lambda elem: elem.getparent() is not root)
+
+
+def _declaration_key(bucket, elem, name, root):
+    """Keep a bare name unless a local declaration would overwrite another one."""
+    if name not in bucket:
+        return name
+    owner = elem.getparent()
+    while owner is not None and owner is not root and not owner.get("name"):
+        owner = owner.getparent()
+    base = owner.get("name") if owner is not None and owner is not root else "schema"
+    key, n = f"{base}/{name}", 2
+    while key in bucket:
+        key, n = f"{base}/{name}#{n}", n + 1
+    return key
+
+
 class SpecializedFormatParser:
     """Non-tabular specialized parser entrypoints."""
 
@@ -211,9 +230,10 @@ class SpecializedFormatParser:
                     if lst is not None:
                         model["lists"][name] = lst.get("itemType") or ""
 
-                for el in tree.findall(".//" + xsd_ns + "element"):
+                for el in _declarations_global_first(tree.findall(".//" + xsd_ns + "element"), root):
                     name = el.get("name") or str(uuid.uuid4())
-                    model["elements"][name] = {
+                    key = _declaration_key(model["elements"], el, name, root)
+                    model["elements"][key] = {
                         "name": name,
                         "type": el.get("type"),
                         "minOccurs": el.get("minOccurs"),
@@ -224,9 +244,10 @@ class SpecializedFormatParser:
                     if el.get("substitutionGroup"):
                         model["substitutionGroups"].setdefault(el.get("substitutionGroup"), []).append(name)
 
-                for attr in tree.findall(".//" + xsd_ns + "attribute"):
+                for attr in _declarations_global_first(tree.findall(".//" + xsd_ns + "attribute"), root):
                     name = attr.get("name") or str(uuid.uuid4())
-                    model["attributes"][name] = {"name": name, "type": attr.get("type"), "use": attr.get("use"), "xml": xml_snippet(attr)}
+                    key = _declaration_key(model["attributes"], attr, name, root)
+                    model["attributes"][key] = {"name": name, "type": attr.get("type"), "use": attr.get("use"), "xml": xml_snippet(attr)}
 
                 for grp in tree.findall(".//" + xsd_ns + "group"):
                     gname = grp.get("name") or str(uuid.uuid4())

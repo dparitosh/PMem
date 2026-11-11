@@ -20,6 +20,14 @@ if (!globalThis.ResizeObserver) {
     disconnect() {}
   };
 }
+if (!globalThis.IntersectionObserver) {
+  globalThis.IntersectionObserver = class IntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  };
+}
 if (globalThis.ElementInternals?.prototype && !globalThis.ElementInternals.prototype.setFormValue) {
   globalThis.ElementInternals.prototype.setFormValue = () => {};
 }

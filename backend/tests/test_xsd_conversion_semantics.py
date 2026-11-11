@@ -207,6 +207,9 @@ class ConversionSemanticsTests(unittest.TestCase):
             root = expand_model_groups([owner, dependency])[owner]
             self.assertEqual([element.get('name') for element, _, _ in element_particles(root.find(X+'complexType'))], ['external'])
 
+    @unittest.skipUnless(
+        (Path(__file__).resolve().parents[2] / 'data/domain_models/managed_model_based_3d_engineering_domain/DomainModel.xsd').exists(),
+        'bundled DomainModel.xsd is not present in this checkout')
     def test_bundled_domain_model_group_references_expand(self):
         path = Path(__file__).resolve().parents[2] / 'data/domain_models/managed_model_based_3d_engineering_domain/DomainModel.xsd'
         root = expand_model_groups([path])[path]

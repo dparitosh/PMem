@@ -14,7 +14,7 @@ export default function ServiceAccessDiscovery({ subscriptionKey, excludedProfil
     }}>{busy ? 'Importing contracts...' : 'Import service OpenAPI contracts'}</button>
     <ul>{results.map(result => <li key={result.service}>{result.service}: {result.status === 'imported' ? `${result.operationCount} operations imported` : result.message}</li>)}</ul>
     {profiles.map(profile => <label key={profile} style={{ display: 'block' }}>{profile}
-      <input type="password" autoComplete="off" defaultValue={getCredentialProfile(profile)} onChange={event => setCredentialProfile(profile, event.target.value)} />
+      <input type="password" autoComplete="off" defaultValue={getCredentialProfile(profile)} onBlur={event => setCredentialProfile(profile, event.target.value)} />
     </label>)}
     {profiles.length > 0 && <p>Operation-specific credentials take precedence over the read key. Explicit credentials entered on a workflow page take precedence over discovered profiles.</p>}
   </section>;

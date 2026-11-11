@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { buildReceiptPlugin } from './buildReceipt.mjs';
+import { bundleAuditPlugin } from './bundleAudit.mjs';
 
 export default defineConfig(({ mode }) => {
   // The application was migrated from CRA.  Vite exposes only VITE_* values
@@ -46,7 +47,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [react(), buildReceiptPlugin(process.cwd())],
+    plugins: [react(), buildReceiptPlugin(process.cwd()), ...(process.env.DEPO_BUNDLE_AUDIT==='1'?[bundleAuditPlugin()]:[])],
     define: {
       '__DEPO_ROOT_ROUTING__': JSON.stringify(rootRouting),
       'process.env': JSON.stringify(clientEnv),
@@ -74,6 +75,8 @@ export default defineConfig(({ mode }) => {
             // Let Rollup follow IX's component imports and lazy boundaries.
             // A single manual IX chunk pulls deferred components into startup.
             if (id.includes('@siemens')) return undefined;
+            // Keep deferred chart rendering out of the shared transport/core bundle.
+            if (id.includes('/echarts/') || id.includes('/zrender/')) return 'vendor-charts';
             if (id.includes('ag-grid')) return 'vendor-data-grid';
             if (id.includes('@xyflow') || id.includes('/d3')) return 'vendor-graph';
             if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';

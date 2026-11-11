@@ -64,6 +64,13 @@ def convert_csv_to_ttl(
     with src.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         fieldnames = reader.fieldnames or []
+        if len(set(fieldnames)) != len(fieldnames):
+            # A duplicate column would make row.get() return only the last column's value.
+            raise ValueError("CSV header contains duplicate column names")
+        safe_names = [_safe_name(field) for field in fieldnames]
+        if len(set(safe_names)) != len(safe_names):
+            # Different headers such as "a b" and "a_b" would map to the same ontology property.
+            raise ValueError("CSV headers collide after name normalization")
 
         for field in fieldnames:
             prop = ns[f"has_{_safe_name(field)}"]

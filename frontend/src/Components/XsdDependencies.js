@@ -66,7 +66,7 @@ export default function XsdDependencies({ files, paths, onChange, onRoot, select
         }}>{busy ? 'Checking schema dependencies...' : selectedRoot ? 'Resolve companions and retry' : 'Check folder and add root'}</button>
       </>}
       {error && <p role="alert">{error}</p>}
-      <p>Your files stay unchanged. For example, if the source is in QIFApplications and its references are in QIFLibrary, select the parent folder containing both. External references use matching files in your selected folder; they are not downloaded.</p>
+      <p>Your files stay unchanged. For example, if the source is in QIFApplications and its references are in QIFLibrary, select the parent folder containing both. External references use matching companion files first; the server can retrieve public HTTP(S) schemas within its configured limits. Supply local companions when the customer network is offline.</p>
     </div>}
     <details><summary>Advanced: select companion files and edit relative paths</summary>
     <p>For schemas that import other XSDs, select the companion files here. They are sent with the root XSD as one schema set. Files stay in this tab and must be selected again after reload.</p>

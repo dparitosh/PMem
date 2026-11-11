@@ -4,12 +4,23 @@ from __future__ import annotations
 import os
 from backend.depo_platform.network import bounded_timeout_seconds
 import logging
+import json
 import signal
 import threading
 
 from . import job_definitions, run_records, worker_status
 from .execution import execute_claimed_job
 from .runner import runner
+
+
+def log_run_event(event, record, error=None):
+    """Correlate durable execution without logging source payloads or secrets."""
+    fields = {'event': event, **{key: record.get(key) for key in
+              ('run_id', 'job_id', 'correlation_id', 'worker_id', 'attempt')}}
+    if error is not None:
+        fields['error_type'] = type(error).__name__
+    logging.getLogger(__name__).log(logging.ERROR if error else logging.INFO,
+                                    json.dumps(fields, ensure_ascii=True))
 
 
 def run() -> None:
@@ -41,6 +52,7 @@ def run() -> None:
         if not record:
             stop.wait(poll_seconds)
             continue
+        log_run_event("pipeline_run_claimed", record)
         heartbeat_stop = threading.Event()
         lease_lost = threading.Event()
         lease_record = [record]
@@ -63,15 +75,19 @@ def run() -> None:
         try:
             definition = job_definitions.get(record["job_id"], record["job_version"])
             if not definition or definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
+                log_run_event("pipeline_run_definition_rejected", record, ValueError())
                 run_records.failed(record, "Job definition is missing, disabled, or no longer approved")
                 continue
             retry = definition.get("retry_policy") or {"max_attempts": 1}
             if int(record.get("attempt") or 1) > int(retry.get("max_attempts") or 1):
+                log_run_event("pipeline_run_retry_exhausted", record, RuntimeError())
                 run_records.failed(record, "Retry limit exhausted after abandoned execution; inspect retained evidence before explicit replay")
                 continue
             payload = run_records.replay_payload(record)
             execute_claimed_job(definition, payload, record, lease_lost=lease_lost)
+            log_run_event("pipeline_run_completed", record)
         except Exception as exc:
+            log_run_event("pipeline_run_execution_failed", record, exc)
             try:
                 current_record = run_records.get(record["run_id"])
             except Exception as lookup_error:

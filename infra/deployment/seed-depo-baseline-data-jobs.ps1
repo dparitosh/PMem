@@ -22,9 +22,13 @@ $definitions = (Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json).
 $headers = @{}
 if ($settings.DATA_JOB_APPROVAL_TOKEN) { $headers.Authorization = "Bearer $($settings.DATA_JOB_APPROVAL_TOKEN)" }
 if ($settings.DEPO_APIM_SUBSCRIPTION_KEY) { $headers['Ocp-Apim-Subscription-Key'] = $settings.DEPO_APIM_SUBSCRIPTION_KEY }
+# Reads require the graph read credential; approval tokens are only for writes.
+$readHeaders = @{}
+if ($settings.GRAPH_READ_TOKEN) { $readHeaders.Authorization = "Bearer $($settings.GRAPH_READ_TOKEN)" }
+if ($settings.DEPO_APIM_SUBSCRIPTION_KEY) { $readHeaders['Ocp-Apim-Subscription-Key'] = $settings.DEPO_APIM_SUBSCRIPTION_KEY }
 foreach ($definition in $definitions) {
   $key = "$($definition.job_id)/$($definition.version)"
-  try { $current = Invoke-RestMethod -Uri "$PipelineBaseUrl/jobs/definitions/$key" -Headers $headers -TimeoutSec 20 }
+  try { $current = Invoke-RestMethod -Uri "$PipelineBaseUrl/jobs/definitions/$key" -Headers $readHeaders -TimeoutSec 20 }
   catch {
     if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) {
       $current = Invoke-RestMethod -Method Post -Uri "$PipelineBaseUrl/jobs/definitions" -Headers $headers -ContentType "application/json" -Body ($definition | ConvertTo-Json -Depth 8) -TimeoutSec 20

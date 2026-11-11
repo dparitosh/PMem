@@ -11,12 +11,20 @@ from backend.mesh_store import InMemoryRegistry
 
 @pytest.fixture(autouse=True)
 def isolated_artifact_store(monkeypatch, tmp_path):
+    # Synchronous handler-contract tests opt in; production defaults to workers.
+    monkeypatch.setenv("DEPO_PIPELINE_EXECUTION_MODE", "inline")
     monkeypatch.setenv("ARTIFACT_STORAGE", str(tmp_path / "artifacts"))
     monkeypatch.setattr("backend.data_pipeline_service.router.approval_identity", lambda *args, **kwargs: "test-operator")
     monkeypatch.setattr("backend.data_pipeline_service.router.service_write_identity", lambda *args, **kwargs: "test-author")
     monkeypatch.setattr("backend.data_pipeline_service.speed_router.approval_identity", lambda *args, **kwargs: "test-operator")
     monkeypatch.setattr("backend.data_pipeline_service.router.service_bearer_headers", lambda *args, **kwargs: {"Authorization": "Bearer test-service"})
     monkeypatch.setattr("backend.data_pipeline_service.speed_router.service_bearer_headers", lambda *args, **kwargs: {"Authorization": "Bearer test-service"})
+
+
+def test_missing_execution_mode_defaults_to_worker(monkeypatch):
+    from backend.data_pipeline_service.router import _worker_execution_enabled
+    monkeypatch.delenv("DEPO_PIPELINE_EXECUTION_MODE", raising=False)
+    assert _worker_execution_enabled() is True
 
 
 def test_data_pipeline_service_exposes_ui_ready_transform_contract(monkeypatch):
@@ -517,12 +525,11 @@ def test_speed_path_publication_uses_ceim_boundary(monkeypatch):
         b'{"standard":"qif","entities":[],"relationships":[]}', filename="speed.json", kind="accepted-semantic-partition", media_type="application/json"
     )
     speed_path.reconciliations.put("reconcile-1", {"reconciliation_id": "reconcile-1", "status": "ready_for_approved_publication", "partition_artifact_id": artifact["artifact_id"]})
-    class FakeClient:
-        def __init__(self, *args, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, url, **kwargs): return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "published", "ontology_id": "speed"})
-    monkeypatch.setattr("backend.data_pipeline_service.speed_router.httpx.AsyncClient", FakeClient)
+    async def fake_publication(method, url, **kwargs):
+        assert method == 'POST' and kwargs['json']['publication_id'] == 'reconcile-1'
+        return httpx.Response(200, request=httpx.Request('POST', url), json={"status":"published","ontology_id":"speed","publication_id":"reconcile-1",
+            "publication":{"status":"success","ontology_id":"speed","publication_id":"reconcile-1","resources":0,"relationships":0,"hierarchy_edges":0}})
+    monkeypatch.setattr("backend.data_pipeline_service.speed_router.async_peer_response", fake_publication)
     response = TestClient(app).post("/api/v1/pipeline/speed/reconciliations/reconcile-1/publish", json={"ontology_id": "speed", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"}})
     assert response.status_code == 200
     assert response.json()["status"] == "published"
@@ -661,7 +668,8 @@ def test_worker_claim_heartbeat_and_retry_are_durable(monkeypatch):
     assert retried["last_error"] == "temporary failure"
 
 
-def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch):
+@pytest.mark.parametrize("semantic_job_type",["validate-semantic-batch","connector-ceim-normalize"])
+def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch,semantic_job_type):
     import json
     import httpx
     from backend.artifact_store import ArtifactStore
@@ -677,7 +685,7 @@ def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch)
         filename="accepted.json", kind="accepted-semantic-partition", media_type="application/json",
     )
     registry.put("publish-run", {
-        "run_id": "publish-run", "job_type": "validate-semantic-batch", "status": "completed",
+        "run_id": "publish-run", "job_type": semantic_job_type, "status": "completed",
         "checkpoint": {"offset": 1},
         "output_manifest": {
             "partition_artifacts": {"accepted": artifact["artifact_id"]},

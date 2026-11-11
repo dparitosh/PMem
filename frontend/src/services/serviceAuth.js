@@ -1,21 +1,25 @@
 // Raw API keys are memory-only. Only bounded, revocable delegated sessions
 // survive same-tab refresh; no credentials come from Vite build variables.
+import { createSubmissionId } from '../utils/submissionId';
 import { config, buildSemanticServiceUrl } from '../config';
 import { operationForUrl } from './serviceContractRegistry';
 const profileTokens = new Map();
 let browserAccessExpired = false;
+let connectionStartedAt = Date.now();
 export function wasBrowserSessionExpired() { return browserAccessExpired; }
 export function setCredentialProfile(profile, value) {
   if (!/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile)) throw new Error('Invalid credential profile');
   const token = String(value || '').trim();
   const previous = profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || '');
-  if (previous !== token) clearPendingPublications();
   if (profile === 'GRAPH_READ_TOKEN') {
     if (browserSession && token !== browserSession.token) expireBrowserSession(browserSession.token);
-    serviceToken = token; if (token) browserAccessExpired = false; persistBrowserSession(); return;
+    serviceToken = token; if (token) browserAccessExpired = false; persistBrowserSession();
+  } else {
+    if (token) profileTokens.set(profile, token); else profileTokens.delete(profile);
+    persistBrowserSession();
   }
-  if (token) profileTokens.set(profile, token); else profileTokens.delete(profile);
-  persistBrowserSession();
+  // Listeners read the credential synchronously, so the new value must be stored first.
+  if (previous !== token) { connectionStartedAt=Date.now(); clearPendingPublications(); if (typeof window !== 'undefined') window.dispatchEvent(new Event('depo:credentials-changed')); }
 }
 export function getCredentialProfile(profile) { checkBrowserSessionExpiry(); return profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || ''); }
 
@@ -47,11 +51,41 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', activity);
   document.addEventListener('visibilitychange', activity);
 }
+const SESSION_SYNC_KEY = 'depo.sessionSignal.v1';
+function publishSessionSignal(action, sessionId = '') {
+  try {
+    window.localStorage.setItem(SESSION_SYNC_KEY, JSON.stringify({action, sessionId,
+      scope:connectionScope(), sentAt:Date.now(), nonce:createSubmissionId()}));
+  } catch { /* Restricted storage keeps per-tab expiry/revocation enforcement. */ }
+}
+if(typeof window!=='undefined')window.addEventListener('storage', event => {
+  if(event.key!==SESSION_SYNC_KEY || !event.newValue || event.newValue.length>8192)return;
+  try {
+    const message=JSON.parse(event.newValue);
+    if(message.scope!==connectionScope() || !Number.isFinite(message.sentAt) || message.sentAt<connectionStartedAt)return;
+    if(message.action==='logout')clearServiceAuthToken(false);
+    else if(message.action==='expired' && browserSession?.syncId===message.sessionId)
+      expireBrowserSession(browserSession.token,false);
+  } catch { /* Ignore malformed signals; never accept credentials from another tab. */ }
+});
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
+const BROWSER_ACCESS_PREFERENCES_KEY = 'depo.browserAccessPreferences.v1';
 function connectionScope() {
   return JSON.stringify([config.gatewayUrl || '', Object.entries(config.semanticServiceUrls || {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 export function publicationRecoveryScope() { return connectionScope(); }
+export function getBrowserAccessPreferences() {
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(BROWSER_ACCESS_PREFERENCES_KEY));
+    if (value?.scope === connectionScope() && typeof value.includeWrites === 'boolean' && typeof value.includeMaintenance === 'boolean') return value;
+  } catch { /* Optional non-secret UI preferences. */ }
+  return null;
+}
+export function setBrowserAccessPreferences({includeWrites, includeMaintenance}) {
+  if (typeof includeWrites !== 'boolean' || typeof includeMaintenance !== 'boolean') throw new Error('Invalid access preferences');
+  try { window.sessionStorage.setItem(BROWSER_ACCESS_PREFERENCES_KEY, JSON.stringify({scope:connectionScope(),includeWrites,includeMaintenance})); }
+  catch { /* Storage restrictions must not prevent authenticated access. */ }
+}
 function clearPendingPublications() {
   try {
     if (typeof window === 'undefined') return;
@@ -86,6 +120,7 @@ function restoreBrowserSession() {
         !Number.isFinite(saved.deadline) || saved.deadline <= Date.now() || saved.deadline > Date.now() + 15 * 60 * 1000 || !Array.isArray(saved.profiles) || saved.profiles.length > 32 ||
         !saved.profiles.includes('GRAPH_READ_TOKEN') || saved.profiles.some(profile => typeof profile !== 'string' || !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid stored session');
     setBrowserSessionExpiry(saved.token, new Date(saved.deadline).toISOString(), saved.absoluteDeadline ? new Date(saved.absoluteDeadline).toISOString() : null);
+    if(typeof saved.syncId==='string' && /^[A-Za-z0-9._:-]{1,128}$/.test(saved.syncId))browserSession.syncId=saved.syncId;
     gatewaySubscriptionKey = typeof saved.subscription === 'string' && saved.subscription.length <= 4096 ? saved.subscription : '';
     serviceToken = saved.token;
     saved.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, saved.token));
@@ -94,11 +129,15 @@ function restoreBrowserSession() {
 }
 export function handleSessionRejection(status, authorization, detail = '') {
   const value = String(authorization || '');
+  const presented=value.replace(/^Bearer\s+/i,'');
+  // A delayed rejection from an old delegation must not invalidate the new
+  // connection or display a global reconnect prompt for its owner.
+  if(presented.startsWith('depo_session_')&&browserSession?.token!==presented)return;
   const credentialRejected = status === 401 || (status === 403 &&
     /required api key is missing or invalid|invalid or revoked|^revoked [A-Z_]+|browser session|administrator key changed|graph read (?:authorization|key)|valid service write token/i.test(String(detail)));
   if (credentialRejected && typeof window !== 'undefined') window.dispatchEvent(new Event('depo:access-rejected'));
   const invalidSession = status === 401 || (status === 403 &&
-    /browser session scope is unavailable or credentials changed|administrator key changed|invalid or revoked|^revoked [A-Z_]+|expired session|session expired/i.test(String(detail)));
+    /required api key is missing or invalid|browser session scope is unavailable or credentials changed|administrator key changed|invalid or revoked|^revoked [A-Z_]+|expired session|session expired/i.test(String(detail)));
   if (invalidSession && value.startsWith('Bearer depo_session_')) expireBrowserSession(value.slice(7));
   else if (invalidSession && value.startsWith('depo_session_')) expireBrowserSession(value);
 }
@@ -106,8 +145,9 @@ function checkBrowserSessionExpiry() {
   if (browserSession && Date.now() >= browserSession.deadline) expireBrowserSession(browserSession.token);
 }
 
-export function expireBrowserSession(token) {
+export function expireBrowserSession(token, propagate = true) {
   if (!browserSession || browserSession.token !== token) return;
+  if(propagate)publishSessionSignal('expired',browserSession.syncId);
   browserAccessExpired = true;
   clearPendingPublications();
   if (serviceToken === token) serviceToken = '';
@@ -135,9 +175,11 @@ export function installBrowserSession(body, subscription = '') {
   if (!Array.isArray(body.profiles) || body.profiles.length > 32 || !body.profiles.includes('GRAPH_READ_TOKEN') ||
       body.profiles.some(profile => !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid delegated scopes');
   setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
+  connectionStartedAt=Date.now();
   serviceToken = body.token;
   profileTokens.clear();
   body.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, body.token));
+  setBrowserAccessPreferences({includeWrites:body.profiles.some(profile=>!['GRAPH_READ_TOKEN','ADMIN_API_KEY'].includes(profile)),includeMaintenance:body.profiles.includes('ADMIN_API_KEY')});
   gatewaySubscriptionKey = String(subscription || '').trim();
   browserAccessExpired = false;
   lastActivity = Date.now();
@@ -149,7 +191,8 @@ export function installBrowserSession(body, subscription = '') {
 export function setBrowserSessionExpiry(token, expiresAt, absoluteExpiresAt = null) {
   const { deadline, absoluteDeadline } = validateSessionExpiry(token, expiresAt, absoluteExpiresAt);
   clearTimeout(expiryTimer);
-  browserSession = { token, deadline, absoluteDeadline };
+  const syncId=browserSession?.token===token?browserSession.syncId:createSubmissionId();
+  browserSession = { token, deadline, absoluteDeadline, syncId };
   expiryTimer = setTimeout(() => expireBrowserSession(token), Math.min(deadline - Date.now(), 2147483647));
   clearTimeout(renewalTimer);
   if (absoluteDeadline && absoluteDeadline > deadline) {
@@ -212,12 +255,17 @@ export function setServiceAuthToken(value) {
   setCredentialProfile('GRAPH_READ_TOKEN', value);
 }
 
-export function clearServiceAuthToken() {
+export function clearServiceAuthToken(propagate = true) {
+  if(propagate)publishSessionSignal('logout');
   browserAccessExpired = false;
   clearPendingPublications();
+  // Import job and ontology caches are not scoped to a connection; forget them
+  // so the next user of this browser profile does not see the previous job list.
+  try { window.localStorage.removeItem('depo.import.jobs.v2'); window.localStorage.removeItem('depo.import.ontologies.v1'); } catch { /* Optional storage. */ }
   clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;
   clearTimeout(renewalTimer); renewalTimer = null;
   removeStoredSession();
+  try { window.sessionStorage.removeItem(BROWSER_ACCESS_PREFERENCES_KEY); } catch { /* Optional storage. */ }
   serviceToken = '';
   profileTokens.clear();
   gatewaySubscriptionKey = '';
@@ -250,7 +298,7 @@ function isServiceRead(endpoint, method) {
       if (target.origin !== root.origin || target.username || target.password) return false;
       const path = target.pathname.slice(root.pathname.replace(/\/$/, '').length);
       if (!target.pathname.startsWith(`${root.pathname.replace(/\/$/, '')}/`)) return false;
-      return ({ graph: /^\/api\/v1\/graph\/metrics\/?$/, agentic: /^\/api\/v1\/observability\/summary\/?$/, catalog: /^\/api\/v1\/catalog\/products\/?$/, dataProducts: /^\/api\/v1\/data-products\/?$/ })[service]?.test(path) || false;
+      return ({ ontology: /^\/api\/v1\/ontologies(?:\/health)?\/?$/, graph: /^\/api\/v1\/graph\/metrics\/?$/, agentic: /^\/api\/v1\/observability\/summary\/?$/, catalog: /^\/api\/v1\/catalog\/products\/?$/, dataProducts: /^\/api\/v1\/data-products\/?$/ })[service]?.test(path) || false;
     });
   } catch { return false; }
 }
@@ -270,7 +318,14 @@ export function serviceAuthHeaders(endpoint = '', method = 'get', subscription =
   checkBrowserSessionExpiry();
   if (!isConfiguredServiceEndpoint(endpoint)) return {};
   const operation = operationForUrl(endpoint, method);
-  const profile = isServiceRead(endpoint, method) ? 'GRAPH_READ_TOKEN' : operation?.profiles.length === 1 ? operation.profiles[0] : null;
+  // Workflow status accepts either its reader/owner or an agent supervisor.
+  // Discovery reports both profiles; treating that as unresolved stripped all
+  // credentials after discovery, even though the same read worked beforehand.
+  const workflowRead = String(method).toLowerCase() === 'get' && operation?.service === 'agentic' &&
+    /^\/api\/v1\/workflow-runs(?:\/\{[^}]+\})?\/?$/.test(operation.path) &&
+    operation.profiles.length === 2 && operation.profiles.includes('GRAPH_READ_TOKEN') && operation.profiles.includes('AGENTIC_APPROVAL_TOKEN');
+  const profile = workflowRead ? (getCredentialProfile('AGENTIC_APPROVAL_TOKEN') ? 'AGENTIC_APPROVAL_TOKEN' : 'GRAPH_READ_TOKEN')
+    : isServiceRead(endpoint, method) ? 'GRAPH_READ_TOKEN' : operation?.profiles.length === 1 ? operation.profiles[0] : null;
   const token = profile ? getCredentialProfile(profile) : (operation && (operation.profiles.length || operation.secured) ? '' : serviceToken);
   let subscriptionAllowed = false;
   if (subscription && config.gatewayUrl) {

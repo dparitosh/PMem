@@ -1,20 +1,13 @@
 import React from 'react';
 import ReportsTab from '../Components/ReportsTab';
+import MemoryRecords from '../Components/MemoryRecords';
 
 export default function ReportsPage({ searchResults, chatResults, graphData }) {
+  const [view,setView]=React.useState('memory');
   return (
     <div className="depo-page">
-      <section className="depo-panel">
-        <div className="depo-panel__header">
-          <div>
-            <div className="depo-panel__title">Outputs</div>
-            <div className="depo-panel__meta">Publish and inspect outputs generated from the current platform context.</div>
-          </div>
-        </div>
-        <div className="depo-panel__body">
-          <ReportsTab searchResults={searchResults} chatResults={chatResults} graphData={graphData} />
-        </div>
-      </section>
+      <nav aria-label="Report types"><button onClick={()=>setView('memory')} aria-pressed={view==='memory'}>Memory records</button><button onClick={()=>setView('engineering')} aria-pressed={view==='engineering'}>Engineering reports</button></nav>
+      {view==='memory'?<MemoryRecords/>:<ReportsTab searchResults={searchResults} chatResults={chatResults} graphData={graphData} />}
     </div>
   );
 }

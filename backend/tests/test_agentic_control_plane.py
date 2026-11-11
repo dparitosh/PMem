@@ -1,11 +1,23 @@
+import pytest
+from contextlib import contextmanager
 from fastapi.testclient import TestClient
 from backend.agentic_service.app import app
 from backend.agentic_service.router import _multipart
 import base64
 from pathlib import Path
 
-def test_catalogue_is_manifest_driven_and_mutations_require_approval():
-    client = TestClient(app)
+@pytest.fixture
+def registry_reader(monkeypatch):
+    monkeypatch.setenv('AUTH_MODE', 'token')
+    monkeypatch.setenv('DEPO_CREDENTIAL_STORE', 'environment')
+    monkeypatch.setenv('GRAPH_READ_TOKEN', 'registry-read-test')
+    monkeypatch.delenv('GRAPH_READ_TOKEN_EXPIRES_AT', raising=False)
+    monkeypatch.delenv('DEPO_TOKEN_EXPIRES_AT', raising=False)
+    return TestClient(app, headers={'Authorization': 'Bearer registry-read-test'})
+
+
+def test_catalogue_is_manifest_driven_and_mutations_require_approval(registry_reader):
+    client = registry_reader
     agents, tools, mcp = client.get("/api/v1/agents"), client.get("/api/v1/tools"), client.get("/api/v1/mcp-servers")
     assert any(item["id"] == "context-analyst" for item in agents.json()["agents"])
     assert any(item["id"] == "engineering.inspect" for item in tools.json()["tools"])
@@ -15,16 +27,16 @@ def test_catalogue_is_manifest_driven_and_mutations_require_approval():
     blocked = client.post("/api/v1/runs", json={"agent_id": "ontology-governor", "tool_id": "ontology.merge.apply", "inputs": {"preview_id": "x"}})
     assert blocked.status_code == 403
 
-def test_workflow_manifest_validates_steps_and_multipart_is_bounded():
-    client = TestClient(app)
+def test_workflow_manifest_validates_steps_and_multipart_is_bounded(registry_reader):
+    client = registry_reader
     workflow = client.post("/api/v1/workflow-plans", json={"workflow_id": "engineering-governed-publish"})
     assert workflow.status_code == 200
     assert workflow.json()["steps"][1]["requires_approval"] is True
     form, files = _multipart({"file": {"filename": "part.step", "content_base64": base64.b64encode(b"ISO-10303-21;").decode("ascii")}, "form": {"publish": "false"}})
     assert form["publish"] == "false" and files["file"][0] == "part.step"
 
-def test_tool_is_rejected_when_not_allowlisted_for_agent():
-    client = TestClient(app)
+def test_tool_is_rejected_when_not_allowlisted_for_agent(registry_reader):
+    client = registry_reader
     response = client.post("/api/v1/plans", json={"agent_id": "ontology-intake", "tool_id": "context.upsert"})
     assert response.status_code == 422
 
@@ -96,7 +108,26 @@ def test_ontology_agent_uses_generated_rdf_for_non_rdf_upload(monkeypatch):
     assert agents._resolve_ontology_path("", "schema") == "data/schema.generated.ttl"
 
 
-def test_companion_returns_bounded_graph_evidence(monkeypatch):
+@pytest.fixture
+def companion_persistence(monkeypatch):
+    from backend.agentic_service import router as routes
+    class Store:
+        records = {}
+        def get(self, key): return self.records.get(key)
+        def put(self, key, value): self.records[key] = value
+        @contextmanager
+        def advisory_lock(self, key): yield True
+    monkeypatch.setattr(routes.sessions, 'store', Store())
+    monkeypatch.setattr(routes, 'companion_job_store', Store())
+    monkeypatch.setattr(routes, '_session_turns', lambda *args: [])
+    monkeypatch.setattr(routes.telemetry, 'start', lambda **kw: ({'run_id':'fixture-chat'}, 0))
+    monkeypatch.setattr(routes, '_finish_observation', lambda *args, **kw: None)
+    monkeypatch.setattr(routes.AgentMemoryService, 'recent_context', lambda *args: {'messages':[]})
+    monkeypatch.setattr(routes.AgentMemoryService, 'record_chat_turn', lambda **kw: None)
+    monkeypatch.setenv('COMPANION_LLM_ENABLED', 'false')
+
+
+def test_companion_returns_bounded_graph_evidence(monkeypatch, companion_persistence):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
     async def grounded(message, **kwargs):
@@ -108,7 +139,21 @@ def test_companion_returns_bounded_graph_evidence(monkeypatch):
     assert response.json()["evidence"][0]["resource_id"] == "urn:product"
 
 
-def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch):
+def test_invalid_optional_model_settings_do_not_suppress_retrieval(monkeypatch, companion_persistence):
+    monkeypatch.setenv('AUTH_MODE','token')
+    monkeypatch.setenv('GRAPH_READ_TOKEN','read-test')
+    monkeypatch.setenv('COMPANION_LLM_ENABLED','true')
+    def invalid_settings():raise ValueError('Invalid provider configuration')
+    monkeypatch.setattr('backend.agentic_service.local_llm.settings',invalid_settings)
+    async def grounded(*args,**kwargs):
+        return {'answerable':True,'response':'Retained mapping evidence remains available.','evidence':[],'sources':[]}
+    monkeypatch.setattr('backend.agentic_service.router.companion.ask',grounded)
+    response=TestClient(app).post('/api/v1/chat',json={'message':'AP242 QIF mappings'},headers={'Authorization':'Bearer read-test'})
+    assert response.status_code==200
+    assert response.json()['answerable'] is True
+
+
+def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch, companion_persistence):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
     async def unavailable(message, **kwargs):
@@ -117,3 +162,16 @@ def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch):
     response = TestClient(app).post("/api/v1/chat", json={"message": "Invent an answer"}, headers={"Authorization": "Bearer read-test"})
     assert response.status_code == 503
     assert "no answer was generated" in response.json()["detail"]
+
+
+def test_artifact_planning_includes_classes_after_previous_sampling_limit(tmp_path, monkeypatch):
+    from backend.agentic_service import ontology_orchestrator as agents
+    monkeypatch.setenv('ONTOLOGY_AGENT_ALLOWED_ROOTS', str(tmp_path))
+    monkeypatch.setenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false')
+    path = tmp_path / 'large.ttl'
+    path.write_text('@prefix owl: <http://www.w3.org/2002/07/owl#> .\n' +
+                    '\n'.join(f'<urn:Class{i:04}> a owl:Class .' for i in range(650)))
+    summary = agents.inspect_ontology(str(path))
+    assert len(summary['term_index']) == 650
+    result = agents.plan_bridge({'entities': ['Class0649']}, ontology_summary=summary)
+    assert result['alignment_candidates'][0]['target_iri'] == 'urn:Class0649'
