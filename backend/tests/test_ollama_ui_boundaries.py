@@ -11,6 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 class OllamaUiBoundaryTests(unittest.TestCase):
     def companion_fixture(self, payload):
+        # Keep these boundary tests hermetic: retrieval goes to a fixed mock, never a live graph service.
+        for target in ('document_context', 'plm_context'):
+            retrieval = patch(f'backend.agentic_service.companion_context.{target}', new=AsyncMock(side_effect=ValueError('unavailable in test')))
+            retrieval.start(); self.addCleanup(retrieval.stop)
         response = MagicMock()
         async def chunks():
             yield json.dumps(payload).encode()

@@ -317,7 +317,7 @@ elif USE_LLM == "ollama":
     if llm_ollama_error:
         LLM_AVAILABLE = False
         llm_error = llm_ollama_error
-elif USE_LLM in {"openai", "mistral", "aoi"}:
+elif USE_LLM in {"openai", "mistral", "aoi", "anthropic"}:
     try:
         from backend.core.llm_providers import cloud_chat
         llm = cloud_chat(USE_LLM)
@@ -327,7 +327,7 @@ elif USE_LLM in {"openai", "mistral", "aoi"}:
         llm = UnavailableLLM(str(llm_error))
 else:
     LLM_AVAILABLE = False
-    llm_error = ValueError("USE_LLM must be ollama, azure, openai, mistral, or aoi")
+    llm_error = ValueError("USE_LLM must be ollama, azure, openai, mistral, aoi, or anthropic")
     llm = UnavailableLLM(str(llm_error))
 
 # Never bind tools to the text-generation client. A generate-only deployment
