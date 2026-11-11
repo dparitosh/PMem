@@ -70,6 +70,34 @@ class PostgresRegistry:
                            (self.namespace, prefix, prefix, limit))
             return dict(cursor.fetchall())
 
+    def prefix_latest(self, prefix: str, *, limit: int = 100) -> list[tuple[str, dict[str, Any]]]:
+        """Newest-first bounded read for time-ordered keys (keys embed a sortable timestamp)."""
+        if not isinstance(prefix, str) or not prefix or type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError('Invalid registry prefix lookup')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT key, value FROM depo_registry WHERE namespace=%s AND left(key, length(%s))=%s ORDER BY key DESC LIMIT %s",
+                           (self.namespace, prefix, prefix, limit))
+            return [(key, value) for key, value in cursor.fetchall()]
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete every record whose key starts with a non-empty prefix."""
+        if not isinstance(prefix, str) or not prefix:
+            raise ValueError('Invalid registry delete prefix')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("DELETE FROM depo_registry WHERE namespace=%s AND left(key, length(%s))=%s",
+                           (self.namespace, prefix, prefix))
+            return cursor.rowcount
+
+    def keys_expired_before(self, *, scope: str, field: str, cutoff: str, limit: int = 500) -> list[str]:
+        """Bounded keys of one scope whose timestamp is older than the cut-off and that are not on legal hold."""
+        if field not in {'created_at', 'updated_at'} or not scope or not cutoff or not 1 <= limit <= 1000:
+            raise ValueError('Invalid registry retention lookup')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(f"SELECT key FROM depo_registry WHERE namespace=%s AND value->>'scope'=%s AND value->>'{field}' < %s "
+                           "AND COALESCE((value->>'legal_hold')::boolean, false) = false ORDER BY key LIMIT %s",
+                           (self.namespace, scope, cutoff, limit))
+            return [row[0] for row in cursor.fetchall()]
+
     def find_by_field(self, field: str, value: str, *, limit: int = 2, after_key: str = '') -> list[dict[str, Any]]:
         """Bounded identity lookup without counting an entire namespace."""
         if not 1 <= limit <= 100:

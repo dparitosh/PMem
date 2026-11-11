@@ -137,24 +137,12 @@ class DatabaseIntegrationFixes(unittest.TestCase):
         with operation_scope(self.context(-1)),self.assertRaises(TimeoutError): query('CREATE ()')
         session.__enter__.return_value.run.assert_not_called()
 
-    def test_memory_query_respects_budget_and_expiry_stays_best_effort(self):
-        from backend.Services.agent_memory_service import AgentMemoryService as Memory
-        session=MagicMock(); driver=Mock(); driver.session.return_value=session
-        neo=SimpleNamespace(Query=lambda text,timeout:SimpleNamespace(text=text,timeout=timeout))
-        with patch.dict(os.environ,{'AGENT_MEMORY_ENABLED':'true','AGENT_MEMORY_SCOPE':'test:project','AGENT_MEMORY_QUERY_TIMEOUT':'5','NEO4J_DATABASE':'neo4j'}),patch.dict(sys.modules,{'backend.core.db_config':SimpleNamespace(get_driver=lambda:driver),'neo4j':neo}),operation_scope(self.context(2)):
-            Memory._query('RETURN 1')
-        query=session.__enter__.return_value.run.call_args.args[0]
-        self.assertGreater(query.timeout,0);self.assertLessEqual(query.timeout,2)
-        driver.reset_mock()
-        with patch.object(Memory,'enabled',return_value=True),operation_scope(self.context(-1)):
-            self.assertIsNone(Memory._query('CREATE ()'))
-        driver.session.assert_not_called()
-
     def test_bridge_retains_per_publication_evidence_without_parallel_instance_edges(self):
         tx=Mock()
         result=lambda value:SimpleNamespace(single=lambda:value)
         tx.run.side_effect=[result({'receipt':None}),SimpleNamespace(data=lambda:[{'sources':1,'targets':1}]),result({'applied':1}),SimpleNamespace(consume=lambda:None)]
         scope=dict(json=json,datetime=datetime,timezone=timezone)
+        function('backend/graph_service/bridge_publication.py','verify_semantic_projection',scope)
         publish=function('backend/graph_service/bridge_publication.py','_publish_transaction',scope)
         command={'publication_id':'p','request_digest':'hash','approved_by':'actor','preview_id':'preview','ontology_id':'onto','rows':[{'candidate_id':'c'}]}
         with patch('backend.depo_platform.agent_memory_config.enabled',return_value=False):

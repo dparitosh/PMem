@@ -26,17 +26,19 @@ def test_failed_answer_cannot_become_subject_memory():
 
 
 def test_optional_graph_memory_retains_only_projected_context(monkeypatch):
+    from test_agent_memory_postgres import FakeRegistry
+    import backend.mesh_store as mesh_store
+    FakeRegistry.namespaces = {}
+    monkeypatch.setattr(mesh_store, 'PostgresRegistry', FakeRegistry)
     monkeypatch.setenv('AGENT_MEMORY_ENABLED', 'true')
     monkeypatch.setenv('AGENT_MEMORY_SCOPE', 'test:memory')
-    with patch.object(Memory, 'ensure_schema', return_value={'ensured': True}), patch.object(Memory, '_query', return_value=[]) as query:
-        assert Memory.record_chat_turn(session_id='s', user_message='Housing', assistant_response='Observed record',
-            graph_context={'ontology': 'ap242', 'node_id': 'n', 'run_id': 'r', 'reconciliation_id': 'e',
-                           'password': 'do-not-retain', 'nodes': [{'api_key': 'secret'}]})
-    params = query.call_args.args[1]
-    retained = json.loads(params['context_json'])
-    assert retained == {'ontology': 'ap242', 'node_id': 'n', 'run_id': 'r', 'reconciliation_id': 'e'}
-    assert 'do-not-retain' not in params['context_json']
-    assert 'a.context_json = $context_json' in query.call_args.args[0]
+    assert Memory.record_chat_turn(session_id='s', user_message='Housing', assistant_response='Observed record',
+        graph_context={'ontology': 'ap242', 'node_id': 'n', 'run_id': 'r', 'reconciliation_id': 'e',
+                       'password': 'do-not-retain', 'nodes': [{'api_key': 'secret'}]})
+    stored = next(iter(FakeRegistry.namespaces['agent_memory_short'].values()))
+    assert stored['context'] == {'ontology': 'ap242', 'node_id': 'n', 'run_id': 'r', 'reconciliation_id': 'e'}
+    assert 'do-not-retain' not in json.dumps(stored)
+    assert 'secret' not in json.dumps(stored)
 
 
 def test_companion_wires_scope_to_optional_memory_and_retains_resolved_query():

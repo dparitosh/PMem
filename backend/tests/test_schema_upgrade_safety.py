@@ -72,10 +72,12 @@ class SchemaUpgradeSafetyTests(unittest.TestCase):
             bootstrap.assert_not_called()
 
     def test_documented_contract_matches_release(self):
-        self.assertEqual(len(setup.EXPECTED_COLUMNS), 11)
-        self.assertEqual(sum(map(len, setup.EXPECTED_COLUMNS.values())), 53)
-        self.assertEqual(len(setup.EXPECTED_CONSTRAINTS), 22)
-        self.assertEqual(len(setup.EXPECTED_INDEXES), 12)
+        # Matches the startup verification of the live PostgreSQL schema (18 relations, 102 columns,
+        # 29 constraints, 15 indexes) for the analytics, metadata, and registry tables.
+        self.assertEqual(len(setup.EXPECTED_COLUMNS), 18)
+        self.assertEqual(sum(map(len, setup.EXPECTED_COLUMNS.values())), 102)
+        self.assertEqual(len(setup.EXPECTED_CONSTRAINTS), 29)
+        self.assertEqual(len(setup.EXPECTED_INDEXES), 15)
 
 
 if __name__ == '__main__':
