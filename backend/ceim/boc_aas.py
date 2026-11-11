@@ -58,7 +58,7 @@ def _characteristics(report: dict[str, Any]) -> list[tuple[str, str, dict[str, A
         bounds_status, unit_status = item.get("bounds_status"), item.get("unit_status")
         if bounds_status == "mismatch" or unit_status == "mismatch":
             status = "mismatch"
-        elif bounds_status == "match" and unit_status in ("match", "not_available"):
+        elif bounds_status == "match" and unit_status == "match":
             status = "match"
         else:
             status = "nominal_match"

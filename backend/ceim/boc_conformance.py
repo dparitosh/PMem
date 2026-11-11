@@ -11,6 +11,7 @@ ids), and unit conversion (a unit mismatch is reported, not converted).
 from __future__ import annotations
 
 from typing import Any
+from math import isfinite
 
 NOMINAL_TOLERANCE = 1e-6
 _TOLERANCE_SOURCES = {
@@ -25,7 +26,8 @@ _TOLERANCE_SOURCES = {
 
 def _number(value: Any) -> float | None:
     try:
-        return float(value)
+        number = float(value)
+        return number if isfinite(number) else None
     except (TypeError, ValueError):
         return None
 
@@ -73,7 +75,10 @@ def _tolerance_check(dimension: dict[str, Any], characteristic: dict[str, Any], 
                 checks.append(_close(ap_lower, qif_lower))
             if ap_upper is not None and qif_upper is not None:
                 checks.append(_close(ap_upper, qif_upper))
-            bounds_status = "match" if all(checks) else "mismatch"
+            complete = ((ap_lower is None) == (qif_lower is None)
+                        and (ap_upper is None) == (qif_upper is None))
+            bounds_status = ("mismatch" if checks and not all(checks)
+                             else "match" if checks and complete else "not_available")
     return {
         "bounds_status": bounds_status,
         "unit_status": unit_status,
@@ -110,12 +115,14 @@ def compare_boc(ap242_batch: dict[str, Any], qif_batch: dict[str, Any]) -> dict[
             continue
         candidates = [entity for qv, entity in qif_nominals
                       if abs(qv - value) <= NOMINAL_TOLERANCE and entity.get("id") not in used]
-        if len(candidates) == 1:
+        competing_dimensions = [other for other in ap_dimensions
+                                if _close(_number(other.get("properties", {}).get("nominal_value")), value)]
+        if len(candidates) == 1 and len(competing_dimensions) == 1:
             qif_entity = candidates[0]
             used.add(qif_entity["id"])
             matched.append({"ap242": _brief(dimension), "qif": _brief(qif_entity), "nominal_value": value,
                             **_tolerance_check(dimension, qif_entity, value)})
-        elif len(candidates) > 1:
+        elif candidates:
             ambiguous.append({"ap242": _brief(dimension), "nominal_value": value,
                               "qif_candidates": [_brief(c) for c in candidates]})
         else:

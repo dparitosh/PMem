@@ -78,3 +78,53 @@ def test_boc_check_route_compares_uploaded_pair():
         "ap242_file": ("part.txt", b"x", "text/plain"),
     })
     assert bad.status_code == 422
+
+
+def _entity(identifier, **properties):
+    return {"id": identifier, "ceim_type": "Characteristic", "properties": properties}
+
+
+def test_incomplete_bounds_do_not_establish_match():
+    ap = _entity("a", source_entity="DIMENSIONAL_SIZE", nominal_value=25,
+                 lower_tolerance=-.1, upper_tolerance=.1)
+    for limits in ({"lower_limit":24.9}, {"upper_limit":25.1}):
+        qif = _entity("q", nominal_value=25, **limits)
+        result = compare_boc({"entities":[ap]}, {"entities":[qif]})
+        assert result["matched"][0]["bounds_status"] == "not_available"
+
+
+def test_repeated_ap_nominals_are_ambiguous_in_both_orders():
+    dimensions = [_entity(i, source_entity="DIMENSIONAL_SIZE", nominal_value=25) for i in ("a", "b")]
+    qif = _entity("q", nominal_value=25)
+    for ordered in (dimensions, list(reversed(dimensions))):
+        result = compare_boc({"entities":ordered}, {"entities":[qif]})
+        assert result["matched"] == []
+        assert result["summary"]["ambiguous"] == 2
+
+
+def test_nonfinite_nominals_are_missing_evidence():
+    ap = _entity("a", source_entity="DIMENSIONAL_SIZE", nominal_value=float("nan"))
+    result = compare_boc({"entities":[ap]}, {"entities":[]})
+    assert result["ap242_dimensions_unmatched"][0]["reason"] == "no nominal value in AP242"
+
+
+def test_exports_do_not_call_unknown_units_a_full_match():
+    from backend.ceim.boc_aas import build_boc_submodel
+    from backend.ceim.boc_document import build_boc_graph, REPORT
+    from rdflib import Literal
+    ap = _entity("a", source_entity="DIMENSIONAL_SIZE", nominal_value=25,
+                 lower_tolerance=-.1, upper_tolerance=.1)
+    qif = _entity("q", nominal_value=25, lower_limit=24.9, upper_limit=25.1)
+    report = compare_boc({"entities":[ap]}, {"entities":[qif]})
+    graph = build_boc_graph(report)
+    assert list(graph.objects(None, REPORT.comparisonStatus)) == [Literal("nominal_match")]
+    def statuses(node):
+        if isinstance(node, dict):
+            if node.get("idShort") == "ComparisonStatus":
+                yield node["value"]
+            for value in node.values():
+                yield from statuses(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from statuses(value)
+    assert list(statuses(build_boc_submodel(report))) == ["nominal_match"]
