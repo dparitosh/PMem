@@ -47,7 +47,10 @@ class MergeTests(unittest.TestCase):
                                   with_publication_lock=lambda key, operation: operation(),
                                   _parse_ontology=lambda *_: {'rdf_format': 'xml'}, register=register)
         from backend.ontology_service.merge_service import GovernedMergeService
-        self.merge = GovernedMergeService(catalog, SimpleNamespace(create_merge_version=version), Path(self.directory.name))
+        # The decision-policy stub reports 'no policy configured', the real service's answer when no policy is active.
+        intelligence = SimpleNamespace(create_merge_version=version,
+            evaluate_decisions=lambda operation, decisions: {'status': 'not_configured', 'compliant': None, 'blocking': False, 'checks': []})
+        self.merge = GovernedMergeService(catalog, intelligence, Path(self.directory.name))
 
     def test_xml_merge_and_repeat_apply_reuse_receipt(self):
         preview = self.merge.preview({'source_ontology_ids': ['one', 'two']})
@@ -129,7 +132,7 @@ class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
         import importlib.util
         import httpx
         self.environment = patch.dict(os.environ, {'USE_LLM':'ollama', 'LLM_MODEL_NAME':'offline:latest',
-            'OLLAMA_BASE_URL':'http://127.0.0.1:11434/api/chat', 'OLLAMA_DISCOVERY_ENABLED':'true'}, clear=True)
+            'OLLAMA_BASE_URL':'http://127.0.0.1:11434/api/chat', 'OLLAMA_DISCOVERY_ENABLED':'true','COMPANION_MAX_OUTPUT_TOKENS':'256'}, clear=True)
         self.environment.start(); self.addCleanup(self.environment.stop)
         self.models=['offline:latest']; self.fails=False; self.delay=0
         owner=self

@@ -17,9 +17,14 @@ from backend.mesh_store import InMemoryRegistry
 from backend.tests.test_bridge_jobs import Source, Graph
 
 
+def _no_policy(operation, decisions):
+    # Same answer as the real service when no decision policy is configured.
+    return {'status': 'not_configured', 'compliant': None, 'blocking': False, 'checks': []}
+
+
 def test_published_bridge_requires_authoritative_receipt():
     graph = Graph()
-    jobs = BridgeJobs(InMemoryRegistry(), Source(), graph)
+    jobs = BridgeJobs(InMemoryRegistry(), Source(), graph, policy_evaluator=_no_policy)
     preview = jobs.preview('ontology', 'import', 'reader')
     ids = [preview['candidates'][0]['candidate_id']]
     jobs.publish(preview['job_id'], ids, 'reviewer')

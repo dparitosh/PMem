@@ -34,11 +34,13 @@ def serialise(value: Any) -> Any:
 
 
 class SemanticIntelligence:
-    def __init__(self, root: Path | None, registry: Any | None = None) -> None:
+    def __init__(self, root: Path | None, registry: Any | None = None, evidence_store: Any | None = None) -> None:
         if root is not None:
             root.mkdir(parents=True, exist_ok=True)
         self.root = root
         self.registry = registry or PostgresRegistry("ontology_semantic_policies")
+        # Assessment evidence defaults to PostgreSQL; an injected store is used only when supplied.
+        self.evidence_store = evidence_store
         self.legacy_policy_path = root / "semantica_policies.json" if root is not None else None
 
     def _policies(self) -> list[dict[str, Any]]:
@@ -170,7 +172,8 @@ class SemanticIntelligence:
         return report
 
     def _retain_assessment(self, key, evidence):
-        PostgresRegistry("semantic_decision_assessments").put(key, evidence)
+        store = self.evidence_store if self.evidence_store is not None else PostgresRegistry("semantic_decision_assessments")
+        store.put(key, evidence)
 
     def quality_gate(self, *, entities: list[dict[str, Any]], deduplicate: bool, conflict_property: str | None,
                      merge_strategy: str = "keep_most_complete", deduplication_mode: str = "similarity") -> dict[str, Any]:

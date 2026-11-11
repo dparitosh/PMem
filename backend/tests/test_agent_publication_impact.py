@@ -35,14 +35,15 @@ class ImpactTests(unittest.TestCase):
     def test_stale_bridge_target_aborts_before_link_writes(self):
         tree=ast.parse(Path('backend/graph_service/bridge_publication.py').read_text(encoding='utf-8'))
         fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_publish_transaction')
+        helper=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='verify_semantic_projection')
         scope={'json':json,'datetime':datetime,'timezone':timezone}
-        exec(compile(ast.Module(body=[fn],type_ignores=[]),'<bridge>','exec'),scope)
+        exec(compile(ast.Module(body=[helper,fn],type_ignores=[]),'<bridge>','exec'),scope)
         calls=[]
         def run(query,**kwargs):
             calls.append(query)
             if len(calls)==1: return SimpleNamespace(single=lambda:{'receipt':None})
             return SimpleNamespace(data=lambda:[{'candidate_id':'c','sources':1,'targets':0}])
-        command={'publication_id':'p','request_digest':'d','rows':[{'candidate_id':'c'}]}
+        command={'publication_id':'p','request_digest':'d','ontology_id':'merged','approved_by':'reviewer','rows':[{'candidate_id':'c'}]}
         with self.assertRaises(ValueError): scope['_publish_transaction'](SimpleNamespace(run=run),command)
         self.assertEqual(len(calls),2)
         self.assertIn('NOT target:RetainedOntologyIdentity',calls[1])
