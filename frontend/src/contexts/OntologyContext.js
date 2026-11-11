@@ -99,6 +99,8 @@ export const OntologyProvider = ({ children }) => {
           : 'Failed to load ontologies');
         if (controller.signal.aborted) return [];
         const ontologyList = [...merged.values()];
+        // Approval state is the ontology's own lifecycle_status from the native catalog.
+        for (const row of ontologyList) row.approval_status = row.lifecycle_status || '';
         if (mountedRef.current) {
           registryFailureRef.current = failedSources.length > 0;
           setOntologies(ontologyList);

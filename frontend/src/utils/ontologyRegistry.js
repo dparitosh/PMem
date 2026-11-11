@@ -59,3 +59,8 @@ export function normalizeOntologyRows(rows = []) {
       };
     });
 }
+
+// Approval state is the ontology's own lifecycle_status (native catalog).
+export function approvalLabel(status) {
+  return status ? status.replaceAll('_', ' ') : 'no lifecycle recorded';
+}

@@ -1,5 +1,5 @@
 import GraphLegend from './GraphLegend';
-import { graphStateOf } from '../../utils/ontologyRegistry';
+import { graphStateOf, approvalLabel } from '../../utils/ontologyRegistry';
 import React from 'react';
 import {
   Database,
@@ -244,9 +244,9 @@ function GraphFilters({
             >
               <option value="ALL" style={{ color: '#333', fontWeight: 600 }}>Overview Graph (all loaded data)</option>
               <option value="archimate" style={{ color: '#333', fontWeight: 600 }}>[archimate] ArchiMate process model</option>
-              {ontologyOptions.filter((option) => option.value !== 'ALL' && option.value !== 'archimate' && (graphStateOf(option).inGraph || option.value === selectedOntology)).map((option, index) => (
-                <option key={option.value || `ontology-opt-${index}`} value={option.value} style={{ color: '#333' }}>
-                  {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.type ? ` · ${option.type}` : ''}{graphStateOf(option).label}
+              {ontologyOptions.filter((option) => option.value !== 'ALL' && option.value !== 'archimate' && option.approval_status === 'approved').map((option, index) => (
+                <option key={option.value || `ontology-opt-${index}`} value={option.value} style={{ color: '#333' }} title={graphStateOf(option).label.replace(/^ · /, '') || 'In graph'}>
+                  {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.approval_status !== undefined ? ` · ${approvalLabel(option.approval_status)}` : ''}
                 </option>
               ))}
             </select>

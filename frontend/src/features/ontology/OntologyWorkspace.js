@@ -1,3 +1,4 @@
+import { approvalLabel } from '../../utils/ontologyRegistry';
 import useRouteView from '../../app/useRouteView';
 const ONTOLOGY_VIEWS=['taxonomy','vocabulary','alignment','inference'];
 import SemanticSupport from "../../Components/SemanticSupport";
@@ -298,7 +299,9 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       value: ont.ontology_id || ont.id,
       type: normalizeSourceFormat(ont.file_type || ont.type, ont.ontology_id || ont.id),
       ontologyKey: ont.prefix || '',
-      label: `${ont.label || ont.ontology_name || ont.name || ont.ontology_id} [${ont.prefix || ''}]`,
+      label: `${ont.prefix ? `[${ont.prefix}] ` : ''}${ont.label || ont.ontology_name || ont.name || ont.ontology_id}`
+        + (ont.approval_status !== undefined ? ` · ${approvalLabel(ont.approval_status)}` : ''),
+      approval_status: ont.approval_status,
       prefix: ont.prefix || '',
       uploaded_at: ont.uploaded_at || '',
       source: ont.source,
