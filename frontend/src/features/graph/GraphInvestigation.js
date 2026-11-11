@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import ReadGoalPanel from '../../Components/ReadGoalPanel';
 import { resolveNodeName, resolveNodeType } from './graphRenderingPolicy';
 
+// View-only scopes are not registered ontologies, so the agent must not receive them as ontology_id.
+const NON_ONTOLOGY_SCOPES = new Set(['ALL', 'archimate', 'step', 'mbse_instances']);
+
 export default function GraphInvestigation({ node, ontologyId, nodeCount, relationshipCount, page = 'graph' }) {
   const [question, setQuestion] = useState('Explain this object and its source-provided connections. Identify missing evidence before drawing a business conclusion.');
+
   const id = node?.elementId;
   const context = { page, ...(id ? {node_id: String(id)} : {}),
-    ...(ontologyId && !['ALL','archimate'].includes(ontologyId) ? {ontology_id: ontologyId} : {}),
+    ...(ontologyId && !NON_ONTOLOGY_SCOPES.has(ontologyId) ? {ontology_id: String(ontologyId).replace(/_instances$/, '')} : {}),
     visible_node_count: nodeCount, visible_relationship_count: relationshipCount };
   const task = id && question.trim() ? `${question.trim()}\nFocus on graph node ID ${id} (${resolveNodeName(node)}). ${page === 'modeling' ? 'This selection is an imported model/RDF element, not necessarily a manufactured business instance. Do not equate a class, design or requirement with a physical part or proof of satisfaction. ' : ''}Use registered read tools and cite the returned node/relationship IDs and source evidence. Distinguish direct source references, semantic mappings and inferred conclusions. The displayed graph is a bounded slice (${nodeCount} nodes, ${relationshipCount} relationships); do not treat absent links as proof of no impact. Report gaps and tool failures explicitly. Do not publish or alter data.` : '';
   return <details className="graph-investigation"><summary>Investigate with agent {id ? `· ${resolveNodeName(node)}` : '· select a node'}</summary>

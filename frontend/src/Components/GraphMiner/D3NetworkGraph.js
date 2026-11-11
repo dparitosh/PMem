@@ -75,7 +75,7 @@ export default function D3NetworkGraph({
         .attr('stroke', item => item.id === selectedRef.current ? 'var(--theme-color-std-text, currentColor)' : 'var(--theme-color-component-1, #fff)')
         .attr('stroke-width', item => item.id === selectedRef.current ? 3 : 1.5);
       if (showLabels && nodes.length <= 250) {
-        node.append('text').attr('x', 11).attr('y', 4).attr('font-size', 10)
+        node.append('text').attr('x', 11).attr('y', 4).attr('font-size', 12)
           .attr('fill', 'var(--theme-color-std-text, currentColor)').text((item) => item.label);
       }
       simulation?.stop();

@@ -70,7 +70,7 @@ test('dense graph labels are compact but not blank', () => {
   const style = getNodeLabelStyle(500, 'ontology');
   const label = truncateGraphLabel('Very Long Requirement Specification Node Name', style.maxLength);
 
-  expect(style.fontSize).toBeLessThanOrEqual(9);
+  expect(style.fontSize).toBeGreaterThanOrEqual(12); // Minimum readable size; density is handled by truncation.
   expect(label).toMatch(/…$/);
   expect(label.length).toBeGreaterThan(0);
 });
@@ -83,7 +83,7 @@ test('relationship labels are visible in focused graph modes and compact in dens
   expect(shouldRenderRelationshipLabels(40, 100, true, 'ontology')).toBe(true);
 
   const style = getRelationshipLabelStyle(220, 'ontology');
-  expect(style.fontSize).toBeLessThanOrEqual(8);
+  expect(style.fontSize).toBeGreaterThanOrEqual(12);
   expect(truncateGraphLabel('Very Long Relationship Name', style.maxLength)).toMatch(/…$/);
 });
 

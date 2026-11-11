@@ -250,7 +250,7 @@ function GraphFilters({
                 </option>
               ))}
             </select>
-            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
+            {ontologyError && <span style={{ fontSize: '12px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
           </div>
         </div>
       )}
@@ -289,7 +289,7 @@ function GraphFilters({
                 </option>
               ))}
             </select>
-            {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
+            {stepPartsError && <span style={{ fontSize: '12px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
           </div>
         </div>
       )}

@@ -1,4 +1,6 @@
-import OntologyGroupOverview from './OntologyGroupOverview';
+import { focusNeighbourhood } from '../../utils/graphFocus';
+import { facetCounts, sliceGraph } from '../../utils/graphSlice';
+import GraphSliceBar from './GraphSliceBar';
 import GraphInvestigation from './GraphInvestigation';
 import {focusCompanionEvidence} from './companionGraphEvidence';
 import GraphInspector from './GraphInspector';
@@ -52,6 +54,23 @@ const resolveDisplayProp = (props) => {
     if (value != null) return String(value);
   }
   return null;
+};
+
+const VIEW_STATE_KEY = 'depo.graph.view.v1';
+const readViewState = () => {
+  const defaults = { focusNodeId: null, focusDepth: 1, sliceNodeTypes: [], sliceRelationshipTypes: [] };
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(VIEW_STATE_KEY) || '{}');
+    const strings = (list) => (Array.isArray(list) ? list.filter((item) => typeof item === 'string').slice(0, 100) : []);
+    return {
+      focusNodeId: typeof value.focusNodeId === 'string' ? value.focusNodeId : null,
+      focusDepth: value.focusDepth === 2 ? 2 : 1,
+      sliceNodeTypes: strings(value.sliceNodeTypes),
+      sliceRelationshipTypes: strings(value.sliceRelationshipTypes),
+    };
+  } catch (error) {
+    return defaults;
+  }
 };
 
 const resolveOntologySearchPrefix = (ontologyValue, fallbackOntologyValue = '') => {
@@ -209,7 +228,9 @@ const createNodeSearchFunction = () => {
   return (nodes, searchTerm) => {
     const rawSearchTerm = normalizeRawSearch(searchTerm);
     const lowerSearchTerm = normalizeSearchTerm(searchTerm);
-    if (!lowerSearchTerm || lowerSearchTerm.length < 2) return nodes;
+    if (!rawSearchTerm) return nodes;
+    // A one-character term matches almost everything; treat it as no match.
+    if (!lowerSearchTerm || (lowerSearchTerm.length < 2 && !/^\d$/.test(lowerSearchTerm))) return [];
     return nodes
       .map((node) => {
         let score = 0;
@@ -583,15 +604,27 @@ const GraphWorkspace = ({
       })); });
   }, [hideAllTooltips]);
 
+  const highlightIdsTimerRef = React.useRef(null);
+  const highlightNamesTimerRef = React.useRef(null);
   // Listen for "View in Graph" highlight requests from RecommendationsTab
   React.useEffect(() => {
+    // Each highlight kind has one clear timer; a new highlight cancels the previous timer of its kind.
+    const scheduleHighlightClear = (timerRef, clear) => {
+      if (timerRef.current) { clearTimeout(timerRef.current); timeoutsRef.current.delete(timerRef.current); }
+      const timeoutId = setTimeout(() => {
+        clear();
+        timeoutsRef.current.delete(timeoutId);
+        if (timerRef.current === timeoutId) timerRef.current = null;
+      }, HIGHLIGHT_AUTO_CLEAR_MS);
+      timerRef.current = timeoutId;
+      timeoutsRef.current.add(timeoutId);
+    };
     const handler = (e) => {
       const ids = e.detail?.ids;
       if (Array.isArray(ids) && ids.length > 0) {
         setHighlightedNodeNames(new Set());
         setHighlightedNodeIds(new Set(ids));
-        const timeoutId=setTimeout(()=>{setHighlightedNodeIds(new Set());timeoutsRef.current.delete(timeoutId);},HIGHLIGHT_AUTO_CLEAR_MS);
-        timeoutsRef.current.add(timeoutId);
+        scheduleHighlightClear(highlightIdsTimerRef, () => setHighlightedNodeIds(new Set()));
         return;
       }
       const names = e.detail?.names;  // array of node names to highlight
@@ -599,11 +632,7 @@ const GraphWorkspace = ({
         const nameSet = new Set(names.map(n => (n || '').toLowerCase()));
         setHighlightedNodeNames(nameSet);
         // Auto-clear highlight after 15 seconds
-        const timeoutId = setTimeout(() => {
-          setHighlightedNodeNames(new Set());
-          timeoutsRef.current.delete(timeoutId);
-        }, HIGHLIGHT_AUTO_CLEAR_MS);
-        timeoutsRef.current.add(timeoutId);
+        scheduleHighlightClear(highlightNamesTimerRef, () => setHighlightedNodeNames(new Set()));
       }
     };
     window.addEventListener('dt-highlight-nodes', handler);
@@ -743,7 +772,7 @@ const GraphWorkspace = ({
     const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
     const ontologyPrefix = escapeHtml(props.prefix || props.ontology_prefix || '');
     const ontologyId = escapeHtml(props.ontology_id || props.source_ontology || '');
-    const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;color:#fff;';
+    const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size: 12px;font-weight:600;cursor:pointer;color:#fff;';
     const buttons = [];
 
     if (isPartLike || isChangeLike) {
@@ -764,7 +793,11 @@ const GraphWorkspace = ({
 
   // Performance: Optimize state management
   const [investigationNodeId, setInvestigationNodeId] = useState(null);
-  const [overviewPresentation, setOverviewPresentation] = useState('groups');
+  const [initialViewState] = useState(readViewState);
+  const [focusNodeId, setFocusNodeId] = useState(initialViewState.focusNodeId);
+  const [focusDepth, setFocusDepth] = useState(initialViewState.focusDepth);
+  const [sliceNodeTypes, setSliceNodeTypes] = useState(initialViewState.sliceNodeTypes);
+  const [sliceRelationshipTypes, setSliceRelationshipTypes] = useState(initialViewState.sliceRelationshipTypes);
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [filteredData, setFilteredData] = useState({ nodes: [], links: [] });
   const [searchQuery, setSearchQuery] = useState('');
@@ -907,6 +940,7 @@ const GraphWorkspace = ({
   const searchInputRef = useRef(searchInput);
   const submitSearchQuery = useCallback((queryOverride) => {
     const nextQuery = typeof queryOverride === 'string' ? queryOverride : searchInputRef.current;
+    setError(null);
     setSearchQuery(String(nextQuery || '').trim());
   }, []);
   // Performance: Memoized search function
@@ -957,6 +991,31 @@ const GraphWorkspace = ({
     return baseGraphDataset;
   }, [baseGraphDataset, emptyGraphDataset, graphSearchActive, graphViewMode, searchResultData]);
   const activeDisplayData = useMemo(() => focusCompanionEvidence(unfocusedDisplayData, companionFocusIds), [unfocusedDisplayData, companionFocusIds]);
+  const focusedDisplayData = useMemo(() => focusNeighbourhood(activeDisplayData, focusNodeId, focusDepth), [activeDisplayData, focusNodeId, focusDepth]);
+  const slicedDisplayData = useMemo(() => sliceGraph(focusedDisplayData, { nodeTypes: sliceNodeTypes, relationshipTypes: sliceRelationshipTypes }, resolveNodeType), [focusedDisplayData, sliceNodeTypes, sliceRelationshipTypes]);
+  const sliceFacets = useMemo(() => facetCounts(focusedDisplayData, resolveNodeType), [focusedDisplayData]);
+  const toggleSliceValue = useCallback((setList, value) => setList((prev) => (prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value])), []);
+  const handleNodeFocus = useCallback((nodeId) => { setInvestigationNodeId(nodeId); setFocusNodeId(nodeId); }, []);
+  // Scope changes reset focus and slices. The first mount keeps the restored view state.
+  const lastScopeRef = useRef(selectedOntology);
+  useEffect(() => {
+    if (lastScopeRef.current === selectedOntology) return;
+    lastScopeRef.current = selectedOntology;
+    setFocusNodeId(null); setSliceNodeTypes([]); setSliceRelationshipTypes([]);
+  }, [selectedOntology]);
+  useEffect(() => {
+    if (ontologyLoading || !ontologyOptions?.length) return;
+    const value = selectedOntology;
+    if (['ALL', 'archimate', 'step', 'mbse_instances'].includes(value) || value.endsWith('_instances')) return;
+    if (ontologyOptions.some((option) => option.value === value)) return;
+    setSelectedOntology('ALL');
+    setOntologyGraphMessage('The selected ontology is no longer registered. Showing the overview.');
+  }, [ontologyLoading, ontologyOptions, selectedOntology]);
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify({ focusNodeId, focusDepth, sliceNodeTypes, sliceRelationshipTypes }));
+    } catch (error) { /* Storage can be unavailable; the view still works without it. */ }
+  }, [focusNodeId, focusDepth, sliceNodeTypes, sliceRelationshipTypes]);
   const activeGraphDataset = useMemo(() => {
     if (graphSearchActive) {
       return baseGraphDataset;
@@ -1189,7 +1248,9 @@ const GraphWorkspace = ({
 
     const normalizedSlice = deduplicateNodesAndLinks(nextData?.nodes || [], nextData?.links || []);
     const validatedSlice = validateConnectivity(normalizedSlice);
-    if (preserveIsolatedNodes) {
+    // The node cap applies to every slice; isolated-node preservation only applies below it.
+    const graphNodeCap = Math.max(1, Number(API?.ui?.graphMaxNodes) || 750);
+    if (preserveIsolatedNodes && normalizedSlice.nodes.length <= graphNodeCap) {
       if (validatedSlice.orphanNodeIds.length > 0 && isDevelopment) {
         performanceWarn('[GRAPH] commitGraphSlice preserving isolated nodes:', validatedSlice.orphanNodeIds);
       }
@@ -1216,7 +1277,6 @@ const GraphWorkspace = ({
       }
       return;
     }
-    const graphNodeCap = Math.max(1, Number(API?.ui?.graphMaxNodes) || 750);
     const nodeList = normalizedSlice.nodes || [];
     const linkList = normalizedSlice.links || [];
     const nodeDegree = new Map(nodeList.map((node) => [node.elementId, 0]));
@@ -1979,7 +2039,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
       try {
         const response = await graphApi.searchUniversal(debouncedSearchQuery, {
-          scope: selectedOntologyRef.current === 'ALL' ? '' : selectedOntologyRef.current,
+          scope: resolveOntologySearchPrefix(selectedOntologyRef.current),
           limit: 80,
         }, abortController.signal);
         if (abortController.signal.aborted) return;
@@ -2445,6 +2505,8 @@ const boundaryForce = (width, height) => {
           .style('pointer-events', 'none');
         // Pulse animation
         (function pulse() {
+          // Stop once the ring has been removed; otherwise the chain keeps running on a detached node.
+          if (!ring.node() || !ring.node().isConnected) return;
           ring.transition().duration(600).ease(d3.easeSinInOut)
             .attr('r', 22).attr('stroke-opacity', 0.3)
             .transition().duration(600).ease(d3.easeSinInOut)
@@ -2715,13 +2777,13 @@ const boundaryForce = (width, height) => {
       />
       {companionFocusIds && <div role="status">Graph focused on {companionFocusIds.length} cited records already loaded. Only recorded edges are shown. <button type="button" onClick={() => setCompanionFocusIds(null)}>Show all search context</button></div>}
       {(isLoading || scopeLoading) && (
-        <div className="loading-state" style={{
+        <div className="loading-state" role="status" aria-live="polite" style={{
           position: 'absolute',
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 11,
-          background: 'rgba(255,255,255,0.98)',
+          background: 'var(--ui-surface)',
           padding: '32px 40px',
           borderRadius: '16px',
           textAlign: 'center',
@@ -2730,9 +2792,9 @@ const boundaryForce = (width, height) => {
           border: '1px solid rgba(0,0,0,0.1)',
           minWidth: '280px'
         }}>
-          <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: 700, color: '#52606d' }}>Loading graph</div>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>Loading Graph Data</div>
-          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>Please wait while we fetch your data...</div>
+          <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: 700, color: 'var(--ui-muted)' }}>Loading graph</div>
+          <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--ui-text)', marginBottom: '8px' }}>Loading Graph Data</div>
+          <div style={{ fontSize: '14px', color: 'var(--ui-muted)' }}>Please wait while we fetch your data...</div>
         </div>
       )}
       {error && (
@@ -2742,7 +2804,7 @@ const boundaryForce = (width, height) => {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 11,
-          background: 'rgba(255,255,255,0.98)',
+          background: 'var(--ui-surface)',
           padding: '32px 40px',
           borderRadius: '16px',
           textAlign: 'center',
@@ -2752,8 +2814,9 @@ const boundaryForce = (width, height) => {
           minWidth: '320px'
         }}>
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#C0392B' }}><i className="fas fa-exclamation-triangle"></i></div>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#C0392B', marginBottom: '8px' }}>Connection Error</div>
-          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>{error}</div>
+          <div style={{ fontSize: '18px', fontWeight: '600', color: '#C0392B', marginBottom: '8px' }}>Graph notice</div>
+          <div role="alert" style={{ fontSize: '14px', color: 'var(--ui-muted)' }}>{error}</div>
+          <button type="button" onClick={() => setError(null)} style={{ marginTop: 16, padding: '6px 14px', borderRadius: 6, border: '1px solid var(--ui-border)', background: 'var(--ui-surface)', color: 'var(--ui-text)', cursor: 'pointer' }}>Dismiss</button>
         </div>
       )}
       {!isLoading && !scopeLoading && !error && contextualSearchWarning && (
@@ -2768,7 +2831,7 @@ const boundaryForce = (width, height) => {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 11,
-          background: 'rgba(255,255,255,0.98)',
+          background: 'var(--ui-surface)',
           padding: '32px 40px',
           borderRadius: '16px',
           textAlign: 'center',
@@ -2778,8 +2841,8 @@ const boundaryForce = (width, height) => {
           minWidth: '320px'
         }}>
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#6c757d' }}><i className="fas fa-search"></i></div>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>No Results Found</div>
-          <div style={{ fontSize: '14px', color: '#7f8c8d', marginBottom: '4px' }}>No nodes found for: <strong>"{debouncedSearchQuery}"</strong></div>
+          <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--ui-text)', marginBottom: '8px' }}>No Results Found</div>
+          <div style={{ fontSize: '14px', color: 'var(--ui-muted)', marginBottom: '4px' }}>No nodes found for: <strong>"{debouncedSearchQuery}"</strong></div>
           <div style={{ fontSize: '12px', color: '#95a5a6' }}>Try adjusting your search terms</div>
         </div>
       )}
@@ -2790,7 +2853,7 @@ const boundaryForce = (width, height) => {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 11,
-          background: 'rgba(255,255,255,0.98)',
+          background: 'var(--ui-surface)',
           padding: '32px 40px',
           borderRadius: '16px',
           textAlign: 'center',
@@ -2800,10 +2863,10 @@ const boundaryForce = (width, height) => {
           minWidth: '320px'
         }}>
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#6c757d' }}><i className="fas fa-chart-line"></i></div>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>
+          <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--ui-text)', marginBottom: '8px' }}>
             {selectedOntology === 'archimate' ? 'Process graph unavailable' : isOntologyGraphMode ? 'No Ontology Graph Available' : 'No Graph Data Available'}
           </div>
-          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>
+          <div style={{ fontSize: '14px', color: 'var(--ui-muted)' }}>
             {isOntologyGraphMode
               ? (ontologyGraphMessage || 'The selected ontology did not return classes or relationships for visualization.')
               : 'No graph data available from knowledge graph database'}
@@ -2817,7 +2880,7 @@ const boundaryForce = (width, height) => {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           zIndex: 11,
-          background: 'rgba(255,255,255,0.98)',
+          background: 'var(--ui-surface)',
           padding: '28px 34px',
           borderRadius: '16px',
           textAlign: 'center',
@@ -2828,14 +2891,14 @@ const boundaryForce = (width, height) => {
         }}>
           {normalizeSearchTerm(debouncedSearchQuery) ? (
             <>
-              <div style={{ marginBottom: '12px', fontSize: '18px', fontWeight: 700, color: '#2C2C2C' }}>No Results Found</div>
-              <div style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '4px' }}>No connected instance nodes matched <strong>"{debouncedSearchQuery}"</strong>.</div>
+              <div style={{ marginBottom: '12px', fontSize: '18px', fontWeight: 700, color: 'var(--ui-text)' }}>No Results Found</div>
+              <div style={{ fontSize: '13px', color: 'var(--ui-muted)', marginBottom: '4px' }}>No connected instance nodes matched <strong>"{debouncedSearchQuery}"</strong>.</div>
               <div style={{ fontSize: '12px', color: '#95a5a6' }}>Try a broader business term, class name, property value, or wildcard prefix such as <strong>REQ-*</strong>.</div>
             </>
           ) : (
             <>
-              <div style={{ marginBottom: '12px', fontSize: '18px', fontWeight: 700, color: '#2C2C2C' }}>Contextual Instance Graph</div>
-              <div style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '4px' }}>Search for an instance to load a bounded three-hop source neighborhood.</div>
+              <div style={{ marginBottom: '12px', fontSize: '18px', fontWeight: 700, color: 'var(--ui-text)' }}>Contextual Instance Graph</div>
+              <div style={{ fontSize: '13px', color: 'var(--ui-muted)', marginBottom: '4px' }}>Search for an instance to load a bounded three-hop source neighborhood.</div>
               <div style={{ fontSize: '12px', color: '#95a5a6' }}>Master/revision records and explicit trace-link records remain separate. Expand a node to explore another bounded neighborhood.</div>
             </>
           )}
@@ -2844,12 +2907,13 @@ const boundaryForce = (width, height) => {
 
   {graphSearchActive && (graphViewMode === 'individual' || selectedOntology === 'ALL') && <p style={{padding:'8px 16px',margin:0}}>Connected business context around the selected match. Source-path connections retain their relationship-record IDs; they are not inferred direct relationships.</p>}
   <GraphInvestigation node={investigationNode} ontologyId={selectedOntology} nodeCount={activeDisplayData?.nodes?.length || 0} relationshipCount={activeDisplayData?.links?.length || 0} />
-  {graphViewMode === 'ontology' && selectedOntology === 'ALL' && !graphSearchActive && <div className="graph-presentation-controls" role="group" aria-label="Overview presentation"><button aria-pressed={overviewPresentation==='groups'} onClick={()=>setOverviewPresentation('groups')}>Grouped overview</button><button aria-pressed={overviewPresentation==='entities'} onClick={()=>setOverviewPresentation('entities')}>Entity graph</button></div>}
-  {graphViewMode === 'ontology' && selectedOntology === 'ALL' && !graphSearchActive && overviewPresentation === 'groups' ? <OntologyGroupOverview data={activeDisplayData} ontologyOptions={ontologyOptions} onInspectNode={setInvestigationNodeId} onOpenOntology={id=>setSelectedOntology(id)}/> : <GraphCanvas ref={svgRef}
-        model={{ filteredData, graphSearchActive, activeDisplayData, graphViewMode, graphData, activeSearchResultId, loadingNodes, debouncedSearchQuery, activeGraphDataset, searchResultData, selectedOntology }}
+  {focusNodeId && focusedDisplayData?.focus && <div className="graph-focus-bar" role="group" aria-label="Focused neighbourhood"><span>Focused on {resolveNodeName(activeDisplayData.nodes.find(node => (node.elementId ?? node.id) === focusNodeId) || {}) || focusNodeId} · {focusedDisplayData.nodes.length} nodes{focusedDisplayData.focus.truncated ? ' (truncated)' : ''}</span><button type="button" aria-pressed={focusDepth === 1} onClick={() => setFocusDepth(1)}>1 hop</button><button type="button" aria-pressed={focusDepth === 2} onClick={() => setFocusDepth(2)}>2 hops</button><button type="button" onClick={() => setFocusNodeId(null)}>Show all</button></div>}
+  {focusedDisplayData.nodes.length > 0 && <GraphSliceBar facets={sliceFacets} selectedNodeTypes={sliceNodeTypes} selectedRelationshipTypes={sliceRelationshipTypes} onToggleNodeType={(value) => toggleSliceValue(setSliceNodeTypes, value)} onToggleRelationshipType={(value) => toggleSliceValue(setSliceRelationshipTypes, value)} onClear={() => { setSliceNodeTypes([]); setSliceRelationshipTypes([]); }} />}
+      <GraphCanvas ref={svgRef}
+        model={{ filteredData, graphSearchActive, activeDisplayData: slicedDisplayData, graphViewMode, graphData, activeSearchResultId, loadingNodes, debouncedSearchQuery, activeGraphDataset, searchResultData, selectedOntology }}
         runtime={{ gRef, zoomBehaviorRef, simulationRef, simulationLayoutRef, activeTooltipNodeRef, tooltipRef, highlightedNodeIdsRef, expandedNodesRef, nodeExpansionsRef, tickFrameRef, lastCenteredSearchRef, userInteractedWithGraphRef }}
-        actions={{ onInspectNode: setInvestigationNodeId, hideAllTooltips, handleZoom, initializeNodePositions, processLinksForOffset, boundaryForce, calculateCurvedPath, tooltipCloseBtn, getCurrentGraphSlice, applyTooltipCloseHandler, wireTooltipRecButtons, openTooltipRecommendation, repositionTooltip, getRelationshipLabelColor, dragstarted, dragged, dragended, getNodeColor, getPrimaryNodeLabel, getNodeLabelColor, canCollapseNode, hasExpandableConnections, collapseNode, expandNode, buildRecActionBar }}
-      />}
+        actions={{ onInspectNode: handleNodeFocus, hideAllTooltips, handleZoom, initializeNodePositions, processLinksForOffset, boundaryForce, calculateCurvedPath, tooltipCloseBtn, getCurrentGraphSlice, applyTooltipCloseHandler, wireTooltipRecButtons, openTooltipRecommendation, repositionTooltip, getRelationshipLabelColor, dragstarted, dragged, dragended, getNodeColor, getPrimaryNodeLabel, getNodeLabelColor, canCollapseNode, hasExpandableConnections, collapseNode, expandNode, buildRecActionBar }}
+      />
 
       <div ref={tooltipRef} className="tooltip" style={{
         position: 'absolute',

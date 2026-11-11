@@ -243,7 +243,7 @@ const getNodeSemanticFamily = (nodeLike) => {
     ? nodeLike.properties
     : nodeLike || {};
   const normalized = `${label || ''} ${props.entity_type || ''} ${props.semantic_role || ''}`.toLowerCase();
-  if (normalized.includes('ontologyclass') || normalized.includes(' class')) return 'Classes';
+  if (normalized.includes('ontologyclass') || normalized === 'class' || normalized.includes(' class')) return 'Classes';
   if (normalized.includes('objectproperty') || normalized.includes('property')) return 'Properties';
   if (normalized.includes('datatypeproperty') || normalized.includes('datatype')) return 'Data Types';
   if (normalized.includes('requirement') || normalized.includes('specification')) return 'Requirements';

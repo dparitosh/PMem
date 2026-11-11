@@ -38,7 +38,6 @@ test('graph recommendation requests preserve identity without invalid nested sco
  let resolveA,resolveB;
  apiClient.post.mockImplementationOnce(()=>new Promise(resolve=>{resolveA=resolve;})).mockImplementationOnce(()=>new Promise(resolve=>{resolveB=resolve;}));
  render(<GraphHEB setData={vi.fn()} setSearchResults={vi.fn()} setActiveTab={vi.fn()} setVisibleRelationships={vi.fn()}/>);
- fireEvent.click(await screen.findByRole('button',{name:'Entity graph'}));
  fireEvent.click(await screen.findByRole('button',{name:'Test impact A'}));
  const first=apiClient.post.mock.calls.at(-1);
  expect(first[1]).toMatchObject({node_id:'revision-a',scope:{ontology_id:'selected'}});

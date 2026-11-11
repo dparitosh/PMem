@@ -2,7 +2,7 @@ import React from 'react';
 import { UI_COLORS } from '../../styles/uiTokens';
 import DecisionPolicyAssessment from '../../Components/DecisionPolicyAssessment';
 
-const _PILL = (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: c, color: '#fff', marginRight: '4px', marginBottom: '3px' });
+const _PILL = (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, background: c, color: '#fff', marginRight: '4px', marginBottom: '3px' });
 
 const _ROW  = { padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontSize: '12px' };
 
@@ -10,7 +10,7 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
   const viewBtn = (names, ids = []) => (
     <button
       onClick={() => { window.dispatchEvent(new CustomEvent('dt-highlight-nodes', { detail: ids.filter(Boolean).length ? {ids:ids.filter(Boolean)} : {names} })); setRecPanel(p => ({ ...p, open: false })); }}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', border: `1px solid ${UI_COLORS.primary}`, borderRadius: '5px', background: UI_COLORS.primaryLight, color: UI_COLORS.primaryText, fontSize: '11px', fontWeight: 600, cursor: 'pointer', marginTop: '8px' }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', border: `1px solid ${UI_COLORS.primary}`, borderRadius: '5px', background: UI_COLORS.primaryLight, color: UI_COLORS.primaryText, fontSize: '12px', fontWeight: 600, cursor: 'pointer', marginTop: '8px' }}
     >
       Highlight in graph
     </button>
@@ -42,7 +42,7 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
         <div style={{ fontWeight: 700, marginBottom: '8px' }}>{data.similar_parts?.length || 0} similar parts</div>
         {(data.similar_parts || []).slice(0, 10).map((p, i) => (
           <div key={i} style={_ROW}>
-            <strong>{p.name}</strong> \u2014 <span style={{ color: UI_COLORS.primaryText, fontWeight: 600 }}>{p.similarity_score}</span>
+            <strong>{p.name}</strong> {'—'} <span style={{ color: UI_COLORS.primaryText, fontWeight: 600 }}>{p.similarity_score}</span>
             <p>{p.conflicts?.length ? `Conflicts: ${p.conflicts.join(', ')}` : 'Engineering review required'} · {p.score_evidence?.engineering_assessed ?? 0} properties assessed</p>
             {p.shared_assembly && <span style={_PILL('#27ae60')}>Assembly</span>}
             {p.traceability_link && <span style={_PILL('#e67e22')}>{p.traceability_link}</span>}
@@ -69,9 +69,9 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
 
 export default function GraphInspector({ recPanel, setRecPanel, setActiveTab }) {
   return (recPanel.open && (
-        <div style={{
+        <div role="complementary" aria-label="Recommendation details" onKeyDown={(event) => { if (event.key === 'Escape') setRecPanel({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' }); }} style={{
           position: 'absolute', top: 0, right: 0, width: 'min(380px, 100%)', height: '100%',
-          background: '#fff', boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
+          background: 'var(--ui-surface, #fff)', boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
           zIndex: 3000, display: 'flex', flexDirection: 'column',
           borderLeft: `2px solid ${UI_COLORS.primary}`, borderRadius: '0 0 0 8px',
           animation: 'slideInRight 0.25s ease-out',

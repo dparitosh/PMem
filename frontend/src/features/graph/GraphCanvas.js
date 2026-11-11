@@ -29,6 +29,6 @@ const GraphCanvas = forwardRef(function GraphCanvas({ model, runtime, actions },
       d3.select(element).on('.zoom', null).on('click.graph-background', null);
     };
   }, [svgRef, tickFrameRef, simulationRef, gRef, zoomBehaviorRef]);
-  return <svg ref={svgRef} role="img" aria-label="Knowledge graph canvas" className="graph-canvas" style={{ width: '100%', maxWidth:'100%', flex: '0 0 auto', height:'clamp(280px, 56dvh, 640px)', minHeight:0, margin: 0, padding: 0, position: 'relative', zIndex: 0 }} />;
+  return <svg ref={svgRef} role="group" aria-label="Knowledge graph canvas" className="graph-canvas" style={{ width: '100%', maxWidth:'100%', flex: '0 0 auto', height:'clamp(280px, 56dvh, 640px)', minHeight:0, margin: 0, padding: 0, position: 'relative', zIndex: 0 }} />;
 });
 export default GraphCanvas;

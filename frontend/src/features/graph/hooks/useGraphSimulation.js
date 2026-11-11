@@ -1,6 +1,6 @@
 import {fitGraphViewport} from '../graphViewport';
 import {businessProperties} from '../../../utils/businessProperties';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as d3 from "d3";
 import { logger } from "../../../utils/logger";
 import { getLinkEndpointId } from "../../../utils/graphUtils";
@@ -11,9 +11,15 @@ import { RELATIONSHIP_THEME, ARROW_HEAD_WIDTH, ARROW_HEAD_LENGTH, ARROW_REF_X, T
 
 // Rendering owns simulation ticks and DOM listeners, never shared business records.
 export default function useGraphSimulation({ model, runtime, actions, svgRef }) {
+// Last viewport size seen by the simulation. A size-only change must not rebuild forces.
+const lastSizeRef = useRef('');
 const { filteredData, graphSearchActive, activeDisplayData, graphViewMode, graphData, activeSearchResultId, loadingNodes, debouncedSearchQuery, activeGraphDataset, searchResultData, selectedOntology } = model;
 const { gRef, zoomBehaviorRef, simulationRef, simulationLayoutRef, activeTooltipNodeRef, tooltipRef, highlightedNodeIdsRef, expandedNodesRef, nodeExpansionsRef, tickFrameRef, lastCenteredSearchRef, userInteractedWithGraphRef } = runtime;
 const { onInspectNode, hideAllTooltips, handleZoom, initializeNodePositions, processLinksForOffset, boundaryForce, calculateCurvedPath, tooltipCloseBtn, getCurrentGraphSlice, applyTooltipCloseHandler, wireTooltipRecButtons, openTooltipRecommendation, repositionTooltip, getRelationshipLabelColor, dragstarted, dragged, dragended, getNodeColor, getPrimaryNodeLabel, getNodeLabelColor, canCollapseNode, hasExpandableConnections, collapseNode, expandNode, buildRecActionBar } = actions;
+// Loading rings are drawn with the nodes; update their visibility whenever the loading set changes.
+useEffect(() => {
+  gRef.current?.selectAll('.loading-indicator').style('opacity', d => (loadingNodes.has(d.elementId) ? 1 : 0));
+}, [loadingNodes, gRef]);
 useEffect(() => {
     const startTime = performance.now();
     logger.render(`[RENDER] Starting render with ${filteredData.nodes?.length || 0} nodes, ${filteredData.links?.length || 0} links`);
@@ -165,11 +171,15 @@ useEffect(() => {
     const processedLinks = processLinksForOffset([...safeRenderLinks]);
     const linkCount = processedLinks.length;
     const showNodeLabels = shouldRenderNodeLabels(nodeCount, linkCount, graphSearchActive, graphViewMode);
-    const layoutKey = JSON.stringify([width, height, graphViewMode, showNodeLabels]);
+    // Size is excluded: a resize updates the centre and boundary forces below instead of a full rebuild.
+    const layoutKey = JSON.stringify([graphViewMode, showNodeLabels]);
     layoutChanged = simulationLayoutRef.current !== layoutKey;
+    const sizeKey = `${width}x${height}`;
+    const sizeChanged = lastSizeRef.current !== sizeKey;
+    lastSizeRef.current = sizeKey;
     simulationLayoutRef.current = layoutKey;
     const nodeLabelStyle = { ...getNodeLabelStyle(nodeCount, graphViewMode) };
-    if (!showNodeLabels) { nodeLabelStyle.fontSize = 11; nodeLabelStyle.maxLength = 48; }
+    if (!showNodeLabels) { nodeLabelStyle.fontSize = 12; nodeLabelStyle.maxLength = 48; }
     const labelVisible = d => showNodeLabels || d.elementId === activeSearchResultId || d.elementId === activeTooltipNodeRef.current || highlightedNodeIdsRef.current.has(d.elementId);
     const shouldClusterDenseGraph = graphViewMode === 'ontology' && !graphSearchActive && nodeCount > 140;
     const clusterStrength = shouldClusterDenseGraph ? 0.045 : 0.028;
@@ -245,6 +255,11 @@ useEffect(() => {
         logger.render(`D3 Simulation updated with alpha ${alpha} (nodes changed: ${nodesChanged}, links changed: ${linksChanged}, layout changed: ${layoutChanged})`);
       } else {
         simulationRef.current.force('link').links(processedLinks);
+        if (sizeChanged) {
+          simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH));
+          simulationRef.current.force('boundary', boundaryForce(width, height));
+          simulationRef.current.alpha(0.15).restart();
+        }
         logger.render('Skipping simulation update - no data changes detected');
       }
     }
@@ -339,7 +354,7 @@ useEffect(() => {
               const tgtLabel = resolveNodeName(tgtNode);
               const tgtType = resolveNodeType(tgtNode);
 
-              tooltipContent += `<div style="margin: 8px; padding: 10px 12px; background: #f8f9fa; border-radius: 6px; font-size: 11px; color: #495057; border: 1px solid #e9eef5;">
+              tooltipContent += `<div style="margin: 8px; padding: 10px 12px; background: #f8f9fa; border-radius: 6px; font-size: 12px; color: #495057; border: 1px solid #e9eef5;">
                 <div style="margin-bottom: 6px;"><strong style="color: #355C7D;">From:</strong> [${escapeHtml(srcType)}] ${escapeHtml(srcLabel)}</div>
                 <div><strong style="color: #486581;">To:</strong> [${escapeHtml(tgtType)}] ${escapeHtml(tgtLabel)}</div>
               </div>`;
@@ -421,7 +436,7 @@ useEffect(() => {
     //   .data(filteredData.links, d => d.elementId)
     //   .join('text')
     //   .text(d => d.type)
-    //   .attr('font-size', 10)
+    //   .attr('font-size', 12)
     //   .attr('text-anchor', 'middle')
     //   .attr('fill', '#666')
     //   .style('pointer-events', 'none');
@@ -434,6 +449,7 @@ useEffect(() => {
           const group = enter.append('g')
             .attr('class', 'node-group')
             .call(d3.drag()
+              .clickDistance(4)
               .on('start', dragstarted)
               .on('drag', dragged)
               .on('end', dragended)
@@ -571,6 +587,16 @@ useEffect(() => {
             .style('pointer-events', 'none');
 
           // Main node interactions - Updated to handle both icon and fallback circle
+          // Keyboard access: nodes are focusable buttons that activate like a click.
+          group
+            .attr('tabindex', 0)
+            .attr('role', 'button')
+            .attr('aria-label', d => `Node ${truncateGraphLabel(getPrimaryNodeLabel(d), nodeLabelStyle.maxLength)}. Press Enter to focus.`)
+            .on('keydown.activate', function (event) {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              this.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            });
           group.on('click', function (event, d) {
             event.stopPropagation();
             // If clicking a different node, hide old tooltip first
@@ -647,21 +673,21 @@ useEffect(() => {
 
               // Show concept type
               if (props.concept_type) {
-                tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555;">
+                tooltipContent += `<div style="margin: 4px 0; font-size: 12px; color: #555;">
                   <strong>Type:</strong> <span style="color: #e74c3c;">${escapeHtml(props.concept_type)}</span>
                 </div>`;
               }
 
               // Show namespace
               if (props.namespace) {
-                tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555; word-break: break-word;">
-                  <strong>Namespace:</strong> <code style="background: #f5f5f5; padding: 2px 4px; border-radius: 2px; font-size: 10px;">${escapeHtml(props.namespace)}</code>
+                tooltipContent += `<div style="margin: 4px 0; font-size: 12px; color: #555; word-break: break-word;">
+                  <strong>Namespace:</strong> <code style="background: #f5f5f5; padding: 2px 4px; border-radius: 2px; font-size: 12px;">${escapeHtml(props.namespace)}</code>
                 </div>`;
               }
 
               // Show ontology ID and prefix
               if (props.ontology_id || props.prefix) {
-                tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555;">
+                tooltipContent += `<div style="margin: 4px 0; font-size: 12px; color: #555;">
                   <strong>Ontology:</strong> <span style="color: #28A745;">[${escapeHtml(props.prefix || 'unknown')}]</span>
                 </div>`;
               }
@@ -685,12 +711,12 @@ useEffect(() => {
               const rows = links.slice(0, 8).map((link) => {
                   const targetId = direction === 'outgoing' ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
                   const targetNode = currentNodes.find(n => n.elementId === targetId);
-                  return `<div style="margin: 4px 0; padding: 5px 8px; background: #f8fafc; border: 1px solid #e6edf5; border-radius: 5px; font-size: 11px; color: #334e68;">
+                  return `<div style="margin: 4px 0; padding: 5px 8px; background: #f8fafc; border: 1px solid #e6edf5; border-radius: 5px; font-size: 12px; color: #334e68;">
                     [${escapeHtml(resolveNodeType(targetNode))}] ${escapeHtml(resolveNodeName(targetNode))}
                   </div>`;
                 }).join('');
                 return `<div style="margin-top: 8px;">
-                  <div style="font-size: 11px; font-weight: 700; color: #52606D; margin-bottom: 4px;">${title}</div>
+                  <div style="font-size: 12px; font-weight: 700; color: #52606D; margin-bottom: 4px;">${title}</div>
                   ${rows}
                 </div>`;
               };
@@ -718,9 +744,9 @@ useEffect(() => {
                 const isPropOwner = getLinkEndpointId(link.source) === d.elementId;
                 const propNodeId = isPropOwner ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
                 const propNode = currentNodes.find(n => n.elementId === propNodeId);
-                const propName = propNode?.name || 'Unknown';
+                const propName = resolveNodeName(propNode) || 'Unknown';
 
-                tooltipContent += `<div style="margin: 4px 0; padding: 4px; background: #f0f8f0; border-left: 3px solid #28A745; font-size: 11px;">
+                tooltipContent += `<div style="margin: 4px 0; padding: 4px; background: #f0f8f0; border-left: 3px solid #28A745; font-size: 12px;">
                   <strong style="color: #28A745;">⚙</strong> ${escapeHtml(propName)}
                 </div>`;
               });
@@ -761,7 +787,7 @@ useEffect(() => {
               const relationshipType = escapeHtml(getRelationshipDisplayName(link));
                 const arrow = isOutgoing ? '->' : '<-';
 
-                tooltipContent += `<div style="margin: 6px 0; padding: 6px; background: #f5f5f5; border-radius: 3px; font-size: 11px;">
+                tooltipContent += `<div style="margin: 6px 0; padding: 6px; background: #f5f5f5; border-radius: 3px; font-size: 12px;">
                   <div style="color: #555; margin-bottom: 2px;">
                     <strong style="color: #28A745;">${arrow}</strong>
                     <strong style="color: #e74c3c;">${relationshipType}</strong>
@@ -789,8 +815,13 @@ useEffect(() => {
           .on('mouseout', function (event, d) {
             d3.select(this).select('.node-label').style('display', labelVisible(d) ? null : 'none').text(labelVisible(d) ? truncateGraphLabel(getPrimaryNodeLabel(d), nodeLabelStyle.maxLength) : '');
             d3.select(this).select('.node-circle')
-              .attr('stroke', null)
-              .attr('stroke-width', null);
+              .attr('stroke', d => {
+                const id = d.elementId || d.id;
+                if (id === activeTooltipNodeRef.current) return 'black';
+                if (d.elementId === activeSearchResultId) return TCS_GRAPH_THEME.primary;
+                return d3.color(getNodeColor(d))?.darker(0.9)?.formatHex?.() || TCS_GRAPH_THEME.borderStrong;
+              })
+              .attr('stroke-width', d => ((d.elementId || d.id) === activeTooltipNodeRef.current ? 1.2 : null));
           });
 
           return group;
@@ -876,7 +907,7 @@ useEffect(() => {
     //     return d.label
     //   }}
     //   )
-    //  .attr('font-size', 10)
+    //  .attr('font-size', 12)
     //  .attr('dy', -15)
     //  .attr('text-anchor', 'middle')
     //  .attr('pointer-events', 'none')

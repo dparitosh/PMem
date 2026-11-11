@@ -5,32 +5,32 @@ export const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive) 
 export const getNodeLabelStyle = (nodeCount, graphViewMode = 'ontology') => {
   if (graphViewMode === 'ontology') {
     if (nodeCount > 220) {
-      return { fontSize: 7, maxLength: 16 };
+      return { fontSize: 12, maxLength: 16 };
     }
     if (nodeCount > 150) {
-      return { fontSize: 8, maxLength: 18 };
+      return { fontSize: 12, maxLength: 18 };
     }
     if (nodeCount > 80) {
-      return { fontSize: 9, maxLength: 24 };
+      return { fontSize: 12, maxLength: 24 };
     }
-    return { fontSize: 10, maxLength: 36 };
+    return { fontSize: 12, maxLength: 36 };
   }
   if (graphViewMode === 'individual') {
-    return { fontSize: 11, maxLength: 42 };
+    return { fontSize: 12, maxLength: 42 };
   }
   if (nodeCount > 220) {
     return { fontSize: 0, maxLength: 0 };
   }
   if (nodeCount > 350) {
-    return { fontSize: 7, maxLength: 14 };
+    return { fontSize: 12, maxLength: 14 };
   }
   if (nodeCount > 150) {
-    return { fontSize: 7.5, maxLength: 16 };
+    return { fontSize: 12, maxLength: 16 };
   }
   if (nodeCount > 80) {
-    return { fontSize: 8.5, maxLength: 22 };
+    return { fontSize: 12, maxLength: 22 };
   }
-  return { fontSize: 10, maxLength: 36 };
+  return { fontSize: 12, maxLength: 36 };
 };
 
 export const shouldRenderRelationshipLabels = (nodeCount, linkCount, graphSearchActive, graphViewMode = 'ontology') => {
@@ -43,29 +43,29 @@ export const shouldRenderRelationshipLabels = (nodeCount, linkCount, graphSearch
 export const getRelationshipLabelStyle = (linkCount, graphViewMode = 'ontology') => {
   if (graphViewMode === 'ontology') {
     if (linkCount > 180) {
-      return { fontSize: 7, maxLength: 16 };
+      return { fontSize: 12, maxLength: 16 };
     }
     if (linkCount > 120) {
-      return { fontSize: 7.5, maxLength: 18 };
+      return { fontSize: 12, maxLength: 18 };
     }
     if (linkCount > 80) {
-      return { fontSize: 8, maxLength: 22 };
+      return { fontSize: 12, maxLength: 22 };
     }
-    return { fontSize: 9, maxLength: 32 };
+    return { fontSize: 12, maxLength: 32 };
   }
   if (graphViewMode === 'individual') {
-    return { fontSize: 9, maxLength: 34 };
+    return { fontSize: 12, maxLength: 34 };
   }
   if (linkCount > 160) {
     return { fontSize: 0, maxLength: 0 };
   }
   if (linkCount > 180) {
-    return { fontSize: 7, maxLength: 18 };
+    return { fontSize: 12, maxLength: 18 };
   }
   if (linkCount > 80) {
-    return { fontSize: 8, maxLength: 24 };
+    return { fontSize: 12, maxLength: 24 };
   }
-  return { fontSize: 9, maxLength: 32 };
+  return { fontSize: 12, maxLength: 32 };
 };
 
 export const truncateGraphLabel = (value, maxLength = 36) => {

@@ -1,5 +1,5 @@
 import React, { createRef } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import GraphCanvas from './GraphCanvas';
 vi.mock('../../utils/logger', () => ({ logger: { render: vi.fn(), warn: vi.fn() } }));
 function fixture() {
@@ -15,7 +15,7 @@ function fixture() {
 test('canvas removes D3 listeners and stops its simulation when the route unmounts', () => {
   const props = fixture(), ref = createRef();
   const view = render(<GraphCanvas ref={ref} {...props} />);
-  const element = screen.getByRole('img', {name:'Knowledge graph canvas'});
+  const element = screen.getByRole('group', {name:'Knowledge graph canvas'});
   expect(element.__on.some(listener => listener.name === 'zoom')).toBe(true);
   const stop = vi.fn();
   props.runtime.simulationRef.current = { stop };
@@ -29,7 +29,7 @@ test('rerendering an empty graph keeps zoom and background dismissal working', (
   const props = fixture(), ref = createRef();
   const view = render(<GraphCanvas ref={ref} {...props} />);
   view.rerender(<GraphCanvas ref={ref} {...props} model={{...props.model, filteredData:{nodes:[],links:[]}}} />);
-  const element = screen.getByRole('img', {name:'Knowledge graph canvas'});
+  const element = screen.getByRole('group', {name:'Knowledge graph canvas'});
   element.dispatchEvent(new MouseEvent('click', { bubbles:true }));
   expect(props.actions.hideAllTooltips).toHaveBeenCalledTimes(1);
   expect(element.__on.some(listener => listener.name === 'zoom')).toBe(true);
@@ -78,4 +78,42 @@ test('observes container resizing and disconnects the observer on unmount', () =
   expect(ref.current.classList.contains('graph-canvas')).toBe(true);
   view.unmount();expect(disconnect).toHaveBeenCalledTimes(1);
  } finally {globalThis.ResizeObserver=Original;}
+});
+
+test('nodes are keyboard-focusable and Enter, Space, or click inspects them', () => {
+  const props = fixture(), ref = createRef();
+  const onInspectNode = vi.fn();
+  const a = {elementId:'a',labels:['Class'],properties:{name:'Alpha'}};
+  const b = {elementId:'b',labels:['Class'],properties:{name:'Beta'}};
+  const graph = {nodes:[a,b],links:[{source:'a',target:'b',type:'PART_OF'}]};
+  Object.assign(props.model,{filteredData:graph,activeDisplayData:graph,activeGraphDataset:graph,graphData:graph});
+  Object.assign(props.runtime.highlightedNodeIdsRef,{current:new Set()});
+  Object.assign(props.runtime.expandedNodesRef,{current:new Set()});
+  Object.assign(props.runtime.nodeExpansionsRef,{current:new Map()});
+  Object.assign(props.actions,{
+    onInspectNode,
+    initializeNodePositions:nodes=>nodes.forEach((n,i)=>{n.x=80+i*40;n.y=90;}),
+    processLinksForOffset:links=>links.map(link=>({...link})),boundaryForce:()=>()=>{},calculateCurvedPath:()=>'',
+    getNodeColor:()=> '#123456',getPrimaryNodeLabel:n=>n.properties.name,getNodeLabelColor:()=> '#123456',
+    canCollapseNode:()=>false,hasExpandableConnections:()=>false,dragstarted:()=>{},dragged:()=>{},dragended:()=>{},
+    getRelationshipLabelColor:()=>'#333',buildRecActionBar:()=>'',tooltipCloseBtn:'',applyTooltipCloseHandler:()=>{},
+    wireTooltipRecButtons:()=>{},repositionTooltip:()=>{},openTooltipRecommendation:()=>{},getCurrentGraphSlice:()=>({nodes:[],links:[]}),
+    collapseNode:()=>{},expandNode:()=>{},
+  });
+  const view = render(<GraphCanvas ref={ref} {...props}/>);
+  const groups = [...view.container.querySelectorAll('.node-group')];
+  expect(groups).toHaveLength(2);
+  groups.forEach(group => {
+    expect(group).toHaveAttribute('role', 'button');
+    expect(group).toHaveAttribute('tabindex', '0');
+  });
+  fireEvent.keyDown(groups[0], {key:'Enter'});
+  expect(onInspectNode).toHaveBeenLastCalledWith('a');
+  fireEvent.keyDown(groups[1], {key:' '});
+  expect(onInspectNode).toHaveBeenLastCalledWith('b');
+  fireEvent.keyDown(groups[0], {key:'x'});
+  expect(onInspectNode).toHaveBeenCalledTimes(2);
+  fireEvent.click(groups[0]);
+  expect(onInspectNode).toHaveBeenLastCalledWith('a');
+  expect(onInspectNode).toHaveBeenCalledTimes(3);
 });

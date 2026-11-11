@@ -1,4 +1,4 @@
-import { getLinkEndpointId } from './graphUtils';
+import { getLinkEndpointId, normalizeSearchTerm } from './graphUtils';
 const privateKey = /password|secret|token|api.?key|authorization|credential|embedding|vector/i;
 const layoutFields = new Set(['x','y','z','vx','vy','vz','fx','fy','fz','index','source','target']);
 export function graphValueMatches(value, query, depth = 0) {
@@ -9,8 +9,10 @@ export function graphValueMatches(value, query, depth = 0) {
     (key.toLowerCase().includes(query) || graphValueMatches(item, query, depth + 1)));
 }
 export function searchLoadedGraph(data, query, limit = 80) {
-  const term = String(query || '').trim().toLowerCase().replace(/\*+$/, '');
+  const term = normalizeSearchTerm(query);
   if (!term) return data || {nodes:[],links:[]};
+  // One-character terms match almost everything, except a single digit, which can be a real value.
+  if (term.length < 2 && !/^\d$/.test(term)) return {nodes:[],links:[]};
   const nodes=data?.nodes || [], links=data?.links || [];
   const matched = new Set(nodes.filter(node=>graphValueMatches(Object.fromEntries(Object.entries(node).filter(([key])=>!layoutFields.has(key))),term)).slice(0,limit).map(node=>node.elementId));
   const selectedLinks=links.filter(link=>graphValueMatches({type:link.type,label:link.label,properties:link.properties},term) || matched.has(getLinkEndpointId(link.source)) || matched.has(getLinkEndpointId(link.target))).slice(0,limit*4);

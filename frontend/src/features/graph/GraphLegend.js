@@ -31,7 +31,7 @@ export default function GraphLegend({ theme, ontologySliceSummary, getRelationsh
             </span>
           )}
           {ontologySliceSummary.isCapped && (
-            <span style={{ fontSize: 11, color: 'var(--ui-warning)', background: 'var(--ui-warning-soft)', border: '1px solid var(--ui-warning)', borderRadius: 999, padding: '3px 8px', fontWeight: 700 }}>
+            <span style={{ fontSize: 12, color: 'var(--ui-warning)', background: 'var(--ui-warning-soft)', border: '1px solid var(--ui-warning)', borderRadius: 999, padding: '3px 8px', fontWeight: 700 }}>
               Showing capped slice
             </span>
           )}
@@ -39,7 +39,7 @@ export default function GraphLegend({ theme, ontologySliceSummary, getRelationsh
             <span
               key={entry.label}
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 600,
                 color: theme.ink,
                 background: theme.surfaceAccent,
@@ -60,7 +60,7 @@ export default function GraphLegend({ theme, ontologySliceSummary, getRelationsh
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 6,
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 600,
                   color: theme.ink,
                   background: theme.surfaceMuted,
@@ -86,7 +86,7 @@ export default function GraphLegend({ theme, ontologySliceSummary, getRelationsh
             <span
               key={entry.label}
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 600,
                 color: theme.ink,
                 background: theme.surfaceMuted,

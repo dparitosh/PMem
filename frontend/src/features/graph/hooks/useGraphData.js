@@ -10,7 +10,8 @@ export default function useGraphData({ initialData, commitGraphSlice, searchMode
   const [scopeLoading, setOntologyLoading] = useState(false);
   const [ontologyGraphMessage, setOntologyGraphMessage] = useState('');
   useEffect(() => { commitRef.current = commitGraphSlice; }, [commitGraphSlice]);
-  const invalidate = useCallback(() => { request.current?.abort(); graphScopeRequestIdRef.current += 1; }, []);
+  // Aborting a request skips its own finally, so invalidation must clear the loading flag itself.
+  const invalidate = useCallback(() => { request.current?.abort(); graphScopeRequestIdRef.current += 1; setOntologyLoading(false); }, []);
   const beginRequest = useCallback(() => {
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
@@ -45,7 +46,7 @@ const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
     setOntologyGraphMessage('');
     // Never label a previous scope's graph as the newly selected ontology.
     commitRef.current({ nodes: [], links: [] }, {
-      updateGraphData: true, updateFullDataset: true, updateSearchResultData: true,
+      updateGraphData: true, updateFullDataset: true, updateSearchResultData: !searchActiveRef.current,
       clearActiveSearchId: true, syncResults: !searchModeRef.current,
     });
     try {
@@ -91,7 +92,7 @@ const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
         commitRef.current(dataSet, {
           updateGraphData: true,
           updateFullDataset: true,
-          updateSearchResultData: true,
+          updateSearchResultData: !searchActiveRef.current,
           syncResults: !searchModeRef.current,
         });
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
@@ -101,7 +102,7 @@ const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
         commitRef.current(empty, {
           updateGraphData: true,
           updateFullDataset: true,
-          updateSearchResultData: true,
+          updateSearchResultData: !searchActiveRef.current,
           syncResults: !searchModeRef.current,
         });
       }
@@ -121,7 +122,7 @@ const fetchArchitectureGraph = useCallback(async (prefix = 'archimate') => {
     setOntologyGraphMessage('');
     // Never label a previous scope's graph as the newly selected ontology.
     commitRef.current({ nodes: [], links: [] }, {
-      updateGraphData: true, updateFullDataset: true, updateSearchResultData: true,
+      updateGraphData: true, updateFullDataset: true, updateSearchResultData: !searchActiveRef.current,
       clearActiveSearchId: true, syncResults: !searchModeRef.current,
     });
     try {
@@ -134,7 +135,7 @@ const fetchArchitectureGraph = useCallback(async (prefix = 'archimate') => {
         commitRef.current(dataSet, {
           updateGraphData: true,
           updateFullDataset: true,
-          updateSearchResultData: true,
+          updateSearchResultData: !searchActiveRef.current,
           syncResults: !searchModeRef.current,
         });
         logger.render(`[ARCHIMATE] Loaded ${prefix}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
@@ -143,7 +144,7 @@ const fetchArchitectureGraph = useCallback(async (prefix = 'archimate') => {
         commitRef.current({ nodes: [], links: [] }, {
           updateGraphData: true,
           updateFullDataset: true,
-          updateSearchResultData: true,
+          updateSearchResultData: !searchActiveRef.current,
           clearActiveSearchId: true,
           syncResults: !searchModeRef.current,
         });
