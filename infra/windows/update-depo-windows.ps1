@@ -17,6 +17,7 @@ param(
   [switch]$PreflightOnly
 )
 $ErrorActionPreference = 'Stop'
+Write-Host 'Gateway setup is separate: docs/installation/API_GATEWAY_SETUP.md. Local mode needs no gateway URL or subscription key.'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw 'Existing environment file is missing; restore it before redeployment.' }

@@ -1,55 +1,27 @@
-from backend.agent import memory as memory_module
-from langchain_core.messages import HumanMessage
+"""Bounded memory regression coverage for the supported Companion engine."""
+from backend.agentic_service.companion_memory import recall_turns,retrieval_query
 
 
-def test_chat_memory_trims_to_limit(monkeypatch):
-    monkeypatch.setattr(memory_module, "CHAT_SESSION_MESSAGE_LIMIT", 6)
-    memory_module.chat_sessions.clear()
-    memory_module.chat_session_timestamps.clear()
-    monkeypatch.setattr(memory_module, "load_chat_messages", lambda *_args: [])
-    monkeypatch.setattr(memory_module, "replace_chat_messages", lambda *_args: None)
-
-    session = memory_module.get_memory("demo-session")
-    for idx in range(6):
-        session.add_user_message(f"user-{idx}")
-        session.add_ai_message(f"ai-{idx}")
-
-    stored = memory_module.chat_sessions["demo-session"]
-    assert len(stored) == 6
-    assert stored[0].content == "user-3"
-    assert stored[-1].content == "ai-5"
+def test_chat_memory_trims_to_the_scoped_recall_limit(monkeypatch):
+    from semantica.context.agent_memory import AgentMemory
+    monkeypatch.setattr(AgentMemory,'retrieve',lambda *args,**kwargs:[])
+    scope={'ontology':'version-1','node_id':'part-1'}
+    turns=[{'job_id':str(i),'user_request':'Part '+str(i),'graph_context':scope,'answerable':True} for i in range(80)]
+    selected=recall_turns('its properties',turns,scope,limit=6)
+    assert len(selected)==6 and [x['job_id'] for x in selected]==[str(i) for i in range(6)]
 
 
-def test_chat_memory_prunes_expired_sessions(monkeypatch):
-    monkeypatch.setattr(memory_module, "CHAT_SESSION_TTL_SECONDS", 1)
-    memory_module.chat_sessions.clear()
-    memory_module.chat_session_timestamps.clear()
-    monkeypatch.setattr(memory_module, "load_chat_messages", lambda *_args: [])
-    memory_module.chat_sessions["old-session"] = []
-    memory_module.chat_session_timestamps["old-session"] = 0
-
-    memory_module.get_memory("fresh-session")
-
-    assert "old-session" not in memory_module.chat_sessions
-    assert "fresh-session" in memory_module.chat_sessions
+def test_failed_and_different_scope_turns_do_not_consume_the_recall_limit(monkeypatch):
+    from semantica.context.agent_memory import AgentMemory
+    monkeypatch.setattr(AgentMemory,'retrieve',lambda *args,**kwargs:[])
+    scope={'ontology':'version-1','node_id':'part-1'}
+    failed=[{'user_request':'Failed answer','graph_context':scope,'status':'failed'} for _ in range(60)]
+    other=[{'user_request':'Different version','graph_context':{**scope,'ontology':'version-2'}} for _ in range(60)]
+    retained={'job_id':'good','user_request':'Housing','graph_context':scope,'answerable':True}
+    assert recall_turns('its properties',failed+other+[retained],scope)==[retained]
 
 
-def test_conversation_history_is_loaded_before_current_turn(monkeypatch):
-    import ast
-    import logging
-    from pathlib import Path
-    path = Path(__file__).resolve().parents[1] / 'agent' / 'chat.py'
-    tree = ast.parse(path.read_text(encoding='utf-8-sig'))
-    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_conversation_messages')
-
-    class History:
-        def get_messages(self):
-            return [HumanMessage(content="earlier question")]
-
-    scope = {'get_memory': lambda _session_id: History(), 'HumanMessage': HumanMessage,
-             'logger': logging.getLogger(__name__)}
-    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec',
-                 flags=__import__('__future__').annotations.compiler_flag), scope)
-    messages = scope['_conversation_messages']('session-1', 'current question')
-
-    assert [message.content for message in messages] == ["earlier question", "current question"]
+def test_previous_version_does_not_supply_the_current_subject():
+    scope={'ontology':'version-2','node_id':'part-1'}
+    turns=[{'user_request':'Housing','answerable':True,'graph_context':{**scope,'ontology':'version-1'}}]
+    assert retrieval_query('its properties',turns,scope)=='its properties'

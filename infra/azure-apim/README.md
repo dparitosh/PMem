@@ -1,5 +1,8 @@
 # Azure API Management registration
 
+Start with the ordered [customer gateway setup](../../docs/installation/API_GATEWAY_SETUP.md) for gateway URLs, product/subscription keys, authentication, CORS and verification. For local installation no gateway or subscription is required. The rest of this document contains component-specific reference details.
+
+
 ## Ollama model discovery and generation
 
 The DEPO service registration script below does not register Ollama. Configure
@@ -67,8 +70,8 @@ configured header. Restart the affected services after environment changes.
 References: [APIM operation exposure](https://learn.microsoft.com/en-us/azure/api-management/add-api-manually)
 and [Ollama native API](https://github.com/ollama/ollama/blob/main/docs/api.md).
 
-Azure API Management (APIM) is the only public entry point for the DEPO
-microservices. Keep service URLs private (VNet/private endpoint) and register
+When using this Azure topology, API Management (APIM) is the public entry point for the DEPO
+microservices. Other deployments may use an approved private/reverse-proxy topology. Keep service URLs private (VNet/private endpoint) and register
 their OpenAPI documents through APIM.
 
 ```powershell

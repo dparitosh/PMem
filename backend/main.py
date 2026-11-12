@@ -82,30 +82,24 @@ logger = setup_logging()
 try:
     from .Services.runtime_state_store import (
         allow_request as allow_shared_request,
-        acquire_session_lease,
         clear_chat_messages,
         delete_chat_job as delete_shared_chat_job,
         delete_session as delete_shared_session,
         get_chat_job as get_shared_chat_job,
         get_session as get_shared_session,
         list_chat_jobs as list_shared_chat_jobs,
-        save_chat_job as save_shared_chat_job,
         save_session as save_shared_session,
-        release_session_lease,
     )
 except ImportError:
     from Services.runtime_state_store import (
         allow_request as allow_shared_request,
-        acquire_session_lease,
         clear_chat_messages,
         delete_chat_job as delete_shared_chat_job,
         delete_session as delete_shared_session,
         get_chat_job as get_shared_chat_job,
         get_session as get_shared_session,
         list_chat_jobs as list_shared_chat_jobs,
-        save_chat_job as save_shared_chat_job,
         save_session as save_shared_session,
-        release_session_lease,
     )
 
 # Sensitive data patterns to filter from logs
@@ -180,131 +174,11 @@ except Exception:
         logger.warning("Agent memory service unavailable: %s", _agent_memory_exc)
         AgentMemoryService = None
 
-_chat_generate_response = None
-_chat_generate_response_stream = None
-_chat_load_error = None
-
-
-def _load_chat_generators():
-    """Load the optional GraphRAG stack on first chat use, not API startup."""
-    global _chat_generate_response, _chat_generate_response_stream, _chat_load_error
-    if _chat_generate_response is not None and _chat_generate_response_stream is not None:
-        return _chat_generate_response, _chat_generate_response_stream
-    try:
-        from .agent.chat import generate_response as response_fn, generate_response_stream as stream_fn
-    except Exception as import_error:
-        try:
-            from agent.chat import generate_response as response_fn, generate_response_stream as stream_fn
-        except Exception as full_error:
-            _chat_load_error = full_error
-            logger.warning("Agent chat module not available; using lazy Ollama fallback: %s", import_error)
-
-            def _format_graph_context_for_fallback(graph_context) -> str:
-                if not graph_context:
-                    return ""
-                try:
-                    return "Current graph context:\n" + json.dumps(graph_context, indent=2, default=str)[:3500]
-                except Exception:
-                    return f"Current graph context: {str(graph_context)[:3500]}"
-
-            def _live_graph_context_for_fallback(message: str, graph_context=None):
-                """Resolve a small Neo4j context when the optional agent stack is absent.
-
-                The browser normally sends a graph snapshot, but external clients do not
-                have that snapshot. Keep this lookup bounded and read-only so the fallback
-                remains GraphRAG-grounded without requiring LangChain integrations.
-                """
-                if isinstance(graph_context, dict):
-                    visible = graph_context.get("visibleGraph") or graph_context.get("visible_graph") or graph_context
-                    if isinstance(visible, dict) and (visible.get("nodes") or visible.get("links") or visible.get("relationships")):
-                        return graph_context
-                try:
-                    try:
-                        from .Services.graph_view_service import GraphViewService
-                    except Exception:
-                        from Services.graph_view_service import GraphViewService
-
-                    text = str(message or "").strip()
-                    candidates = []
-                    for value in re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{2,}", text):
-                        lowered = value.lower()
-                        if lowered not in {
-                            "what", "which", "where", "when", "why", "how", "show", "find",
-                            "list", "with", "from", "this", "that", "about", "impact", "analysis",
-                            "context", "graph", "please", "does", "have", "give", "and", "the",
-                        } and value not in candidates:
-                            candidates.append(value)
-                    for candidate in candidates[:8]:
-                        payload = GraphViewService.get_contextual_subgraph(
-                            search=candidate,
-                            limit=24,
-                            search_mode="broader",
-                            expand_neighbors=True,
-                        )
-                        if payload and (payload.get("nodes") or payload.get("relationships")):
-                            return {
-                                "source": "backend-neo4j-context",
-                                "query": message,
-                                "contextualGraph": payload,
-                            }
-                except Exception as exc:
-                    logger.warning("Live Neo4j fallback context unavailable: %s", exc)
-                return graph_context
-
-            async def response_fn(session_id: str, message: str, graph_context=None) -> str:
-                from Services.ollama_service import get_ollama_service
-                try:
-                    prompt = message
-                    live_context = _live_graph_context_for_fallback(message, graph_context)
-                    context_text = _format_graph_context_for_fallback(live_context)
-                    if context_text:
-                        prompt = f"{context_text}\n\nUser question: {message}"
-                    response = get_ollama_service().query(prompt)
-                    return response or "I couldn't generate a response. Please try again."
-                except Exception as exc:
-                    logger.error("Fallback chat error: %s: %s", type(exc).__name__, exc, exc_info=True)
-                    return "I encountered an error processing your request. Please try again later."
-
-            def stream_fn(session_id: str, message: str, graph_context=None):
-                async def _stream():
-                    from Services.ollama_service import get_ollama_service
-                    try:
-                        prompt = message
-                        live_context = _live_graph_context_for_fallback(message, graph_context)
-                        context_text = _format_graph_context_for_fallback(live_context)
-                        if context_text:
-                            prompt = f"{context_text}\n\nUser question: {message}"
-                        response = get_ollama_service().query(prompt)
-                        if response:
-                            for index in range(0, len(response), 6):
-                                yield f"data: {json.dumps({'token': response[index:index + 6]})}\n\n"
-                        yield f"data: {json.dumps({'done': True})}\n\n"
-                    except Exception as exc:
-                        logger.error("Fallback stream error: %s: %s", type(exc).__name__, exc, exc_info=True)
-                        yield f"data: {json.dumps({'error': 'Error processing your request'})}\n\n"
-                        yield f"data: {json.dumps({'done': True})}\n\n"
-                return _stream()
-
-        _chat_load_error = _chat_load_error or import_error
-    _chat_generate_response = response_fn
-    _chat_generate_response_stream = stream_fn
-    return _chat_generate_response, _chat_generate_response_stream
-
-
-async def generate_response(session_id: str, message: str, graph_context=None):
-    response_fn, _ = _load_chat_generators()
-    return await response_fn(session_id, message, graph_context)
-
-
-def generate_response_stream(session_id: str, message: str, graph_context=None):
-    _, stream_fn = _load_chat_generators()
-    return stream_fn(session_id, message, graph_context)
 
 try:
     from .core.graph import graph, get_graph_schema, cleanup_graph_connection
     # from .models.schema import ChatRequest, ChatResponse, ResetRequest, TextSearchRequest, ChatWithCypherResponse
-    # from .agent.memory import reset_memory
-    from .models.schema import ChatRequest, ChatResponse, TextSearchRequest
+    from .models.schema import TextSearchRequest
     from .ingestion_service.router import router as ingestion_router
     from .Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from .routes.ontology_routes import router as ontology_router
@@ -329,7 +203,7 @@ except ImportError:
         sys.path.insert(0, _project_root)
 
     from backend.core.graph import graph, get_graph_schema, cleanup_graph_connection
-    from backend.models.schema import ChatRequest, ChatResponse, TextSearchRequest
+    from backend.models.schema import TextSearchRequest
     from backend.ingestion_service.router import router as ingestion_router
     from backend.Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from backend.routes.ontology_routes import router as ontology_router
@@ -639,15 +513,6 @@ class SessionSecurityMiddleware:
 
 app.add_middleware(SessionSecurityMiddleware)
 
-
-def _bind_chat_session(http_request: Request, requested_session_id: str) -> str:
-    """Bind chat payloads to the server-issued session carried by the header."""
-    server_session_id = http_request.scope.get("session_id")
-    if not server_session_id:
-        raise HTTPException(status_code=401, detail="A valid client session is required")
-    if http_request.scope.get("session_id_supplied") and requested_session_id != server_session_id:
-        raise HTTPException(status_code=403, detail="Chat session does not match the client session")
-    return server_session_id
 
 # 🔒 SECURITY: HTTP Security Headers Middleware
 class SecurityHeadersMiddleware:
@@ -1009,10 +874,6 @@ NEO4J_DRIVER_TIMEOUT = 60  # Connection timeout
 
 # Chat/session timing controls
 # Extended timeouts for Ollama model inference and streaming responses
-CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "900"))  # 15 min
-CHAT_STREAM_TIMEOUT_SECONDS = int(os.getenv("CHAT_STREAM_TIMEOUT_SECONDS", "900"))  # 15 min
-SESSION_LOCK_TIMEOUT_SECONDS = int(os.getenv("SESSION_LOCK_TIMEOUT_SECONDS", "15"))  # Allow slower systems
-SESSION_LOCK_TTL_SECONDS = int(os.getenv("SESSION_LOCK_TTL_SECONDS", "1800"))
 CHAT_JOB_TTL_SECONDS = int(os.getenv("CHAT_JOB_TTL_SECONDS", "3600"))
 CHAT_JOB_MAX_COUNT = int(os.getenv("CHAT_JOB_MAX_COUNT", "200"))
 
@@ -1023,221 +884,19 @@ _CHAT_JOBS_LOCK = asyncio.Lock()
 async def _cleanup_chat_jobs() -> None:
     now = time.time()
     async with _CHAT_JOBS_LOCK:
-        persisted_jobs = {job.get("job_id"): job for job in list_shared_chat_jobs() if job.get("job_id")}
+        persisted_jobs = {job.get("job_id"): job for job in await asyncio.to_thread(list_shared_chat_jobs) if job.get("job_id")}
         _CHAT_JOBS.update(persisted_jobs)
         expired = [job_id for job_id, job in _CHAT_JOBS.items()
                    if (now - float(job.get("updated_at") or job.get("created_at") or now)) > CHAT_JOB_TTL_SECONDS]
         for job_id in expired:
             _CHAT_JOBS.pop(job_id, None)
-            delete_shared_chat_job(job_id)
+            await asyncio.to_thread(delete_shared_chat_job,job_id)
         if len(_CHAT_JOBS) > CHAT_JOB_MAX_COUNT:
             overflow = len(_CHAT_JOBS) - CHAT_JOB_MAX_COUNT
             oldest = sorted(_CHAT_JOBS.items(), key=lambda item: item[1].get("updated_at") or item[1].get("created_at") or 0)[:overflow]
             for job_id, _ in oldest:
                 _CHAT_JOBS.pop(job_id, None)
 
-
-async def _update_chat_job(job_id: str, **updates) -> None:
-    async with _CHAT_JOBS_LOCK:
-        job = _CHAT_JOBS.get(job_id) or get_shared_chat_job(job_id)
-        if not job:
-            return
-        job.update(updates)
-        job["updated_at"] = time.time()
-        _CHAT_JOBS[job_id] = job
-        save_shared_chat_job(job_id, job)
-
-
-async def _execute_chat_job(job_id: str, session_id: str, message: str, graph_context=None) -> None:
-    await _update_chat_job(job_id, status="running", started_at=time.time())
-    try:
-        async with _session_lock(session_id):
-            result = await _run_with_timeout(
-                generate_response,
-                CHAT_REQUEST_TIMEOUT_SECONDS,
-                session_id,
-                message,
-                graph_context,
-            )
-        if AgentMemoryService is not None:
-            try:
-                AgentMemoryService.record_chat_turn(
-                    session_id=session_id,
-                    user_message=message,
-                    assistant_response=result,
-                    graph_context=graph_context,
-                    status="completed",
-                )
-                AgentMemoryService.record_reasoning_trace(
-                    session_id=session_id,
-                    task="async_chat_job",
-                    tool_name="knowledge_companion",
-                    input_payload={"job_id": job_id, "message": message, "graph_context_present": bool(graph_context)},
-                    result_summary={"response_length": len(str(result or "")), "status": "completed"},
-                    success=True,
-                )
-            except Exception as memory_exc:
-                logger.warning("Agent memory chat job record skipped: %s", memory_exc)
-        await _update_chat_job(job_id, status="completed", completed_at=time.time(), response=result)
-    except asyncio.TimeoutError:
-        logger.warning("Chat job timed out for session %s job %s", session_id, job_id)
-        await _update_chat_job(job_id, status="timeout", completed_at=time.time(), error="Chat request timed out. Please retry with a narrower question.")
-    except HTTPException as exc:
-        await _update_chat_job(job_id, status="failed", completed_at=time.time(), error=str(exc.detail))
-    except Exception as exc:
-        logger.error("Chat job failed for session %s job %s: %s", session_id, job_id, exc, exc_info=True)
-        await _update_chat_job(job_id, status="failed", completed_at=time.time(), error="Failed to process chat request. Please try again later.")
-
-_SESSION_LOCKS: dict[str, asyncio.Lock] = {}
-_SESSION_LOCK_LAST_USED: dict[str, float] = {}
-_SESSION_LOCK_GUARD = asyncio.Lock()
-
-
-async def _get_session_lock(session_id: str) -> asyncio.Lock:
-    now = time.monotonic()
-    async with _SESSION_LOCK_GUARD:
-        stale_ids = [
-            sid
-            for sid, ts in _SESSION_LOCK_LAST_USED.items()
-            if (now - ts) > SESSION_LOCK_TTL_SECONDS and sid in _SESSION_LOCKS and not _SESSION_LOCKS[sid].locked()
-        ]
-        for sid in stale_ids:
-            _SESSION_LOCKS.pop(sid, None)
-            _SESSION_LOCK_LAST_USED.pop(sid, None)
-
-        lock = _SESSION_LOCKS.get(session_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _SESSION_LOCKS[session_id] = lock
-        _SESSION_LOCK_LAST_USED[session_id] = now
-        return lock
-
-
-@asynccontextmanager
-async def _session_lock(session_id: str):
-    lock = await _get_session_lock(session_id)
-    owner = f"{os.getpid()}:{id(lock)}:{uuid4()}"
-    try:
-        await asyncio.wait_for(lock.acquire(), timeout=SESSION_LOCK_TIMEOUT_SECONDS)
-    except asyncio.TimeoutError as exc:
-        raise HTTPException(
-            status_code=429,
-            detail="Another request is in progress for this session. Please retry shortly.",
-        ) from exc
-
-    shared_acquired = False
-    try:
-        deadline = time.monotonic() + SESSION_LOCK_TIMEOUT_SECONDS
-        lease_ttl = max(SESSION_LOCK_TTL_SECONDS, CHAT_REQUEST_TIMEOUT_SECONDS + 60, CHAT_STREAM_TIMEOUT_SECONDS + 60)
-        while time.monotonic() < deadline:
-            shared_acquired = await asyncio.to_thread(acquire_session_lease, session_id, owner, lease_ttl)
-            if shared_acquired:
-                break
-            await asyncio.sleep(0.1)
-        if not shared_acquired:
-            raise HTTPException(
-                status_code=429,
-                detail="Another request is in progress for this session. Please retry shortly.",
-            )
-        yield
-    finally:
-        if shared_acquired:
-            await asyncio.to_thread(release_session_lease, session_id, owner)
-        if lock.locked():
-            lock.release()
-        _SESSION_LOCK_LAST_USED[session_id] = time.monotonic()
-
-
-async def _run_with_timeout(func, timeout_seconds: int, *args):
-    # Handle both sync and async functions
-    if asyncio.iscoroutinefunction(func):
-        # For async functions, call directly
-        return await asyncio.wait_for(func(*args), timeout=timeout_seconds)
-    else:
-        # For sync functions, run in thread pool
-        return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=timeout_seconds)
-
-
-async def _stream_with_timeout(session_id: str, message: str, graph_context=None):
-    stream_iter = None
-    response_parts: list[str] = []
-    stream_failed = False
-    memory_recorded = False
-
-    async def record_completed_stream() -> None:
-        nonlocal memory_recorded
-        if memory_recorded or stream_failed or AgentMemoryService is None:
-            return
-        assistant_response = "".join(response_parts)
-        try:
-            await asyncio.to_thread(
-                AgentMemoryService.record_chat_turn,
-                session_id=session_id,
-                user_message=message,
-                assistant_response=assistant_response,
-                graph_context=graph_context,
-                status="completed",
-            )
-            await asyncio.to_thread(
-                AgentMemoryService.record_reasoning_trace,
-                session_id=session_id,
-                task="chat-stream",
-                tool_name="knowledge_companion",
-                input_payload={"message": message, "graph_context_present": bool(graph_context)},
-                result_summary={"response_length": len(assistant_response), "status": "completed"},
-                success=True,
-            )
-            memory_recorded = True
-        except Exception as memory_exc:
-            logger.warning("Agent memory stream record skipped: %s", memory_exc)
-
-    try:
-        async with _session_lock(session_id):
-            stream_iter = generate_response_stream(session_id, message, graph_context)
-            deadline = time.monotonic() + CHAT_STREAM_TIMEOUT_SECONDS
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise asyncio.TimeoutError()
-                try:
-                    event = await asyncio.wait_for(stream_iter.__anext__(), timeout=remaining)
-                except StopAsyncIteration:
-                    break
-                for line in str(event or "").splitlines():
-                    if not line.startswith("data:"):
-                        continue
-                    try:
-                        payload = json.loads(line[5:].strip())
-                    except (TypeError, ValueError):
-                        continue
-                    if payload.get("token"):
-                        response_parts.append(str(payload["token"]))
-                    if payload.get("error"):
-                        stream_failed = True
-                    if payload.get("done") and not stream_failed:
-                        await record_completed_stream()
-                yield event
-            if response_parts and not stream_failed:
-                await record_completed_stream()
-    except asyncio.TimeoutError:
-        logger.warning("Chat stream timed out for session %s", session_id)
-        yield f"data: {json.dumps({'error': 'Chat stream timed out. Please retry with a narrower or more specific question.'})}\n\n"
-        yield f"data: {json.dumps({'done': True})}\n\n"
-    except HTTPException as exc:
-        error_detail = str(exc.detail) if exc.detail else "Request failed"
-        yield f"data: {json.dumps({'error': error_detail})}\n\n"
-        yield f"data: {json.dumps({'done': True})}\n\n"
-    except Exception as exc:
-        logger.error("Chat stream wrapper error for session %s: %s", session_id, exc, exc_info=True)
-        error_msg = f"Error processing your request: {type(exc).__name__}. Try rephrasing your question or check the component name exists in the system."
-        yield f"data: {json.dumps({'error': error_msg})}\n\n"
-        yield f"data: {json.dumps({'done': True})}\n\n"
-    finally:
-        if stream_iter is not None:
-            try:
-                await stream_iter.aclose()
-            except Exception:
-                pass
 
 # 🔒 MEDIUM PRIORITY: Simple API Key Authentication
 # ✅ ERROR HANDLING: Global exception handler to prevent stack trace leakage
@@ -1350,6 +1009,9 @@ api_v1 = APIRouter(prefix="/api/v1", tags=["v1"])
 # - Old /api/* endpoints kept for backward compatibility (deprecated in logs)
 # - New clients should use /api/v1/* explicitly
 
+from backend.legacy.companion_routes import mount_companion_routes
+mount_companion_routes(app)
+
 app.include_router(ingestion_router, prefix="/api/v1", tags=["v1-ingestion"])
 app.include_router(unified_import_router, prefix="/api/v1", tags=["v1-data-import"])
 app.include_router(ontology_upload_router, prefix="/api/v1", tags=["v1-ontology-upload"])
@@ -1404,7 +1066,6 @@ def readiness():
         )
 
 
-
 @app.get("/schema")
 def schema():
     """Return node labels, relationship types, their properties, and display-name keys.
@@ -1423,153 +1084,23 @@ def schema():
         )
 
 
-@app.post("/chat/validate")
-async def chat_validate(http_request: Request, request: ChatRequest):
-    """Validate external chat request payloads without invoking the LLM."""
-    session_id = _bind_chat_session(http_request, request.session_id)
-    return {
-        "status": "ok",
-        "session_id": session_id,
-        "message_length": len(request.message),
-        "graph_context_present": bool(request.graph_context),
-        "execute_endpoint": "/chat",
-        "stream_endpoint": "/chat-stream",
-    }
-
-
-@app.post("/chat/jobs")
-async def chat_job_submit(http_request: Request, request: ChatRequest, background_tasks: BackgroundTasks):
-    """Submit an asynchronous chat job for external apps that cannot wait on long LLM calls."""
-    if generate_response is None:
-        raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
-    session_id = _bind_chat_session(http_request, request.session_id)
-    await _cleanup_chat_jobs()
-    now = time.time()
-    job_id = f"chatjob-{uuid4()}"
-    async with _CHAT_JOBS_LOCK:
-        _CHAT_JOBS[job_id] = {
-            "job_id": job_id,
-            "status": "queued",
-            "session_id": session_id,
-            "message_length": len(request.message),
-            "created_at": now,
-            "updated_at": now,
-            "poll_endpoint": f"/chat/jobs/{job_id}",
-        }
-        save_shared_chat_job(job_id, _CHAT_JOBS[job_id])
-    background_tasks.add_task(_execute_chat_job, job_id, session_id, request.message, request.graph_context)
-    return JSONResponse(status_code=202, content={
-        "status": "accepted",
-        "job_id": job_id,
-        "session_id": session_id,
-        "poll_endpoint": f"/chat/jobs/{job_id}",
-        "message": "Chat job accepted. Poll the job endpoint for completion.",
-    })
-
-
 @app.get("/chat/jobs/{job_id}")
 async def chat_job_status(http_request: Request, job_id: str):
-    """Return async chat job status and response when complete."""
+    """Read older retained results; never restart the retired executor."""
+    from backend.depo_platform.authorization import graph_read_identity
+    graph_read_identity(http_request)
     await _cleanup_chat_jobs()
     async with _CHAT_JOBS_LOCK:
-        job = dict(_CHAT_JOBS.get(job_id) or get_shared_chat_job(job_id) or {})
+        job = dict(_CHAT_JOBS.get(job_id) or {})
+    if not job:
+        job = dict(await asyncio.to_thread(get_shared_chat_job,job_id) or {})
     if not job:
         raise HTTPException(status_code=404, detail=f"Chat job not found or expired: {job_id}")
     if not http_request.scope.get("session_id_supplied") or job.get("session_id") != http_request.scope.get("session_id"):
         raise HTTPException(status_code=403, detail="Chat job is not available for this client session")
+    if job.get("status") in {"queued","running"}:
+        return {**job,"status":"interrupted","legacy_executor_retired":True,"message":"The earlier executor was retired. Retain this record and start a new Companion request; no work was replayed."}
     return job
-
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat(http_request: Request, request: ChatRequest):
-    if generate_response is None:
-        raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
-    session_id = _bind_chat_session(http_request, request.session_id)
-
-    try:
-        async with _session_lock(session_id):
-            result = await _run_with_timeout(
-                generate_response,
-                CHAT_REQUEST_TIMEOUT_SECONDS,
-                session_id,
-                request.message,
-                request.graph_context,
-            )
-        if AgentMemoryService is not None:
-            try:
-                AgentMemoryService.record_chat_turn(
-                    session_id=session_id,
-                    user_message=request.message,
-                    assistant_response=result,
-                    graph_context=request.graph_context,
-                    status="completed",
-                )
-                AgentMemoryService.record_reasoning_trace(
-                    session_id=session_id,
-                    task="chat",
-                    tool_name="knowledge_companion",
-                    input_payload={"message": request.message, "graph_context_present": bool(request.graph_context)},
-                    result_summary={"response_length": len(str(result or "")), "status": "completed"},
-                    success=True,
-                )
-            except Exception as memory_exc:
-                logger.warning("Agent memory chat record skipped: %s", memory_exc)
-        return ChatResponse(session_id=session_id, response=result)
-    except HTTPException:
-        raise
-    except asyncio.TimeoutError:
-        logger.warning("Chat request timed out for session %s", session_id)
-        raise HTTPException(status_code=504, detail="Chat request timed out. Please retry with a narrower question.")
-    except Exception as e:
-        logger.error(f"Chat endpoint error: {type(e).__name__}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to process chat request. Please try again later.")
-
-
-@app.post("/chat-stream")
-async def chat_stream(http_request: Request, request: ChatRequest):
-    """Streaming chat endpoint — returns Server-Sent Events (text/event-stream).
-    Each event is a JSON object:
-      {"token": "..."}   — next text chunk
-      {"status": "..."}  — tool-call status label
-      {"done": true}     — stream finished
-      {"error": "..."}   — error message
-    """
-    if generate_response_stream is None:
-        raise HTTPException(status_code=503, detail="Chat stream service is unavailable. Please check backend configuration.")
-    session_id = _bind_chat_session(http_request, request.session_id)
-
-    return StreamingResponse(
-        _stream_with_timeout(session_id, request.message, request.graph_context),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
-
-
-@app.get("/chat/health")
-@app.get("/chat/status")
-async def chat_health():
-    return {
-        "status": "ok" if generate_response is not None else "unavailable",
-        "chat_post_available": generate_response is not None,
-        "chat_stream_available": generate_response_stream is not None,
-        "session_id_required": False,
-        "session_id_behavior": "The server issues a session id in X-Session-ID; clients should return it on subsequent requests.",
-        "methods": {
-            "ask": "POST /chat",
-            "stream": "POST /chat-stream",
-            "submit_job": "POST /chat/jobs",
-            "poll_job": "GET /chat/jobs/{job_id}",
-            "sample_queries": "GET /chat/sample-queries",
-            "health": "GET /chat/health",
-            "status": "GET /chat/status",
-            "validate": "POST /chat/validate",
-            "capabilities": "GET /chat/capabilities",
-        },
-    }
 
 
 @app.get("/api/v1/agent-memory/status")
@@ -1604,217 +1135,6 @@ async def delete_agent_memory_session(request: Request, session_id: str):
     deleted = await asyncio.to_thread(AgentMemoryService.delete_session, session_id)
     await asyncio.to_thread(clear_chat_messages, session_id)
     return {"status": "ok", "session_id": session_id, "deleted": bool(deleted)}
-
-
-@app.get("/chat/capabilities")
-async def chat_capabilities():
-    return {
-        "name": "knowledge-companion",
-        "integration_pattern": "POST for question execution, GET for discovery/health/sample prompts",
-        "endpoints": {
-            "validate": {
-                "method": "POST",
-                "path": "/chat/validate",
-                "description": "Validates Teamcenter/AWC or external request body without invoking the model.",
-                "body": {
-                    "session_id": "string optional; use the server-issued X-Session-ID header",
-                    "message": "string",
-                    "graph_context": "object optional"
-                }
-            },
-            "async_job": {
-                "method": "POST",
-                "path": "/chat/jobs",
-                "description": "Submits a long-running chat request and returns a job id for polling.",
-                "poll": "GET /chat/jobs/{job_id}"
-            },
-            "ask": {
-                "method": "POST",
-                "path": "/chat",
-                "body": {
-                    "session_id": "string optional; use the server-issued X-Session-ID header",
-                    "message": "string",
-                    "graph_context": "optional object",
-                },
-            },
-            "stream": {
-                "method": "POST",
-                "path": "/chat-stream",
-                "body": {
-                    "session_id": "string optional; use the server-issued X-Session-ID header",
-                    "message": "string",
-                    "graph_context": "optional object",
-                },
-            },
-            "sample_queries": {
-                "method": "GET",
-                "path": "/chat/sample-queries",
-            },
-            "health": {
-                "method": "GET",
-                "path": "/chat/health",
-            },
-        },
-        "notes": [
-            "Use POST /chat for Teamcenter action-handler invocations that execute a user question.",
-            "Use GET companion endpoints for readiness checks, UI bootstrap, and integration discovery.",
-            "GET should not be used for prompt execution because prompts can be large and may carry graph context.",
-        ],
-    }
-
-
-@app.get("/chat/sample-queries")
-async def get_sample_queries():
-    """Return dynamically generated sample queries based on actual Neo4j data.
-
-    Picks representative entities from each domain:
-      - ProvidedPart  → motor component queries
-      - GeneralOperation / HeaderOperation → assembly process queries
-      - MbseNode Class → SysML MBSE queries
-      - UseCase → use-case queries
-    Falls back to ontology-registry-driven templates when the graph is empty.
-    """
-    try:
-        from chains.cypher import query_cypher
-        from Services.ontology_upload_manager import OntologyUploadManager
-        try:
-            registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
-        except Exception:
-            registry = OntologyUploadManager.list_ontologies()
-
-        def _fetch(cypher):
-            try:
-                return [r.get("name") for r in query_cypher(cypher) if r.get("name")]
-            except Exception:
-                return []
-
-        parts       = _fetch("""
-            MATCH (n)
-            WHERE n.name IS NOT NULL
-              AND (any(lbl IN labels(n) WHERE lbl IN ['ProvidedPart', 'Part', 'Product', 'ProductRevision']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'part')
-            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
-        """)
-        operations  = _fetch("""
-            MATCH (n)
-            WHERE n.name IS NOT NULL
-              AND (any(lbl IN labels(n) WHERE lbl IN ['GeneralOperation', 'HeaderOperation', 'LoadingOperation', 'Process']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'operation')
-            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 3
-        """)
-        assemblies  = _fetch("""
-            MATCH (n)
-            WHERE n.name IS NOT NULL
-              AND (any(lbl IN labels(n) WHERE lbl IN ['ManufacturingAssembly', 'Assembly']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'assembly')
-            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 2
-        """)
-        requirements = _fetch("""
-            MATCH (n)
-            WHERE n.name IS NOT NULL
-              AND (any(lbl IN labels(n) WHERE lbl IN ['Requirement', 'RequirementRevision']) OR toLower(coalesce(n.name, '')) CONTAINS 'requirement' OR toLower(coalesce(n.element_type, '')) CONTAINS 'requirement')
-            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
-        """)
-        mbse_cls    = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND size(n.name) > 3 AND any(lbl IN labels(n) WHERE lbl IN ['Class', 'MbseNode']) RETURN n.name AS name ORDER BY n.name LIMIT 3")
-        use_cases   = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND size(n.name) > 3 AND any(lbl IN labels(n) WHERE lbl IN ['UseCase', 'MbseNode']) RETURN n.name AS name LIMIT 2")
-        packages    = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' AND any(lbl IN labels(n) WHERE lbl IN ['Package', 'MbseNode']) RETURN n.name AS name LIMIT 2")
-        generic_entities = _fetch("""
-            MATCH (n)
-            WHERE n.name IS NOT NULL
-              AND NOT any(lbl IN labels(n) WHERE lbl IN ['DatasheetChunk', 'GraphChunk', 'OntologyClass', 'ObjectProperty', 'DatatypeProperty'])
-            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 8
-        """)
-        ontology_rows = (registry.get("ontologies", []) if isinstance(registry, dict) else [])[:3]
-        ontology_names = [
-            str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
-            for row in ontology_rows
-            if str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
-        ]
-
-        data_available = any([parts, operations, assemblies, requirements, mbse_cls, use_cases, ontology_names, generic_entities])
-
-        if data_available:
-            part1  = parts[0]       if parts       else (generic_entities[0] if generic_entities else "selected part")
-            part2  = parts[1]       if len(parts) > 1 else (generic_entities[1] if len(generic_entities) > 1 else part1)
-            part3  = parts[2]       if len(parts) > 2 else (generic_entities[2] if len(generic_entities) > 2 else part1)
-            asm1   = assemblies[0]  if assemblies  else (generic_entities[0] if generic_entities else "selected assembly")
-            op1    = operations[0]  if operations  else "#170_Operation-FDA Unit Electric A"
-            cls1   = mbse_cls[0]    if mbse_cls    else "Variable Speed Drive"
-            cls2   = mbse_cls[1]    if len(mbse_cls) > 1 else "Sugar Production Plant"
-            uc1    = use_cases[0]   if use_cases   else (requirements[0] if requirements else "selected requirement")
-            pkg1   = packages[0]    if packages    else "2 Functional Analysis"
-            onto1  = ontology_names[0] if ontology_names else "the selected ontology"
-            onto2  = ontology_names[1] if len(ontology_names) > 1 else onto1
-
-            sample_queries = []
-            if assemblies:
-                sample_queries.extend([
-                    f'What are all the parts in the "{asm1}" and in what sequence are they assembled?',
-                    f'Show the complete assembly operation sequence for "{asm1}"',
-                ])
-            if parts:
-                sample_queries.extend([
-                    f'Recommend manufacturing processes for "{part1}"',
-                    f'Find parts similar to "{part2}" that could be substituted',
-                    f'What operations does "{part3}" go through during assembly?',
-                    f'Analyse change impact if "{part1}" is modified',
-                ])
-            if requirements:
-                sample_queries.append(f'Trace requirement context and downstream realization for "{uc1}"')
-            if mbse_cls or use_cases:
-                sample_queries.extend([
-                    f'What are the SysML requirements related to "{cls1}"?',
-                    f'Show all use cases and actors in the "{pkg1}" package',
-                    f'Trace the MBSE requirements for use case "{uc1}"',
-                    f'Which SysML blocks are associated with "{cls2}"?',
-                ])
-            if generic_entities:
-                sample_queries.extend([
-                    f'Show one-hop graph context for "{generic_entities[0]}"',
-                    f'Find traceability links around "{generic_entities[min(1, len(generic_entities)-1)]}"',
-                ])
-            sample_queries.extend([
-                f'What ontology classes does "{onto1}" expose?',
-                f'Compare the taxonomy of "{onto1}" and "{onto2}"',
-            ])
-            sample_queries = sample_queries[:8]
-        else:
-            # Registry-driven fallbacks for empty graphs
-            ontology1 = ontology_names[0] if ontology_names else "the selected ontology"
-            ontology2 = ontology_names[1] if len(ontology_names) > 1 else ontology1
-            sample_queries = [
-                f'Show the ontology graph for "{ontology1}"',
-                f'List the classes, properties, and individuals in "{ontology1}"',
-                f'Show the taxonomy for "{ontology1}"',
-                f'Find the active ontology scopes available in this workspace',
-                f'Compare "{ontology1}" and "{ontology2}" for overlapping concepts',
-                'Recommend manufacturing processes for the selected part',
-                'Find similar parts using the currently loaded graph data',
-                'Analyse change impact for a selected entity in the active ontology scope',
-            ]
-
-        all_entities = parts + operations + assemblies + requirements + mbse_cls + use_cases + generic_entities
-        return JSONResponse({
-            "queries": sample_queries,
-            "data_available": data_available,
-            "entity_count": len(all_entities),
-            "sample_entities": all_entities[:8],
-            "ontology_scopes": ontology_names,
-        })
-
-    except Exception as e:
-        logger.error(f"Sample queries error: {e}", exc_info=True)
-        return JSONResponse({
-            "queries": [
-                'Show the ontology graph for the selected ontology',
-                'List the classes, properties, and individuals in the selected ontology',
-                'Show the taxonomy for the selected ontology',
-                'Find the active ontology scopes available in this workspace',
-                'Compare two loaded ontologies for overlapping concepts',
-                'Recommend manufacturing processes for the selected part',
-                'Find similar parts using the currently loaded graph data',
-                'Analyse change impact for a selected entity in the active ontology scope',
-            ],
-            "data_available": False,
-            "error": "Could not fetch dynamic queries from database",
-        })
 
 
 # @app.post("/reset")
@@ -4034,7 +3354,6 @@ def build_graph_embeddings(force: bool = False):
         safe_error("/embeddings/build", e)
 
 
-
 @app.post("/reports")
 @app.post("/api/v1/reports")
 def get_reports(body: ReportBody):
@@ -4899,7 +4218,6 @@ def get_import_owl(task_id: str):
         safe_error("/api/v1/import/owl/{task_id}", e)
 
 
-
 @app.get("/api/v1/import/owl/{task_id}/export")
 def export_import_owl(task_id: str, format: str = Query("ttl", pattern="^(ttl|rdf|owl|jsonld)$")):
     """Download generated ontology content as TTL, RDF/XML, OWL/XML, or JSON-LD."""
@@ -5381,7 +4699,6 @@ async def handle_neo4j_webhook(request: Request):
         raise HTTPException(500, "Error processing webhook")
 
 
-
 # ======================== ONTOLOGY MODELING WORKBENCH ENDPOINTS ========================
 
 
@@ -5463,7 +4780,6 @@ def modeling_delete_link(element_id: str):
 @app.get("/api/v1/modeling/validation")
 def modeling_validation(project: str = "Digital Engineering Model"):
     return _modeling_service().validate(project=project)
-
 
 
 @app.post("/api/v1/modeling/agent/proposals")

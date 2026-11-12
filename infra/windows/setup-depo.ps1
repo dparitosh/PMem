@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param([string]$Python='py', [switch]$ForceReinstall, [ValidateSet('Menu','Setup','Start','Stop','Restart')][string]$Action='Menu', [ValidateSet('Synchronize','Validate')][string]$CredentialPolicy='Synchronize')
 $ErrorActionPreference='Stop'
+Write-Host 'Gateway setup is separate: docs/installation/API_GATEWAY_SETUP.md. Local mode needs no gateway URL or subscription key.'
 # Direct PowerShell invocation must protect nested release helpers too.
 # This changes only this process; enforced organization policy remains authoritative.
 if ((Get-ExecutionPolicy) -ne 'Bypass') {

@@ -1,3 +1,4 @@
+<# .SYNOPSIS Imports the ten manifest services into an existing Azure API Management instance. Does not create the APIM instance, product or subscription keys. See docs/installation/API_GATEWAY_SETUP.md. #>
 param(
   [Parameter(Mandatory = $true)][string]$ResourceGroup,
   [Parameter(Mandatory = $true)][string]$SubscriptionId,
@@ -23,7 +24,7 @@ $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 function Assert-HttpsUrl([string]$Name, [string]$Value) {
   $uri = $null
-  if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne "https") {
+  if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne "https" -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) {
     throw "$Name must be an absolute HTTPS URL."
   }
 }
@@ -51,8 +52,10 @@ function Register-DepoApi([string]$ApiId, [string]$Path, [string]$DisplayName, [
     --service-url $baseUrl `
     --specification-url "$baseUrl/openapi.json" `
     --specification-format OpenApiJson `
+    --protocols https `
     --subscription-required $subscriptionRequired `
     --only-show-errors
+  if ($LASTEXITCODE -ne 0) { throw "APIM OpenAPI import failed for $ApiId; later APIs were not imported." }
 }
 
 function Register-DepoODataApi([string]$ApiId, [string]$Path, [string]$DisplayName, [string]$ServiceUrl) {
@@ -72,7 +75,12 @@ function Register-DepoODataApi([string]$ApiId, [string]$Path, [string]$DisplayNa
   } | ConvertTo-Json -Depth 4 -Compress
   $uri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.ApiManagement/service/$ApimServiceName/apis/$ApiId?api-version=2024-05-01"
   az rest --method put --uri $uri --body $body --only-show-errors
+  if ($LASTEXITCODE -ne 0) { throw "APIM OData import failed for $ApiId; later APIs were not imported." }
 }
+
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw 'Azure CLI is required. Install it and run az login before gateway registration.' }
+az account set --subscription $SubscriptionId --only-show-errors
+if ($LASTEXITCODE -ne 0) { throw 'Cannot select the Azure subscription. Verify az login and the Azure subscription ID (not an APIM key).' }
 
 $urls = @{ 'schema-sets'=$QifServiceUrl; ontology=$OntologyServiceUrl; agentic=$AgenticServiceUrl; graph=$GraphServiceUrl; ingestion=$IngestionServiceUrl; oslc=$OslcServiceUrl; catalog=$CatalogServiceUrl; 'data-products'=$DataProductsServiceUrl; ceim=$CeimServiceUrl; 'data-pipeline'=$DataPipelineServiceUrl }
 # Keep the generated IDs stable for APIM policies and subscriptions.
@@ -83,3 +91,5 @@ foreach ($service in $manifest.services) {
   Register-DepoApi "depo-$($service.id)" $service.apim_path $service.display_name $url
   Register-DepoODataApi "depo-$($service.id)-odata" "$($service.apim_path)-odata" "$($service.display_name) OData" $url
 }
+
+Write-Host 'APIM APIs imported. Product membership, subscriptions, CORS and security policies require separate setup: docs/installation/API_GATEWAY_SETUP.md. No subscription key was generated or printed.'

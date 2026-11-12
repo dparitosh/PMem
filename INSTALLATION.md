@@ -1,4 +1,13 @@
-# DEPO customer installation
+# Nexus customer installation
+
+## Start here: local or gateway?
+
+**A normal local installation does not need an API gateway URL or subscription key.** Use `DEPO_ROUTING_MODE=local` and leave `DEPO_API_GATEWAY_URL` and `DEPO_APIM_SUBSCRIPTION_KEY` empty.
+
+For remote access through Azure API Management, complete the separate [API gateway setup](docs/installation/API_GATEWAY_SETUP.md): provision/reach APIM, register the ten services, configure a product/subscription and policies, then switch routing. The gateway base normally looks like `https://<apim-name>.azure-api.net`; it is not the frontend, developer portal or LLM URL. Obtain the subscription key from that APIM instance's active API/product subscription, not from Nexus.
+
+Use the concise [configuration guide](docs/installation/CONFIGURATION.md) for listener, routing, authentication and secret ownership. Installation/update scripts do not provision Azure gateway resources or issue subscription keys. The longer operator reference is supplementary; follow this runbook for the installation sequence.
+
 
 Lineage/projection updates include `backend/depo_platform/product_lineage.py` and `artifact_references.py`. Deploy them with the owning catalog/product/graph code through the normal `update-depo.ps1` workflow and restart services; release preflight verifies their presence. No new PostgreSQL table, credential rotation or automatic data deletion is required. Product source references now resolve through configured `ONTOLOGY_SERVICE_URL` and `DATA_PIPELINE_SERVICE_URL`. Retention refuses referenced/provenanced artifacts; do not bypass that protection by deleting files manually. See [lineage and projection qualification](docs/audits/lineage-projection-fixes-2026-10-29.md).
 
@@ -318,3 +327,5 @@ Admin → Data sources includes retained OSLC snapshot selection and an approved
 
 
 Reporting replication: migration 018 is applied by the normal PostgreSQL upgrade. See [OSLC reporting replication](docs/architecture/OSLC_LIFECYCLE_RELEASE.md#reporting-replication) for approved feed selection, worker execution, scheduler opt-in, freshness limits and snapshot product review. Existing data does not require a reset.
+
+Compatibility chat consolidation (2026-11-12): the aggregate host's root chat entry points share the canonical /api/v1/chat handlers. Clients must use current authenticated Companion sessions and honor the returned polling URL. Old completed chat-job records remain readable through the legacy lookup; interrupted legacy work is never replayed automatically. No database reset or new package is required. See backend/legacy/README.md for the contract boundary.

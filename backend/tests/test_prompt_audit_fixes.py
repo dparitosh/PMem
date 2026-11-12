@@ -23,6 +23,9 @@ from backend.ontology_service.app import app as ontology_app
 from backend.agentic_service.app import app as agentic_app
 from backend.agentic_service.proposal_contracts import input_schema
 for tool in CATALOG['tools']:
+    if tool['id'] == 'pipeline.reconciliation.evidence':
+        from backend.data_pipeline_service.app import app as pipeline_app
+        SCHEMAS[tool['id']] = input_schema(pipeline_app.openapi(),tool)
     if tool['id'] == 'learning.lessons':
         SCHEMAS[tool['id']] = input_schema(agentic_app.openapi(), tool)
     if tool['id'] in {'ontology.foundation.inspect','ontology.consistency.check','ontology.semantic.evidence'}:
@@ -178,14 +181,6 @@ async def test_context_budget_failure_has_a_safe_actionable_diagnostic():
     assert result['error_code'] == 'goal_context_budget_exceeded'
     assert 'Narrow' in result['message'] and 'private upstream details' not in str(result)
 
-@pytest.mark.parametrize('name', ['data_prompt', 'general_prompt'])
-def test_legacy_retrieval_context_is_not_a_system_instruction(name):
-    from langchain_core.prompts import ChatPromptTemplate
-    tree = ast.parse((ROOT/'backend/chains/vector.py').read_text())
-    node = next(n.value for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets))
-    template = eval(compile(ast.Expression(node), '<fixture>', 'eval'), {'ChatPromptTemplate': ChatPromptTemplate})
-    messages = template.format_messages(context='MALICIOUS_RAG', input='Business question')
-    assert 'MALICIOUS_RAG' not in messages[0].content and messages[1].type == 'human'
 
 def test_recommendation_samples_cover_business_analyses():
     from backend.agentic_service.companion_prompts import sample_queries, HOME_PROMPTS

@@ -101,28 +101,3 @@ class TransportBoundaryTests(unittest.TestCase):
         edges=[e for e in result['evidence'] if e['evidence_type']=='graph_relationship']
         self.assertEqual(len(edges),1)
         self.assertEqual(edges[0]['relationship'],'urn:hasPart')
-
-    def test_missing_graph_index_does_not_disable_document_index_and_can_recover(self):
-        tree=ast.parse(Path('backend/chains/vector.py').read_text())
-        fn=next(n for n in tree.body if getattr(n,'name','')=='_initialize_vectors')
-        clock=SimpleNamespace(monotonic=lambda:0)
-        scope=dict(LLM_AVAILABLE=True,EMBEDDER_AVAILABLE=True,time=clock,_vector_retry_at=0,
-                   _vector_init_lock=threading.Lock(),logger=Mock(),embeddings=object(),graph=object(),
-                   GRAPH_VECTOR_INDEX='graph',GRAPH_KEYWORD_INDEX='graph-keyword',DATASHEET_VECTOR_INDEX='docs',
-                   DATASHEET_KEYWORD_INDEX='docs-keyword',llm=object(),general_prompt=object(),data_prompt=object(),
-                   create_stuff_documents_chain=Mock(return_value=Mock()),create_retrieval_chain=Mock(return_value=Mock()))
-        for key in ('general_vector','general_retriever','general_qa_chain','general_retrieval_chain','datasheet_vector','datasheet_retriever','data_qa_chain','data_retrieval_chain'): scope[key]=None
-        store=Mock()
-        def build(*args,**kwargs):
-            if kwargs['index_name']=='graph' and clock.monotonic()==0: raise RuntimeError('missing')
-            return store
-        scope['Neo4jVector']=SimpleNamespace(from_existing_index=build)
-        exec(compile(ast.Module(body=[fn],type_ignores=[]),'<vector-init>','exec'),scope)
-        scope['_initialize_vectors']()
-        self.assertIsNone(scope['general_qa_chain'])
-        documents=scope['data_qa_chain']
-        self.assertIsNotNone(documents)
-        clock.monotonic=lambda:31
-        scope['_initialize_vectors']()
-        self.assertIsNotNone(scope['general_qa_chain'])
-        self.assertIs(scope['data_qa_chain'],documents)

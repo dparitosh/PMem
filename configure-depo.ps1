@@ -90,6 +90,11 @@ if ($CheckExisting) {
 if ((Test-Path -LiteralPath $server) -and -not $Force) { throw "$server already exists. Edit it in place, or use -Force only after preserving customer secrets." }
 if ((Test-Path -LiteralPath $browser) -and -not $Force) { throw "$browser already exists. Edit it in place, or use -Force only after preserving it." }
 if ($GatewayUrl -and $GatewayUrl -notmatch '^https://') { throw 'GatewayUrl must be empty for direct local services or an https:// customer URL.' }
+if ($GatewayUrl -and $AuthMode -eq 'disabled') { throw 'Gateway routing requires authenticated access; disabled authentication is local-demo only.' }
+if ($GatewayUrl) {
+  . (Join-Path $root 'infra/windows/runtime-config.ps1')
+  Resolve-DepoRouting @{AUTH_MODE=$AuthMode;DEPO_ROUTING_MODE='gateway';DEPO_API_GATEWAY_URL=$GatewayUrl} | Out-Null
+}
 
 $parameters = @{ OutputPath = '.env.local'; AuthMode = $AuthMode }
 if ($Force) { $parameters.Force = $true }
@@ -98,11 +103,21 @@ if ($ConfirmInsecureLocalDemo) { $parameters.ConfirmInsecureLocalDemo = $true }
 & $serverGenerator @parameters
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Server configuration generation failed with exit code $LASTEXITCODE." }
 
+if ($GatewayUrl) {
+  $serverLines=[IO.File]::ReadAllLines($server)
+  for($i=0;$i -lt $serverLines.Length;$i++) {
+    if($serverLines[$i] -match '^DEPO_ROUTING_MODE='){$serverLines[$i]='DEPO_ROUTING_MODE=gateway'}
+    if($serverLines[$i] -match '^DEPO_API_GATEWAY_URL='){$serverLines[$i]='DEPO_API_GATEWAY_URL='+$GatewayUrl.TrimEnd('/')}
+  }
+  [IO.File]::WriteAllLines($server,$serverLines)
+}
 Copy-Item -LiteralPath $browserTemplate -Destination $browser -Force
 $content = Get-Content -LiteralPath $browser -Raw
-$content = [regex]::Replace($content, '(?m)^VITE_API_GATEWAY_URL=.*$', "VITE_API_GATEWAY_URL=$GatewayUrl")
+$content = [regex]::Replace($content, '(?m)^VITE_API_GATEWAY_URL=.*$', [System.Text.RegularExpressions.MatchEvaluator]{param($match) "VITE_API_GATEWAY_URL=$GatewayUrl"})
 Set-Content -LiteralPath $browser -Value $content -NoNewline
 Write-Host 'Created exactly two configuration files:' -ForegroundColor Green
 Write-Host "  $server"
 Write-Host "  $browser"
 Write-Host 'Complete the server placeholders, then run .\diagnose-depo.ps1 -Phase Prerequisites.'
+
+Write-Host 'Configuration steps: docs/installation/CONFIGURATION.md. Gateway provisioning and subscription keys: docs/installation/API_GATEWAY_SETUP.md. Local mode requires neither.'

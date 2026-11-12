@@ -1,3 +1,4 @@
+<# .SYNOPSIS Applies Entra JWT policies to existing manifest APIs. Not for AUTH_MODE=token; it replaces API policies. Review and preserve custom policy requirements first. #>
 param(
   [Parameter(Mandatory = $true)][string]$SubscriptionId,
   [Parameter(Mandatory = $true)][string]$ResourceGroup,
@@ -38,9 +39,15 @@ function Set-DepoApiPolicy([string]$ApiId) {
   $body = @{ properties = @{ format = "rawxml"; value = $policy } } | ConvertTo-Json -Depth 5 -Compress
   $uri = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.ApiManagement/service/$ApimServiceName/apis/$ApiId/policies/policy?api-version=2024-05-01"
   az rest --method put --uri $uri --body $body --only-show-errors
+  if ($LASTEXITCODE -ne 0) { throw "APIM policy update failed for $ApiId; later policies were not changed." }
 }
 
-@(
-  "depo-ontology", "depo-graph", "depo-ingestion", "depo-oslc", "depo-qif", "depo-agentic", "depo-catalog", "depo-data-products",
-  "depo-ontology-odata", "depo-graph-odata", "depo-ingestion-odata", "depo-oslc-odata", "depo-qif-odata", "depo-agentic-odata", "depo-catalog-odata", "depo-data-products-odata"
-) | ForEach-Object { Set-DepoApiPolicy $_ }
+$root=(Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$manifest=Get-Content -LiteralPath (Join-Path $root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw 'Azure CLI is required. Install it and run az login before policy registration.' }
+az account set --subscription $SubscriptionId --only-show-errors
+if ($LASTEXITCODE -ne 0) { throw 'Cannot select the Azure subscription; no API policies were changed.' }
+foreach($service in $manifest.services) {
+  Set-DepoApiPolicy "depo-$($service.id)"
+  Set-DepoApiPolicy "depo-$($service.id)-odata"
+}

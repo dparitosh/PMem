@@ -1,3 +1,5 @@
+> For the ordered customer steps, use [configuration](CONFIGURATION.md) and [API gateway setup](API_GATEWAY_SETUP.md). Gateway setup is separate from application installation.
+
 # Installation operator reference
 
 Start with the ordered [customer installation runbook](../../INSTALLATION.md). Commands in this reference run from the release repository root unless a step explicitly changes directory.
