@@ -143,3 +143,16 @@ docs/audits/**/*.jpg
 docs/audits/**/*.jpeg
 docs/audits/**/*.webp
 docs/audits/**/*.html
+
+# Local root verification captures; regression fixtures belong in tests.
+/dossier-final-ui-results.json
+/dossier-layout-ui-results.json
+/dossier-ui-results.json
+/polling-overlap-results.json
+/replay-eligibility-test-results.json
+/timing-baseline-results.json
+/timing-extension-ui-results.json
+/timing-validation-results.json
+/ui-refactor-test-results.json
+/workflow-context-test-results.json
+/workflow-context-isolated.json

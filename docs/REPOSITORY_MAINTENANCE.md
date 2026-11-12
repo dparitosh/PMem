@@ -133,3 +133,7 @@ packager; tools/build_customer_release.py delegates to it. Customer ZIP creation
 requires a clean committed checkout. Local credentials, runtime data and generated
 audit captures are excluded. Direct graph loaders and legacy import helpers are
 development-only and are excluded from customer packages. Test source remains in the repository for maintenance.
+
+## Reviewed cleanup — 2026-11-12
+
+Removed eleven generated root test-result JSON files from the repository and added exact ignore rules. Their bytes and SHA-256 inventory are preserved outside the release in the local cleanup archive. No runtime references were found. The maintained tests remain in place; test_upload.xsd and active legacy compatibility modules remain because they have callers. This is a generated-artifact cleanup, not certification that every legacy implementation can be retired.
