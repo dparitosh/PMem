@@ -1,5 +1,5 @@
 """Prefer retained RDF identities while accepting legacy graph element IDs."""
-from urllib.parse import urlsplit, quote
+from urllib.parse import urlsplit, quote, urlencode
 
 
 def resource_reference(properties, element_id):
@@ -11,4 +11,6 @@ def resource_reference(properties, element_id):
 
 
 def resource_uri(base, properties, element_id):
-    return base.rstrip('/') + '/oslc/resources/' + quote(resource_reference(properties, element_id), safe='')
+    uri = base.rstrip('/') + '/oslc/resources/' + quote(resource_reference(properties, element_id), safe='')
+    version = properties.get('ontology_id')
+    return uri + ('?' + urlencode({'ontology_id': version}) if version else '')

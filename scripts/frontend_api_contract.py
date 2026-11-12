@@ -15,7 +15,7 @@ CONFIG_PATH = ROOT / "frontend" / "src" / "config.js"
 SERVICE_MANIFEST_PATH = ROOT / "infra" / "deployment" / "services.json"
 CLIENT_ROOT = ROOT / "frontend" / "src"
 HTTP_METHODS = {'get', 'post', 'put', 'patch', 'delete', 'head', 'options'}
-SERVICE_IDS = {'dataProducts': 'data-products', 'dataPipeline': 'data-pipeline'}
+SERVICE_IDS = {'qif': 'schema-sets', 'dataProducts': 'data-products', 'dataPipeline': 'data-pipeline'}
 
 # Direct execution puts ``scripts`` rather than the repository root on sys.path.
 # Keep the audit usable both as a CLI and as an imported test helper.
@@ -69,6 +69,7 @@ def frontend_operations(config_text: str, sources) -> tuple[list[dict], list[dic
             expression = _first_argument(source, match.end())
             reference = re.search(r'\bAPI\.(\w+)\.(\w+)', expression)
             path = blocks.get(aliases.get(reference[1]), {}).get(reference[2]) if reference else None
+            transformed_reference = bool(reference and '${API.' in expression)
             if reference and path is None:
                 # Optional operator-supplied endpoints have no default to audit.
                 continue
@@ -80,13 +81,13 @@ def frontend_operations(config_text: str, sources) -> tuple[list[dict], list[dic
                     path = re.sub(r'\$\{[^{}]*\}', '{value}', literal[2])
             location = {'file': str(filename), 'line': source.count('\n', 0, match.start()) + 1,
                         'method': match[1]}
-            if not path or '${' in path:
+            if not path or '${' in path or transformed_reference:
                 unresolved.append({**location, 'expression': expression})
                 continue
             explicit = re.search(r"buildSemanticServiceUrl\(\s*'([^']+)'", expression)
             owner = SERVICE_IDS.get(explicit[1], explicit[1]) if explicit else (
                 'agentic' if 'agenticUrl(' in expression else next((owner for owner, pattern in rules if pattern.search(path)), None))
-            operations.append({**location, 'path': path, 'service': owner})
+            operations.append({**location, 'path': path, 'service': owner, 'expression': expression})
     return operations, unresolved
 
 
@@ -103,7 +104,15 @@ def classify_contract() -> dict[str, Any]:
     for item in manifest.get("services", []):
         module_name, app_name = str(item["module"]).split(":", 1)
         app = getattr(importlib.import_module(module_name), app_name)
-        service_contracts[str(item["id"])] = app.openapi()["paths"]
+        paths = {path:dict(methods) for path,methods in app.openapi()["paths"].items()}
+        # Readiness/liveness are deployed routes even when intentionally hidden from documentation.
+        for route in app.routes:
+            path = getattr(route,'path_format',None)
+            if path:
+                methods=paths.setdefault(path,{})
+                for method in getattr(route,'methods',[]):
+                    if method.lower() in HTTP_METHODS:methods.setdefault(method.lower(),{})
+        service_contracts[str(item["id"])] = paths
 
     openapi_paths = set().union(*(set(paths) for paths in service_contracts.values())) if service_contracts else set()
     # Only deployed standalone services count. Aggregate-only routes must fail
@@ -113,17 +122,25 @@ def classify_contract() -> dict[str, Any]:
         paths = service_contracts.get(operation['service'], {})
         available = {method for path, methods in paths.items() if _canonical(path) == _canonical(operation['path'])
                      for method in methods if method in HTTP_METHODS}
-        (matched if operation['method'] in available else missing).append(operation)
+        if operation['method'] in available:
+            matched.append(operation)
+        elif '{value}' in operation['path'] and any(
+            re.fullmatch(re.escape(operation['path']).replace(re.escape('{value}'), '.+'),path)
+            and operation['method'] in methods for path,methods in paths.items()
+        ):
+            unresolved.append({**operation,'reason':'Runtime-selected path requires separate verification'})
+        else:
+            missing.append(operation)
     return {
-        "status": "pass" if configured and not missing else "fail",
-        "configured_backend_endpoint_count": len(configured),
+        "status": "pass" if matched and not missing else "fail",
+        "configured_backend_endpoint_count": len(matched)+len(missing),
         "matched_backend_endpoint_count": len(matched),
         "external_agentic_endpoint_count": len(external),
         "service_contract_count": len(service_contracts),
         "openapi_path_count": len(openapi_paths),
         "unclassified": missing,
         "unresolved_dynamic_calls": unresolved,
-        "coverage": "Static apiClient/agenticClient calls; dynamic expressions listed separately",
+        "coverage": "Static apiClient/agenticClient routes, including deployed hidden health routes; runtime-selected paths are listed separately, not certified",
         "external_agentic": sorted(external),
     }
 

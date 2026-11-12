@@ -1,0 +1,7 @@
+Offline vocabulary snapshots, retrieved 11 November 2026. Files are unmodified.
+Sources, retrieval date and SHA-256 checksums are recorded in manifest.json.
+SKOS: W3C, https://www.w3.org/2004/02/skos/core.rdf ; W3C document/software licensing notices remain in the document. https://www.w3.org/copyright/software-license-2023/
+SHACL: W3C, https://www.w3.org/ns/shacl.ttl ; licensing and source attribution remain in the document. https://www.w3.org/copyright/software-license-2023/
+DCMI Metadata Terms: Dublin Core Metadata Initiative. https://www.dublincore.org/specifications/dublin-core/dcmi-terms/ ; CC BY 4.0 unless otherwise stated. https://creativecommons.org/licenses/by/4.0/
+OSLC Core: Copyright 2021 OASIS Open. Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0 . The original copyright and license header are retained in oslc-core.ttl. Source: https://github.com/oslc-op/oslc-specs/blob/master/specs/core/core-vocab.ttl
+These vocabularies do not certify ISO, OSLC, SHACL or industry conformance. Runtime import resolution never downloads files; unknown imports remain unresolved.

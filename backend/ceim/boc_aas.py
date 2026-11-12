@@ -7,7 +7,7 @@ is not validated against the IDTA metamodel schema.
 """
 from __future__ import annotations
 
-import hashlib
+from .boc_identity import report_digest
 from typing import Any
 
 SEMANTIC_BASE = "https://depo.example.org/ontology/bill-of-characteristics/1.0/"
@@ -88,7 +88,7 @@ def _characteristics(report: dict[str, Any]) -> list[tuple[str, str, dict[str, A
 def build_boc_submodel(report: dict[str, Any]) -> dict[str, Any]:
     qif_name = report.get("qif_filename", "")
     ap_name = report.get("ap242_filename", "")
-    digest = hashlib.sha256(f"{qif_name}|{ap_name}".encode("utf-8")).hexdigest()[:24]
+    digest = report_digest(report)
     elements = []
     for index, (kind, label, fields) in enumerate(_characteristics(report), start=1):
         children = [_property("Kind", kind, "xs:string"), _property("Label", label, "xs:string")]

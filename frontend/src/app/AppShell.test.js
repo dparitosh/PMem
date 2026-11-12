@@ -6,7 +6,7 @@ import { graphApi } from '../services/graphApi';
 vi.mock('../services/graphApi', () => ({ graphApi: { verifyAccess: vi.fn() } }));
 import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken } from '../services/serviceAuth';
 import { verifyStoredAccess } from '../services/readAccessVerification';
-vi.mock('../services/readAccessVerification', () => ({ verifyStoredAccess: vi.fn() }));
+vi.mock('../services/readAccessVerification', () => ({ verifyStoredAccess: vi.fn(), ACCESS_VERIFICATION_MS: 40000 }));
 
 // AppShell verifies our navigation contract, not Siemens IX internals. The
 // real custom elements need browser APIs JSDOM does not faithfully emulate.

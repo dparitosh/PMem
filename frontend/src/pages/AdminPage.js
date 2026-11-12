@@ -1,3 +1,4 @@
+import useRouteView from '../app/useRouteView';
 import CredentialSettings from '../Components/CredentialSettings';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import AgentControlPanel from '../Components/AgentControlPanel';
@@ -15,10 +16,12 @@ import { IxTabsBar } from '../ui/ix';
 import RestSourcesPanel from '../Components/RestSourcesPanel';
 import IngestorCapabilities from '../Components/IngestorCapabilities';
 import ConnectorSourcesPanel from '../Components/ConnectorSourcesPanel';
+import OslcSourcesPanel from '../Components/OslcSourcesPanel';
 
 const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
 
 // One-line description shown under the tab strip for each admin section.
+const ADMIN_VIEWS=adminTabs.map(tab=>tab.id);
 const TAB_DESCRIPTIONS = {
   overview: 'Service health and operational summary.',
   access: 'Connect registered credentials, verify stored access, or reconnect an expired session.',
@@ -85,14 +88,17 @@ const packageColumns = [
 ];
 
 export default function AdminPage({ onSchemaCleaned }) {
-  const [section, setSection] = useState(() => {
-    try { const saved = sessionStorage.getItem('depo:admin-tab'); return adminTabs.some(tab => tab.id === saved) ? saved : 'overview'; } catch { return 'overview'; }
-  });
+  const [section, setSection] = useRouteView(ADMIN_VIEWS,'overview',undefined,'#/admin');
+  const legacySection = useRef((()=>{try{return sessionStorage.getItem('depo:admin-tab');}catch{return null;}})());
+  useEffect(() => {
+    // Honor the old header's one-shot access-tab handoff, then make URL history authoritative.
+    if (!new URLSearchParams(window.location.hash.split('?')[1]||'').has('view') && ADMIN_VIEWS.includes(legacySection.current)) setSection(legacySection.current);
+  }, []);
   useEffect(() => {
     const select = event => { if (adminTabs.some(tab => tab.id === event.detail)) setSection(event.detail); };
     window.addEventListener('depo:admin-section', select);
     return () => window.removeEventListener('depo:admin-section', select);
-  }, []);
+  }, [setSection]);
   useEffect(() => { try { sessionStorage.setItem('depo:admin-tab', section); } catch {} }, [section]);
   const agenticEnabled = agenticAPI.isEnabled();
   const agenticConfigured = agenticAPI.isConfigured();
@@ -297,7 +303,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       )}
 
       <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
-      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /></>}
+      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /><OslcSourcesPanel /></>}
       <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip

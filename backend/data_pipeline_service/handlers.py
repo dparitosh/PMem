@@ -40,6 +40,12 @@ def _method(name, **options):
 
 
 registry = HandlerRegistry()
+from .reporting_export import execute as export_reporting
+registry.register('trs-reporting-export',JobHandler('approved-reporting-feed-v1','reporting-snapshot-receipt-v1',export_reporting))
+from .reporting_trs import execute as synchronize_reporting
+registry.register('trs-reporting-sync',JobHandler('approved-reporting-feed-v1','reporting-refresh-receipt-v1',synchronize_reporting))
+from backend.oslc_service.preparation import execute as prepare_oslc_snapshot
+registry.register('oslc-snapshot-ingest', JobHandler('oslc-retained-snapshot-v1','connector-records-v1',prepare_oslc_snapshot))
 from .rest_sources import execute as acquire_rest_records
 registry.register('rest-source-ingest', JobHandler('registered-rest-source-v1', 'rest-source-records-v1', acquire_rest_records))
 from .connector_sources import execute as acquire_connector_records

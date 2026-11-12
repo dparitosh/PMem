@@ -52,6 +52,9 @@ export default function OntologyFoundationPanel({ontologyId}) {
         <dt>Foundation version</dt><dd>{result.foundation?.version_iri}</dd>
         <dt>Reasoner</dt><dd>{result.engine || 'Not executed'} {result.engine_version || ''}</dd>
         <dt>Checked</dt><dd>{result.checked_at}</dd>
+        <dt>Offline imports resolved</dt><dd>{result.resolved_imports?.length ?? 0}</dd>
+        {result.resolved_imports?.length>0&&<><dt>Resolved vocabularies</dt><dd><ul>{result.resolved_imports.map(item=><li key={item.iri}>{item.iri}</li>)}</ul></dd></>}
+        {result.unresolved_imports?.length>0&&<><dt>Imports still required</dt><dd><ul>{result.unresolved_imports.map(iri=><li key={iri}>{iri}</li>)}</ul></dd></>}
       </dl></details>
     </div>}
     <p>Logical consistency does not prove real-world correctness, complete data or approved alignment.</p>

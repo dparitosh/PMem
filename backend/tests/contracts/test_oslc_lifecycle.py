@@ -36,6 +36,7 @@ def test_lifecycle_paging_shape_and_conditional_read(monkeypatch):
 
 
 def test_client_accepts_bounded_ontology_resource_type(monkeypatch):
+    monkeypatch.setenv('OSLC_REMOTE_QUERY_MODE','legacy')
     client = OSLCClient()
     monkeypatch.setattr(client, "_request", lambda path, params: path)
     assert client.query("ontology:ap242-v1", {}) == "oslc/query/ontology:ap242-v1"

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { vi } from 'vitest';
 import ModelWorkbenchPage from './ModelWorkbenchPage';
 import { useOntologies } from '../contexts/OntologyContext';
@@ -78,4 +78,14 @@ test('selected model identity reaches Companion and investigation and clears on 
  fireEvent.click(screen.getByRole('button',{name:'Ask Companion about this element'}));
  expect(openChat).toHaveBeenCalledTimes(1);
  view.unmount();expect(selection).toHaveBeenLastCalledWith(null);
+});
+
+beforeEach(()=>{window.history.replaceState(null,'','#/modeling');useOntologies.mockReturnValue({ontologies:[],loading:false,error:''});});
+test('model viewer deep link and history select the correct mode',async()=>{
+ window.history.replaceState(null,'','#/modeling?view=mbse');API_METHODS.modeling.graph.mockResolvedValue({data:{nodes:[],links:[]}});
+ graphApi.getArchitectureGraph.mockResolvedValue({data:{nodes:[],links:[]}});
+ render(<ModelWorkbenchPage/>);expect(screen.getByRole('tab',{name:'Systems engineering'})).toHaveAttribute('aria-selected','true');
+ fireEvent.click(screen.getByRole('tab',{name:'Architecture'}));expect(window.location.hash).toContain('view=architecture');
+ await act(async()=>{window.history.replaceState(null,'','#/modeling?view=mbse');window.dispatchEvent(new PopStateEvent('popstate'));});
+ expect(screen.getByRole('tab',{name:'Systems engineering'})).toHaveAttribute('aria-selected','true');
 });

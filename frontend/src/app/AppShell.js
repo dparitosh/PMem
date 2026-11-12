@@ -17,7 +17,7 @@ import { navigationItems, navigationGroups, pageAliases, pageLabel } from './nav
 import { getServiceAuthToken, wasBrowserSessionExpired } from '../services/serviceAuth';
 import WorkspaceBreadcrumbs from './WorkspaceBreadcrumbs';
 import RunRecoveryNotice from './RunRecoveryNotice';
-import { verifyStoredAccess } from '../services/readAccessVerification';
+import { verifyStoredAccess, ACCESS_VERIFICATION_MS } from '../services/readAccessVerification';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
@@ -77,7 +77,7 @@ export default function AppShell({
   const revalidateAccess = async ({ interactive = true } = {}) => {
     if (accessRequest.current) return;
     const controller = new AbortController(); accessRequest.current = controller;
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), ACCESS_VERIFICATION_MS);
     setVerifyingAccess(true); setAccessMessage('Checking stored API access…');
     try {
       const result = await verifyStoredAccess({ signal: controller.signal });

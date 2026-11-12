@@ -24,6 +24,12 @@ export default function GraphExplorerPage(props) {
   const [serviceState, setServiceState] = useState({ loading: true, status: '' });
 
   useEffect(() => {
+    const refresh = () => setRevision(value => value + 1);
+    window.addEventListener('depo:access-verified', refresh);
+    return () => window.removeEventListener('depo:access-verified', refresh);
+  }, []);
+
+  useEffect(() => {
     setServiceState({ loading: true, status: '' });
     const controller = new AbortController();
     platformAPI.health('graph', { signal: controller.signal, timeout: 5000 })

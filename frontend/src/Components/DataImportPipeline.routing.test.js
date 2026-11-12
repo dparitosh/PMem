@@ -259,7 +259,7 @@ describe('DataImportPipeline workflow routing', () => {
       expect.objectContaining({ name: 'bom.xsd' }),
       expect.objectContaining({
         ontologyName: 'BOM Ontology',
-        prefix: '',
+        prefix: 'bom',
         generationType: 'shacl',
       }),
       'fixture-write',

@@ -1,0 +1,54 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {apiClient,dataPipelineAPI as api} from '../services/apiClient';
+import {buildUrl} from '../config';
+import {getCredentialProfile} from '../services/serviceAuth';
+import {apiErrorMessage} from '../utils/apiErrorMessage';
+const root='/api/v1/pipeline/reporting';
+function access(profile){const value=getCredentialProfile(profile);if(!value)throw new Error('Connect the required reporting authoring or processing access in Admin.');return value;}
+function headers(token,signal){return {signal,headers:{Authorization:'Bearer '+token}};}
+const freshness={not_initialized:'Initial load not complete',refreshing:'Refresh or rebase in progress',stale:'Refresh overdue',refresh_failed:'Last refresh failed',tracked_feed_caught_up:'Tracked changes applied',changes_pending:'More changes waiting',awaiting_change_check:'Checking recent changes',unknown:'Freshness unverified'};
+const short=value=>String(value).split(/[\/#:]/).filter(Boolean).pop();
+
+export default function ReportingReplica(){
+ const [feeds,setFeeds]=useState([]),[selected,setSelected]=useState(''),[report,setReport]=useState(null),[sources,setSources]=useState([]),[scope,setScope]=useState([]),[name,setName]=useState('');
+ const [jobs,setJobs]=useState([]),[action,setAction]=useState('sync'),[run,setRun]=useState(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[revision,setRevision]=useState(0),[scheduling,setScheduling]=useState(false),[setup,setSetup]=useState(false);
+ const generation=useRef(0),controller=useRef(null),lock=useRef(false);
+ useEffect(()=>{const reset=()=>{generation.current++;controller.current?.abort();lock.current=false;setBusy(false);setSelected('');setReport(null);setFeeds([]);setJobs([]);setSources([]);setScope([]);setName('');setSetup(false);setRun(null);setRevision(n=>n+1);};const events=['depo:session-replaced','depo:session-expired','depo:credentials-changed','depo:credentials-cleared'];events.forEach(e=>window.addEventListener(e,reset));return()=>{generation.current++;controller.current?.abort();events.forEach(e=>window.removeEventListener(e,reset));};},[]);
+ useEffect(()=>{const c=new AbortController();const g=generation.current;
+  Promise.all([apiClient.get(buildUrl(root+'/feeds'),{signal:c.signal}),api.definitions({signal:c.signal})]).then(([f,j])=>{
+   if(c.signal.aborted||g!==generation.current)return;if(!Array.isArray(f.data?.feeds)||!Array.isArray(j.data?.definitions))throw new Error('Invalid reporting inventory response');setFeeds(f.data.feeds);setScheduling(!!f.data.scheduling_enabled);setJobs(j.data.definitions);setError('');
+  }).catch(e=>{if(!c.signal.aborted&&g===generation.current)setError(apiErrorMessage(e));});return()=>c.abort();
+ },[revision]);
+ useEffect(()=>{if(!setup)return;const c=new AbortController(),g=generation.current;api.graphSnapshotSources({signal:c.signal}).then(({data})=>{if(c.signal.aborted||g!==generation.current)return;if(!Array.isArray(data.sources))throw new Error('Published source choices are unavailable');setSources(data.sources);}).catch(e=>{if(!c.signal.aborted&&g===generation.current)setError(apiErrorMessage(e));});return()=>c.abort();},[setup]);
+ useEffect(()=>{if(!selected){setReport(null);return;}const c=new AbortController();const g=generation.current;setReport(null);let sequence=0;
+  const load=()=>{const current=++sequence;return apiClient.get(buildUrl(root+'/feeds/'+encodeURIComponent(selected)),{signal:c.signal}).then(({data})=>{if(!c.signal.aborted&&g===generation.current&&current===sequence){if(data.feed?.feed_id!==selected||!Array.isArray(data.resources)||!Array.isArray(data.types))throw new Error('Reporting response does not match the selected dataset');setReport(data);setFeeds(rows=>rows.map(row=>row.feed_id===data.feed.feed_id?data.feed:row));setError('');}}).catch(e=>{if(!c.signal.aborted&&g===generation.current&&current===sequence)setError(apiErrorMessage(e));});};
+  load();const timer=setInterval(()=>{if(!document.hidden)load();},15000);return()=>{c.abort();clearInterval(timer);};
+ },[selected,revision]);
+ const feed=feeds.find(f=>f.feed_id===selected),jobId='reporting-'+(action==='sync'?'refresh-':'export-')+selected.slice(0,12);
+ const job=jobs.find(j=>j.job_id===jobId&&j.version==='1.0.0'&&j.lifecycle_state==='approved'&&j.enabled);
+ async function perform(fn){if(lock.current)return;lock.current=true;setBusy(true);setError('');const g=generation.current,c=new AbortController();controller.current=c;
+  try{await fn(c.signal,value=>{if(!c.signal.aborted&&g===generation.current)setMessage(value);});if(!c.signal.aborted&&g===generation.current)setRevision(n=>n+1);}
+  catch(e){if(!c.signal.aborted&&g===generation.current)setError(apiErrorMessage(e,'Operation was not confirmed; review its retained status before retrying.'));}
+  finally{if(g===generation.current){lock.current=false;setBusy(false);}}
+ }
+ function draft(){return perform(async(signal,say)=>{await api.createDefinition({job_id:jobId,name:(action==='sync'?'Refresh ':'Freeze ')+(feed?.name||'reporting data'),version:'1.0.0',owner:'reporting-author',job_type:action==='sync'?'trs-reporting-sync':'trs-reporting-export',quality_profile:'semantic-core-v1'},access('DATA_JOB_APPROVAL_TOKEN'));say('Workflow draft created. Review and approve it in Data Flow.');});}
+ function execute(){return perform(async(signal,say)=>{const response=await api.runDefinition(job.job_id,job.version,{feed_id:selected},{approved_by:'connected-requester',approval_token:access('DATA_JOB_EXECUTION_TOKEN')},{signal});const value=response.data.run||response.data.run_manifest;if(signal.aborted)return;if(!value?.run_id)throw new Error('Processing submission has no retained run identity');setRun({id:value.run_id,jobId:job.job_id,feed:selected,action});say('Submitted to the existing processing worker. Inspect its retained result.');});}
+ return <section aria-label="Reporting data"><h2>Reporting data and freshness</h2><p>Reports use the reporting database. Tracked changes refresh the replica; original systems and approved snapshots retain their authority.</p>
+ <button disabled={busy} onClick={()=>setRevision(n=>n+1)}>Refresh reporting status</button>{error&&<p role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
+ <label>Reporting dataset<select value={selected} disabled={busy} onChange={e=>{setSelected(e.target.value);setRun(null);}}><option value="">Choose reporting data</option>{feeds.map(f=><option key={f.feed_id} value={f.feed_id}>{f.name} · {f.status} · {freshness[f.freshness]||f.freshness}</option>)}</select></label>
+ <details onToggle={event=>setSetup(event.currentTarget.open)}><summary>Prepare a reporting selection</summary><label>Dataset name<input value={name} maxLength={200} onChange={e=>setName(e.target.value)}/></label><fieldset><legend>Published ontology versions</legend>{sources.map(s=><label key={s.ontology_id} style={{display:'block'}}><input type="checkbox" checked={scope.includes(s.ontology_id)} onChange={e=>setScope(v=>e.target.checked?[...v,s.ontology_id]:v.filter(i=>i!==s.ontology_id))}/>{s.name||s.label||s.prefix||'Published ontology'} · {s.ontology_id}</label>)}</fieldset>
+ <button disabled={busy||!name.trim()||!scope.length} onClick={()=>perform(async(signal,say)=>{const token=access('DATA_JOB_APPROVAL_TOKEN');const {data}=await apiClient.post(buildUrl(root+'/feeds'),{name:name.trim(),definition:{ontology_ids:scope,max_lag_seconds:300},approved_by:'connected-requester'},headers(token,signal));if(signal.aborted)return;setSelected(data.feed_id);say('Reporting selection retained as a draft. Review its exact source versions before approval.');})}>Save reporting selection draft</button></details>
+ {feed&&<><p>Selection: {feed.definition.ontology_ids.length} exact ontology versions. Approval: {feed.status}.</p>
+ {feed.status==='draft'&&<button disabled={busy} onClick={()=>perform(async(signal,say)=>{await apiClient.post(buildUrl(root+'/feeds/'+selected+'/approve'),{approved_by:'connected-requester'},headers(access('DATA_JOB_APPROVAL_TOKEN'),signal));say('Reporting selection approved. Processing and product publication remain separate actions.');})}>Approve this reporting selection</button>}
+ <label>Reporting action<select value={action} disabled={busy} onChange={e=>{setAction(e.target.value);setRun(null);}}><option value="sync">Refresh from tracked changes</option><option value="export">Freeze records for a data product</option></select></label>
+ {!job&&<p>An approved workflow is required. <button disabled={busy||feed.status!=='approved'} onClick={draft}>Prepare workflow draft</button> <a href="#/data-flow?view=definitions">Review workflows</a></p>}
+ <button disabled={busy||!job||feed.status!=='approved'} onClick={execute}>{action==='sync'?'Refresh reporting data with worker':'Create reporting product snapshot'}</button>
+ {!scheduling&&<p>Automatic refresh is not enabled. A platform administrator must enable supervised scheduling before a refresh schedule can run.</p>}
+ {run&&<p><a href={'#/data-flow?view=runs&run_id='+encodeURIComponent(run.id)}>Inspect processing result and evidence</a>{run.action==='export'&&<> · <a href={'#/data-products?run_id='+encodeURIComponent(run.id)}>Review data product snapshot</a></>}</p>}
+ {run?.action==='sync'&&run.feed===selected&&scheduling&&<button disabled={busy} onClick={()=>perform(async(signal,say)=>{await api.scheduleDefinition(run.jobId,'1.0.0',{interval_seconds:60,replay_run_id:run.id},{approved_by:'connected-requester',approval_token:access('DATA_JOB_APPROVAL_TOKEN')});say('Refresh scheduled from this retained selection. Monitor Data Flow and freshness.');})}>Schedule this dataset refresh every minute</button>}
+ </>}
+ {report&&<><p><strong>Freshness: {freshness[report.feed.freshness]||report.feed.freshness}</strong> · Last check: {report.feed.state.last_assessed_at||'Not checked'} · Watermark: {report.feed.state.trs_after??'Not established'}</p><p>{report.feed.coverage}</p><p>{report.total_resources} resources · {report.recorded_links} recorded active links. {report.metrics_scope}</p>
+ <table><caption>Resource distribution</caption><thead><tr><th>Declared type</th><th>Records</th><th>Distribution</th></tr></thead><tbody>{report.types.map(t=><tr key={t.type}><td title={t.type}>{short(t.type)}</td><td>{t.records}</td><td><meter min="0" max={Math.max(1,report.total_resources)} value={t.records} aria-label={short(t.type)+' record count'}/></td></tr>)}</tbody></table>
+ <table><caption>Reporting records</caption><thead><tr><th>Name</th><th>Description</th><th>Source identity</th></tr></thead><tbody>{report.resources.map(row=><tr key={row.resource_uri}><td>{row.name}</td><td>{row.description}</td><td style={{overflowWrap:'anywhere'}}>{row.source_iri}</td></tr>)}</tbody></table></>}
+ </section>;
+}

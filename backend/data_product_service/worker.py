@@ -15,6 +15,11 @@ async def run() -> None:
             await reconcile_pending()
         except Exception as exc:
             logging.getLogger(__name__).warning("Catalog reconciliation deferred: %s", type(exc).__name__)
+        try:
+            from backend.oslc_service.notifications import reconcile
+            await asyncio.to_thread(reconcile)
+        except Exception:
+            logging.getLogger(__name__).exception('TRS notification reconciliation deferred')
         await asyncio.sleep(interval)
 
 

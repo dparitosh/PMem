@@ -14,7 +14,7 @@ from .connector_sources import MAX_BYTES,MAX_RECORDS
 def execute(runner,payload,*,correlation_id):
     run=run_records.get(payload.get('acquisition_run_id',''))
     artifact_id=payload.get('artifact_id')
-    if not run or run.get('status')!='completed' or run.get('job_type') not in {'registered-source-ingest','rest-source-ingest'}:
+    if not run or run.get('status')!='completed' or run.get('job_type') not in {'registered-source-ingest','rest-source-ingest','oslc-snapshot-ingest'}:
         raise ValueError('Select a completed registered-source acquisition run')
     owned=(run.get('output_manifest') or {}).get('partition_artifacts') or {}
     if not artifact_id or owned.get('source')!=artifact_id:

@@ -106,3 +106,17 @@ def test_export_route_returns_each_format():
     assert js.status_code == 200 and js.json()["summary"]["matched"] == 1
     bad = client.post("/api/v1/qif/boc/export?format=xml", files=files)
     assert bad.status_code == 422
+
+
+def test_reports_scope_local_characteristic_ids_and_same_filename_revisions():
+    from copy import deepcopy
+    from backend.ceim.boc_aas import build_boc_submodel
+    first={"qif_filename":"part.xml","ap242_filename":"part.stp",**compare_boc({"entities":[_ap_dim("1",25)]},{"entities":[_qif_char("C1",25)]})}
+    second=deepcopy(first);second["source_digests"]={"qif":"different-source-bytes","ap242":"same-design"}
+    left=build_boc_graph(first);right=build_boc_graph(second)
+    assert len(set(left.subjects(RDF.type,BOC.BillOfCharacteristics))|set(right.subjects(RDF.type,BOC.BillOfCharacteristics)))==2
+    assert not set(left.subjects(RDF.type,BOC.Characteristic)) & set(right.subjects(RDF.type,BOC.Characteristic))
+    assert build_boc_submodel(first)["id"]!=build_boc_submodel(second)["id"]
+    assert build_boc_submodel(first)["id"]==build_boc_submodel(deepcopy(first))["id"]
+    changed=deepcopy(first);changed["matched"][0]["nominal_value"]=26
+    assert build_boc_submodel(first)["id"]!=build_boc_submodel(changed)["id"]

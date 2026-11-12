@@ -31,14 +31,6 @@ function statusLabel(value) {
   return STATUS_LABELS[key] || (value || 'Unclassified');
 }
 
-function statusTone(value) {
-  const key = String(value || '').toLowerCase();
-  if (['approved', 'published', 'available'].includes(key)) return '#147d72';
-  if (['deprecated', 'rejected'].includes(key)) return '#b54708';
-  if (key === 'retired') return '#52606d';
-  return '#8a5a00';
-}
-
 function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterChange, onRegister, disabled }) {
   const visible = nodes.filter((node) => {
     const needle = filter.trim().toLowerCase();

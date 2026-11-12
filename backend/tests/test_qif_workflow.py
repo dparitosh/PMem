@@ -22,8 +22,9 @@ def test_qif_service_exposes_health_and_catalog():
 
 def test_qif_api_rejects_invalid_task_identifiers_and_non_xsd_uploads(monkeypatch):
     monkeypatch.setenv("ONTOLOGY_APPROVAL_TOKEN", "test-ontology-token")
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "test-read-token")
     client = TestClient(app)
-    missing = client.get("/api/v1/qif/tasks/not-a-task")
+    missing = client.get("/api/v1/qif/tasks/not-a-task",headers={"Authorization":"Bearer test-read-token"})
     assert missing.status_code == 404
 
     response = client.post(

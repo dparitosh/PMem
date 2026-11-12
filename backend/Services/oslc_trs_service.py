@@ -209,7 +209,7 @@ class OSLCTRSService:
         return payload
 
     @classmethod
-    def publish_event(cls, resource_uri: str, event_type: str, *, title: str = '', metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def publish_event(cls, resource_uri: str, event_type: str, *, title: str = '', metadata: Optional[Dict[str, Any]] = None, delivery_id: str | None = None) -> Dict[str, Any]:
         if not cls.is_enabled():
             return {'status': 'disabled'}
         event_type_lookup = {value.lower(): value for value in ('Creation', 'Modification', 'Deletion')}
@@ -219,6 +219,9 @@ class OSLCTRSService:
         resource_path = cls._normalize_resource_path(resource_uri)
         with cls._lock:
             with cls._cross_process_lock():
+                if delivery_id and cls._storage_backend() == 'postgres':
+                    existing = cls._store.get('delivery:' + delivery_id)
+                    if existing:return cls._external_event(existing)
                 state = cls._load()
                 order = int(state.get('counter', 0)) + 1
                 event = {
@@ -236,7 +239,9 @@ class OSLCTRSService:
                 state['counter'] = order
                 state['events'] = retained_events
                 state['first_retained_order'] = int(retained_events[0].get('order') or order) if retained_events else 0
-                cls._save(state)
+                if delivery_id and cls._storage_backend() == 'postgres':
+                    cls._store.put_with_related(cls._state_key,state,related_namespace=cls._store.namespace,related_key='delivery:'+delivery_id,related_value=event)
+                else:cls._save(state)
                 return cls._external_event(event)
 
     @classmethod
@@ -291,6 +296,9 @@ class OSLCTRSService:
                 except (ValueError, KeyError, OSError):
                     continue
         if offset: raise RuntimeError('TRS offset requires a snapshot_id')
+        if cls._storage_backend() == 'postgres':
+            from backend.oslc_service.trs_snapshot import build_snapshot
+            return build_snapshot(cls, limit)
         state = cls._load()
         safe_limit = max(1, min(1000, int(limit or 200)))
         try:
@@ -303,9 +311,10 @@ class OSLCTRSService:
             rows = GraphViewService._run(
                 """
                 MATCH (n)
-                WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+                WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
                 RETURN elementId(n) AS element_id,
                        coalesce(n.uri, n.rdf_uri) AS resource_uri_identity,
+                       n.ontology_id AS ontology_id,
                        coalesce(n.name, n.title, n.code, n.label, n.id, elementId(n)) AS title,
                        labels(n) AS labels,
                        {
@@ -351,7 +360,7 @@ class OSLCTRSService:
                 continue
             from backend.oslc_service.identity import resource_uri as linked_uri
             candidates.append({
-                'resource_uri': linked_uri(cls.base_url(), {'uri': row.get('resource_uri_identity')}, element_id),
+                'resource_uri': linked_uri(cls.base_url(), {'uri': row.get('resource_uri_identity'), 'ontology_id': row.get('ontology_id')}, element_id),
                 'title': row.get('title') or element_id,
                 'element_id': element_id,
                 'rdf_types': OSLCService.resource_domain_types(
@@ -386,6 +395,7 @@ class OSLCTRSService:
             raise RuntimeError('TRS Base exceeds OSLC_TRS_MAX_BASE_RESOURCES')
         snapshot_id = str(uuid.uuid4())
         snapshot = {'members': unique_members, 'cutoff_order': int(state.get('counter') or 0),
+                    'cutoff_event': (state.get('events') or [{}])[-1].get('event_id'),
                     'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}
         if cls._storage_backend() == 'postgres':
             cls._store.put('base:' + snapshot_id, snapshot)
@@ -399,12 +409,16 @@ class OSLCTRSService:
     @classmethod
     def _base_page(cls, snapshot_id, snapshot, offset, limit):
         safe_limit = max(1, min(1000, int(limit)))
+        if snapshot.get('chunked'):
+            from backend.oslc_service.trs_snapshot import read_page
+            return read_page(cls, snapshot_id, snapshot, offset, safe_limit)
         members = snapshot['members'][offset:offset + safe_limit]
         next_offset = offset + len(members)
         more = next_offset < len(snapshot['members'])
         return {'uri': cls.base_resource_uri(), 'type': 'trs:Base', 'members': members,
                 'count': len(members), 'total_count': len(snapshot['members']),
                 'snapshot_id': snapshot_id, 'cutoff_order': snapshot['cutoff_order'],
+                'cutoff_event': snapshot.get('cutoff_event'),
                 'truncated': more, 'nextPage': f'{cls.base_resource_uri()}?snapshot_id={snapshot_id}&offset={next_offset}&limit={safe_limit}' if more else None}
 
     @classmethod

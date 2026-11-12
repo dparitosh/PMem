@@ -15,7 +15,7 @@ class OslcCorrectness(unittest.TestCase):
         fn = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == 'next_page')
         namespace = dict(urlsplit=urlsplit, urljoin=urljoin, unquote=unquote, parse_qsl=parse_qsl, Any=object)
         exec(compile(ast.Module(body=[fn], type_ignores=[]), '<actual pagination>', 'exec'), namespace)
-        client = SimpleNamespace(base_url='https://provider.test/api', _request=lambda path, params: (path, params))
+        client = SimpleNamespace(base_url='https://provider.test/api', _request=lambda path, params, **options: (path, params))
         result = namespace['next_page'](client, '?oslc.pageNum=2', 'https://provider.test/api/oslc/query/resources')
         self.assertEqual(result, ('oslc/query/resources', {'oslc.pageNum': '2'}))
         with self.assertRaises(ValueError):

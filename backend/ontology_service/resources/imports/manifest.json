@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "retrieved_on": "2026-11-11",
+  "documents": [
+    {
+      "file": "skos.rdf",
+      "source_url": "https://www.w3.org/2004/02/skos/core.rdf",
+      "format": "xml",
+      "iris": [
+        "http://www.w3.org/2004/02/skos/core",
+        "http://www.w3.org/2004/02/skos/core#"
+      ],
+      "sha256": "e79633b8d0564816cee8a99f5c9acf9a0e6fc7257c7209acd684ecad53a89dd6",
+      "triples": 252
+    },
+    {
+      "file": "shacl.ttl",
+      "source_url": "https://www.w3.org/ns/shacl.ttl",
+      "format": "turtle",
+      "iris": [
+        "http://www.w3.org/ns/shacl",
+        "http://www.w3.org/ns/shacl#"
+      ],
+      "sha256": "0e5d8aea0eab98a072d4a02faaee1ee914ec99eab2ca473429726faed4a13f69",
+      "triples": 1128
+    },
+    {
+      "file": "dcterms.ttl",
+      "source_url": "https://www.dublincore.org/specifications/dublin-core/dcmi-terms/dublin_core_terms.ttl",
+      "format": "turtle",
+      "iris": [
+        "http://purl.org/dc/terms/"
+      ],
+      "sha256": "13df401072dd7015bf9d75162f3e41c8138075304b7b9cc1aa1e9c16db976797",
+      "triples": 700
+    },
+    {
+      "file": "oslc-core.ttl",
+      "source_url": "https://raw.githubusercontent.com/oslc-op/oslc-specs/master/specs/core/core-vocab.ttl",
+      "format": "turtle",
+      "iris": [
+        "http://open-services.net/ns/core",
+        "http://open-services.net/ns/core#"
+      ],
+      "sha256": "f636bfc1ad89d4c141cee32628c2d96eac2076e33555904ba4b284993a920f1a",
+      "triples": 503
+    }
+  ]
+}

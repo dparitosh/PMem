@@ -26,6 +26,13 @@ CONSTRAINTS = {
  'depo_metadata_outbox_event_id_fkey': ('depo_metadata_outbox','FOREIGN KEY(event_id) REFERENCES depo_metadata_events(event_id)'),
  'depo_metadata_outbox_status_check': ('depo_metadata_outbox',"CHECK(status=ANY(ARRAY['pending','published']))"),
 }
+CONSTRAINTS.update({
+ 'depo_reporting_feeds_pkey':('depo_reporting_feeds','PRIMARY KEY(feed_id)'),
+ 'depo_reporting_resources_pkey':('depo_reporting_resources','PRIMARY KEY(feed_id,generation,resource_key)'),
+ 'depo_reporting_values_pkey':('depo_reporting_values','PRIMARY KEY(feed_id,generation,resource_key,property_key,ordinal)'),
+ 'depo_reporting_links_pkey':('depo_reporting_links','PRIMARY KEY(feed_id,generation,resource_key,predicate_key,target_key)'),
+})
+
 INDEXES = {
  'idx_depo_registry_status_recent': "ON depo_registry(namespace,(value->>'status'),updated_at DESC,key)",
  'idx_depo_job_identity': "ON depo_registry(namespace,(value->>'job_id'),(value->>'job_version')) WHERE namespace='data_job_runs'",
@@ -57,7 +64,7 @@ def verify_structure(cursor, schema, columns):
         if table == 'depo_ontology_analytics': continue
         for column in names:
             nullable, default = attributes.get((table,column), (None,None))
-            if (table,column) in {('depo_api_credentials','expires_at'),('depo_analytics_models','approved_by'),('depo_analytics_models','approved_at'),('depo_analytics_ods_value','numeric_value'),('depo_analytics_fact_kpi','value')}:
+            if (table,column) in {('depo_reporting_feeds','approved_by'),('depo_reporting_values','numeric_value'),('depo_api_credentials','expires_at'),('depo_analytics_models','approved_by'),('depo_analytics_models','approved_at'),('depo_analytics_ods_value','numeric_value'),('depo_analytics_fact_kpi','value')}:
                 if nullable != 'YES':
                     raise RuntimeError(f'Optional column must permit NULL: {table}.{column}')
                 continue

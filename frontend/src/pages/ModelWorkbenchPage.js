@@ -1,3 +1,4 @@
+import useRouteView from '../app/useRouteView';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import WorkspaceTabs from '../Components/WorkspaceTabs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -13,6 +14,7 @@ import GraphVisualizationWidget from '../Components/GraphMiner/GraphVisualizatio
 import { createDiagramModel } from '../diagram/engine/diagramEngine';
 import './ModelWorkbenchPage.css';
 
+const MODEL_VIEWS=['architecture','mbse'];
 const VIEW_OPTIONS = [
   { id: 'architecture', label: 'Architecture', description: 'Imported ArchiMate architecture and process model diagrams.' },
   { id: 'mbse', label: 'Systems engineering', description: 'Requirement, function, interface, part and behavior views from SysML, MBSE and UML models.' },
@@ -332,7 +334,7 @@ function TreeBranch({ item, selectedId, onSelect, depth = 0 }) {
 }
 
 export default function ModelWorkbenchPage({ onNavigate, onBusinessSelection, toggleChat }) {
-  const [activeView, setActiveView] = useState('architecture');
+  const [activeView, setActiveView] = useRouteView(MODEL_VIEWS,'architecture',undefined,'#/modeling');
   const { ontologies, loading: sourcesLoading, error: sourcesError } = useOntologies();
   const [sourceByMode, setSourceByMode] = useState({});
   const modelSources = useMemo(() => ontologies.filter(source => {
@@ -352,6 +354,11 @@ export default function ModelWorkbenchPage({ onNavigate, onBusinessSelection, to
   const [viewportCommand, setViewportCommand] = useState('');
   const loadRequestIdRef = useRef(0);
   const loadAbortControllerRef = useRef(null);
+  useEffect(() => {
+    loadRequestIdRef.current++; loadAbortControllerRef.current?.abort();
+    setDataset({nodes:[],links:[],message:'',representations:[]});
+    setReactFlowGraph(null);setDecompositionRootId('');setQuery('');setSelectedId('');setActiveTreeItem(null);setActiveRepresentationId('');
+  },[activeView]);
 
   const loadView = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
@@ -544,14 +551,7 @@ export default function ModelWorkbenchPage({ onNavigate, onBusinessSelection, to
         <div className="model-viewer-header-main">
           <h2><PanelsTopLeft size={22} /> Modeling Viewer</h2>
           <p>Explore an imported model as a tree or diagram, then select an element to see its properties and relationships.</p>
-          <WorkspaceTabs label="Model viewer modes" tabs={VIEW_OPTIONS} value={activeView} onChange={view => {
-            if (view === activeView) return;
-            loadRequestIdRef.current += 1;
-            loadAbortControllerRef.current?.abort();
-            setDataset({ nodes: [], links: [], message: '', representations: [] });
-            setReactFlowGraph(null); setDecompositionRootId('');
-            setActiveView(view); setQuery(''); setSelectedId(''); setActiveTreeItem(null); setActiveRepresentationId('');
-          }} />
+          <WorkspaceTabs label="Model viewer modes" tabs={VIEW_OPTIONS} value={activeView} onChange={setActiveView} />
           <p className="depo-panel__meta">{VIEW_OPTIONS.find((option) => option.id === activeView)?.description}</p>
         </div>
         <div className="model-viewer-actions">

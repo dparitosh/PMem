@@ -241,7 +241,8 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
         if not isinstance(receipt, dict) or receipt.get('status') != 'success' or receipt.get('ontology_id') != ontology_id or receipt.get('publication_id') != publication_id or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships')):
             raise ValueError('Invalid graph receipt')
         record = {**record, 'status': 'published', 'receipt': receipt}
-        await run_in_threadpool(graph_publications.put, ontology_id, record)
+        from backend.oslc_service.notifications import retain_publication
+        await run_in_threadpool(retain_publication, graph_publications, ontology_id, record)
         return record
     except (httpx.HTTPError, ValueError, TimeoutError, RuntimeError, OSError) as exc:
         upstream_status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None

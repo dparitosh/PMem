@@ -12,6 +12,7 @@ from functools import lru_cache
 from datetime import datetime, timezone
 from rdflib import Graph, OWL, URIRef, RDF
 from .foundation import foundation, alignment_coverage
+from . import offline_imports
 
 RESOURCE = Path(__file__).with_name('resources') / 'reasoner'
 MAX_SOURCE_BYTES = 64*1024*1024
@@ -63,15 +64,21 @@ def inspect_graph(graph, *, artifact_sha256, include_foundation=True, target_iri
     allowed_imports.update(iri for module in meta.get('modules', [])
                            for iri in (module['ontology_iri'], module['version_iri']))
     imports = {str(value) for value in graph.objects(None,OWL.imports)}
-    if imports - allowed_imports or (imports and not include_foundation):
-        return {**result,'reason':'unresolved_imports','unresolved_imports':sorted(imports-allowed_imports or imports)[:20]}
+    try:
+        imported, missing, resolved, catalog_digest = offline_imports.resolve(graph,allowed_imports if include_foundation else ())
+    except (OSError,ValueError,KeyError,TypeError):
+        return {**result,'reason':'offline_import_catalog_invalid'}
+    result.update(resolved_imports=resolved,import_catalog_sha256=catalog_digest)
+    if missing:
+        return {**result,'reason':'unresolved_imports','unresolved_imports':missing[:20]}
     if not capabilities()['available']: return {**result,'reason':'reasoner_unavailable'}
-    if len(graph) > 500000: return {**result,'status':'unsupported','reason':'assertion_budget_exceeded'}
+    if len(graph)+len(imported) > 500000: return {**result,'status':'unsupported','reason':'assertion_budget_exceeded'}
     if not _slot.acquire(blocking=False): return {**result,'reason':'reasoner_busy'}
     try:
         merged = Graph()
         for triple in graph:
             if triple[1] != OWL.imports: merged.add(triple)
+        for triple in imported: merged.add(triple)
         if include_foundation:
             for triple in base: merged.add(triple)
         content = merged.serialize(format='turtle',encoding='utf-8')
@@ -127,14 +134,14 @@ def semantic_dependencies():
     """Revisions affecting interpretation, also pinned by resumed agent goals."""
     meta, _ = foundation()
     worker = RESOURCE / 'manifest.json'
-    return {'foundation_sha256': meta['bundle_sha256'],
+    return {'import_catalog_sha256': offline_imports.dependency_digest(), 'foundation_sha256': meta['bundle_sha256'],
             'worker_sha256': hashlib.sha256(worker.read_bytes()).hexdigest() if worker.is_file() else 'unavailable',
             'adapter_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
 
 
 def evidence_key(digest):
     dependencies = semantic_dependencies()
-    return hashlib.sha256((digest + dependencies['foundation_sha256'] + dependencies['worker_sha256'] + dependencies['adapter_sha256']).encode()).hexdigest()
+    return hashlib.sha256((digest + json.dumps(dependencies,sort_keys=True)).encode()).hexdigest()
 
 
 def current_evidence(ontology_id, catalog, registry):

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 PRESERVED = ('browser_credential_sessions', 'maintenance_state', 'admin_cleanup_runs_v1',
              'vanilla_reset_receipts_v1', 'sparql_federation_peers', 'ontology_semantic_policies')
-TABLES = ('depo_analytics_fact_kpi','depo_analytics_fact_measure','depo_analytics_fact_link','depo_analytics_ods_value','depo_analytics_dim_entity','depo_analytics_marts','depo_analytics_models','depo_semantic_values', 'depo_semantic_terms', 'depo_semantic_namespaces', 'depo_semantic_datasets',
+TABLES = ('depo_reporting_links','depo_reporting_values','depo_reporting_resources','depo_reporting_feeds','depo_analytics_fact_kpi','depo_analytics_fact_measure','depo_analytics_fact_link','depo_analytics_ods_value','depo_analytics_dim_entity','depo_analytics_marts','depo_analytics_models','depo_semantic_values', 'depo_semantic_terms', 'depo_semantic_namespaces', 'depo_semantic_datasets',
           'depo_metadata_outbox', 'depo_metadata_events', 'depo_metadata_assets',
           'depo_chat_messages', 'depo_runtime_state', 'depo_rate_limits')
 DATA_FOLDERS = ('artifacts', 'products', 'ontology_service', 'domain_models', 'business_object_models', 'parser_outputs')

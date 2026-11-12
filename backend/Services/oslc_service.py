@@ -1236,13 +1236,14 @@ class OSLCService:
         return None
 
     @classmethod
-    def get_resource(cls, element_id: str) -> Optional[Dict[str, Any]]:
+    def get_resource(cls, element_id: str, ontology_id: str | None = None) -> Optional[Dict[str, Any]]:
         rows = GraphViewService._run(
             """
             MATCH (n)
             WHERE (($resource_uri IS NULL AND elementId(n) = $element_id)
                 OR ($resource_uri IS NOT NULL AND (n.uri = $resource_uri OR n.rdf_uri = $resource_uri)))
               AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
+              AND ($ontology_id IS NULL OR n.ontology_id = $ontology_id)
             OPTIONAL MATCH (n)-[r]->(m)
             WHERE NOT (m:DatasheetChunk OR m:GraphChunk OR m:StagedOntologyResource OR m:OntologyPublication)
             RETURN
@@ -1255,6 +1256,7 @@ class OSLCService:
                 relationshipElementId: elementId(r),
                 targetElementId: elementId(m),
                 targetUriIdentity: coalesce(m.uri, m.rdf_uri),
+                targetOntologyId: m.ontology_id,
                 targetLabels: labels(m),
                 targetProperties: {
                   element_type: m.element_type,
@@ -1265,12 +1267,14 @@ class OSLCService:
                 },
                 targetName: coalesce(m.name, m.title, m.code, m.label, m.id, elementId(m))
               }) AS outgoing
-            LIMIT 1
+            LIMIT 2
             """,
-            {"element_id": element_id, "resource_uri": element_id[4:] if element_id.startswith('uri:') else None},
+            {"ontology_id": ontology_id, "element_id": element_id, "resource_uri": element_id[4:] if element_id.startswith('uri:') else None},
         )
         if not rows:
             return None
+        if len(rows) > 1:
+            raise ValueError('Resource identity is ambiguous; select its ontology version')
         return cls._resource_detail_payload(rows[0])
 
     @classmethod
@@ -1291,7 +1295,7 @@ class OSLCService:
         if ontology_scope:
             where_clauses.append(
                 "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
-                "OR ($ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
+                "OR (toString(coalesce(n.ontology_id, '')) = '' AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
             )
             cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
 
@@ -1346,7 +1350,7 @@ class OSLCService:
         if ontology_scope:
             where_clauses.append(
                 "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
-                "OR ($ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
+                "OR (toString(coalesce(n.ontology_id, '')) = '' AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
             )
             cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
         for index, condition in enumerate(params.where):
@@ -1638,7 +1642,7 @@ class OSLCService:
         links = [
             {
                 **item,
-                "targetUri": linked_uri(cfg.base_url, {'uri': item.get('targetUriIdentity')}, item.get('targetElementId') or ''),
+                "targetUri": linked_uri(cfg.base_url, {'uri': item.get('targetUriIdentity'), 'ontology_id': item.get('targetOntologyId')}, item.get('targetElementId') or ''),
                 "predicate": cls._link_predicate(item),
                 "targetRdfTypes": cls.resource_domain_types(
                     item.get("targetLabels") or [], item.get("targetProperties") or {}

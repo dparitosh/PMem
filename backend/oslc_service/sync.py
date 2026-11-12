@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import uuid
 from datetime import datetime, timezone
@@ -47,7 +48,7 @@ class OSLCSyncStore:
         except (AttributeError, ValueError) as exc:
             raise ValueError("sync_id must be a UUID") from exc
 
-    def create(self, *, resource_type: str, parameters: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    def create(self, *, resource_type: str, parameters: dict[str, Any], payload: dict[str, Any], provider_url: str | None = None, requested_by: str | None = None) -> dict[str, Any]:
         self.root.mkdir(parents=True, exist_ok=True)
         sync_id = str(uuid.uuid4())
         if not isinstance(payload, dict): raise ValueError('Remote query response must be an object')
@@ -57,6 +58,9 @@ class OSLCSyncStore:
             raise ValueError('Remote resources must be an array')
         snapshot = {
             "sync_id": sync_id,
+            "provider_url": provider_url,
+            "requested_by": requested_by,
+            "content_sha256": hashlib.sha256(json.dumps(resources, sort_keys=True, separators=(",",":")).encode()).hexdigest(),
             "status": "staged",
             "direction": "pull",
             "resource_type": resource_type,
@@ -99,6 +103,9 @@ class OSLCSyncStore:
             return None
         snapshot = json.loads(path.read_text(encoding='utf-8'))
         snapshot['parameters'] = safe_parameters(snapshot.get('parameters') or {})
+        digest = hashlib.sha256(json.dumps(snapshot.get('resources', []), sort_keys=True, separators=(',',':')).encode()).hexdigest()
+        if snapshot.get('content_sha256') and snapshot['content_sha256'] != digest:
+            raise ValueError('OSLC snapshot integrity check failed')
         return snapshot
 
 
@@ -106,7 +113,7 @@ class OSLCSynchronizer:
     def __init__(self, client: OSLCClient, store: OSLCSyncStore | None = None) -> None:
         self.client, self.store = client, store or OSLCSyncStore()
 
-    def pull(self, resource_type: str, parameters: dict[str, Any]) -> dict[str, Any]:
+    def pull(self, resource_type: str, parameters: dict[str, Any], *, requested_by: str | None = None) -> dict[str, Any]:
         parameters = safe_parameters(parameters)
         payload = self.client.query(resource_type, parameters)
         from urllib.parse import urljoin
@@ -135,4 +142,4 @@ class OSLCSynchronizer:
             current_url = urljoin(current_url, link)
         result = {'members': resources, 'nextPage': link,
                   'oslc:totalCount': payload.get('oslc:totalCount', len(resources))}
-        return self.store.create(resource_type=resource_type, parameters=parameters, payload=result)
+        return self.store.create(resource_type=resource_type, parameters=parameters, payload=result, provider_url=self.client.base_url, requested_by=requested_by)

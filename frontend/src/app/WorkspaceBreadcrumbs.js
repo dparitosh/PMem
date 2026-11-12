@@ -1,11 +1,12 @@
 import React, {useEffect,useState} from 'react';
 const views={analytics:'Available analytics',prepare:'Prepare data',library:'Product portfolio',create:'Create & review',governance:'Governance',sources:'Ingested sources',runs:'Runs',definitions:'Definitions',alignment:'Semantic Bridge',structural:'Create & review',pipeline:'Create & review'};
+const pageViews={import:{data:'Data import',qif:'QIF workflow',sysml:'SysML repository'},reports:{memory:'Memory records',engineering:'Engineering reports',reporting:'Reporting data'},modeling:{architecture:'Architecture',mbse:'Systems engineering'},admin:{overview:'Overview',access:'API access',sources:'Data sources',agents:'Agents & workflows',services:'Services & catalogs',maintenance:'Maintenance'}};
 const steps=['Choose data','Configure analysis','Review workflow'];
 export default function WorkspaceBreadcrumbs({page,label}) {
  const [hash,setHash]=useState(()=>window.location.hash);
  useEffect(()=>{const update=()=>setHash(window.location.hash);window.addEventListener('hashchange',update);window.addEventListener('popstate',update);return()=>{window.removeEventListener('hashchange',update);window.removeEventListener('popstate',update);};},[]);
  const params=new URLSearchParams(hash.split('?')[1]||'');
- const view=views[params.get('view')];
+ const view=pageViews[page]?.[params.get('view')]||views[params.get('view')];
  const step=Number(params.get('analytics_step'));
  const stepLabel=['data-products','catalog'].includes(page)&&params.get('view')==='analytics'&&params.has('analytics_step')&&Number.isInteger(step)&&step>=0&&step<3?steps[step]:null;
  const detail=params.has('run_id')?'Run details':stepLabel||view;

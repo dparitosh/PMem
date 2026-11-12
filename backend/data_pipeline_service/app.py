@@ -11,6 +11,7 @@ from .rest_router import router as rest_router
 from .connector_router import router as connector_router
 from .semantic_catalog import router as semantic_router
 from .analytics_catalog import router as analytics_router
+from .reporting_router import router as reporting_router
 from .scheduler import ScheduledJobSupervisor
 
 
@@ -63,3 +64,5 @@ app.include_router(rest_router, prefix="/api/v1")
 app.include_router(connector_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(semantic_router, prefix="/api/v1")
+
+app.include_router(reporting_router,prefix="/api/v1")

@@ -509,7 +509,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
                     <td><button className="data-flow-link" type="button" onClick={() => selectRun(run)}>{run.job_name || run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_id || '—'} · {run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
                     <td><span className="data-flow-source">{sourceStandard(run)}</span></td>
                     <td>{displayTime(run.started_at)}</td>
-                    <td>{['rest-source-ingest','registered-source-ingest'].includes(run.job_type)?`${run.output_manifest?.counts?.records??'—'} acquired · validation not assessed`:<>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</>}</td>
+                    <td>{['rest-source-ingest','registered-source-ingest','oslc-snapshot-ingest'].includes(run.job_type)?`${run.output_manifest?.counts?.records??'—'} acquired · validation not assessed`:<>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</>}</td>
                     <td><Status value={qualityStatus(run)} />{run.output_manifest?.publication?.status==='published' && <span className="data-flow-status">Published · receipt retained</span>}</td>
                     <td><button className="data-flow-replay" type="button" onClick={() => setReplayTarget(run)} disabled={!!replayingId || !!definitionActionId || !!publishingId || replayAccessRejected || ['queued','running'].includes(run.status)}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
@@ -549,7 +549,7 @@ export default function DataFlowPage({ onCompanionRecordChange }) {
               </>}
             </dl>
             <SemanticSupport report={selectedRun.semantic_support}/>
-            <p className="data-flow-help">{['rest-source-ingest','registered-source-ingest'].includes(selectedRun.job_type)?'Replay reacquires the current configured source. Earlier retained artifacts stay unchanged; source data may have changed.':'Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.'}</p>
+            <p className="data-flow-help">{selectedRun.job_type==='trs-reporting-sync'?'Replay resumes the approved reporting selection and consumes newer tracked changes. Previously frozen product snapshots remain unchanged.':['rest-source-ingest','registered-source-ingest'].includes(selectedRun.job_type)?'Replay reacquires the current configured source. Earlier retained artifacts stay unchanged; source data may have changed.':'Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.'}</p>
             {(() => { try { productDraftFromRun(selectedRun); return <a href={`#/data-products?run_id=${encodeURIComponent(selectedRun.run_id)}`}>Create product from retained run evidence</a>; } catch { return <p>A completed run with retained output artifacts is required to create a product draft.</p>; } })()}
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}
         </aside>

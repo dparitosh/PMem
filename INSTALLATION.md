@@ -300,3 +300,21 @@ For optional model and local demo settings, see the [OpenAI demonstration profil
 
 The foundation bundle includes PCA IDO, the NEXUS business module and the pinned DIN EN 61360 property pattern 2.0.4. Deploy the complete foundation directory, including `manifest.json`, `dinen61360-2.0.4.ttl`, `DINEN61360-LICENSE.txt` and `NOTICE.md`, through the normal update process. Runtime checks verify module and license hashes and use local imports only. No additional database migration or dependency is needed for this vocabulary addition. Existing customer data and mappings are preserved; previous reasoning evidence must be checked again against the new bundle. See [embedded foundation operation](docs/EMBEDDED_SEMANTIC_FOUNDATION.md).
 
+
+### Pinned offline vocabulary imports
+
+OWL consistency checks resolve the bundled SKOS, SHACL, Dublin Core Terms and OSLC Core vocabulary snapshots locally. The import catalog and every vocabulary are checksum verified; unknown imports remain unresolved and corrupt resources fail closed. No ontology import URL is fetched during reasoning. Deploy the complete release resources and restart the ontology service; no PostgreSQL migration or new Python dependency is required for this change. Reasoning evidence is invalidated when the catalog changes. Resolving imports does not establish that the combined ontology satisfies the OWL 2 DL profile or is logically consistent.
+
+### OSLC functional fixes (12 November 2026)
+
+Deploy the complete OSLC service, ontology service and existing data-product-outbox worker together, then restart with the repository lifecycle script. Native ontology publication commits its PostgreSQL receipt and OSLC notification intent together; the existing worker retries idempotent delivery. No new worker, dependency or PostgreSQL table migration is required: state uses the existing registry namespaces. Notification coverage for other graph mutations still needs qualification.
+
+PostgreSQL TRS Base uses streamed graph results and 1,000-member retained pages. `OSLC_TRS_MAX_SNAPSHOT_RESOURCES` bounds the complete snapshot (default 1,000,000; range 1–2,000,000). The older `OSLC_TRS_MAX_BASE_RESOURCES` remains a file-mode development limit. Snapshot metadata is published only after page persistence, expires after 15 minutes, and missing pages require a rebase rather than a partial success. Readiness alone does not certify independent TRS-client conformance. Remote snapshots now retain provider URL, authenticated requester and content digest; old snapshots without these fields remain legacy evidence and must not be represented as newly verified provenance.
+
+
+Remote OSLC query discovery now follows advertised query capabilities under the configured provider origin and path prefix. Set `OSLC_REMOTE_CATALOG_PATH` to a relative catalog path if it differs from `oslc/catalog`. `OSLC_REMOTE_QUERY_MODE=legacy` retains the former fixed-path convention for providers that deliberately use it; the default is capability discovery. Provider-returned continuation cursors are bounded and remain confined to that provider. No remote provider is enabled by this upgrade.
+
+Admin → Data sources includes retained OSLC snapshot selection and an approved preparation-workflow selector. The optional **Create preparation workflow draft** action creates an `oslc-snapshot-ingest` definition only; an authorized owner must review, approve and enable it through Data Flow. Preparation uses the existing pipeline worker and produces retained `connector-records` evidence for the existing `connector-ceim-normalize` mapping workflow. It does not publish the graph. Configure explicit `syncs` lifecycle grants for the intended read and execution identities; the upgrade does not broaden grants. Incomplete or legacy snapshots lacking provider/requester/content-digest provenance must be acquired again. Retained submission references reconcile retries rather than enqueueing duplicate work.
+
+
+Reporting replication: migration 018 is applied by the normal PostgreSQL upgrade. See [OSLC reporting replication](docs/architecture/OSLC_LIFECYCLE_RELEASE.md#reporting-replication) for approved feed selection, worker execution, scheduler opt-in, freshness limits and snapshot product review. Existing data does not require a reset.

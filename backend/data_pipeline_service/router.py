@@ -352,6 +352,11 @@ def run_configured_job(job_id: str, version: str, payload: JobInputBody, request
     correlation_id = getattr(request.state, "request_id", "")
     payload = {**payload, "execution_actor": actor}
     try:
+        if definition['job_type'] == 'oslc-snapshot-ingest':
+            from backend.oslc_service.access import authorize
+            authorize(actor, 'syncs', str(payload.get('snapshot_id','')))
+            from backend.oslc_service.preparation import submit
+            return submit(definition,payload,actor,correlation_id)
         if definition['job_type'] == 'rest-source-ingest':
             from .rest_submissions import submit
             return submit(definition, payload, actor, correlation_id)

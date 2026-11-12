@@ -9,6 +9,8 @@ from ..Services.oslc_service import OSLCService
 from ..Services.oslc_trs_service import OSLCTRSService
 from backend.oslc_service.representation import represent
 from backend.oslc_service.media import REPRESENTATION_RESPONSES
+import logging
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/oslc", tags=["OSLC"])
@@ -94,14 +96,18 @@ def query_resources(resource_type: str, request: Request,
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+        logger.exception("OSLC operation failed")
+        raise HTTPException(status_code=503, detail="OSLC operation unavailable; inspect the OSLC service log using the request ID.") from exc
 
 
 @router.get("/resources/{element_id:path}", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
-def get_resource(element_id: str, request: Request, include_links: bool = Query(default=True)):
+def get_resource(element_id: str, request: Request, include_links: bool = Query(default=True), ontology_id: str | None = Query(default=None, max_length=200)):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
-    payload = OSLCService.get_resource(element_id)
+    try:
+        payload = OSLCService.get_resource(element_id, ontology_id=ontology_id) if ontology_id else OSLCService.get_resource(element_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     if not payload:
         raise HTTPException(status_code=404, detail="OSLC resource not found.")
     if not include_links:
@@ -117,7 +123,8 @@ def get_trs_descriptor(request: Request):
     try:
         return represent(OSLCTRSService.tracked_resource_set(), request)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+        logger.exception("OSLC operation failed")
+        raise HTTPException(status_code=503, detail="OSLC operation unavailable; inspect the OSLC service log using the request ID.") from exc
 
 
 @router.get("/trs/base", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
@@ -127,7 +134,8 @@ def get_trs_base(request: Request, limit: int = Query(default=200, ge=1, le=1000
     try:
         return represent(OSLCTRSService.base_resources(limit=limit, snapshot_id=snapshot_id, offset=offset), request)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+        logger.exception("OSLC operation failed")
+        raise HTTPException(status_code=503, detail="OSLC operation unavailable; inspect the OSLC service log using the request ID.") from exc
 
 
 @router.get("/trs/changelog", dependencies=[Depends(graph_read_identity)], responses=REPRESENTATION_RESPONSES)
@@ -137,7 +145,8 @@ def get_trs_changelog(request: Request, after: int = Query(default=0, ge=0), lim
     try:
         return represent(OSLCTRSService.change_log(after=after, limit=limit), request)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
+        logger.exception("OSLC operation failed")
+        raise HTTPException(status_code=503, detail="OSLC operation unavailable; inspect the OSLC service log using the request ID.") from exc
 
 
 @router.get("/dictionaries/{prefix}", dependencies=[Depends(graph_read_identity)])

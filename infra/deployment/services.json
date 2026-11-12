@@ -14,7 +14,7 @@
     {"id": "data-pipeline", "display_name": "Data Pipeline Service", "module": "backend.data_pipeline_service.app:app", "port": 8019, "apim_path": "data-pipeline"}
   ],
   "workers": [
-    {"id": "data-product-outbox", "module": "backend.data_product_service.worker", "responsibility": "Durable catalog-registration outbox"},
+    {"id": "data-product-outbox", "module": "backend.data_product_service.worker", "responsibility": "Durable catalog-registration and OSLC notification outboxes"},
     {"id": "data-pipeline-worker", "module": "backend.data_pipeline_service.worker", "responsibility": "PostgreSQL-leased Spark and governed data-job execution"},
     {"id": "agentic-workflow-worker", "module": "backend.agentic_service.worker", "responsibility": "PostgreSQL-fenced workflow execution and safe restart recovery"}
   ],

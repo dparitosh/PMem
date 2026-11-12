@@ -14,7 +14,7 @@ class ChatContext(BaseModel):
     reconciliation_id: StrictStr = Field(default='', max_length=256)
     product_id: StrictStr = Field(default='', max_length=256)
     product_version: StrictStr = Field(default='', max_length=256)
-    page: Literal['','home','import','data-flow','ontology','catalog','data-products','registry','graph','code-audit','modeling','requirements','qif','whereused','data-quality','quality','reports','admin'] = ''
+    page: Literal['','home','import','data-flow','ontology','catalog','data-products','registry','graph','code-audit','modeling','requirements','qif','whereused','recommendations','change-control','data-quality','quality','reports','admin'] = ''
 
     @model_validator(mode='after')
     def operational_selection(self):

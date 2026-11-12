@@ -16,7 +16,7 @@ vi.mock('../widgets/KpiStrip', () => ({ default: ({ items }) => <div>{items.map(
 vi.mock('../services/apiClient', () => ({ API_METHODS: {admin:{registry:vi.fn(async () => ({data:{}}))}} }));
 vi.mock('../services/agenticApi', () => ({default:{isEnabled:()=>true,isConfigured:()=>true,registry:vi.fn()}}));
 const registryResponse = (agents = []) => ({data:{agents,tools:[],workflows:[],registry:{schema_version:1,revision:'a'.repeat(64),agent_count:agents.length,tool_count:0,workflow_count:0,source:'validated deployment catalog',readiness:'not_verified'}}});
-beforeEach(() => { sessionStorage.clear(); agenticAPI.registry.mockReset(); agenticAPI.registry.mockResolvedValue(registryResponse()); });
+beforeEach(() => { window.history.replaceState(null,'','#/admin');sessionStorage.clear(); agenticAPI.registry.mockReset(); agenticAPI.registry.mockResolvedValue(registryResponse()); });
 
 test('Admin groups sections and preserves credential input when switching tabs', async () => {
   render(<AdminPage />);
@@ -101,4 +101,12 @@ test('reconnect clears already displayed registry data before loading the next s
   expect(screen.queryByText(/Previous session registry/)).toBeNull();
   expect(screen.getByText('Loading registered agents…')).toBeVisible();
   expect(screen.getByTestId('count-Agents')).toHaveTextContent('—');
+});
+
+test('Admin deep link overrides legacy storage and follows history',async()=>{
+ sessionStorage.setItem('depo:admin-tab','overview');window.history.replaceState(null,'','#/admin?view=maintenance');
+ render(<AdminPage/>);expect(screen.getByRole('tabpanel',{name:'Maintenance'})).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'API access'}));expect(window.location.hash).toContain('view=access');
+ await act(async()=>{window.history.replaceState(null,'','#/admin?view=maintenance');window.dispatchEvent(new PopStateEvent('popstate'));});
+ expect(screen.getByRole('tabpanel',{name:'Maintenance'})).toBeVisible();
 });

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -16,7 +17,7 @@ from .instance_checks import UnsupportedInstance, check_instance
 from .models import QifActionResponse, QifAgentsResponse, QifCatalogResponse, QifHealthResponse, QifTaskListResponse, QifTaskPreviewResponse, QifTaskResponse
 from .task_service import task_service
 from .standards import detect_standard, get_standard, public_standards
-from backend.depo_platform.authorization import service_write_identity
+from backend.depo_platform.authorization import graph_read_identity, service_write_identity
 
 
 def _qif_identity(request: Request) -> str:
@@ -168,7 +169,7 @@ async def start_uploaded_task(files: Annotated[list[UploadFile], File(descriptio
         return await run_in_threadpool(_start, paths, ontology_name, prefix, description, "uploaded_schema_set", "qif-3")
 
 
-@router.post("/instances/check", summary="Validate one QIF 3.0 instance against the schema and QIF XSLT checks")
+@router.post("/instances/check", summary="Run QIF 3.0 XSLT checks on one instance (not XSD validation)")
 async def check_qif_instance(file: Annotated[UploadFile, File(description="One QIF 3.0 instance document (.xml)")]) -> dict:
     filename = Path(file.filename or "").name
     if not filename.lower().endswith(".xml"):
@@ -206,7 +207,7 @@ async def _boc_report(qif_file: UploadFile, ap242_file: UploadFile) -> dict:
         result = await run_in_threadpool(_compare)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"qif_filename": qif_name, "ap242_filename": ap_name, **result}
+    return {"qif_filename": qif_name, "ap242_filename": ap_name, "source_digests": {"qif": hashlib.sha256(qif_content).hexdigest(), "ap242": hashlib.sha256(ap_content).hexdigest()}, **result}
 
 
 @router.post("/instances/boc-check", summary="Compare a QIF Bill of Characteristics with the AP242 PMI it came from")
@@ -232,17 +233,17 @@ async def export_boc(qif_file: Annotated[UploadFile, File(description="QIF 3.0 i
     return build_boc_submodel(report)
 
 
-@router.get("/tasks", response_model=QifTaskListResponse, summary="List recent QIF workflow tasks")
+@router.get("/tasks", dependencies=[Depends(graph_read_identity)], response_model=QifTaskListResponse, summary="List recent QIF workflow tasks")
 def list_tasks(limit: int = 25) -> dict:
     return {"tasks": task_service.list(max(1, min(limit, 100)))}
 
 
-@router.get("/tasks/{task_id}", response_model=QifTaskResponse, summary="Get QIF task status and stage events")
+@router.get("/tasks/{task_id}", dependencies=[Depends(graph_read_identity)], response_model=QifTaskResponse, summary="Get QIF task status and stage events")
 def task_status(task_id: str) -> dict:
     return task_service.get(task_id)
 
 
-@router.get("/tasks/{task_id}/preview", response_model=QifTaskPreviewResponse, summary="Get QIF validation and ontology preview")
+@router.get("/tasks/{task_id}/preview", dependencies=[Depends(graph_read_identity)], response_model=QifTaskPreviewResponse, summary="Get QIF validation and ontology preview")
 def task_preview(task_id: str) -> dict:
     return task_service.preview(task_id)
 
@@ -264,7 +265,7 @@ def retry_graph(task_id: str) -> dict:
     return {"task_id": task["task_id"], "status": task["status"]}
 
 
-@router.get("/tasks/{task_id}/artifacts/{artifact_path:path}", summary="Download a task-owned QIF artifact")
+@router.get("/tasks/{task_id}/artifacts/{artifact_path:path}", dependencies=[Depends(graph_read_identity)], summary="Download a task-owned QIF artifact")
 def task_artifact(task_id: str, artifact_path: str):
     task_dir = task_service._task_dir(task_id).resolve()
     target = (task_dir / artifact_path).resolve()

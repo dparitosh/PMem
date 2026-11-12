@@ -27,6 +27,9 @@ def expand(value):
 
 def rdf_graph(payload):
     graph = Graph()
+    if payload.get('type') in {'trs:TrackedResourceSet', 'trs:Base', 'trs:ChangeLog'}:
+        from .trs_representation import add_trs
+        return add_trs(graph, payload)
     def visit(record):
         subject = URIRef(record['uri']) if record.get('uri') else BNode()
         for key, value in record.items():

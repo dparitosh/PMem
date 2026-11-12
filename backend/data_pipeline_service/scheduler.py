@@ -73,11 +73,18 @@ class ScheduledJobSupervisor:
             with job_definitions.store.advisory_lock(lock_key) as acquired:
                 if not acquired:
                     continue
+                definition = job_definitions.get(definition['job_id'], definition['version'])
+                if not definition or definition.get('lifecycle_state') != 'approved' or not definition.get('enabled'):
+                    continue
+                schedule = definition.get('schedule') or {}
+                if not schedule:continue
                 prior = run_records.get(str(schedule.get("replay_run_id") or ""))
                 if not prior or prior.get("job_id") != definition["job_id"] or prior.get("job_version") != definition["version"]:
                     self._last_error = f"Scheduled job {definition['job_id']} has no compatible replay input"
                     continue
                 latest = run_records.store.latest_job_run(definition["job_id"], definition["version"])
+                if definition.get('job_type')=='trs-reporting-sync' and latest and latest.get('status') in {'queued','running'}:
+                    continue
                 if latest and self._seconds_since(latest.get("started_at")) < int(schedule["interval_seconds"]):
                     continue
                 payload = {**run_records.replay_payload(prior), "execution_actor": "pipeline-scheduler"}
@@ -90,6 +97,9 @@ class ScheduledJobSupervisor:
                 for attempt in range(int(retry["max_attempts"])):
                     if self._stop.is_set():
                         return
+                    current = job_definitions.get(definition['job_id'], definition['version'])
+                    if not current or current.get('lifecycle_state') != 'approved' or not current.get('enabled') or current.get('schedule') != schedule:
+                        break
                     try:
                         self._execute(definition, payload, f"scheduled:{definition['job_id']}:{int(time.time())}")
                         self._runs_started += 1

@@ -39,6 +39,13 @@ EXPECTED_COLUMNS.update({
  'depo_analytics_fact_kpi': {**dict.fromkeys(('mart_id','measure','unit','formula','status'),'text'),'value':'numeric','population':'bigint'},
 })
 
+EXPECTED_COLUMNS.update({
+ 'depo_reporting_feeds': {**dict.fromkeys(('feed_id','name','status','created_by','approved_by'),'text'),'definition':'jsonb','state':'jsonb','created_at':'timestamp with time zone','updated_at':'timestamp with time zone'},
+ 'depo_reporting_resources': {**dict.fromkeys(('feed_id','generation','resource_key','resource_uri','source_iri','ontology_id','name','description','digest'),'text'),'types':'ARRAY','payload':'jsonb','updated_at':'timestamp with time zone'},
+ 'depo_reporting_values': {**dict.fromkeys(('feed_id','generation','resource_key','property_key','property_iri'),'text'),'ordinal':'integer','value':'jsonb','numeric_value':'numeric'},
+ 'depo_reporting_links': {**dict.fromkeys(('feed_id','generation','resource_key','predicate_key','predicate_iri','target_key','target_uri'),'text'),'target_deleted':'boolean'},
+})
+
 EXPECTED_CONSTRAINTS = {
     'depo_api_credentials_pkey', 'depo_api_credential_events_pkey',
     'depo_schema_migrations_pkey', 'depo_registry_pkey', 'depo_runtime_state_pkey',
@@ -57,7 +64,8 @@ EXPECTED_INDEXES = {
     'idx_depo_ontology_catalog_created',
     'idx_depo_product_published', 'idx_depo_job_started', 'idx_depo_catalog_updated',
 }
-EXPECTED_CONSTRAINTS.update(table+'_pkey' for table in EXPECTED_COLUMNS if table.startswith('depo_analytics_'))
+EXPECTED_CONSTRAINTS.update(table+'_pkey' for table in EXPECTED_COLUMNS if table.startswith(('depo_analytics_','depo_reporting_')))
+EXPECTED_INDEXES.update({'idx_reporting_resource_scope','idx_reporting_resource_types','idx_reporting_value_property','idx_reporting_link_target'})
 EXPECTED_INDEXES.update({'idx_analytics_models_dataset','idx_analytics_ods_entity','idx_analytics_links_target'})
 EXPECTED_CONSTRAINTS.update({'depo_api_credentials_actor_nonempty', 'depo_api_credentials_digest_lengths', 'depo_api_credential_events_action_valid'})
 

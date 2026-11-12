@@ -34,7 +34,7 @@ class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
                  'service_url': lambda *args: 'http://graph', 'service_bearer_headers': lambda *args, **kwargs: {},
                  'httpx': SimpleNamespace(AsyncClient=Client, HTTPError=httpx.HTTPError, HTTPStatusError=httpx.HTTPStatusError),
                  'catalog': SimpleNamespace(get=lambda key: {'lifecycle_status': 'approved' if approved else 'draft', 'prefix': 'demo', 'validation': {'rdf_format': 'turtle'}}, read_artifact=lambda key: ({'lifecycle_status': 'approved' if approved else 'draft'}, content), artifact_digest=lambda key: hashlib.sha256(content).hexdigest()),
-                 'graph_publications': SimpleNamespace(get=records.get, put=lambda key, value: records.update({key: value}))}
+                 'graph_publications': SimpleNamespace(get=records.get, put=lambda key, value: records.update({key: value}), put_with_related=lambda key,value,**related: records.update({key:value}))}
         release_store = InMemoryRegistry()
         if declared_digest:
             release_store.put('ontology:demo', {'artifact_sha256': declared_digest})

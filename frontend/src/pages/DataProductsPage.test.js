@@ -2,17 +2,18 @@ import React from 'react';
 import { vi } from 'vitest';
 import { render, screen, waitFor, fireEvent, act, cleanup } from '@testing-library/react';
 import DataProductsPage from './DataProductsPage';
+import { useOntologies } from '../contexts/OntologyContext';
 import { readProductCollection } from '../services/productService';
 import { dataPipelineAPI, apiClient } from '../services/apiClient';
 vi.mock('@siemens/ix-react', () => ({IxButton: ({children, ...props}) => <button {...props}>{children}</button>}));
 vi.mock('../widgets/RegistryWidget', () => ({default: ({title,rows=[],onRowClicked}) => <><h3>{title}</h3>{rows.map(row=><button key={row.product_id+row.version} onClick={()=>onRowClicked?.(row)}>Open row {row.product_id}</button>)}</>}));
-vi.mock('../contexts/OntologyContext', () => ({useOntologies: () => ({ontologies:[],loading:false})}));
+vi.mock('../contexts/OntologyContext', () => ({useOntologies: vi.fn(() => ({ontologies:[],loading:false}))}));
 vi.mock('../services/apiClient', () => ({apiClient:{get:vi.fn()},dataPipelineAPI:{getRun:vi.fn(),analytics:vi.fn()}}));
 vi.mock('../services/productService', () => ({readProductCollection:vi.fn(),PRODUCT_REFRESH_MS:15000,PRODUCT_CHANGED_EVENT:'depo:products-changed'}));
-vi.mock('../Components/SemanticDataWorkbench',()=>({default:()=> <p>Catalog-driven analytics</p>}));
+vi.mock('../Components/SemanticDataWorkbench',()=>({default:({ontologyId})=> <p>Catalog-driven analytics {ontologyId}</p>}));
 vi.mock('../Components/SchemaProductPublisher', () => ({default: ({draft}) => draft ? <div data-testid="retained-draft">{JSON.stringify(draft)}</div> : null}));
 vi.mock('../Components/AgentProposalPanel', () => ({default: ({context}) => <div data-testid="governor-context">{JSON.stringify(context)}</div>}));
-beforeEach(() => { vi.clearAllMocks(); window.location.hash = '#/data-products?view=portfolio'; });
+beforeEach(() => { vi.clearAllMocks(); useOntologies.mockReturnValue({ontologies:[],loading:false}); window.location.hash = '#/data-products?view=portfolio'; });
 afterEach(() => cleanup());
 it('hides empty collection and discovery controls until the list finishes loading', async () => {
   let resolve;
@@ -207,4 +208,29 @@ it('legacy pipeline source link canonicalizes to stepped analytics',async()=>{
  expect(window.location.hash).toContain('analytics_step=0');
  expect(window.location.hash).toContain('ontology_id=sysml-test');
  expect(screen.getByRole('tab',{name:'Available analytics'})).toHaveAttribute('aria-selected','true');
+});
+
+it('preserves the source in the preparation URL and routes MBSE to semantic preparation',async()=>{
+ window.history.replaceState(null,'','#/data-products?view=analytics');
+ useOntologies.mockReturnValue({ontologies:[{ontology_id:'sysml-test',label:'Plant MBSE',file_type:'xmi',data_product_draft:{contract:{}}}],loading:false});
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ dataPipelineAPI.analytics.mockResolvedValue({data:{datasets:[],total:0}});
+ const {unmount}=render(<DataProductsPage/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Prepare data for Plant MBSE'}));
+ await waitFor(()=>expect(window.location.hash).toContain('ontology_id=sysml-test'));
+ await act(async()=>window.dispatchEvent(new HashChangeEvent('hashchange')));
+ expect(await screen.findByText('Catalog-driven analytics sysml-test')).toBeVisible();
+ expect(screen.queryByLabelText('Validated XML analytics loading')).toBeNull();
+ unmount();render(<DataProductsPage/>);
+ expect(await screen.findByText('Catalog-driven analytics sysml-test')).toBeVisible();
+});
+it('keeps XSD preparation in the XML loader and retains URL-driven source changes',async()=>{
+ window.history.replaceState(null,'','#/data-products?view=prepare&ontology_id=xsd-test');
+ useOntologies.mockReturnValue({ontologies:[{ontology_id:'xsd-test',label:'Part schema',source_filename:'uploaded-schema-set.xsd',data_product_draft:{contract:{}}},{ontology_id:'rdf-test',label:'Part vocabulary',file_type:'ontology',data_product_draft:{contract:{}}}],loading:false});
+ readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
+ render(<DataProductsPage/>);
+ expect(await screen.findByLabelText('Validated XML analytics loading')).toBeVisible();
+ await act(async()=>{window.history.pushState(null,'','#/data-products?view=prepare&ontology_id=rdf-test');window.dispatchEvent(new PopStateEvent('popstate'));});
+ expect(await screen.findByText('Catalog-driven analytics rdf-test')).toBeVisible();
+ expect(screen.queryByLabelText('Validated XML analytics loading')).toBeNull();
 });

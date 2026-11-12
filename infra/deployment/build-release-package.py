@@ -59,7 +59,7 @@ def package(root, output=None):
     if not required.issubset(files):
         raise ValueError('Tracked release is missing required installation or ontology assets')
     if (root/'backend/ontology_service/owl_dl.py').exists():
-        foundation_files = {'backend/ontology_service/owl_dl.py','backend/ontology_service/foundation.py',
+        foundation_files = {'backend/ontology_service/offline_imports.py','backend/ontology_service/owl_dl.py','backend/ontology_service/foundation.py',
             'backend/ontology_service/resources/foundation/manifest.json',
             'backend/ontology_service/resources/foundation/ido-core-4.2.ttl',
             'backend/ontology_service/resources/foundation/depo-business-core.ttl',
@@ -81,6 +81,15 @@ def package(root, output=None):
         for filename, expected in [('ido-core-4.2.ttl',foundation['sha256']),('depo-business-core.ttl',foundation['depo_module_sha256'])]:
             if hashlib.sha256((foundation_dir/filename).read_bytes()).hexdigest() != expected:
                 raise ValueError('Embedded foundation checksum mismatch; restore the reviewed resource')
+        imports_dir=root/'backend/ontology_service/resources/imports'
+        imports=json.loads((imports_dir/'manifest.json').read_text(encoding='utf-8'))
+        for name in ['manifest.json','NOTICE.txt',*[item['file'] for item in imports['documents']]]:
+            path=(imports_dir/name).resolve()
+            if not path.is_relative_to(imports_dir.resolve()) or path.is_symlink() or not path.is_file() or path.relative_to(root).as_posix() not in files:
+                raise ValueError('Track the complete offline import catalog and notices before packaging')
+        for item in imports['documents']:
+            if hashlib.sha256((imports_dir/item['file']).read_bytes()).hexdigest()!=item['sha256']:
+                raise ValueError('Offline import checksum mismatch')
         jar_name = 'backend/ontology_service/resources/reasoner/depo-owl-dl.jar'
         jar = root/jar_name
         reasoner = json.loads((jar.parent/'manifest.json').read_text(encoding='utf-8-sig'))

@@ -17,7 +17,7 @@ const events=['depo:session-replaced','depo:session-expired','depo:credentials-c
 const short=iri=>String(iri).split(/[#/:]/).filter(Boolean).pop()||iri;
 function retained(){try{return JSON.parse(sessionStorage.getItem(KEY))||null;}catch{return null;}}
 
-export default function SemanticDataWorkbench({refreshKey=0}){
+export default function SemanticDataWorkbench({refreshKey=0,ontologyId=new URLSearchParams(window.location.hash.split('?')[1]||'').get('ontology_id')||''}){
   const readStep=()=>{const value=Number(new URLSearchParams(window.location.hash.split('?')[1]||'').get('analytics_step'));return Number.isInteger(value)&&value>=0&&value<3?value:0;};
   const [step,setLocalStep]=useState(readStep);
   const setStep=next=>{const value=typeof next==='function'?next(step):next;const [path,search='']=window.location.hash.split('?');const params=new URLSearchParams(search);params.set('analytics_step',String(value));window.history.pushState(null,'',`${path||'#/data-products'}?${params}`);window.dispatchEvent(new HashChangeEvent('hashchange'));setLocalStep(value);};
@@ -112,7 +112,7 @@ export default function SemanticDataWorkbench({refreshKey=0}){
     <header><div><h3>Prepare or analyse business data</h3><p>Choose a retained RDF source from the Catalog or Registry, or select a prepared dataset to analyse. Other imports need preparation or a registered graph snapshot first.</p></div><button disabled={busy} onClick={()=>{generation.current++;selection.current++;details.current?.abort();setModel(null);setDataset('');setClassId('');setFields([]);setProperties([]);setRevision(value=>value+1);}}>Refresh registered data</button></header>
     <nav className="semantic-steps" aria-label="Analytics setup steps">{['Choose data','Configure analysis','Review workflow'].map((title,index)=><button type="button" key={title} aria-current={step===index?'step':undefined} onClick={()=>setStep(index)}><span>{index+1}</span>{title}</button>)}</nav>
     <section className="semantic-step" hidden={step!==0} aria-label="Choose analytics data"><h4>Choose your starting data</h4>
-    <GraphSnapshotSource onRegistered={()=>{setSourceOffset(0);setRevision(value=>value+1);}}/>
+    <GraphSnapshotSource ontologyId={ontologyId} onRegistered={()=>{setSourceOffset(0);setRevision(value=>value+1);}}/>
     <RdfSourceUpload onRegistered={()=>{setSourceOffset(0);setRevision(value=>value+1);}}/>
     {Object.entries(loadErrors).map(([key,message])=><p role="alert" key={key}>{message}</p>)}
     <p>Choose one starting point: prepare a registered RDF source, or analyse an existing dataset. Selecting one clears the other.</p><div className="analytics-form-row"><label>Registered source<select value={source} disabled={busy||!!pending} onChange={event=>{setSource(event.target.value);setJobChoice('');chooseDataset('');}}><option value="">Choose from Catalog or Registry</option>{(sources||[]).map(item=><option key={`${item.source_id}|${item.artifact_id}`} value={`${item.source_id}|${item.artifact_id}`}>{item.name} · {item.version||item.status} · {item.filename||item.origin}</option>)}</select></label><span>Sources keep their owner, version and lineage.</span></div>

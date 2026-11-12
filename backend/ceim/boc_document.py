@@ -10,6 +10,7 @@ not register an ontology; those steps stay behind the governed approval flow.
 from __future__ import annotations
 
 import hashlib
+from .boc_identity import report_digest
 from typing import Any
 
 from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
@@ -46,14 +47,14 @@ def build_boc_graph(report: dict[str, Any]) -> Graph:
     graph.bind("bocr", REPORT)
     qif_name = report.get("qif_filename", "")
     ap_name = report.get("ap242_filename", "")
-    document = _node("document", qif_name, ap_name)
+    document = _node("document", report_digest(report))
     graph.add((document, RDF.type, BOC.BillOfCharacteristics))
     graph.add((document, RDFS.label, Literal(f"Bill of Characteristics: {qif_name} / {ap_name}")))
     _text(graph, document, REPORT.qifSource, qif_name)
     _text(graph, document, REPORT.ap242Source, ap_name)
 
     def add_characteristic(key: tuple, *, status: str, kinds: tuple[URIRef, ...], **fields: Any) -> URIRef:
-        node = _node("characteristic", *key)
+        node = _node("characteristic", document, *key)
         graph.add((node, RDF.type, BOC.Characteristic))
         for kind in kinds:
             graph.add((node, RDF.type, kind))
@@ -115,7 +116,7 @@ def build_boc_graph(report: dict[str, Any]) -> Graph:
         add_characteristic(("review", item.get("id")), status="review_required",
                            kinds=(BOC.TolerancedCharacteristic,), ap242_id=item.get("id"), name=item.get("name"),
                            unit=item.get("unit"), note=f"tolerance value {item.get('tolerance_value')}; not paired with QIF")
-        node = _node("characteristic", "review", item.get("id"))
+        node = _node("characteristic", document, "review", item.get("id"))
         _decimal(graph, node, BOC.toleranceValue, item.get("tolerance_value"))
 
     return graph
