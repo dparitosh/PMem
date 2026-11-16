@@ -29,8 +29,8 @@ def validate_definition(value):
         name=kpi.get('name','')
         if not isinstance(name,str) or not 1<=len(name)<=100 or name in names:raise ValueError('Measures need distinct business names')
         names.add(name)
-        if kpi.get('role') not in ROLES or not model.get(kpi['role']+'_class'):raise ValueError('Select a defined record role for the measure')
-        if kpi.get('aggregation') not in {'sum','average','minimum','maximum'}:raise ValueError('Select a supported measure formula')
+        if not isinstance(kpi.get('role'),str) or kpi['role'] not in ROLES or not model.get(kpi['role']+'_class'):raise ValueError('Select a defined record role for the measure')
+        if not isinstance(kpi.get('aggregation'),str) or kpi['aggregation'] not in {'sum','average','minimum','maximum'}:raise ValueError('Select a supported measure formula')
         for key in ('property','unit','unit_property'):
             if not isinstance(kpi.get(key),str) or not 1<=len(kpi[key].encode())<=800:raise ValueError('Select the numeric property, unit property and reporting unit')
         conversions=kpi.get('conversions')
@@ -46,6 +46,8 @@ def validate_definition(value):
                 except (InvalidOperation,ValueError):raise ValueError('Conversion coefficients must be finite numbers') from None
                 if not number.is_finite() or abs(number)>Decimal('1e20') or len(number.as_tuple().digits)>30:raise ValueError('Conversion coefficient is outside supported precision')
                 if field=='scale' and number<=0:raise ValueError('Unit scale must be positive')
+            if unit==kpi['unit'] and (Decimal(str(rule['scale']))!=1 or Decimal(str(rule['offset']))!=0):
+                raise ValueError('The reporting unit must retain identity conversion')
     pairs=value.get('expected_bom',[])
     if not isinstance(pairs,list) or len(pairs)>5000:raise ValueError('Expected BOM supports at most 5000 reviewed pairs')
     seen=set()

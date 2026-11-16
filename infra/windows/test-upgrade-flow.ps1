@@ -7,6 +7,7 @@ foreach ($directory in @('infra/windows','infra/deployment','backend/.dt_venv/Sc
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update-depo-windows.ps1') -Destination (Join-Path $fixture 'infra/windows/update-depo-windows.ps1')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'service-runtimes.ps1') -Destination (Join-Path $fixture 'infra/windows/service-runtimes.ps1')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'process-control.ps1') -Destination (Join-Path $fixture 'infra/windows/process-control.ps1')
 Set-Content -LiteralPath (Join-Path $fixture 'backend/.dt_venv/Scripts/python.exe') -Value 'fixture only'
 Set-Content -LiteralPath (Join-Path $fixture '.env.local') -Value 'retained customer configuration'
 Set-Content -LiteralPath (Join-Path $fixture 'infra/deployment/services.json') -Value '{"services":[{"id":"ontology"}],"workers":[]}'
@@ -20,6 +21,10 @@ foreach ($stage in $stages) {
   $stub = '$stageName=if($PSScriptRoot -eq (Split-Path $env:DEPO_UPGRADE_TEST_TRACE)){"root-install-depo.ps1"}else{$MyInvocation.MyCommand.Name}; Add-Content -LiteralPath $env:DEPO_UPGRADE_TEST_TRACE -Value $stageName; $global:LASTEXITCODE = 0; if ($env:DEPO_UPGRADE_TEST_FAIL -eq $stageName) { $global:LASTEXITCODE = 17 }'
   Set-Content -LiteralPath (Join-Path $fixture $stage) -Value $stub
 }
+# Isolate configuration and Node preflight from real runtimes.
+Add-Content -LiteralPath (Join-Path $fixture 'infra/windows/runtime-config.ps1') -Value 'function Import-DepoEnvironment { }; function Get-DepoProbeHost { param($HostName) "127.0.0.1" }; function Get-DepoNodeRuntime { @{ Node = "Invoke-DepoUpgradeTestNode" } }; function Invoke-DepoUpgradeTestNode { "{`"current`":true}"; $global:LASTEXITCODE=0 }'
+$pythonFixture = Join-Path $fixture 'backend/.dt_venv/Scripts/python.exe'
+Set-Item -LiteralPath "Function:$pythonFixture" -Value { $global:LASTEXITCODE=0 }
 $trace = Join-Path $fixture 'trace.txt'
 $previousTrace = $env:DEPO_UPGRADE_TEST_TRACE
 $previousFail = $env:DEPO_UPGRADE_TEST_FAIL
@@ -46,7 +51,7 @@ try {
   if (@(Get-Content -LiteralPath $trace) -notcontains 'update-depo-runtime-timeouts.ps1') { throw 'Explicit timeout update was ignored.' }
   # Select a runtime absent from this shared-only fixture. This must fail
   # before either service or frontend shutdown, not after migrations.
-  Set-Content -LiteralPath (Join-Path $fixture 'infra/windows/runtime-config.ps1') -Value 'function Read-DepoEnvironment { @{ DEPO_SERVICE_RUNTIME_MODE = "isolated" } }'
+  Add-Content -LiteralPath (Join-Path $fixture 'infra/windows/runtime-config.ps1') -Value 'function Read-DepoEnvironment { @{ DEPO_SERVICE_RUNTIME_MODE = "isolated" } }'
   Set-Content -LiteralPath $trace -Value ''
   $failed = $false
   try { & $updater } catch { $failed = $true }
@@ -54,6 +59,7 @@ try {
   if ((Get-Content -LiteralPath (Join-Path $fixture '.env.local') -Raw).Trim() -ne 'retained customer configuration') { throw 'Customer configuration changed.' }
   Write-Host 'PASS: read-only preflight, preserved configuration, explicit timeout updates, missing-runtime rejection, ordered upgrade and fail-fast native exit handling.'
 } finally {
+  Remove-Item -LiteralPath "Function:$pythonFixture" -ErrorAction SilentlyContinue
   $env:DEPO_UPGRADE_TEST_TRACE = $previousTrace
   $env:DEPO_UPGRADE_TEST_FAIL = $previousFail
 }

@@ -70,3 +70,22 @@ def test_approved_mart_materializes_all_grains_and_rolls_back_invalid_units():
                 assert control.execute('SELECT count(*) FROM depo_analytics_marts').fetchone()[0]==1
         finally:
             control.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
+
+
+@pytest.mark.parametrize('field,bad', [('role', []), ('role', {}), ('aggregation', []), ('aggregation', {})])
+def test_kpi_malformed_choices_are_validation_errors(field, bad):
+    kpi={'name':'Mass','role':'part','property':'urn:mass','unit':'kg',
+         'unit_property':'urn:unit','aggregation':'sum',
+         'conversions':[{'from_unit':'kg','scale':'1','offset':'0'}]}
+    kpi[field]=bad
+    with pytest.raises(ValueError):
+        models.validate_definition({'business_model':MODEL,'scope':'Pinned revision A','kpis':[kpi]})
+
+
+@pytest.mark.parametrize('scale,offset', [('1000','0'),('1','273.15')])
+def test_reporting_unit_cannot_be_scaled_or_offset(scale,offset):
+    kpi={'name':'Mass','role':'part','property':'urn:mass','unit':'kg',
+         'unit_property':'urn:unit','aggregation':'sum',
+         'conversions':[{'from_unit':'kg','scale':scale,'offset':offset}]}
+    with pytest.raises(ValueError,match='identity conversion'):
+        models.validate_definition({'business_model':MODEL,'scope':'Pinned revision A','kpis':[kpi]})

@@ -24,7 +24,7 @@ ALIASES = {
 NUMERIC = {'diameter', 'length', 'width', 'height', 'mass', 'tolerance'}
 UNITS = {'mm': ('length', .001), 'cm': ('length', .01), 'm': ('length', 1),
          'in': ('length', .0254), 'inch': ('length', .0254), 'inches': ('length', .0254),
-         'um': ('length', .000001), 'µm': ('length', .000001),
+         'um': ('length', .000001), '\u00b5m': ('length', .000001), '\u03bcm': ('length', .000001),
          'kg': ('mass', 1), 'g': ('mass', .001), 'lb': ('mass', .45359237), 'lbs': ('mass', .45359237)}
 
 
@@ -81,7 +81,7 @@ def declared_relation(properties):
 
 
 def quantity(text, field):
-    match = re.fullmatch(r'\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Zµ]+)\s*', text)
+    match = re.fullmatch(r'\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z\u00b5\u03bc]+)\s*', text)
     if not match:
         return None  # A unitless source value is intentionally not guessed.
     unit = UNITS.get(match[2].lower())
@@ -109,7 +109,9 @@ def compare(source, candidate):
                     state = 'match' if math.isclose(x, y, rel_tol=1e-6, abs_tol=1e-12) else 'conflict'
                     reason = 'Compared after conversion to SI units'
             else:
-                state = 'match' if left[0].casefold() == right[0].casefold() else 'conflict'
+                # Revision/configuration identifiers are case-sensitive source identities.
+                equal = left[0] == right[0] if field in {'revision', 'configuration'} else left[0].casefold() == right[0].casefold()
+                state = 'match' if equal else 'conflict'
                 reason = 'Exact declared value comparison; equivalence is not inferred'
         comparisons.append({'property': field, 'source': left, 'candidate': right, 'status': state, 'reason': reason})
     return comparisons

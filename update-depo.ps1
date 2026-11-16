@@ -5,6 +5,9 @@ migrations and indexes, provisions Neo4j search indexes/backfills, rebuilds the 
 and restarts application services. Reports retained AP242 mapping changes for review;
 does not regenerate source instances or approve/publish PMI associations automatically.
 Use -PreflightOnly to validate without applying migrations or stopping services.
+Decision/KPI validation updates use the existing schema and dependency locks.
+Previously approved model definitions remain retained; invalid unit conversions are
+rejected on materialization and require a corrected model version, not silent rewriting.
 Deploy the complete matching release first. This includes schema dependency
 resolution, agent workflow access, business answers and graph view fixes.
 Updates retain workflow history and approvals; they do not replay failed imports

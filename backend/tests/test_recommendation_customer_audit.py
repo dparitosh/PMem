@@ -281,3 +281,29 @@ def test_unsupported_legacy_scope_cannot_broaden_to_all_customer_data():
     with pytest.raises(HTTPException) as error:
         RecommendationEngine(Graph([record('root','Part')])).similar('root',{'namespaces':['one']})
     assert error.value.status_code==422
+
+
+@pytest.mark.parametrize('field', ['revision','configuration'])
+def test_source_baseline_identifiers_remain_case_sensitive(field):
+    checked={row['property']:row for row in compare({field:'A'},{field:'a'})}
+    assert checked[field]['status']=='conflict'
+
+
+@pytest.mark.parametrize('unit', ['um','µm','μm'])
+def test_micrometre_notation_is_normalized(unit):
+    checked={row['property']:row for row in compare({'tolerance':'10 '+unit},{'tolerance':'0.01 mm'})}
+    assert checked['tolerance']['status']=='match'
+
+
+def test_alternative_with_dimension_conflict_ranks_below_compatible_evidence():
+    props={'diameter':'25 mm','material':'Steel','revision':'A','configuration':'motor-1','effectivity':'2026-11-16'}
+    graph=Graph([record('root','Rotor shaft',**props),
+                 record('compatible','Reviewed shaft',**props),
+                 record('conflicting','Rotor shaft',**{**props,'diameter':'30 mm'})])
+    result=RecommendationEngine(graph).similar('root')
+    alternatives=result['similar_parts']
+    assert [row['node_id'] for row in alternatives]==['compatible','conflicting']
+    assert alternatives[1]['conflicts']==['diameter']
+    assert all(row['eligible_for_substitution'] is False for row in alternatives)
+    # An identical recorded date is not evidence of applicability on today's date.
+    assert alternatives[0]['compatibility']=='requires_engineering_review'

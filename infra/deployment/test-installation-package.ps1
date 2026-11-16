@@ -5,6 +5,8 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
+  'backend/data_pipeline_service/analytics_models.py', 'backend/data_pipeline_service/business_mart.py',
+  'backend/data_pipeline_service/business_analytics.py',
   'backend/depo_platform/vocabulary_labels.py',
   'backend/ontology_service/resources/foundation/dinen61360-2.0.4.ttl',
   'backend/ontology_service/resources/foundation/DINEN61360-LICENSE.txt',
