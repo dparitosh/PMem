@@ -5,6 +5,22 @@ param(
   [switch]$SkipEndpointChecks
 )
 
+function Invoke-DepoContractProbe {
+  param([string]$Uri, [string]$Origin, [int]$TimeoutSeconds, [string]$ServiceName)
+  for ($probeAttempt = 1; $probeAttempt -le 3; $probeAttempt++) {
+    try { return Invoke-WebRequest -Uri $Uri -Headers @{ Origin = $Origin } -UseBasicParsing -TimeoutSec $TimeoutSeconds }
+    catch {
+      $probeFailure = $_
+      $httpStatus = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+      if ($probeAttempt -ge 3 -or ($httpStatus -ge 400 -and $httpStatus -lt 500)) {
+        throw "$ServiceName did not respond successfully at ${Uri} after $probeAttempt probe(s): $($probeFailure.Exception.Message)"
+      }
+      Write-Warning "$ServiceName endpoint probe $probeAttempt of 3 failed for $Uri; retrying this read-only startup check."
+      Start-Sleep -Milliseconds (500 * $probeAttempt)
+    }
+  }
+}
+
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 if (-not $ManifestPath) { $ManifestPath = Join-Path $PSScriptRoot "services.json" }
@@ -106,7 +122,7 @@ if (-not $SkipEndpointChecks) {
     foreach ($endpoint in $manifest.contract_endpoints) {
       $uri = "http://${hostName}:$($service.port)$endpoint"
       $endpointTimeout = if ($endpoint -eq '/readyz') { $readinessTimeout } else { 10 }
-      try { $response = Invoke-WebRequest -Uri $uri -Headers @{ Origin = $allowedOrigins[0] } -UseBasicParsing -TimeoutSec $endpointTimeout } catch { throw "$($service.id) did not respond at ${uri}: $($_.Exception.Message)" }
+      $response = Invoke-DepoContractProbe -Uri $uri -Origin $allowedOrigins[0] -TimeoutSeconds $endpointTimeout -ServiceName $service.id
       if ($response.StatusCode -ne 200) { throw "$($service.id) returned HTTP $($response.StatusCode) for $endpoint" }
       if (-not $corsChecked) {
         $corsOrigin = [string]$response.Headers['Access-Control-Allow-Origin']

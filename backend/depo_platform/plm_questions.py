@@ -4,6 +4,8 @@ import re
 def intent(question):
     text=question.casefold()
     if re.search(r'\b(ontology|schema|owl|class|classes|vocabulary|mapping|mappings)\b',text): return ''
+    # A requirement's own attributes need scoped property evidence, not a product-to-requirement path.
+    if re.search(r'\brequirement\s+(?:value|text|number|details?|description)\b', text): return ''
     if re.search(r'\b(requirements?|specifications?)\b',text) and re.search(r'\b(associated|related|linked|for|with|of|does|have|has|its|their)\b',text): return 'associated_requirements'
     if re.search(r'\b(pmi|product manufacturing information)\b',text) and re.search(r'\b(part|parts|product|products|for|does|have|has)\b',text): return 'parts_with_pmi'
     # Detailed CAD/AP242 questions need property and relationship evidence,
@@ -38,3 +40,21 @@ def business_subject(question, node_id=''):
     )):
         return ''
     return subject
+
+
+def property_subject(question):
+    """Extract only an explicit subject of a property request, not a guessed entity."""
+    text = question.strip()
+    # A decision task is not an exact property lookup. Do not treat the rest
+    # of a multi-clause request as a literal source-record name.
+    if re.search(r'(?:^|[,;]\s*|\b(?:then|and)\s+)(?:compare|recommend|rank|choose)\b', text, re.I):
+        return ''
+    if re.search(r'\b(ontology|schema|owl|classes|vocabulary|mapping)\b', text, re.I):
+        return ''
+    match = re.search(r'\b(?:for|of)\s+(.+?)(?:[.!?](?:\s|$)|$)', text, re.I)
+    if not match:
+        return ''
+    subject = re.split(r'\s+(?:with|and)\s+(?:source|evidence|citations?)\b', match.group(1), flags=re.I)[0].strip(' .?!')
+    if re.fullmatch(r'(?:it|its|this|that|(?:this|that|the selected) (?:part|record|component|assembly|object))', subject, re.I):
+        return ''
+    return subject[:220]

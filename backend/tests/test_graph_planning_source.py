@@ -52,3 +52,12 @@ class GraphPlanningSource(unittest.TestCase):
         first = self.code['graph_planning_summary']('assembly')['graph_digest']
         self.client.mapping_terms.return_value = list(reversed(terms))
         self.assertEqual(first, self.code['graph_planning_summary']('assembly')['graph_digest'])
+
+    def test_artifact_bound_review_does_not_switch_to_graph(self):
+        self.code['_resolve_ontology_path'] = lambda *args: 'retained.ttl'
+        self.code['inspect_ontology'] = lambda path: {'artifact_digest':'retained-digest','term_index':[]}
+        result = self.code['bridge_plan']({'ontology_id':'assembly','artifact_digest':'retained-digest'})
+        self.assertEqual(result['data_source'], 'retained-rdf-artifact')
+        self.client.mapping_terms.assert_not_called()
+        with self.assertRaisesRegex(ValueError, 'artifact-bound'):
+            self.code['bridge_plan']({'ontology_id':'assembly','artifact_digest':'retained-digest','data_source':'neo4j'})

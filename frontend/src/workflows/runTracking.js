@@ -19,8 +19,9 @@ export function governedRunStatus(run) {
   const counts=run.output_manifest?.counts || {};
   const entities=counts.normalized_entities ?? counts.accepted_records;
   const relationships=counts.normalized_relationships;
-  const message=failed ? `Run ${run.run_id}: ${reason || status}` : published ? `knowledge graph publication receipt retained for run ${run.run_id}.` : complete ? `Validation completed for run ${run.run_id}. Graph publication is pending; review and publish in Data Flow.` : `Governed run ${run.run_id}: ${status}. Open Data Flow for retained evidence.`;
-  return {dataJobRunId:run.run_id,governedImport:true,stage:failed?'error':complete?'complete':'convert',backendStage:status,status,
+  const reference=run.run_number || 'selected source';
+  const message=failed ? `Run ${reference}: ${reason || status}` : published ? `knowledge graph publication receipt retained for run ${reference}.` : complete ? `Validation completed for run ${reference}. Graph publication is pending; request release in Change Control.` : `Governed run ${reference}: ${status}. Open Data Flow for retained evidence.`;
+  return {dataJobRunId:run.run_id,runNumber:run.run_number,fileNumber:run.input_manifest?.file_references?.[0]?.file_number,governedImport:true,stage:failed?'error':complete?'complete':'convert',backendStage:status,status,
     progress:complete?100:10,error:failed,committed:published,qualityWarning:status==='quality_warning',message,
     entities:entities ?? 0,relationships:relationships ?? 0,
     stats:{...(entities !== undefined ? {entities_found:entities} : {}),...(relationships !== undefined ? {relationships_found:relationships} : {})},

@@ -41,14 +41,14 @@ def next_cursor(link):
 def begin(state,reason):
     return {**state,'phase':'base','building_generation':uuid.uuid4().hex,'members':[],
             'base_cursor':None,'next_cursor':None,'base_started':False,'member_offset':0,
-            'base_cutoff':None,'freshness':'refreshing','rebase_reason':reason,'last_error':None}
+            'base_cutoff':None,'base_stream_id':None,'freshness':'refreshing','rebase_reason':reason,'last_error':None}
 
 
 def _base_step(identifier,state,definition,provider,deadline):
     expected=copy.deepcopy(state)
     if not state.get('members'):
         if state.get('base_started') and state.get('base_cursor') is None:
-            updated={**state,'phase':'events','trs_after':state['base_cutoff'],'freshness':'awaiting_change_check',
+            updated={**state,'phase':'events','stream_id':state.get('base_stream_id'),'trs_after':state['base_cutoff'],'freshness':'awaiting_change_check',
                      'last_refreshed_at':store.now(),'last_error':None}
             return store.commit(identifier,expected,updated,[],promote=True)
         try:
@@ -58,6 +58,7 @@ def _base_step(identifier,state,definition,provider,deadline):
                 'TRS Base snapshot expired or missing; restart from /oslc/trs/base',
                 'TRS snapshot page missing; restart from /oslc/trs/base',
                 'TRS snapshot page is incomplete; rebase required',
+                'TRS stream reset; restart from /oslc/trs/base',
             }
             if not recoverable or not state.get('base_cursor'):raise
             return store.commit(identifier,expected,begin(state,'Base snapshot expired; rebuilding reporting selection'),[])
@@ -65,7 +66,9 @@ def _base_step(identifier,state,definition,provider,deadline):
         if not isinstance(members,list) or len(members)>1000 or type(cutoff) is not int or cutoff<0:
             raise ValueError('Invalid TRS Base page')
         if state.get('base_cutoff') is not None and state['base_cutoff']!=cutoff:raise ValueError('TRS Base cutoff changed within a snapshot')
-        updated={**state,'base_started':True,'base_cutoff':cutoff,'members':[m['resource_uri'] for m in members],
+        if state.get('base_started') and state.get('base_stream_id')!=page.get('stream_id'):
+            return store.commit(identifier,expected,begin(state,'TRS generation changed during Base retrieval'),[])
+        updated={**state,'base_stream_id':page.get('stream_id'),'base_started':True,'base_cutoff':cutoff,'members':[m['resource_uri'] for m in members],
                  'member_offset':0,'next_cursor':next_cursor(page.get('nextPage'))}
         if not members:updated['base_cursor']=updated['next_cursor']
         return store.commit(identifier,expected,updated,[])
@@ -84,7 +87,7 @@ def _events_step(identifier,state,definition,provider,deadline):
     expected=copy.deepcopy(state);after=state.get('trs_after',0);page=provider.changes(after)
     events=page.get('events');head=page.get('head_order')
     if not isinstance(events,list) or len(events)>100 or type(head) is not int:raise ValueError('Invalid TRS changelog')
-    if page.get('rebase_required') or head<after:
+    if page.get('rebase_required') or head<after or page.get('stream_id')!=state.get('stream_id'):
         return store.commit(identifier,expected,begin(state,'TRS retention gap or provider reset'),[])
     if not events and head>after:raise ValueError('TRS changelog did not supply its pending events')
     changes=[];order=after

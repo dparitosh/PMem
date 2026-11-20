@@ -40,6 +40,7 @@ function Invoke-DepoUpgradeStep([string]$Name, [scriptblock]$Action) {
 # Validate the selected release configuration while the running deployment is
 # still available. No environment edits or shutdown may precede these checks.
 Invoke-DepoUpgradeStep 'Release package validation' { & (Join-Path $root 'infra/deployment/test-installation-package.ps1') }
+Invoke-DepoUpgradeStep 'Retired vendor file preflight' { & (Join-Path $PSScriptRoot 'remove-retired-release-files.ps1') -Root $root -CheckOnly }
 Invoke-DepoUpgradeStep 'Configuration preflight' { & (Join-Path $root 'infra/deployment/test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks }
 if (-not $SkipFrontend) {
   Invoke-DepoUpgradeStep 'Frontend configuration' { & (Join-Path $root 'infra/deployment/test-depo-frontend-config.ps1') -RootEnvFile $envPath }
@@ -84,6 +85,7 @@ if (-not $InstallDependencies) {
     if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "Missing runtime for '$($entry.id)'. Rerun with -InstallDependencies. Services were not stopped." }
   }
 }
+Invoke-DepoUpgradeStep 'Tracked service process access (before shutdown)' { Assert-DepoTrackedServiceIdentities -Root $root }
 Invoke-DepoUpgradeStep 'PostgreSQL upgrade history and privileges' { & (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $envPath -UpgradePreflight }
 Invoke-DepoUpgradeStep 'Neo4j existing schema compatibility' { & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $envPath -UpgradePreflight }
 if ($PreflightOnly) { Write-Host 'Upgrade preflight passed. No services stopped, migrations applied, or configuration changed.'; return }

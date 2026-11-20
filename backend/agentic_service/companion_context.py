@@ -205,3 +205,36 @@ async def plm_context(query, *, headers, ontology_id='', ontology_prefix='', nod
         if body['intent']=='parts_with_pmi' and row.get('association_status') not in {'source_reference','recorded_association'}:
             raise ValueError('PLM evidence is missing an assessed PMI association')
     return {key:body.get(key) for key in ('evidence_type','resource_id','label','intent','rows','description','source','coverage','vocabulary')}
+
+
+async def selected_model_answer(node_id, *, headers, ontology_id):
+    """Read model attributes from immutable source evidence, without retyping a class as an instance."""
+    from urllib.parse import quote
+    body, endpoint = await _read_json('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011',
+        '/modeling/xmi-context/' + quote(ontology_id, safe=''), {'node_id': node_id}, headers)
+    if (body.get('status') != 'resolved' or body.get('node_id') != node_id or
+            body.get('ontology_id') != ontology_id or not body.get('source_artifact_id') or
+            not isinstance(body.get('model_element'), dict)):
+        raise ValueError('Selected model evidence changed its identity or source')
+    element = body['model_element']
+    if element.get('id') != body.get('source_id') or not isinstance(element.get('properties'), dict):
+        raise ValueError('Retained model member is invalid')
+    from .business_answers import cell
+    props = element['properties']
+    label = cell(element.get('label') or element.get('name') or props.get('name') or body['source_id'])
+    fields = [('Requirement number', props.get('sysml_Id') or props.get('profile_Id')),
+              ('Requirement text', props.get('sysml_Text') or props.get('profile_Text')),
+              ('Description', props.get('description') or props.get('documentation'))]
+    recorded = [(name, value) for name, value in fields if value is not None and value != '']
+    detail = '; '.join(name + ': ' + cell(value) for name, value in recorded)
+    citation = 'model-element:' + body['source_id']
+    text = '**' + label + '**\n\n' + (detail or 'No requirement attributes are recorded for this selected model member.')
+    text += ' [evidence:' + citation + ']'
+    return {'status': 'available', 'answerable': bool(recorded), 'response': text,
+            'evidence': [{'evidence_type': 'application_record', 'resource_id': citation,
+                          'label': label, 'description': detail or 'No requirement attributes recorded',
+                          'source': endpoint, 'source_artifact_id': body['source_artifact_id']}],
+            'sources': [endpoint], 'retrieval': {'answer_scope': 'selected_retained_model_element',
+                'node_id': node_id, 'source_id': body['source_id'], 'source_artifact_id': body['source_artifact_id'],
+                'semantic_entailment_verified': False},
+            'generation': {'enabled': False, 'status': 'not_requested'}}

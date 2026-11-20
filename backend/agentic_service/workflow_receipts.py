@@ -22,6 +22,16 @@ async def lookup(record, request):
     pending = record.get('pending_step') or {}
     inputs = pending.get('inputs') or {}
     tool = pending.get('tool_id')
+    if tool == 'ontology.merge.change.submit':
+        import httpx
+        from .transport_auth import downstream_headers
+        identifier = inputs.get('preview_id')
+        if not isinstance(identifier,str) or not identifier:
+            raise ValueError('No retained merge request identity is available')
+        endpoint = routes._base('ontology')+'/ontologies/merges/'+quote(identifier,safe='')+'/change'
+        async with httpx.AsyncClient(timeout=15,trust_env=False) as client:
+            response = await routes._bounded_tool_request(client,'GET',endpoint,headers=downstream_headers(request,endpoint,graph_read=True))
+        return verify_merge_request_receipt(inputs,response.json())
     if tool == 'data.product.publish':
         import httpx
         from .transport_auth import downstream_headers
@@ -97,3 +107,17 @@ def verify_ontology_publication(ontology_id, publication):
     if publication.get('artifact_sha256') and publication['artifact_sha256'] != publication['publication_id']:
         raise ValueError('Publication receipt belongs to a different retained artifact')
     return publication
+
+
+def verify_merge_request_receipt(inputs, receipt):
+    """A retained submission is evidence of a review request, never execution."""
+    change = receipt.get('change_request') if isinstance(receipt,dict) else None
+    if (not isinstance(change,dict) or receipt.get('preview_id') != inputs.get('preview_id')
+        or receipt.get('scope_changed') is not False
+        or receipt.get('current_plan_digest') != inputs.get('expected_plan_digest')
+        or change.get('request_id') != inputs.get('preview_id')
+        or change.get('plan_digest') != inputs.get('expected_plan_digest')
+        or change.get('reason') != inputs.get('reason')
+        or change.get('state') not in {'submitted','accepted','authorized','executing','executed','needs_recovery','rejected','cancelled'}):
+        raise ValueError('The retained review request does not match the submitted plan and reason; no write was replayed')
+    return receipt

@@ -260,3 +260,9 @@ describe('XSD namespace and prefix capture', () => {
   fireEvent.click(screen.getByRole('button', {name:/Upload and Parse/i}));
   expect(submit).toHaveBeenCalledWith(expect.objectContaining({fileType:'exp',generationType:'owl'}));
  });
+
+
+test('SysML XML uses the XMI ontology format when explicitly selected',()=>{
+ render(<OntologyMetadataForm selectedFile={new File(['<xmi:XMI/>'],'system.xml')} sourceFormat="xmi" onSubmit={()=>{}} onCancel={()=>{}}/>);
+ expect(screen.getByText('XMI')).toBeInTheDocument();expect(screen.queryByText(/not recognized/)).toBeNull();
+});

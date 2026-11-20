@@ -2,6 +2,7 @@ import React from 'react';
 import {vi} from 'vitest';
 import {render,screen,fireEvent,act} from '@testing-library/react';
 import ReportsPage from './ReportsPage';
+vi.mock('./GraphAnalyticsPage',()=>({default:({embedded})=> <p>{embedded?'Embedded graph analytics':'Standalone graph analytics'}</p>}));
 vi.mock('../Components/MemoryRecords',()=>({default:()=> <p>Saved memory records</p>}));
 vi.mock('../Components/ReportsTab',()=>({default:()=> <p>Engineering evidence reports</p>}));
 beforeEach(()=>window.history.replaceState(null,'','#/reports'));
@@ -11,4 +12,16 @@ test('report view survives remount and browser history',async()=>{
  expect(screen.getByText('Engineering evidence reports')).toBeVisible();
  await act(async()=>{window.history.replaceState(null,'','#/reports?view=memory');window.dispatchEvent(new PopStateEvent('popstate'));});
  expect(screen.getByText('Saved memory records')).toBeVisible();
+});
+
+
+test('graph analytics follows memory records and preserves the workspace view on reload',()=>{
+ const page=render(<ReportsPage/>);
+ const buttons=screen.getByRole('navigation',{name:'Report types'}).querySelectorAll('button');
+ expect([...buttons].map(button=>button.textContent)).toEqual(['Memory records','Graph Analytics','Engineering reports','Reporting data']);
+ fireEvent.click(screen.getByRole('button',{name:'Graph Analytics'}));
+ expect(window.location.hash).toContain('view=graph-analytics');
+ expect(screen.getByText('Embedded graph analytics')).toBeVisible();
+ page.unmount();render(<ReportsPage/>);
+ expect(screen.getByRole('button',{name:'Graph Analytics'})).toHaveAttribute('aria-pressed','true');
 });

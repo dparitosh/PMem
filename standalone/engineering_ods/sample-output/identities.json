@@ -1,0 +1,317 @@
+[
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "8D-2024-017",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/52c104ef-c4a8-534d-848d-44a2d0988527",
+    "label": "Previous bearing-seat investigation",
+    "kind": "historical"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "8D-2024-017-OPT-A",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/d1af7b19-7d94-5a2e-95c6-2487c28c2328",
+    "label": "Past option A - Upsize bearing",
+    "kind": "historical"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "8D-2024-017-OPT-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/f11ebdb6-f7fd-5dd2-8079-a809ee784ff3",
+    "label": "Past option B - Correct seat and review clearance",
+    "kind": "historical"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "8D-2024-017-OPT-C",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/326491ef-3c4f-5014-96ba-d705a2c2f8cf",
+    "label": "Past option C - Reduce operating speed",
+    "kind": "historical"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "8D-2024-017-OPT-D",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/4af69d62-2a3d-504a-ae61-fe0068d1750e",
+    "label": "Past option D - Use higher-temperature grease",
+    "kind": "historical"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "ASM-ROT-1500-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/dfb2902a-1c09-5891-bc76-4ac0b756682c",
+    "label": "Rotor bearing assembly revision B",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "BRG-6206-C3-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/72abc922-d77a-5443-9a97-0eb316f957d3",
+    "label": "6206 bearing C3 clearance revision B",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "BRG-6206-CN-A",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207",
+    "label": "6206 bearing CN clearance revision A",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "BRG-6306-CN-A",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/6c857137-ead6-5878-bba6-91e89cb10f2d",
+    "label": "6306 larger bearing candidate",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "CAD-SHAFT-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/62b84afd-8a7e-5ead-bd1c-9cfa8330d719",
+    "label": "Rotor shaft CAD and PMI reference",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "CFG-IM1500-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/0081b143-7d0d-5c24-853c-f8b9b7bb5af8",
+    "label": "IM-1500 revision B investigation baseline",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "CHG-INV-031",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/fe2694b2-b5f9-54fd-9ef7-89d300a184c3",
+    "label": "Bearing corrective-action package",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "CTX-INV-031",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/3caaec2b-acb0-55d4-9589-0195546ed974",
+    "label": "Active bearing investigation context",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "DEC-2026-031",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/5e3092eb-508a-50b9-a6a0-334494a9be41",
+    "label": "Recommend seat correction and reviewed C3 clearance",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "GEO-SEAT-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/460c9b86-9f53-53fa-848d-eff0f57548b8",
+    "label": "Cylindrical shaft bearing seat",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "HOUS-1500-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/fcd9ffbe-2441-5743-87d1-bbd96264ddd1",
+    "label": "Bearing housing revision B",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "INV-2026-031",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/ab466213-f878-57d6-8b4a-a56cd8e99698",
+    "label": "Bearing overheating investigation",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "LESSON-2026-031",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/8f81d9fe-a1f5-52ee-b97a-34e9ebb7a9a2",
+    "label": "Pending bearing investigation lesson",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "LOT-24-117",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/c73faef3-fb78-549c-bf27-93a8e23ad634",
+    "label": "Bearing assembly lot 24-117",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "LOT-24-118",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/588117b0-1632-56db-880a-e53fba98a4f4",
+    "label": "Comparison lot 24-118",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "MBOM-LINE-1",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/e9376c06-398c-5fd9-b9fd-84415367efa6",
+    "label": "Rotor assembly manufacturing BOM line 1",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "MBOM-LINE-2",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/3c4e6d03-3ced-5dc0-880f-47ccf915007e",
+    "label": "Rotor assembly manufacturing BOM line 2",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "MBSE-BEARING-SUPPORT-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/8cf1f1d7-533c-5a70-bf5b-7be4a1422ec7",
+    "label": "Bearing support operating context",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "MTR-IM-1500-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/cde70ff2-4768-5825-882f-08f4703b4128",
+    "label": "IM-1500 induction motor revision B",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "OP-020-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/61320b6d-ace3-5f0a-91bb-132bb9aae295",
+    "label": "Finish grind bearing seat",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "OP-030-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/9cda6b3a-0ffd-5ba2-909f-1d1a19b4c73f",
+    "label": "Assemble bearing and record clearance",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "OPT-A",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/f197a271-cc02-551b-a9f8-7602d3794145",
+    "label": "Option A — Upsize bearing",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "OPT-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/d8893bb6-1106-5ac6-8ea0-aa47ae83046e",
+    "label": "Option B — Correct seat and use reviewed C3 clearance",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "OPT-C",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/753b321f-bcba-578b-8da6-f6c13f336b6f",
+    "label": "Option C — Reduce operating speed for containment",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "OPT-D",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/10b2a053-4f6b-5ac0-ad36-53be41628cea",
+    "label": "Option D — Use higher-temperature grease only",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "PMI-SEAT-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca",
+    "label": "Bearing seat dimensional requirement",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "QIF-117-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/bf1630f2-e947-5d7e-a106-93065a4dce36",
+    "label": "QIF-117-001 shaft-seat inspection",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "QIF-118-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/5644b539-c6db-59a9-8aee-28e064c91941",
+    "label": "QIF-118-001 shaft-seat inspection",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "REQ-ENVELOPE-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/b24f130e-11fb-5783-ba2c-6162fdf4d50d",
+    "label": "Bearing envelope shall fit 62 mm housing",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "REQ-SPEED-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/c09ced5c-a3c2-5dce-a41e-a81b9adedba9",
+    "label": "Continuous operating speed shall reach 1500 rpm",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "REQ-TEMP-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/1083ed81-db39-5a7c-8ebc-161bcae7ee11",
+    "label": "Bearing temperature shall not exceed 80 degC",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "REQ-VIB-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/94941d85-0537-5dd5-8d3c-b563eaeb74a3",
+    "label": "Vibration shall not exceed 2.8 mm/s RMS",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "RULE-FIT-001",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/e72964f8-cde0-5424-b11d-3ef6a678cec6",
+    "label": "Bearing-seat and clearance review rule",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "SHAFT-1500-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/fd250a71-6963-5a5f-8861-62a720a817cf",
+    "label": "Rotor shaft bearing seat revision B",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "TEST-117-THERMAL",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/3306bdb5-b730-5f8a-8048-9f328adf824f",
+    "label": "Lot 24-117 overheating and vibration",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "TEST-118-THERMAL",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/23030ff8-df17-594f-b4de-ba8f38ac5fc4",
+    "label": "Comparison lot operating test",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "VALIDATE-A",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/435770ec-29d0-571b-adf5-ba61dbc20f96",
+    "label": "Option A controlled scenario test",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "VALIDATE-B",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/9af89887-482c-56ec-b7cc-8e8633748a8b",
+    "label": "Option B controlled scenario test",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "VALIDATE-C",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/7a678ea6-d4cf-589e-aced-9351fe50fdf3",
+    "label": "Option C controlled scenario test",
+    "kind": "current"
+  },
+  {
+    "case": "BEARING-EVALUATION-001",
+    "business_id": "VALIDATE-D",
+    "golden_id": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/e7e56bcb-cc3e-5f74-a522-9f1b27fd40e3",
+    "label": "Option D controlled scenario test",
+    "kind": "current"
+  }
+]

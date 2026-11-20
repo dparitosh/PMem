@@ -299,3 +299,33 @@ class CapabilityDiagnosticDeadlineTests(unittest.IsolatedAsyncioTestCase):
             result=await local_llm.health()
         self.assertEqual(result['status'],'invalid_configuration')
         self.assertNotIn('PRIVATE-INVALID-URL',str(result))
+
+
+class NativeProposalBudgetTests(unittest.IsolatedAsyncioTestCase):
+    async def test_native_schema_is_retained_in_tools_but_not_duplicated_in_user_prompt(self):
+        schema={'type':'object','required':['id'],'additionalProperties':False,'properties':{'id':{'type':'integer'}}}
+        tools=[{'id':'read','input_schema':schema}]
+        response={'done':True,'message':{'content':'','tool_calls':[{'function':{'name':'tool_0','arguments':{'id':1}}}]}}
+        with patch.dict(os.environ,{**ENV,'OLLAMA_PROPOSAL_MODE':'native'},clear=True), patch.object(local_llm,'_post_json',unittest.mock.AsyncMock(return_value=response)) as post:
+            result=await local_llm.suggest_tool({},tools,'Read one record')
+        body=post.call_args.args[3]
+        self.assertEqual(result['tool_id'],'read')
+        self.assertEqual(body['tools'][0]['function']['parameters'],schema)
+        prompt=json.loads(body['messages'][1]['content'])
+        self.assertNotIn('input_schema',prompt['allowed_tools'][0])
+        self.assertEqual(prompt['allowed_tools'][0]['id'],'read')
+        self.assertEqual(local_llm.proposal_prompt_tools(tools,'structured')[0]['input_schema'],schema)
+
+
+class ControllerScopeProposalTests(unittest.IsolatedAsyncioTestCase):
+    async def test_read_goal_binds_omitted_scope_without_overriding_conflicts(self):
+        schema={'type':'object','required':['node_id'],'additionalProperties':False,
+                'properties':{'node_id':{'type':'string'},'ontology_id':{'type':'string'}}}
+        tools=[{'id':'graph.business_context','input_schema':schema}]
+        for supplied,expected in [({},'selected-node'),({'node_id':'different-node'},'different-node')]:
+            response={'done':True,'message':{'content':'','tool_calls':[{'function':{'name':'tool_0','arguments':supplied}}]}}
+            with patch.dict(os.environ,{**ENV,'OLLAMA_PROPOSAL_MODE':'native'},clear=True), patch.object(local_llm,'_post_json',unittest.mock.AsyncMock(return_value=response)):
+                result=await local_llm.suggest_tool({'execution_contract':'read-goal'},tools,'Inspect selected record',
+                    context={'untrusted_scratchpad':{'scope':{'node_id':'selected-node','ontology_id':'selected-ontology'}}})
+            self.assertEqual(result['inputs']['node_id'],expected)
+            self.assertEqual(result['inputs']['ontology_id'],'selected-ontology')

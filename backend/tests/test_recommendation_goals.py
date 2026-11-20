@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock
 import pytest
-from backend.agentic_service.recommendation_goals import selection, validate_read, completion_evidence, TOOLS
+from backend.agentic_service.recommendation_goals import selection, validate_read, completion_evidence, bound_inputs, TOOLS
 from backend.agentic_service import goal_runner as goals
 from backend.tests.test_read_goal_runner import record, action
 
@@ -69,3 +69,47 @@ def test_tools_advertise_the_controller_evidence_contract():
  response=router.tools()
  assert response['read_goal_capabilities']['recommendation_evidence']==1
  assert set(TOOLS.values()).issubset({tool['id'] for tool in response['tools']})
+
+
+def test_co_recommendation_does_not_present_zero_counts_as_impact():
+ context={'recommendation_service':'change-impact','recommendation_object':'Shaft','node_id':'selected','ontology_id':'source'}
+ evidence={'id':'impact','status':'completed','tool_id':TOOLS['change-impact'], 'inputs':bound_inputs(context),
+  'result':{'decision_policy':{'status':'not_configured'},'assembly_impact':[], 'process_impacts':[], 'impacted_requirements':[], 'impacted_parts':[]}}
+ summary=completion_evidence(context,[evidence],['impact'])['business_summary']
+ assert 'hold release' in summary
+ assert 'CO scope' in summary
+ assert 'records: 0' not in summary
+ evidence['result']['assembly_impact']=[{'name':'Motor assembly'}]
+ summary=completion_evidence(context,[evidence],['impact'])['business_summary']
+ assert 'include Motor assembly' in summary
+ assert 'before release' in summary
+
+
+def test_large_path_evidence_is_compacted_only_for_the_model():
+ from backend.agentic_service.recommendation_goals import prompt_evidence
+ item=observation()
+ item['result']['similar_parts']=[{'node_id':'part-1','name':'Comparable bearing','similarity_score':90,'path':[{'detail':'x'*100000}]}]
+ original=copy.deepcopy(item)
+ compact=prompt_evidence(CONTEXT,item)
+ assert len(json.dumps(compact)) < 3000
+ assert compact['similar_parts'][0]['name']=='Comparable bearing'
+ assert compact['full_evidence_retained'] is True
+ assert item==original
+
+
+@pytest.mark.asyncio
+async def test_large_typed_recommendation_remains_complete_in_durable_state():
+ result={'decision_policy':{'status':'passed'},'similar_parts':[{'node_id':'part','name':'Bearing candidate','path':[{'detail':'x'*40000}]}]}
+ decisions=[action('goal.plan',subtasks=['Read evidence']),action(TOOL['id'],**INPUTS),action('goal.complete',summary='Review candidate',evidence_steps=['observation-2'])]
+ saved=await goals.drive(record(context=CONTEXT),propose=AsyncMock(side_effect=decisions),dispatch=AsyncMock(return_value=result),save=AsyncMock(),tools=[TOOL])
+ assert saved['status']=='completed'
+ assert saved['observations'][0]['result']==result
+ assert len(json.dumps(goals.scratchpad(saved))) < 10000
+
+
+def test_conflicting_candidates_are_not_recommended_as_alternatives():
+ item=observation()
+ item['result']['similar_parts']=[{'name':'Bearing candidate','conflicts':[]},{'name':'Wrong shaft','conflicts':['material','dimensions'],'compatibility':'conflicting_evidence'}]
+ summary=completion_evidence(CONTEXT,[item],['observation-2'])['business_summary']
+ assert 'Bearing candidate' in summary
+ assert 'Wrong shaft' not in summary

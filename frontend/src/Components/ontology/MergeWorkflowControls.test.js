@@ -1,51 +1,9 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import {render,screen,fireEvent} from '@testing-library/react';
 import MergeWorkflowControls from './MergeWorkflowControls';
-
-const props = {sourceId:'ap242',targetId:'qif',reviewer:'steward',connected:true,selectionCount:0,onGenerate:vi.fn(),onResume:vi.fn(),onPublish:vi.fn(),onReviewerChange:vi.fn()};
-
-test('first action generates evidence and does not offer publication before a plan',()=>{
- render(<MergeWorkflowControls {...props}/>);
- fireEvent.click(screen.getByRole('button',{name:'Generate mapping plan'}));
- expect(props.onGenerate).toHaveBeenCalled();
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
- expect(screen.getByRole('status')).toHaveTextContent('does not publish');
-});
-
-test('pending validation has a clear state and prevents duplicate plan requests and approval',()=>{
- render(<MergeWorkflowControls {...props} preview={{background_validation:true,job_status:'validating'}}/>);
- expect(screen.getByRole('status')).toHaveTextContent('Validating semantic constraints');
- expect(screen.getByRole('button',{name:'Validation running'})).toBeDisabled();
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
- expect(screen.getByRole('button',{name:'Resume saved plan'})).toBeEnabled();
-});
-
-test('changed selection requires a new validated plan even if the previous plan was ready',()=>{
- render(<MergeWorkflowControls {...props} preview={{job_status:'completed'}} ready dirty selectionCount={2}/>);
- expect(screen.getByRole('status')).toHaveTextContent('Your selections are retained');
- expect(screen.getByRole('button',{name:'Validate selected mappings'})).toBeEnabled();
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
-});
-
-test('current plan explains union behavior and enables explicit publication',()=>{
- render(<MergeWorkflowControls {...props} preview={{job_status:'completed'}} ready/>);
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeEnabled();
- expect(screen.getByRole('status')).toHaveTextContent('0 identity consolidations');
- expect(screen.getByText(/With no pairs selected/)).toHaveTextContent('preserving their distinct identities');
-});
-
-test('unconnected access and a retained publication each explain why actions are unavailable',()=>{
- const view=render(<MergeWorkflowControls {...props} connected={false}/>);
- expect(screen.getByRole('link',{name:'Connect agent access in Admin'})).toHaveAttribute('href','#/admin');
- expect(screen.getByRole('button',{name:'Generate mapping plan'})).toBeDisabled();
- view.rerender(<MergeWorkflowControls {...props} preview={{job_status:'completed'}} ready publication="queued"/>);
- expect(screen.getByRole('status')).toHaveTextContent('Publication in progress');
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
-});
-
-test('unknown logical validation is explicit and cannot enable publication',()=>{
- render(<MergeWorkflowControls sourceId="source" targetId="target" reviewer="paritosh" connected preview={{preview_id:'plan',owl_dl_evidence:{status:'unknown',reason:'unresolved_imports'}}} selectionCount={0}/>);
- expect(screen.getByText('Logical consistency check incomplete')).toBeVisible();
- expect(screen.getByText(/OWL-DL consistency is unknown/)).toBeVisible();
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
-});
+const props={sourceId:'ap242',targetId:'qif',reviewer:'verified-owner',connected:true,onGenerate:vi.fn(),onResume:vi.fn(),onReviewerChange:vi.fn()};
+test('preparation has no direct approval or publication action',()=>{render(<MergeWorkflowControls {...props}/>);fireEvent.click(screen.getByText('Generate mapping plan'));expect(props.onGenerate).toHaveBeenCalled();expect(screen.queryByRole('button',{name:/Approve merge/})).toBeNull();expect(screen.queryByRole('link',{name:'Review CR / CO'})).toBeNull();});
+test('pending validation prevents duplicate preparation and keeps exact review handoff',()=>{render(<MergeWorkflowControls {...props} preview={{preview_id:'plan-1',background_validation:true,job_status:'validating'}}/>);expect(screen.getByText('Validation running')).toBeDisabled();expect(screen.getByRole('link',{name:'Review CR / CO'})).toHaveAttribute('href',expect.stringContaining('record=plan-1&return_to='));});
+test('changed selection requires validation',()=>{render(<MergeWorkflowControls {...props} dirty preview={{preview_id:'plan-1'}}/>);expect(screen.getByRole('status')).toHaveTextContent('Mapping selection changed');expect(screen.getByText('Validate selected mappings')).toBeEnabled();});
+test('missing connection prevents preparation',()=>{render(<MergeWorkflowControls {...props} connected={false}/>);expect(screen.getByText('Generate mapping plan')).toBeDisabled();});
+test('unknown consistency is a blocker and never exposed as approval',()=>{render(<MergeWorkflowControls {...props} preview={{preview_id:'plan',owl_dl_evidence:{status:'unknown'}}}/>);expect(screen.getByText('Logical consistency check incomplete')).toBeVisible();expect(screen.queryByRole('button',{name:/publish/i})).toBeNull();});

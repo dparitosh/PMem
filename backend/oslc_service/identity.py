@@ -3,7 +3,7 @@ from urllib.parse import urlsplit, quote, urlencode
 
 
 def resource_reference(properties, element_id):
-    for key in ('uri', 'rdf_uri'):
+    for key in ('uri', 'rdf_uri', 'iri'):
         value = str(properties.get(key) or '')
         if urlsplit(value).scheme in {'http', 'https', 'urn'} and not any(c.isspace() for c in value):
             return 'uri:' + value

@@ -1211,6 +1211,9 @@ def _apply_graph_quality_baseline(
         if (prop_uri, DC.source, None) not in g and (prop_uri, DCTERMS.source, None) not in g:
             g.add((prop_uri, DCTERMS.source, Literal(source_tag)))
             g.add((prop_uri, DC.source, Literal(source_tag)))
+    from backend.depo_platform.ontology_semantics import declare_generated_metadata
+    declare_generated_metadata(g, [ont_ns.excludedToolArchiveCount, ont_ns.hasXMINamespace, ont_ns.hasDeclaredNamespace, ont_ns.hasXMIType, ont_ns.hasXMIID])
+
 
 def _is_local_resource(uri: URIRef, ont_ns: Namespace) -> bool:
     """Return True for resources in the generated ontology namespace or explicit local fallback nodes."""

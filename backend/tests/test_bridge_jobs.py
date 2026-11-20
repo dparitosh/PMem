@@ -36,6 +36,12 @@ class BridgeJobTests(unittest.TestCase):
         from unittest.mock import patch
         policy = patch("backend.depo_platform.decision_policy.assess_decisions", return_value={"status":"not_configured", "blocking":False, "checks":[]})
         policy.start(); self.addCleanup(policy.stop)
+        # This class tests native locking, snapshots and receipts. Full CR/CO
+        # authorization is exercised without this primitive adapter in
+        # test_bridge_change_lifecycle and the route tests below.
+        primitive = patch("backend.agentic_service.bridge_change.guarded_publish",
+            side_effect=lambda jobs, identifier, ids, actor, policy=None, *args: jobs._publish_locked(identifier, ids, actor, policy))
+        primitive.start(); self.addCleanup(primitive.stop)
         self.source = Source(); self.graph = Graph(); self.store = InMemoryRegistry()
         self.jobs = BridgeJobs(self.store, self.source, self.graph)
         self.preview = self.jobs.preview('ontology', 'import', 'reader')
@@ -193,9 +199,10 @@ class BridgeRouteTests(unittest.TestCase):
         payload = {'approved_candidate_ids':[preview['candidates'][0]['candidate_id']]}
         self.assertEqual(self.client.post(path, json=payload, headers={'Authorization':'Bearer read-secret'}).status_code, 403)
         payload.update(approved_by='reviewer', approval_token='approve-secret')
-        self.assertEqual(self.client.post(path, json=payload).status_code, 200)
+        self.assertEqual(self.client.post(path, json=payload).status_code, 409)
+        self.assertEqual(self.jobs.graph.calls, [])
         artifact = self.client.get(f"/api/v1/workflows/bridge/jobs/{preview['publication_job_id']}/artifact", headers={'Authorization':'Bearer read-secret'})
-        self.assertEqual(artifact.status_code, 200)
+        self.assertEqual(artifact.status_code, 404)
         self.assertNotIn('approve-secret', artifact.text)
 
     def test_legacy_artifact_traversal_and_read_auth(self):

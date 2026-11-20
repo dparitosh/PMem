@@ -1,10 +1,9 @@
 import { businessText } from '../../utils/businessText';
 import React from 'react';
 import { UI_COLORS as C } from '../../styles/uiTokens';
-import { getCredentialProfile } from '../../services/serviceAuth';
 
 // Read-only review rendering; the workspace owns approval and commit requests.
-export default function ImportLoadReview({ confirmingImport, previewData, setConfirmingImport, preCheck, commitApprover, setCommitApprover, commitImport }) {
+export default function ImportLoadReview({ confirmingImport, previewData, setConfirmingImport, preCheck, commitImport }) {
   return (confirmingImport && previewData && (
         <div role="dialog" aria-modal="true" aria-label="Review import before loading" style={{
           position: 'fixed',
@@ -198,18 +197,6 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
               )}
             </div>
 
-            <details style={{ marginBottom: '12px', fontSize: '12px', color: C.textSec }}>
-              <summary>Approval credentials (required by token authentication for loading)</summary>
-              <p style={{ margin: '8px 0' }}>The key is managed in Admin / Service credentials. Enter the approver here; confirmation is still required.</p>
-              <label style={{ display: 'block', marginBottom: '6px' }}>
-                Approver
-                <input aria-label="Import approver" value={commitApprover} onChange={(event) => setCommitApprover(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
-              </label>
-              <label style={{ display: 'block' }}>
-                Approval API key: configured in Admin / Service credentials
-              </label>
-            </details>
-
             {/* Actions */}
             <div style={{
               display: 'flex',
@@ -233,7 +220,7 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
               </button>
               <button
                 onClick={() => commitImport(confirmingImport)}
-                disabled={preCheck?.loading || preCheck?.ready !== true || (getCredentialProfile('INGESTION_WRITE_TOKEN') && !commitApprover.trim())}
+                disabled={preCheck?.loading || preCheck?.ready !== true}
                 style={{
                   padding: '8px 16px',
                   background: (preCheck?.loading || preCheck?.ready === false) ? C.textMuted : C.green,
@@ -245,7 +232,7 @@ export default function ImportLoadReview({ confirmingImport, previewData, setCon
                   cursor: (preCheck?.loading || preCheck?.ready === false) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {preCheck?.loading ? 'Checking...' : 'Load to knowledge graph'}
+                {preCheck?.loading ? 'Checking...' : 'Review load in Change Control'}
               </button>
             </div>
           </div>

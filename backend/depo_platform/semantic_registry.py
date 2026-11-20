@@ -21,7 +21,7 @@ def release_reference(value: Any) -> dict[str, str]:
     asset_id = str(value.get("asset_id") or "").strip()
     version = str(value.get("version") or "").strip()
     status = str(value.get("lifecycle_status") or "").strip().lower()
-    if not _ASSET_ID.fullmatch(asset_id) or not _SEMVER.fullmatch(version) or status != "approved":
+    if not (_ASSET_ID.fullmatch(asset_id) or re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", asset_id)) or not _SEMVER.fullmatch(version) or status != "approved":
         raise ValueError("semantic release must contain a safe asset_id, semantic version, and lifecycle_status 'approved'")
     return {"asset_id": asset_id, "version": version, "lifecycle_status": status}
 

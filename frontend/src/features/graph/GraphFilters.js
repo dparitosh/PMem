@@ -244,7 +244,7 @@ function GraphFilters({
             >
               <option value="ALL" style={{ color: '#333', fontWeight: 600 }}>Overview Graph (all loaded data)</option>
               <option value="archimate" style={{ color: '#333', fontWeight: 600 }}>[archimate] ArchiMate process model</option>
-              {ontologyOptions.filter((option) => option.value !== 'ALL' && option.value !== 'archimate' && option.approval_status === 'approved').map((option, index) => (
+              {ontologyOptions.filter((option) => option.value !== 'ALL' && option.value !== 'archimate' && (option.approval_status === 'approved' || option.value === selectedOntology)).map((option, index) => (
                 <option key={option.value || `ontology-opt-${index}`} value={option.value} style={{ color: '#333' }} title={graphStateOf(option).label.replace(/^ · /, '') || 'In graph'}>
                   {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.approval_status !== undefined ? ` · ${approvalLabel(option.approval_status)}` : ''}
                 </option>

@@ -233,6 +233,12 @@ def bounded_taxonomy(payload: dict, node_limit: int = 10000, edge_limit: int = 2
     nodes, edges = payload.get('nodes', []), payload.get('edges', [])
     # Keep declared terms ahead of anonymous expression/literal expansion.
     priority = {'class': 0, 'property': 1, 'datatype': 2, 'individual': 3}
+    # Inventory totals are independent of the requested table, query and page.
+    complete = not bool(payload.get('summary', {}).get('truncated'))
+    typed = all(isinstance(node.get('kind'), str) for node in nodes)
+    unique = {node['term_id']: node for node in nodes}
+    totals = {'total_classes': sum(node.get('kind') == 'class' for node in unique.values()) if complete and typed else None,
+              'total_properties': sum(node.get('kind') == 'property' for node in unique.values()) if complete and typed else None}
     needle = query.strip().casefold()
     matching = [n for n in nodes if (kind == 'all' or n.get('kind') == kind) and
                 (not needle or any(needle in str(n.get(key) or '').casefold()
@@ -252,7 +258,7 @@ def bounded_taxonomy(payload: dict, node_limit: int = 10000, edge_limit: int = 2
             declarations[target]['children_count'] += 1
     kept = [{**node, 'browse_declarations': declarations[node['term_id']]} for node in kept]
     links = [e for e in edges if e.get('source_term') in ids and e.get('target_term') in ids][:edge_limit]
-    summary = {**payload.get('summary', {}), 'terms': len(kept), 'taxonomy_links': len(links),
+    summary = {**payload.get('summary', {}), **totals, 'terms': len(kept), 'taxonomy_links': len(links),
                'total_terms': payload.get('summary', {}).get('total_terms', len(nodes)),
                'total_taxonomy_links': payload.get('summary', {}).get('total_taxonomy_links', len(edges)),
                'truncated': bool(payload.get('summary', {}).get('truncated') or len(kept)<len(nodes) or len(links)<len(edges))}

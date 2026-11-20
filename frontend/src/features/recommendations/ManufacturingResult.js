@@ -64,7 +64,7 @@ const ManufacturingResult = ({ data }) => {
           <div style={CARD}>
             <table style={TABLE}>
               <thead><tr>
-                <th style={TH}>Process</th><th style={TH}>Type</th><th style={TH}>File</th>
+                <th style={TH}>Process</th><th style={TH}>Source</th><th style={TH}>File</th>
               </tr></thead>
               <tbody>
                 {data.direct_processes.map((p, i) => (
@@ -85,7 +85,7 @@ const ManufacturingResult = ({ data }) => {
           <div style={CARD}>
             <table style={TABLE}>
               <thead><tr>
-                <th style={TH}>Instance</th><th style={TH}>Type</th><th style={TH}>References</th>
+                <th style={TH}>Instance</th><th style={TH}>Source</th><th style={TH}>References</th>
               </tr></thead>
               <tbody>
                 {data.process_instances.map((p, i) => (

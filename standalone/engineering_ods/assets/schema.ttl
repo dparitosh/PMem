@@ -1,0 +1,251 @@
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix eng: <https://example.org/nexus/engineering-ods/vocabulary/v1/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+ceim:Assembly a owl:Class .
+
+ceim:Change a owl:Class .
+
+ceim:Characteristic a owl:Class .
+
+ceim:Configuration a owl:Class .
+
+ceim:Datum a owl:Class .
+
+ceim:DatumReferenceFrame a owl:Class .
+
+ceim:Document a owl:Class .
+
+ceim:Feature a owl:Class .
+
+ceim:GeometryBody a owl:Class .
+
+ceim:PMIAnnotation a owl:Class .
+
+ceim:Part a owl:Class .
+
+ceim:Process a owl:Class .
+
+ceim:Product a owl:Class .
+
+ceim:ProductRevision a owl:Class .
+
+ceim:QualityMeasurement a owl:Class .
+
+ceim:Requirement a owl:Class .
+
+ceim:Resource a owl:Class .
+
+ceim:Test a owl:Class .
+
+ceim:consumes a owl:ObjectProperty .
+
+ceim:derivedFrom a owl:ObjectProperty .
+
+ceim:externalId a owl:DatatypeProperty .
+
+ceim:hasCharacteristic a owl:ObjectProperty .
+
+ceim:hasFeature a owl:ObjectProperty .
+
+ceim:hasGeometry a owl:ObjectProperty .
+
+ceim:hasPart a owl:ObjectProperty .
+
+ceim:impacts a owl:ObjectProperty .
+
+ceim:produces a owl:ObjectProperty .
+
+ceim:realizes a owl:ObjectProperty .
+
+ceim:satisfies a owl:ObjectProperty .
+
+ceim:traceTo a owl:ObjectProperty .
+
+ceim:usesDatum a owl:ObjectProperty .
+
+ceim:usesReferenceFrame a owl:ObjectProperty .
+
+ceim:validatedBy a owl:ObjectProperty .
+
+ceim:verifiedBy a owl:ObjectProperty .
+
+eng:allocatedTo a owl:ObjectProperty .
+
+eng:ambientTemperature a owl:DatatypeProperty .
+
+eng:ambientTemperature_unit a owl:DatatypeProperty .
+
+eng:applicability a owl:DatatypeProperty .
+
+eng:appliesRule a owl:ObjectProperty .
+
+eng:asOf a owl:DatatypeProperty .
+
+eng:assessmentDate a owl:DatatypeProperty .
+
+eng:basedOn a owl:ObjectProperty .
+
+eng:belongsToLot a owl:ObjectProperty .
+
+eng:clearanceClass a owl:DatatypeProperty .
+
+eng:comparedWith a owl:ObjectProperty .
+
+eng:considersAlternative a owl:ObjectProperty .
+
+eng:containment a owl:DatatypeProperty .
+
+eng:contains a owl:ObjectProperty .
+
+eng:cost_unit a owl:DatatypeProperty .
+
+eng:dataOrigin a owl:DatatypeProperty .
+
+eng:datum a owl:DatatypeProperty .
+
+eng:description a owl:DatatypeProperty .
+
+eng:diameter a owl:DatatypeProperty .
+
+eng:diameter_unit a owl:DatatypeProperty .
+
+eng:documentType a owl:DatatypeProperty .
+
+eng:dutyCycle a owl:DatatypeProperty .
+
+eng:effectiveFrom a owl:DatatypeProperty .
+
+eng:effectiveTo a owl:DatatypeProperty .
+
+eng:engineeringApproved a owl:DatatypeProperty .
+
+eng:estimatedIncrementalCost a owl:DatatypeProperty .
+
+eng:evidenceOrigin a owl:DatatypeProperty .
+
+eng:finding a owl:DatatypeProperty .
+
+eng:geometryStatus a owl:DatatypeProperty .
+
+eng:geometryType a owl:DatatypeProperty .
+
+eng:hasBOMLine a owl:ObjectProperty .
+
+eng:hasDocument a owl:ObjectProperty .
+
+eng:hasEvidence a owl:ObjectProperty .
+
+eng:hasMeasurement a owl:ObjectProperty .
+
+eng:hasPMI a owl:ObjectProperty .
+
+eng:hasRequirement a owl:ObjectProperty .
+
+eng:hasTestResult a owl:ObjectProperty .
+
+eng:implementationStatus a owl:DatatypeProperty .
+
+eng:leadTime a owl:DatatypeProperty .
+
+eng:leadTime_unit a owl:DatatypeProperty .
+
+eng:lesson a owl:DatatypeProperty .
+
+eng:limit a owl:DatatypeProperty .
+
+eng:lowerLimit a owl:DatatypeProperty .
+
+eng:manufacturedBy a owl:ObjectProperty .
+
+eng:material a owl:DatatypeProperty .
+
+eng:measuredAt a owl:DatatypeProperty .
+
+eng:measuredValue a owl:DatatypeProperty .
+
+eng:measuresCharacteristic a owl:ObjectProperty .
+
+eng:memoryType a owl:DatatypeProperty .
+
+eng:modelType a owl:DatatypeProperty .
+
+eng:nominalDiameter a owl:DatatypeProperty .
+
+eng:nominalValue a owl:DatatypeProperty .
+
+eng:objective a owl:DatatypeProperty .
+
+eng:observation a owl:DatatypeProperty .
+
+eng:operationNumber a owl:DatatypeProperty .
+
+eng:operator a owl:DatatypeProperty .
+
+eng:outerDiameter a owl:DatatypeProperty .
+
+eng:outerDiameter_unit a owl:DatatypeProperty .
+
+eng:partNumber a owl:DatatypeProperty .
+
+eng:proposedPart a owl:ObjectProperty .
+
+eng:proposedScope a owl:DatatypeProperty .
+
+eng:quantity a owl:DatatypeProperty .
+
+eng:radialLoad a owl:DatatypeProperty .
+
+eng:radialLoad_unit a owl:DatatypeProperty .
+
+eng:rationale a owl:DatatypeProperty .
+
+eng:recallsInvestigation a owl:ObjectProperty .
+
+eng:recommendation a owl:DatatypeProperty .
+
+eng:recommendsAlternative a owl:ObjectProperty .
+
+eng:recordFormat a owl:DatatypeProperty .
+
+eng:resourceType a owl:DatatypeProperty .
+
+eng:result a owl:DatatypeProperty .
+
+eng:revision a owl:DatatypeProperty .
+
+eng:rootCauseStatus a owl:DatatypeProperty .
+
+eng:rule a owl:DatatypeProperty .
+
+eng:selectedLot a owl:DatatypeProperty .
+
+eng:selectedProduct a owl:DatatypeProperty .
+
+eng:speed a owl:DatatypeProperty .
+
+eng:speed_unit a owl:DatatypeProperty .
+
+eng:station a owl:DatatypeProperty .
+
+eng:status a owl:DatatypeProperty .
+
+eng:storageStatus a owl:DatatypeProperty .
+
+eng:temperature a owl:DatatypeProperty .
+
+eng:temperature_unit a owl:DatatypeProperty .
+
+eng:testTime a owl:DatatypeProperty .
+
+eng:toleranceBasis a owl:DatatypeProperty .
+
+eng:unit a owl:DatatypeProperty .
+
+eng:upperLimit a owl:DatatypeProperty .
+
+eng:vibration a owl:DatatypeProperty .
+
+eng:vibration_unit a owl:DatatypeProperty .
+
+eng:width a owl:DatatypeProperty .

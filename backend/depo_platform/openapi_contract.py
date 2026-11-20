@@ -178,7 +178,7 @@ def describe_security(document, routes):
                 operation['security'] = [{'ApiKey': []}] if profiles == ['ADMIN_API_KEY'] else [{'BearerKey': []}, {'ApiKey': []}]
             if profiles or approval or (header_required and not public_read):
                 operation['x-depo-authorization'] = {'credential_profiles': profiles, 'resolution': 'explicit' if profiles else 'unresolved', 'approval_fields': ['approved_by', 'approval_token'] if approval else [],
-                    'required_fields_in_token_mode': ['approved_by'] if approval else [],
+                    'required_fields_in_token_mode': [], 'identity_source': 'verified-credential',
                     'note': 'Runtime authorization remains enforced. Approval requires the configured operation token or trusted gateway role; the global read key does not grant write permission.'}
                 operation.setdefault('responses', {}).setdefault('403', {'description': 'Required identity, API key or approval is absent or invalid'})
     return document

@@ -10,6 +10,12 @@ import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection, wasBr
 import { createChatFrameParser } from '../services/chatStreamFrames';
 import { companionFallbackPrompts } from '../services/companionPrompts';
 import { companionEvidenceIds } from '../features/graph/companionGraphEvidence';
+import {apiErrorMessage} from '../utils/apiErrorMessage';
+
+async function readErrorPayload(response){
+ let data={};try{data=await response.json();}catch{}
+ return {detail:apiErrorMessage({response:{status:response.status,data,headers:response.headers}},`Server error ${response.status}`)};
+}
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -23,7 +29,7 @@ const CHAT_COLORS = {
     textMuted: 'var(--theme-color-soft-text, #66788a)',
 };
 
-const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '', nodeId = '', runId = '', productId = '', productVersion = '', reconciliationId = '', contextLabel = '' }) => {
+const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '', pageId = '', nodeId = '', runId = '', productId = '', productVersion = '', reconciliationId = '', contextLabel = '', presentation = 'panel' }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
@@ -149,13 +155,13 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         let assistantId = null;
         let timeoutId = null;
         let timedOut = false;
-        
+
         try {
             // [OK] Validate input against prompt injection
             const validated = validateChatInput(messageText);
             followLatestRef.current = true;
             setFollowingLatest(true);
-            
+
             // Cancel any in-flight request and finalize its placeholder.
             if (abortRef.current) abortRef.current.abort();
             setChatMessages(prev => prev.map(item =>
@@ -347,7 +353,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 }
                 return;
             }
-            
+
             if (err instanceof ValidationError) {
                 setError(err.message);
                 logger.warn('Input validation failed:', err.message);
@@ -359,7 +365,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             setShowSpinner(false);
             setStatusLabel(null);
             setError('Error: ' + (err.message || 'Unknown error occurred'));
-            
+
             setChatMessages(prev => prev.map(m =>
                 m.id === assistantId
                     ? { ...m, text: 'Sorry, I encountered an error. Please try again.', streaming: false, statusLabel: null }
@@ -425,9 +431,9 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 // Keep default queries on error
             }
         };
-        
+
         fetchSampleQueries();
-        
+
         // Cleanup: Abort requests on unmount
         return () => {
             sampleController.abort();
@@ -442,8 +448,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     }, [chatMessages, statusLabel]);
 
     return (
-        <div style={{ 
-            height: '100%',
+        <div className={presentation === 'landing' ? 'chatbot--landing' : undefined} data-empty={chatMessages.length === 0} data-context={Boolean(contextLabel)} style={{
+            height: presentation === 'landing' ? 'auto' : '100%',
             width: '100%',
             boxSizing: 'border-box',
             position: 'relative',
@@ -504,9 +510,9 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             )}
 
             {/* Chat body */}
-            <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
+            <div className="chat-body" style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
                 {/* Messages Container */}
-                <div className="chat-history-region">
+                <div className="chat-history-region" hidden={presentation === 'landing' && chatMessages.length === 0}>
                 <div className='chat-messages' role="log" aria-label="Conversation history" aria-live="off" tabIndex={0}
                     onScroll={event => {
                         const panel = event.currentTarget;
@@ -633,7 +639,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         <textarea
                             value={question}
                             disabled={requestActive}
-                            rows={2}
+                            rows={presentation === 'landing' ? 1 : 2}
                             placeholder="Ask about parts, traceability, or ontology resources..."
                             aria-label="Chat question"
                             onChange={event => setQuestion(event.target.value)}
@@ -644,8 +650,9 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                 }
                             }}
                         />
-                        <button type="submit" aria-label="Send chat question" disabled={requestActive || !question.trim()}>Send</button>
+                        <button type="submit" aria-label={presentation === 'landing' ? 'Ask a question' : 'Send chat question'} disabled={requestActive || !question.trim()}>{presentation === 'landing' ? 'Ask' : 'Send'}</button>
                     </form>
+                    {presentation === 'landing' && chatMessages.length === 0 && <div className="landing-question-samples" aria-label="Suggested questions"><span>Try:</span>{sampleQueries.slice(0,3).map(query=><button key={query} type="button" onClick={()=>handleSampleQueryClick(query)}>{query}</button>)}</div>}
                     <details className="chat-answer-help"><summary>About these answers</summary>Answers use matching graph resources and saved mapping reviews. Historical reviews do not verify current knowledge graph publication. Model summaries require an enabled provider; missing evidence is never invented. Use Shift+Enter for a new line.</details>
                     {requestActive && <button type="button" onClick={() => {
                         abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');

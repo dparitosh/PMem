@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { importJobState, isResumablePersistedJob, isTerminalPipelineStatus } from './importPresentation';
+import { selectSourceWorkflow, governedSourceProfile, getWorkflowNote, importJobState, isResumablePersistedJob, isTerminalPipelineStatus } from './importPresentation';
 
 describe('restored import summary', () => {
   it('resumes a fresh committing job at 100 percent, while keeping approval paused', () => {
@@ -31,4 +31,28 @@ describe('restored import summary', () => {
     expect(importJobState({status:'ready_for_commit',stage:'validate',progress:75},false)).toBe('awaitingReview');
     expect(importJobState({},false)).toBe('pending');
   });
+});
+
+
+it('document guidance does not inherit a retained CAD file scope',()=>{
+ const note=getWorkflowNote({canRunSelectedWorkflow:true,selectedWorkflow:'document.unstructured',mappingFileTypeContext:'step'});
+ expect(note).toContain('documents');expect(note).not.toContain('STEP');
+});
+
+
+describe('declared governed XML profiles',()=>{
+ it('routes PLMXML and SysML XML explicitly without changing legacy auto detection',()=>{
+  expect(governedSourceProfile('source.xml')).toBeNull();
+  expect(governedSourceProfile('source.xml','plmxml')).toEqual({profile:'plmxml',sourceSystem:'PLM'});
+  expect(governedSourceProfile('model.xml','sysml-v1').profile).toBe('sysml-v1');
+  expect(governedSourceProfile('source.xml','unknown')).toBeNull();
+  expect(governedSourceProfile('part.stpx','plmxml').profile).toBe('ap242-step-mbd');
+ });
+});
+
+
+it('selects the newest approved source-compatible workflow without lexical version ordering',()=>{
+ const base={job_id:'semantic-source-validation',job_type:'validate-semantic-batch',lifecycle_state:'approved',enabled:true,allowed_standards:['sysml-v1']};
+ expect(selectSourceWorkflow([{...base,version:'1.2.0'},{...base,version:'1.10.0'},{...base,version:'2.0.0',lifecycle_state:'draft'}],'sysml-v1').version).toBe('1.10.0');
+ expect(()=>selectSourceWorkflow([{...base,version:'1.0.0',allowed_standards:['ap242']}],'sysml-v1')).toThrow('No approved');
 });

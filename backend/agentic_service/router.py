@@ -72,17 +72,30 @@ async def memory_maintenance_status():
     return record or {'status': 'not_run', 'steps': []}
 
 
-def _memory_report(owner):
-    """Owner-filtered retained conversations; never expose registry payloads."""
+def _memory_report(owner, ontology_id='', job_id='', limit=25, summary=False):
+    """Filter owner and business scope before bounding and projecting retained turns."""
     store = PostgresRegistry('agentic_companion_jobs')
+    fields = ('job_id', 'user_request', 'graph_context', 'finished_at', 'answerable') if summary else (
+        'job_id', 'user_request', 'resolved_query', 'response', 'evidence', 'retrieval', 'graph_context', 'finished_at', 'answerable')
+    # Projection keys are a fixed application allowlist, never supplied by the request.
+    projection = 'jsonb_build_object(' + ','.join("'%s',value->'%s'" % (field, field) for field in fields) + ')'
+    conditions = ["namespace=%s", "value->>'owner'=%s", "value->>'status'='completed'"]
+    params = [store.namespace, owner]
+    if ontology_id:
+        conditions.append("value->'graph_context'->>'ontology'=%s")
+        params.append(ontology_id)
+    if job_id:
+        conditions.append("value->>'job_id'=%s")
+        params.append(job_id)
+    params.append(limit)
     with store._connect() as db, db.transaction(), db.cursor() as cursor:
         cursor.execute('SET TRANSACTION READ ONLY')
         cursor.execute("SET LOCAL statement_timeout='5s'")
-        cursor.execute("SELECT value FROM depo_registry WHERE namespace=%s AND value->>'owner'=%s AND value->>'status'='completed' ORDER BY value->>'finished_at' DESC,key DESC LIMIT 25", [store.namespace, owner])
+        cursor.execute('SELECT ' + projection + ' FROM depo_registry WHERE ' + ' AND '.join(conditions) +
+                       " ORDER BY value->>'finished_at' DESC,key DESC LIMIT %s", params)
         items = [row[0] for row in cursor.fetchall()]
-    fields = ('job_id', 'user_request', 'resolved_query', 'response', 'evidence', 'graph_context', 'finished_at', 'answerable')
     return {'records': [{key: item.get(key) for key in fields} for item in items],
-            'limit': 25, 'scope': 'current_authenticated_owner',
+            'limit': limit, 'scope': 'current_authenticated_owner', 'ontology_id': ontology_id,
             'storage': {'conversation': 'PostgreSQL: semantic.depo_registry / agentic_companion_jobs',
                         'context': 'Selected ontology and business identity retained with each turn',
                         'knowledge': 'Published engineering graph; separate from conversation history'},
@@ -90,9 +103,11 @@ def _memory_report(owner):
 
 
 @router.get('/memory/records', dependencies=[Depends(graph_read_identity)])
-async def memory_records(request: Request):
+async def memory_records(request: Request, ontology_id: str = Query('', max_length=300),
+                         job_id: str = Query('', max_length=300), limit: int = Query(25, ge=1, le=25),
+                         summary: bool = False):
     actor = graph_read_identity(request)
-    return await _agent_io(_memory_report, sessions.owner(request, actor))
+    return await _agent_io(_memory_report, sessions.owner(request, actor), ontology_id, job_id, limit, summary)
 
 class Catalog:
     def __init__(self) -> None:
@@ -409,9 +424,11 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
     try:
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
         memory_key = sessions.memory_id(session)
-        from .companion_memory import retrieval_query
-        turns = await run_in_threadpool(_session_turns, session, 50, payload.get('graph_context') or {}, True)
-        query = await run_in_threadpool(retrieval_query, message, turns, payload.get('graph_context') or {})
+        from .companion_memory import retrieval_query, followup_context, followup_needs_subject
+        turns = await run_in_threadpool(_session_turns, session, 50, payload.get('graph_context') or {}, False)
+        needs_subject = followup_needs_subject(message, turns, payload.get('graph_context') or {})
+        query = message if needs_subject else await run_in_threadpool(retrieval_query, message, turns, payload.get('graph_context') or {})
+        retrieval_context = followup_context(message, turns, payload.get('graph_context') or {})
         generation_budget = 0
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             from .local_llm import settings
@@ -421,19 +438,26 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
                 # Invalid optional model settings must not suppress retrieval.
                 generation_budget = 0
         async with asyncio.timeout(5 * bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
-            kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
-            if (payload.get('graph_context') or {}).get('ontology_prefix'):
-                kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
-            if (payload.get('graph_context') or {}).get('page'):
-                kwargs['page']=payload['graph_context']['page']
-            if (payload.get('graph_context') or {}).get('node_id'):
-                kwargs['node_id']=payload['graph_context']['node_id']
+            kwargs = {'headers': headers, 'ontology_id': retrieval_context.get('ontology', '')}
+            if retrieval_context.get('ontology_prefix'):
+                kwargs['ontology_prefix'] = retrieval_context['ontology_prefix']
+            if retrieval_context.get('page'):
+                kwargs['page']=retrieval_context['page']
+            if retrieval_context.get('node_id'):
+                kwargs['node_id']=retrieval_context['node_id']
             for key in ('run_id', 'product_id', 'product_version','reconciliation_id'):
-                if (payload.get('graph_context') or {}).get(key):
-                    kwargs[key] = payload['graph_context'][key]
+                if retrieval_context.get(key):
+                    kwargs[key] = retrieval_context[key]
             # Do not emit answer text before its required evidence record has
             # committed. A failed save must not leave a seemingly valid stream.
-            result = await companion.ask(query, **kwargs)
+            if needs_subject:
+                result = {'status':'needs_subject','answerable':False,
+                    'response':'Please specify the part number and revision, or select a business record. I could not identify which record this follow-up refers to; no older part was substituted.',
+                    'evidence':[],'sources':[],
+                    'retrieval':{'answer_scope':'business_identity','identity_resolution':'unresolved','context_invalidated':True},
+                    'generation':{'enabled':False,'status':'not_requested'}}
+            else:
+                result = await companion.ask(query, **kwargs)
         if (not isinstance(result, dict) or not isinstance(result.get('response'), str)
                 or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
                 or not isinstance(result.get('answerable'), bool)):
@@ -611,7 +635,8 @@ async def suggest_agent_tool(agent_id: str, payload: ToolSuggestionBody, request
             command['inputs']['file'] = attachment
         planned = plan(command)
         await _preflight_tools([command], request)
-        result = {**planned, 'command': command, 'context': context, 'status': 'proposal', 'execution': 'requires_explicit_run_request', 'prompt_details': suggestion.get('prompt_details')}
+        result = {**planned, 'command': command, 'context': context, 'status': 'proposal', 'execution': 'requires_explicit_run_request', 'prompt_details': suggestion.get('prompt_details'),
+                  'action_summary': {'title': chosen.get('name') or 'Proposed action', 'description': chosen.get('description') or '', 'mutates': chosen.get('mutates') is True}}
         try:
             return await _agent_io(recommendations.create, result, sessions.owner(request, graph_read_identity(request)))
         except ValueError:

@@ -340,3 +340,10 @@ async def business_answer(query: str = Query(min_length=1,max_length=500), ontol
         return await run_in_threadpool(retrieve,publisher,query=query,ontology_id=ontology_id,ontology_prefix=ontology_prefix,node_id=node_id)
     except ValueError as exc:
         raise HTTPException(422,str(exc)) from exc
+
+
+@router.get('/api/v1/graph/source-revision', summary='Verify the exact retained source for a selected business record')
+def graph_source_revision(node_id: str=Query(min_length=1,max_length=256),ontology_id: str=Query(min_length=1,max_length=256)):
+    from .source_revision import source_revision
+    try:return source_revision(publisher,node_id,ontology_id)
+    except ValueError as failure:raise HTTPException(409,str(failure)) from failure

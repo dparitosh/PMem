@@ -64,15 +64,47 @@ def completion_evidence(context, observations, evidence_steps):
         validate_read(context, observation['tool_id'], observation.get('inputs', {}))
         policy = result.get('decision_policy')
         if isinstance(policy, dict) and policy.get('status') in POLICY_STATES:
-            fields = {'change-impact': [('assembly_impact','assembly records'),('process_impacts','manufacturing-process records'),('impacted_requirements','requirement records')],
-                      'similar-parts': [('similar_parts','comparison candidates')],
-                      'manufacturing': [('direct_processes','direct manufacturing-process records')]}[selected['service']]
-            counts = [label + ': ' + str(len(result[key])) for key, label in fields if isinstance(result.get(key),list)]
-            summary = selected['object'] + ' — ' + ('; '.join(counts) if counts else 'selected analysis evidence retained') + '. '
-            summary += 'These are returned records in a bounded view, not whole-graph totals or proof of absence. '
-            summary += 'Decision policy: ' + policy['status'].replace('_',' ') + '. Review configuration, effectivity and missing evidence before acting. No engineering change or substitution is approved.'
+            def names(key, eligible_only=False):
+                rows = result.get(key)
+                if not isinstance(rows, list):
+                    return []
+                if eligible_only:
+                    rows = [row for row in rows if isinstance(row, dict) and not row.get('conflicts') and row.get('compatibility') != 'conflicting_evidence']
+                return list(dict.fromkeys(str(row.get('name') or row.get('process_name') or '').strip()
+                    for row in rows if isinstance(row, dict) and (row.get('name') or row.get('process_name'))))[:5]
+
+            if selected['service'] == 'change-impact':
+                affected = list(dict.fromkeys(names('assembly_impact') + names('process_impacts') + names('impacted_requirements') + names('impacted_parts')))
+                if affected:
+                    summary = 'CO recommendation: include ' + ', '.join(affected[:8]) + ' in the change review for ' + selected['object'] + '. Confirm the applicable revisions and effective configuration before release.'
+                else:
+                    summary = 'CO recommendation: hold release for ' + selected['object'] + '. No affected assembly, requirement or manufacturing operation was established. Resolve the source reference links and repeat the assessment before defining the CO scope.'
+            elif selected['service'] == 'similar-parts':
+                candidates = names('similar_parts', eligible_only=True)
+                summary = ('Review ' + ', '.join(candidates) + ' as alternatives to ' + selected['object'] + '; verify dimensions, material and revision before adding a substitution to the CO.') if candidates else ('Do not propose a substitution for ' + selected['object'] + ': no supported alternative was identified.')
+            else:
+                processes = names('direct_processes')
+                summary = ('Include ' + ', '.join(processes) + ' in the manufacturing review for ' + selected['object'] + '; confirm the operation and applicable revision before releasing the CO.') if processes else ('Hold the manufacturing release scope for ' + selected['object'] + ': no linked manufacturing operation was established. Confirm the source process association first.')
+            if policy['status'] in {'blocked', 'unavailable'}:
+                summary += ' Release checks require resolution.'
             return {'recommendation_observation_id': observation['id'],
                     'business_summary': summary,
                     **({'semantic_support': result['semantic_support']} if isinstance(result.get('semantic_support'), dict) else {}),
                     'decision_policy_status': policy['status'], 'advisory_only': True}
     raise ValueError('Complete only after citing selected recommendation evidence with a policy assessment')
+
+
+def prompt_evidence(context, observation):
+    """Project the typed verdict for model context; retain the full observation separately."""
+    verdict = completion_evidence(context, [observation], [observation['id']])
+    result = observation['result']
+    compact = {'observation_id': observation['id'], 'business_summary': verdict['business_summary'],
+        'decision_policy_status': verdict['decision_policy_status'], 'advisory_only': True,
+        'coverage': result.get('coverage', {}), 'full_evidence_retained': True}
+    for key in ('assembly_impact', 'process_impacts', 'impacted_requirements', 'impacted_parts', 'similar_parts', 'direct_processes'):
+        rows = result.get(key)
+        if isinstance(rows, list):
+            compact[key + '_count'] = len(rows)
+            compact[key] = [{field: row[field] for field in ('node_id', 'name', 'process_name', 'category', 'review_status', 'compatibility', 'conflicts', 'similarity_score', 'evidence_coverage') if field in row}
+                for row in rows[:8] if isinstance(row, dict)]
+    return compact

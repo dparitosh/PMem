@@ -118,7 +118,8 @@ test('one service selector and input replace duplicate scenarios and misrouted s
  ready();render(<RecommendationsTab/>);
  await screen.findByText('Graph available');
  expect(screen.getAllByRole('heading',{name:'Recommendations'})).toHaveLength(1);
- expect(screen.getAllByRole('tab')).toHaveLength(3);
+ expect(screen.getAllByRole('tab')).toHaveLength(4);
+ expect(screen.getByRole('tab',{name:'Decision alternatives'})).toBeVisible();
  expect(screen.queryByText('Use sample')).toBeNull();
  expect(screen.getByLabelText('Changed item')).toBeVisible();
  fireEvent.keyDown(screen.getByRole('tab',{name:'Change Impact'}),{key:'ArrowRight'});
@@ -166,7 +167,10 @@ test('empty graph results do not claim a successful structured recommendation',a
  fireEvent.change(screen.getByLabelText('Changed item'),{target:{value:'Missing object'}});
  direct();
  fireEvent.click(screen.getByRole('button',{name:'Analyse'}));
- expect(await screen.findByText('No structured recommendation evidence')).toBeVisible();
+ expect(await screen.findByText('No matching graph term was found.',{exact:true,selector:'em'})).toBeVisible();
+ expect(screen.getByText('No structured recommendation evidence')).not.toBeVisible();
+ fireEvent.click(screen.getByText('Supporting report',{exact:true}));
+ expect(screen.getByText('No structured recommendation evidence')).toBeVisible();
  expect(screen.queryByText('Analysis completed')).toBeNull();
 });
 
@@ -182,6 +186,8 @@ test('agent mode submits the selected analysis through the existing read-goal en
  expect(await screen.findByRole('heading',{name:'Change Impact results'})).toBeVisible();
  expect(agenticClient.post).toHaveBeenCalledWith(expect.stringContaining('/agents/graph-analyst/goals'),expect.objectContaining({context,submission_id:expect.any(String)}),expect.anything());
  expect(API_METHODS.recommendations.changeImpact).not.toHaveBeenCalled();
+ expect(screen.getByText(/No policy configured for this analysis/)).not.toBeVisible();
+ fireEvent.click(screen.getByText('Supporting report',{exact:true}));
  expect(screen.getByText(/No policy configured for this analysis/)).toBeVisible();
  expect(screen.queryByRole('heading',{name:'Investigate a goal with the agent'})).toBeNull();
 });

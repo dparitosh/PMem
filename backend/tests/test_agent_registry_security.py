@@ -55,7 +55,9 @@ def test_registry_is_safe_and_single_snapshot(access, monkeypatch):
     body = response.json()
     read.assert_called_once_with()
     assert body['registry']['agent_count'] == len(body['agents']) == 28
-    assert body['registry']['tool_count'] == len(body['tools']) == 62
+    assert body['registry']['tool_count'] == len(body['tools']) == len(original['tools'])
+    assert {tool['id'] for tool in body['tools']} == {tool['id'] for tool in original['tools']}
+    assert len({tool['id'] for tool in body['tools']}) == len(body['tools'])
     assert body['registry']['readiness'] == 'not_verified'
     assert len(body['registry']['revision']) == 64
     for value in ('private-registry-prompt', 'private-agent-extension', 'private-workflow-extension', 'private-launch-command', 'private-launch-argument', 'private-launch-environment'):

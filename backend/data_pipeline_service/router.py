@@ -16,11 +16,14 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from backend.artifact_store import ArtifactStore
+from backend.depo_platform.ontology_maintenance import ontology_writer
 from backend.depo_platform.authorization import approval_identity, graph_read_identity, service_write_identity
 from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers, gateway_subscription_headers
 
+from . import definition_changes
 from . import job_definitions
 from . import run_records
 from .runner import SparkUnavailable, runner
@@ -32,8 +35,10 @@ router = APIRouter(prefix="/pipeline", tags=["data-pipeline"])
 
 
 @router.get('/jobs/execution-identity', summary='Resolve the connected data-job execution identity')
-def execution_identity(request: Request):
-    actor = service_write_identity(request, token_env='DATA_JOB_EXECUTION_TOKEN', default_actor='data-job-executor')
+def execution_identity(request: Request, profile: str = 'DATA_JOB_EXECUTION_TOKEN'):
+    if profile not in {'DATA_JOB_EXECUTION_TOKEN', 'DATA_JOB_APPROVAL_TOKEN', 'CEIM_PUBLISH_APPROVAL_TOKEN'}:
+        raise HTTPException(422, 'Unsupported data-job identity profile')
+    actor = approval_identity(request, {}, token_env=profile)
     return {'actor': actor, 'source': 'authenticated-connection'}
 
 
@@ -276,7 +281,7 @@ def create_job_definition(payload: JobDefinitionBody, request: Request) -> dict[
 def approve_job_definition(job_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     approver = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     try:
-        return job_definitions.approve(job_id, version, approver)
+        return definition_changes.execute_legacy(job_id,version,'approve',{},payload,approver)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -289,7 +294,7 @@ def approve_job_definition(job_id: str, version: str, payload: ApprovalBody, req
 def disable_job_definition(job_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     approver = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     try:
-        return job_definitions.disable(job_id, version, approver)
+        return definition_changes.execute_legacy(job_id,version,'disable',{},payload,approver)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -306,7 +311,7 @@ def configure_job_schedule(job_id: str, version: str, payload: ScheduleBody, req
         prior = run_records.get(replay_run_id)
         if not prior or prior.get("job_id") != job_id or prior.get("job_version") != version:
             raise ValueError("replay_run_id must reference a retained run of the same job and version")
-        return job_definitions.configure_schedule(job_id, version, payload, actor)
+        return definition_changes.execute_legacy(job_id,version,'schedule',{key:payload[key] for key in ('replay_run_id','interval_seconds','retry_policy') if key in payload},payload,actor)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -319,7 +324,7 @@ def configure_job_schedule(job_id: str, version: str, payload: ScheduleBody, req
 def disable_job_schedule(job_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     try:
-        return job_definitions.clear_schedule(job_id, version, actor)
+        return definition_changes.execute_legacy(job_id,version,'clear',{},payload,actor)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -422,89 +427,98 @@ def get_job_run(run_id: str, request: Request = None) -> dict[str, Any]:
 async def publish_job_run(run_id: str, payload: JobPublicationBody, request: Request) -> dict[str, Any]:
     """Use the canonical CEIM API; advance the checkpoint only after success."""
     actor = approval_identity(request, payload, token_env="CEIM_PUBLISH_APPROVAL_TOKEN")
-    with run_records.store.advisory_lock('publish:' + run_id) as acquired:
+    from .publication_change import publication_lock
+    async with publication_lock(run_id) as acquired:
         if not acquired:
-            raise HTTPException(status_code=409, detail='Run publication is already in progress; retry to reconcile')
+            raise HTTPException(status_code=409, detail='Run publication is already in progress; refresh retained status')
+        from .publication_change import execute_locked
+        return await execute_locked(run_id,payload,request,actor)
+
+
+async def _publish_job_run_locked(run_id, payload, request, actor):
+    try:
+        record = run_records.get(run_id)
+        if not record:
+            raise LookupError("Data job run was not found")
+        output = dict(record.get("output_manifest") or {})
+        from .publication_change import accepted_partition
+        _,_,batch=await run_in_threadpool(accepted_partition,record)
+        from .publication_scope import publication_scope
+        ontology_id = publication_scope(payload, record, batch)
+        publication_payload = {
+            **batch,
+            "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),
+            "semantic_release": payload.get("semantic_release"),
+            "source_system": payload.get("source_system") or batch.get("source_system") or record.get("source_system"),
+            # A stable run id makes a successful graph commit recoverable if
+            # the caller loses the CEIM response while the commit completes.
+            "publication_id": run_id,
+            "approved_by": actor,
+        }
+        # Authenticate the peer with its dedicated header, never a caller/body credential.
+        publication_payload.pop("approval_token", None)
+        intent = {key: publication_payload.get(key) for key in ("ontology_id", "prefix", "semantic_release", "source_system")}
+        intent['batch_digest'] = run_records._digest(batch)
+        previous_intent = output.get('publication_intent')
+        previous_receipt = output.get('publication')
+        if previous_intent and previous_intent != intent:
+            raise ValueError('Run publication destination or content differs from the first attempt')
+        if previous_receipt:
+            if previous_receipt.get('ontology_id') != ontology_id:
+                raise ValueError('Run already published to a different ontology')
+            return record
+        output['publication_intent'] = intent
+        record = {**record, 'output_manifest': output}
+        run_records.store.put(run_id, record)
+        ceim_url = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
+        ceim_root = ceim_url if ceim_url.endswith("/api/v1") else f"{ceim_url}/api/v1"
+        forwarded_headers = {
+            key: value for key, value in request.headers.items()
+            if key.lower() in {"x-ms-client-principal", "x-depo-principal-id", "x-depo-roles"}
+        }
+        forwarded_headers.update(service_bearer_headers(
+            "CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=ceim_root,
+        ))
+        def retain_publication(publication):
+            # Managed releases advance their checkpoint only in receipt-only
+            # reconciliation after a current graph receipt has been verified.
+            if record.get('change_request'):return record
+            return run_records.publication_succeeded(record,publication)
+
+        publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
         try:
-            record = run_records.get(run_id)
-            if not record:
-                raise LookupError("Data job run was not found")
-            output = dict(record.get("output_manifest") or {})
-            if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim", "connector-ceim-normalize"}:
-                raise ValueError("Only a completed semantic batch can be published")
-            artifact_id = str((output.get("partition_artifacts") or {}).get("accepted") or "")
-            metadata, path = ArtifactStore().resolve(artifact_id)
-            if metadata.get("kind") != "accepted-semantic-partition":
-                raise ValueError("Run does not reference an accepted semantic partition")
-            batch = json.loads(path.read_text(encoding="utf-8"))
-            from .publication_scope import publication_scope
-            ontology_id = publication_scope(payload, record, batch)
-            publication_payload = {
-                **batch,
-                "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),
-                "semantic_release": payload.get("semantic_release"),
-                "source_system": payload.get("source_system") or batch.get("source_system") or record.get("source_system"),
-                # A stable run id makes a successful graph commit recoverable if
-                # the caller loses the CEIM response while the commit completes.
-                "publication_id": run_id,
-                "approved_by": actor, "approval_token": payload.get("approval_token"),
-            }
-            intent = {key: publication_payload.get(key) for key in ("ontology_id", "prefix", "semantic_release", "source_system")}
-            intent['batch_digest'] = run_records._digest(batch)
-            previous_intent = output.get('publication_intent')
-            previous_receipt = output.get('publication')
-            if previous_intent and previous_intent != intent:
-                raise ValueError('Run publication destination or content differs from the first attempt')
-            if previous_receipt:
-                if previous_receipt.get('ontology_id') != ontology_id:
-                    raise ValueError('Run already published to a different ontology')
-                return record
-            output['publication_intent'] = intent
-            record = {**record, 'output_manifest': output}
-            run_records.store.put(run_id, record)
-            ceim_url = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
-            ceim_root = ceim_url if ceim_url.endswith("/api/v1") else f"{ceim_url}/api/v1"
-            forwarded_headers = {
-                key: value for key, value in request.headers.items()
-                if key.lower() in {"x-ms-client-principal", "x-depo-principal-id", "x-depo-roles"}
-            }
-            forwarded_headers.update(service_bearer_headers(
-                "CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=ceim_root,
-            ))
-            publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
-            try:
-                async with httpx.AsyncClient(timeout=publication_timeout, trust_env=False) as client:
-                    response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
-            except httpx.TimeoutException as exc:
-                # Never retry a mutation blindly. Query the graph's durable
-                # receipt keyed by this run before reporting an uncertain result.
+            async with httpx.AsyncClient(timeout=publication_timeout, trust_env=False) as client:
+                response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
+        except httpx.TimeoutException as exc:
+            # Never retry a mutation blindly. Query the graph's durable
+            # receipt keyed by this run before reporting an uncertain result.
+            receipt = await _reconcile_graph_publication(
+                ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
+            )
+            if receipt:
+                return retain_publication({
+                    "status": "published", "ontology_id": ontology_id,
+                    "publication_id": run_id, "reconciled_after_timeout": True, "publication": receipt,
+                })
+            raise RuntimeError("Canonical publication timed out and no durable graph receipt was found; retry the same run to reconcile safely") from exc
+        if response.is_error:
+            if response.status_code in {502, 503, 504}:
                 receipt = await _reconcile_graph_publication(
                     ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
                 )
                 if receipt:
-                    return run_records.publication_succeeded(record, {
+                    return retain_publication({
                         "status": "published", "ontology_id": ontology_id,
-                        "publication_id": run_id, "reconciled_after_timeout": True, "publication": receipt,
+                        "publication_id": run_id, "reconciled_after_gateway_error": True, "publication": receipt,
                     })
-                raise RuntimeError("Canonical publication timed out and no durable graph receipt was found; retry the same run to reconcile safely") from exc
-            if response.is_error:
-                if response.status_code in {502, 503, 504}:
-                    receipt = await _reconcile_graph_publication(
-                        ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
-                    )
-                    if receipt:
-                        return run_records.publication_succeeded(record, {
-                            "status": "published", "ontology_id": ontology_id,
-                            "publication_id": run_id, "reconciled_after_gateway_error": True, "publication": receipt,
-                        })
-                raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
-            return run_records.publication_succeeded(record, dict(response.json()))
-        except LookupError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except (RuntimeError, httpx.HTTPError) as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
+        return retain_publication(dict(response.json()))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/jobs/runs/{run_id}/replay", summary="Replay a retained immutable data-job input")
@@ -582,8 +596,52 @@ def reconcile_analytics_evidence(run_id: str, request: Request, payload: Approva
             result = build_analytics_evidence(inputs, receipt)
             # This run is terminal: no worker can own it during evidence recovery.
             updated = {**record, 'worker_id': None, 'lease': None, 'evidence_reconciled_by': actor}
-            persisted = run_records.complete(updated, result)
+            persisted = run_records.complete(updated, result, expected_record=record)
             from .analytics_evidence import run_result
             return run_result(result, persisted)
     except (ValueError, OSError, RuntimeError) as exc:
         raise HTTPException(503, 'Analytics evidence recovery unavailable; inspect the retained run before retrying', headers={'X-DEPO-Run-ID': run_id, 'X-DEPO-Run-Kind': 'pipeline'}) from exc
+
+
+from backend.depo_platform.request_bodies import PipelineChangeSubmission,PipelineChangeCommand
+
+
+def _pipeline_release_actor(request: Request):
+    return approval_identity(request,{},token_env='CEIM_PUBLISH_APPROVAL_TOKEN')
+
+
+@router.get('/jobs/runs/{run_id}/change',dependencies=[Depends(graph_read_identity)])
+async def pipeline_change_status(run_id: str):
+    from .publication_change import view
+    return await view(run_id)
+
+
+@router.post('/jobs/runs/{run_id}/change/submit')
+@ontology_writer
+async def pipeline_change_submit(run_id: str,payload: PipelineChangeSubmission,actor: str=Depends(_pipeline_release_actor)):
+    from .publication_change import submit
+    return await submit(run_id,payload.publication,payload.reason,actor)
+
+
+@router.post('/jobs/runs/{run_id}/change')
+@ontology_writer
+async def pipeline_change_command(run_id: str,payload: PipelineChangeCommand,request: Request,actor: str=Depends(_pipeline_release_actor)):
+    from .publication_change import command
+    return await command(run_id,payload,request,actor)
+
+
+from backend.depo_platform.request_bodies import DefinitionChangeSubmission, MergeChangeCommand
+
+@router.post('/jobs/definition-changes',status_code=201,summary='Submit a retained workflow maintenance CR')
+def submit_definition_change(payload: DefinitionChangeSubmission,request: Request):
+    actor=approval_identity(request,{},token_env='DATA_JOB_APPROVAL_TOKEN')
+    return definition_changes.submit(payload,actor)
+
+@router.get('/jobs/definition-changes/{identifier}/change',dependencies=[Depends(graph_read_identity)],summary='Read exact workflow maintenance CR/CO scope')
+def read_definition_change(identifier: str):
+    return definition_changes.view(identifier)
+
+@router.post('/jobs/definition-changes/{identifier}/change',summary='Review, authorize and apply a workflow maintenance CO')
+def command_definition_change(identifier: str,payload: MergeChangeCommand,request: Request):
+    actor=approval_identity(request,{},token_env='DATA_JOB_APPROVAL_TOKEN')
+    return definition_changes.command(identifier,payload,actor)

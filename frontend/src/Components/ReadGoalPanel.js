@@ -13,7 +13,7 @@ export default function ReadGoalPanel({ agent, task, context, storageKey, initia
     {active && <button type="button" disabled={busy || accessRejected} onClick={cancel}>Cancel investigation</button>}
     {error && <p role="alert">{error}</p>}
     {pollPaused && <button type="button" disabled={busy || accessRejected} onClick={refresh}>Refresh investigation status</button>}
-    {run && <TaskProgress run={run} kind="goal" />}
+    {run && <TaskProgress run={run} kind="goal" hideGoal={compact} />}
 
   </section>;
 }

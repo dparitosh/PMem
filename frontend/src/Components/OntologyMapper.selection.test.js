@@ -33,10 +33,10 @@ test('vocabulary timeout does not hide instance agents or the ontology merge wor
  await screen.findByRole('option',{name:/Target.*target-id/});
  fireEvent.click(screen.getByRole('tab',{name:'Semantic Bridge'}));
  expect(await screen.findByText(/Vocabulary loading failed/)).toBeVisible();
- expect(screen.getByText(/(?:Mapping workflow|Workflow status, controls and policy) ·/)).toBeVisible();
+ expect(screen.getByText('Prepare mappings')).toBeVisible();
  fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
  expect(await screen.findByRole('combobox',{name:'Source ontology'})).toBeVisible();
- expect(screen.getByRole('region',{name:'Agent mapping proposals'})).toBeVisible();
+ fireEvent.click(screen.getByText('View merge details'));expect(screen.getByRole('region',{name:'Agent mapping proposals'})).toBeVisible();
  expect(screen.getByRole('button',{name:'Generate mapping plan'})).toBeVisible();
 });
 afterEach(()=>{cleanup();window.location.hash='';vi.clearAllMocks();});
@@ -56,14 +56,14 @@ test('background merge shows mappings while validation holds approval and resume
  const approver=screen.getByLabelText(/Reviewer name/);
  fireEvent.change(approver,{target:{value:'pmem-ui-test'}});
  fireEvent.click(screen.getByRole('button',{name:'Generate mapping plan'}));
- await screen.findByText(/Mappings are ready for review/);
+ fireEvent.click(await screen.findByText('View report'));await screen.findByText(/Mapping proposals ready/);
  expect(state.preview.mock.calls[0][1].background).toBe(true);
- expect(screen.getByRole('button',{name:/Approve.*publish/i})).toBeDisabled();
+ expect(screen.queryByRole('button',{name:'Approve merge and publish'})).toBeNull();
  expect(screen.getByText(/SHACL: Pending/)).toBeInTheDocument();
  state.status.mockResolvedValueOnce({data:plan}).mockResolvedValueOnce({data:{...plan,job_status:'failed',job_error:'Validation exceeded its deadline'}});
  fireEvent.click(screen.getByRole('button',{name:/Resume saved plan/}));
  await screen.findAllByText(/Validation exceeded its deadline/);
- expect(screen.getByRole('button',{name:/Approve.*publish/i})).toBeDisabled();
+ expect(screen.queryByRole('button',{name:'Approve merge and publish'})).toBeNull();
  state.status.mockResolvedValue({data:plan});
  view.unmount();
  render(<OntologyMapper/>);
@@ -72,18 +72,18 @@ test('background merge shows mappings while validation holds approval and resume
  fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
  fireEvent.change(screen.getByRole('combobox',{name:'Source ontology'}),{target:{value:'source-id'}});
  fireEvent.click(screen.getByRole('button',{name:/Resume saved plan/}));
- await screen.findByText(/Mappings are ready for review/);
+ fireEvent.click(await screen.findByText('View report'));await screen.findByText(/Mapping proposals ready/);
  expect(state.status).toHaveBeenCalledWith('job-1',expect.any(Object));
  state.status.mockResolvedValueOnce({data:plan}).mockResolvedValueOnce({data:{...plan,job_status:'completed',
    semantic_checks:{shacl_conforms:false,report:'Validation findings',report_summary:{total_results:3,
      by_severity:{'http://www.w3.org/ns/shacl#Violation':3},text_truncated:true,
      profiles:[{profile:'editorial_asserted',conforms:false,total_results:3}]}}}});
  fireEvent.click(screen.getByRole('button',{name:/Resume saved plan/}));
- await screen.findByText(/Semantic validation completed with blocking findings/);
+ await screen.findByText(/Validation blocked/);
  fireEvent.click(screen.getByText('Semantic validation evidence',{exact:true}));
  expect(screen.getByText(/Findings: 3/)).toBeVisible();
  expect(screen.getByText(/Authored ontology metadata: Needs review/)).toBeVisible();
- expect(screen.getByRole('button',{name:/Approve.*publish/i})).toBeDisabled();
+ expect(screen.queryByRole('button',{name:'Approve merge and publish'})).toBeNull();
 });
 test('active draft is retained alongside a published version with the same prefix', async()=>{
   window.location.hash='#/ontology?target=draft-id';
@@ -100,7 +100,7 @@ test('initial taxonomy loads a visible default without visiting vocabulary and r
   render(<OntologyMapper/>);
   await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active ontology'})).toHaveValue('published-id'));
   await waitFor(()=>expect(state.taxonomy).toHaveBeenCalledWith('published-id',expect.objectContaining({signal:expect.any(AbortSignal),timeout:120000})));
-  expect(await screen.findByRole('region',{name:'Classes (1)'})).toBeInTheDocument();
+  expect(await screen.findByRole('region',{name:'Classes (1 total)'})).toBeInTheDocument();
   expect(state.dictionary).not.toHaveBeenCalled();
   fireEvent.change(screen.getByRole('combobox',{name:'Active ontology'}),{target:{value:''}});
   await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active ontology'})).toHaveValue(''));
@@ -111,9 +111,9 @@ test('class inventory is independent of the 800 row hierarchy preview and exclud
  render(<ProtegeOntologyBrowser nodes={nodes} edges={[]} filter="" taxonomy={{nodes,edges:[]}} reasoning={null}/>);
  fireEvent.click(screen.getByRole('button',{name:'Class hierarchy',exact:true}));
  expect(screen.getByRole('region',{name:'Class Hierarchy (800 of 805 loaded classes)'})).toHaveAttribute('data-count','800');
- expect(screen.queryByRole('region',{name:'Classes (805)'})).toBeNull();
+ expect(screen.queryByRole('region',{name:'Classes (805 total)'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Class list',exact:true}));
- expect(screen.getByRole('region',{name:'Classes (805)'})).toHaveAttribute('data-count','805');
+ expect(screen.getByRole('region',{name:'Classes (805 total)'})).toHaveAttribute('data-count','805');
  expect(screen.getByText('805')).toBeInTheDocument();
 });
 
@@ -145,9 +145,9 @@ test('changing ontology discards the old taxonomy and ignores a late response',a
  render(<OntologyMapper/>);
  await waitFor(()=>expect(state.taxonomy).toHaveBeenCalledWith('first',expect.anything()));
  fireEvent.change(screen.getByRole('combobox',{name:'Active ontology'}),{target:{value:'second'}});
- expect(await screen.findByRole('region',{name:'Classes (1)'})).toBeInTheDocument();
+ expect(await screen.findByRole('region',{name:'Classes (1 total)'})).toBeInTheDocument();
  resolveFirst({data:{nodes:[],edges:[]}});
- await waitFor(()=>expect(screen.getByRole('region',{name:'Classes (1)'})).toBeInTheDocument());
+ await waitFor(()=>expect(screen.getByRole('region',{name:'Classes (1 total)'})).toBeInTheDocument());
  expect(screen.getByRole('combobox',{name:'Active ontology'})).toHaveValue('second');
 });
 
@@ -165,22 +165,22 @@ test('selected merge mappings keep the evidence visible but block stale-plan pub
  fireEvent.click(screen.getByRole('tab',{name:'Merge two ontologies'}));
  fireEvent.change(screen.getByLabelText(/Reviewer name/),{target:{value:'steward'}});
  fireEvent.click(screen.getByRole('button',{name:'Generate mapping plan'}));
- await waitFor(()=>expect(screen.getByRole('button',{name:'Run Steward assessment'})).toBeEnabled());
+ fireEvent.click(screen.getByText('View assessment report'));await waitFor(()=>expect(screen.getByRole('button',{name:'Run Steward assessment'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Run Steward assessment'}));
- await waitFor(()=>expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeEnabled());
- fireEvent.click(screen.getByRole('button',{name:'Select for consolidation'}));
+ expect(screen.getByRole('link',{name:'Review CR / CO'})).toBeVisible();
+ fireEvent.click(screen.getByText('View merge details'));fireEvent.click(screen.getByRole('button',{name:'Select for consolidation'}));
  expect(screen.getByText('Source Part')).toBeVisible();
- expect(screen.getByText('Selection needs validation')).toBeVisible();
- expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeDisabled();
+ expect(screen.getAllByText('Selection needs validation').length).toBeGreaterThan(0);
+ expect(screen.queryByRole('button',{name:'Approve merge and publish'})).toBeNull();
  state.preview.mockResolvedValue({runId:'agent-revised',result:{...plan,preview_id:'revised-plan',changes:{entity_mappings:[candidate]}}});
  fireEvent.click(screen.getByRole('button',{name:'Validate selected mappings'}));
  await waitFor(()=>expect(screen.getByRole('button',{name:'Run Steward assessment'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Run Steward assessment'}));
- await waitFor(()=>expect(screen.getByRole('button',{name:'Approve merge and publish'})).toBeEnabled());
+ expect(screen.getByRole('link',{name:'Review CR / CO'})).toBeVisible();
  expect(state.preview.mock.calls.at(-1)[1].entity_mappings).toEqual([{source_iri:candidate.source_iri,target_iri:candidate.target_iri}]);
- expect(screen.getByText('Selected mappings in this plan')).toBeVisible();
+ expect(screen.getByRole('link',{name:'Review CR / CO'})).toHaveAttribute('href',expect.stringContaining('record=revised-plan'));
  fireEvent(window,new Event('depo:session-expired'));
- await waitFor(()=>expect(screen.queryByRole('button',{name:'Approve merge and publish'})).not.toBeEnabled());
+ expect(screen.queryByRole('button',{name:'Approve merge and publish'})).toBeNull();
 });
 
 
@@ -189,7 +189,7 @@ test('an empty registry gives an import path rather than a service outage warnin
  render(<OntologyMapper/>);
  expect(await screen.findByRole('link',{name:'Import ontology versions'})).toHaveAttribute('href','#/import');
  expect(screen.queryByText('Ontology service unavailable · Show details')).not.toBeInTheDocument();
- expect(screen.getByText(/Register at least two ontology versions/)).toBeVisible();
+ expect(screen.getByRole('link',{name:'Import ontology versions'})).toBeVisible();
 });
 
 

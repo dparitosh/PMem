@@ -15,6 +15,7 @@ def add_trs(graph,payload):
     graph.bind('trs',TRS);graph.bind('oslc',OSLC)
     subject=URIRef(payload['uri']);kind=payload['type'].split(':',1)[1]
     graph.add((subject,RDF.type,TRS[kind]))
+    if payload.get('stream_id'):graph.add((subject,URIRef('urn:depo:oslc:extension:stream_id'),Literal(payload['stream_id'])))
     if kind=='TrackedResourceSet':
         for key in ('base','changeLog'):
             graph.add((subject,TRS[key],URIRef(payload[key])))

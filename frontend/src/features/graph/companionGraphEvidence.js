@@ -21,3 +21,14 @@ export function focusCompanionEvidence(data, ids) {
     links: (data.links || []).filter(link => selected.has(endpoint(link.source)) && selected.has(endpoint(link.target))),
   };
 }
+
+// Retain the selected registration even when projected nodes omit scope metadata.
+// An explicitly scoped node takes precedence over the canvas selection.
+export function companionOntologyScope(node, selectedOntology, options = []) {
+  const props = node?.properties || {};
+  const ontologyId = props.ontology_id || props.source_ontology || node?.ontology_id || node?.source_ontology ||
+    (selectedOntology && selectedOntology !== 'ALL' ? selectedOntology : '');
+  const selected = options.find(option => option.value === ontologyId || option.ontology_id === ontologyId);
+  const ontologyPrefix = props.ontology_prefix || props.prefix || node?.ontology_prefix || selected?.prefix || selected?.ontology_prefix || '';
+  return { ontologyId, ontologyPrefix };
+}

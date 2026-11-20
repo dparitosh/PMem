@@ -1,6 +1,6 @@
 # NEXUS short-release improvement tracker
 
-Updated: 2026-11-16
+Updated: 2026-11-20
 
 ## Master list of open actions — reconciled 2026-11-16
 
@@ -11,7 +11,7 @@ This is the single current action register. It consolidates the original OPEN it
 | OPEN-01 | P1 · Partial fix; model remediation open | Finish source/import-profile and full logical-model remediation. Cardinality and Dublin Core crashes are fixed; regenerate a reviewed version, preserve source statements/imports and resolve remaining RDF/OWL profile issues. | Exact artifact/dependency fingerprints; parse/profile/SHACL/inference evidence; an actually executed applicable reasoner result. No unsupported OWL-DL result reported as consistent. |
 | OPEN-03 | P1 · Local coordinated parent release verified; broader analytics open | UI acceptance completed for existing mBOM graph: snapshot WF-2026-000005 enabled through CR-2026-000015; RUN-2026-000018 retained 8648 RDF statements; product induction-motor-mbom-source-evidence:1.0.0 reviewed and published through CR-2026-000016. Package/catalog delivery verified and ZIP downloaded through the frontend; ZIP integrity passed. | This proves the native snapshot-to-evidence-product branch only. The linked parent CR-2026-000020 / CO-2026-000016 is completed with both native receipts verified; broader analytics acceptance remains open. Actor was deployment-bootstrap under the existing credential-bound matrix; Paritosh is owner/steward, not a substituted approver. Product quality remains requires_review; no business KPI/completeness certification. |
 | OPEN-04 | P1 · Coverage review open | Verify CR/CO and configuration ownership for every remaining ontology/document/preparation task; finish remaining owner-workspace/registered-source/template parity before removing old inline commands. | Dispatch-by-dispatch matrix, denied execution without matching authority, exact task/deliverable lineage and equivalent owner commands, including graph-chunk handoff. No independent approval bypass. |
-| OPEN-05 | P1 · Regression and UI acceptance open | Latest full frontend suite is green: 180 files / 1223 tests passed in 326.76s, recorded in grounding-full-frontend-final.log outside application code. Three obsolete recommendation test expectations were corrected to verify visible business results and explicitly expanded Supporting report evidence. Finish page/field/button/link acceptance, including multi-tab credentials, Back/Forward, refresh, stale response, cancellation, interruption and restart. Both Data Flow handoffs were activated during the coordinated release journey; wider page/recovery acceptance remains open. | Current suite receipt plus page/component/element acceptance results. Last full frontend run before the reporting-scope increment: 181 files / 1,225 tests passed (447.73s), recorded in action-register-frontend-tests.log outside the application. Subsequent reporting increment: 8 frontend and 13 backend checks passed. Product flow increment: duplicate XML loader removed from retained-evidence publication; new direct publication and manual approver removed, legacy uncertain-outcome reconciliation preserved; raw product JSON removed, readable provenance and authenticated download added. Retired unused PageTaskWorkspace component, stylesheet and component-only tests. The subsequent complete run passed after the report/export and three test-contract corrections. Wider page/recovery acceptance remains open. Targeted passing tests do not certify all pages. |
+| OPEN-05 | P1 · Backend regression qualification remains open | Full frontend: 182 files / 1246 tests passed; 37 graph/chat/report follow-up tests passed. Installation/upgrade/package checks: 56 passed plus the separately verified POSIX fixture. Broad backend run stopped at 30 failures after 982 passes, 4 skips and 83 subtests. See the 20 November checkpoint; do not claim a green full backend suite or production certification. | Resolve remaining backend contract/fixture and functional failures, rerun the complete suite, then perform customer browser/identity/data-volume acceptance. |
 | OPEN-06 | P1 · Cross-domain acceptance open | Finish remaining vocabulary/source-family intake, AP242 alignment and reviewed requirements–CAD–MBSE–BOM–manufacturing–quality links. Six separate source publications and 30 graph analyses already passed locally. | Reviewed cross-source identity/relationship mappings, recorded values and forward/backward paths. Separate source graphs, name similarity and reference links must not be presented as a complete digital thread. |
 | OPEN-07 | P1 · External acceptance open | Verify installed IIF orchestration, actual agent GraphQL/tool invocation, optional MCP handshake and customer architecture interoperability. | Real authenticated requests, scoped tool/evidence/latency records, failures and restart recovery. Repository adapter/unit tests and direct graph calls are not external orchestration acceptance. |
 | OPEN-08 | P1 · Customer acceptance deferred | Prove customer install/previous-version upgrade, packaging/configuration, restart, restore and rollback; validate enterprise identity/project authorization and separation of duty in that environment. | Named deployment and agreed recovery targets, upgrade/restore receipts, preserved configuration/credentials and denied unauthorized cases. Customer testing was deferred by the user; local startup is not customer acceptance. |
@@ -145,6 +145,94 @@ Each action retains its existing ID and detailed evidence. These groups share fi
 - OPEN-18 / SCOPE-01 remain open: effective-date interval/baseline evaluation (current comparison is declared text, not applicability), explicit objectives/trade-off optimization, reusable ratio/weighted KPI formulas beyond the existing four aggregates, period comparisons/historical dimensions, domain-approved quality benchmarks and representative concurrency/data-volume tests. Existing snapshot pinning is not time-aware business reporting. Existing data products remain implemented; these gaps concern their analytics semantics.
 - Installation/upgrade checks: release-package validation passed (87 PowerShell scripts, 10 services, 3 workers, 19 migrations); isolated upgrade-flow regression passed after refreshing its missing process-control and configuration/runtime stubs. Package preflight now requires the analytics definition/materialization modules. No new migration or package dependency required.
 - Source changes tested; running services have not been restarted for this checkpoint. No customer model approved or product published.
+
+### Admin sources and deployment configuration audit - 16 November
+
+- Read-only Production deployment validation passed against the selected root `.env.local`; this did not probe endpoints or establish live source connectivity. Application database/schema, PostgreSQL lifecycle mode and artifact storage are configured. No ODBC settings exist. No connector profiles, dedicated connector secrets or REST host allowlist are configured in that file. Secrets were not printed or changed.
+- Admin capability inventory is not a configured connection: enterprise source registration consumes operator-owned `DEPO_CONNECTOR_PROFILES`, resource aliases and `DEPO_CONNECTOR_SECRET_*` JSON settings. Browser registration persists the reference in PostgreSQL; acquisition runs in the semantic child through the pipeline worker. The DB adapter uses SQLAlchemy and a database driver, not a mandatory ODBC DSN. The application database independently uses psycopg.
+- Configuration/documentation gap: `config/deployment.env.example` has no enterprise connector profile example. `docs/CONNECTOR-SOURCES.md` documents the contract, but the main template does not make the Admin prerequisite discoverable. Its REST comment also says an empty allowlist prevents registration, while the updated runtime allows registration and blocks acquisition.
+- Deployment readiness gap: `test-depo-deployment.ps1` does not validate connector profile JSON, secret JSON shape or selected connector driver readiness. A passing core deployment preflight must not be presented as live connector acceptance. Source acquisition and real endpoint credentials remain untested.
+- Installation audit P1: reproducible partial shutdown when a later tracked service identity cannot be inspected. Exact pushed `stop-depo-services.ps1` sends graceful requests/stops earlier verified services before checking all tracked identities; a mocked two-service test recorded one stop before the hidden-identity exception. Setup/update stop the frontend first. Preflight should verify management access for all tracked services before any shutdown. Reproduction used only workspace fixture processes/functions; no live services were stopped.
+- Exact pushed release snapshot passed structural packaging and isolated upgrade-flow regression. Those checks do not prove customer database upgrade, connector connectivity or recovery acceptance. This is a code/configuration audit, not a rendered Admin-page acceptance test.
+
+### Bearing decision video acceptance checkpoint - 17 November
+
+- Created isolated Engineering ODS scenario outside application source: 41 stable UUID-backed business identities, 62 explicit links, 634 RDF statements. Turtle/JSON-LD round-trip identity, endpoint resolution, source hashes and CEIM SHACL checks passed. Three existing PLMXML documents are context references only; authored bearing measurements, costs and test values retain scenario provenance. No actual bearing-life solver or validated ISO fit computation is claimed.
+- Registered and published `bearing_decision_ods_6f54bd75110a43db`, version 1.0.0, through native ontology lifecycle and CR-2026-000021. Verified current graph receipt: publication `8af236ee0e2bfed6665c1808189d2f36876e6435a86029ef11c9238bc0a36fc3`, 171 graph resources / 269 relationships including schema infrastructure. These are not 171 physical parts. Authenticated actor deployment-bootstrap; local scenario acceptance is not customer engineering approval.
+- Browser-tested landing Companion and selected Graph Explorer investigation. Reproduced multi-clause comparison being treated as an exact record name, the word 'constraints' rejected by a mis-grouped client regex, and engineering findings/temperature/vibration/cost/lead-time properties omitted from the evidence allowlist. Fixed with explicit regression coverage: 61 backend tests and 6 frontend tests passed. Activated as frontend index-Dxlu9bWa.js with managed restart. Live contextual answer now exposes the recorded finding, dimensional limits and operating values; no false 'property absent' conclusion is needed for those assertions.
+- Autonomous Graph Analyst run `goal-a12a793c20c54f12eb1a2157f6dc2317` failed before any tool observation. RCA: 19 registered tool schemas plus duplicated prompt content produce 37423 bytes of reserved prompt overhead against the configured conservative 32768-token upper-bound budget. The preflight raised plain ValueError and was misreported as goal_invalid_response; there was no second failed OpenAI response. First planning call returned HTTP 200 with gpt-5-nano.
+- Fixed native proposal prompt duplication: full schemas/descriptions remain in native function definitions, with only stable tool-ID/function-name mappings in user prose. Structured mode retains its schema instructions. Goal budget estimation now follows that representation; exhausted budget uses PromptBudgetExceeded for accurate diagnosis. Same available tools, limits, authorization, scope and completion evidence checks retained. 56 provider/goal tests plus 10 subtests passed. Activation and fresh live autonomous assessment still in progress at this checkpoint.
+- OPEN-18 remains open: independent live constraint/alternative decision acceptance, complete test-evidence coverage, current selected-ontology propagation in contextual chat, irrelevant empty PostgreSQL-context notices, and short-/long-term memory demonstrations. Published scenario records are not proof of a successful agent calculation, a saved live memory write, an approved CR/CO engineering action or a completed video. Earlier failed UI outputs are test evidence, not final demo footage.
+- Evidence, generator, native loader, receipts and use-case script are in local workspace outputs/engineering-decision-ods-20261117; none of the fixture-generation/video code was inserted into application runtime modules. No new dependencies or PostgreSQL migrations were introduced. Current follow-up fixes are not committed/pushed.
+
+### Bearing decision live acceptance — 18 November follow-up
+
+- Managed restart completed; frontend `index-Dxlu9bWa.js`, local authentication and ontology reads verified. Existing databases retained.
+- Engineering ODS publication is current: 41 business identities, 62 links and 634 RDF statements; native dataset-publication CR-2026-000021 / CO-2026-000019 executed. This is not physical corrective-action approval.
+- Regression verification: 142 backend tests passed with 10 subtests; frontend validation tests previously 6 passed. Counts overlap earlier checkpoints and must not be added together.
+- Live evidence acceptance: `goal-19ba86ef3eb8e29de133548ad1b2cf93` retrieved the selected investigation, four alternatives and four linked evaluation records through `graph.business_context`, depth 2. Compact evidence includes 9 nodes and 8 directed links with source identities, units, cost and lead time. Stored recommendation is excluded from the comparison projection.
+- OPEN: autonomous completion. The agent repeats the completed read; the controller correctly rejects duplication and reaches the eight-decision limit. A direct diagnostic reproduced the duplicate read. A completion-only diagnostic supplied invalid evidence-step identifiers. Do not claim the live recommendation is validated.
+- OPEN: replacement continuous recording. Windows capture of the ChatGPT window timed out. No new video has been delivered; previous video remains unchanged. No screenshot montage substitutes for a live recording.
+- Replacement business story and voiceover: `outputs/engineering-decision-ods-20261117/NEXUS-Bearing-Decision-Video-Script.txt` in the Codex workspace. Expected outcome is B, subject to live agent acceptance; A fails thermal/vibration/envelope/lead-time criteria, C fails speed, D fails thermal/vibration criteria.
+- Keep OPEN-18 and wider decision/analytics acceptance open. No customer benchmark, live memory-write acceptance or engineering implementation approval is established by this fixture.
+
+### Decision Recommendations live acceptance and video — 18 November
+
+- Implemented Decision alternatives within the existing Recommendations page, reusing business-object resolution, the existing read-goal API, Graph Analyst and the published graph business-context tool. No new package or microservice was introduced; fixture and recording programs remain outside application runtime.
+- RCA: generic model action selection repeated completed reads, supplied invalid observation citations, or emitted instructions/drafting prose instead of a supported answer. The inexpensive model also misstated numeric constraint failures. Controller completion citations are now bound to retained observation IDs, duplicate recovery is bounded, and comparison calculations use typed source values rather than model arithmetic.
+- The selected comparison retains joined alternative/evaluation identities and values. Explicit numeric criteria, matching supported units, finite measurements, non-conflicting evaluations and comparable cost units are required. Missing or ambiguous potentially feasible alternatives hold the recommendation. Current supported fields are temperature, vibration, speed, outer diameter and lead time; this is not a general solver or engineering approval.
+- Live acceptance passed in Recommendations: `goal-c35e041a5732f9826de93a7abed6a163`, status completed, four controller decisions, graph.business_context observation retained. Option B satisfies all five user criteria (76 degC, 2.1 mm/s RMS, 1500 rpm, 62 mm, five days), incremental cost USD 8/unit. A fails temperature/vibration/envelope/lead time; C fails speed; D fails temperature/vibration. Source identifiers OPT-B / VALIDATE-B are visible. The success-criteria table and evidence expansion were verified through UI. `live-acceptance.json` and screenshots retained in the Codex output folder.
+- Checks: final targeted backend set 92 passed plus 10 subtests; targeted frontend set 43 passed. Frontend build succeeded and targeted diff whitespace check passed. Counts overlap earlier checkpoints and are not additive. Services are running with activated backend fixes; frontend was rebuilt after the separator correction.
+- Delivered real continuous app-browser capture: `deliverables/NEXUS-Decision-Success-and-CRCO.mp4` (1920x1080, 30 fps, about five minutes, smooth vertical camera pan, no cuts/still-frame insertion/captions/audio). Complete-browser source is `deliverables/NEXUS-Decision-CRCO-FullBrowser.mp4` (1920x1736). Separate transcript: `deliverables/NEXUS-Decision-Success-Voiceover.txt`. Sample exported frames were checked for visible complete comparison and approval history.
+- CR-2026-000021 / CO-2026-000019, approval matrix and submit/accept/authorize/queue/receipt history were verified live in Change Control. These authorize publication of the local Engineering ODS evidence package; they are not a newly created physical corrective-action order and do not establish implementation in PLM/MES. The video and transcript retain that distinction.
+- Remaining: generic free-form agent completion quality, recommendation-to-physical-engineering-CR/CO handoff, external PLM integration and broader baseline/effectivity/quality acceptance remain open. Existing publication request titles still expose ontology identifiers; sidebar navigation required direct-route fallback during preparation. Do not close the broader decision-intelligence or enterprise approval items on this demo alone. No commit/push performed in this task.
+
+### Existing-capability memory-reuse demo — 18 November
+
+- No application source, dependencies, migrations or configuration changed for this follow-up. Started existing services using the managed Start script. Standalone data preparation and recording programs remain in the Codex output workspace.
+- Prepared a separate authored Engineering ODS historical-memory fixture: 692 RDF triples, four historical options attached to case 8D-2024-017, with explicit derivation links from current alternatives. SHACL conforms; provenance identifies authored scenario records, not real customer outcomes. Native publication `bearing_memory_ods_ba9320921add4989` completed through CR-2026-000022 / CO-2026-000020; original decision dataset preserved.
+- UI acceptance: Graph Explorer displays the past case and its four option links. Companion retrieves historical dispositions and applicability. Follow-up identifies past Option B; both questions and answers persist. Memory insights reads the retained follow-up after leaving chat and exposes the PostgreSQL conversation-storage explanation. Current Option B has DERIVED_FROM to the historical strategy and VERIFIED_BY to its separate current evaluation.
+- Recorded Companion jobs: companion-turn-agent-20261118051802055967-725ec77b and companion-turn-agent-20261118051850797973-ac47ef29. Sanitized retrieval proof retained in `outputs/engineering-memory-demo-20261118/memory-retrieval-proof.json` in the Codex workspace.
+- Fresh current-context comparison passed: goal-02ad188799a308df2d645ef0aa37a99f, completed, exact new ontology ID/prefix and selected node retained. Existing typed checks select B against all five current limits, rather than treating past selection as current suitability. Sanitized source-bound decision proof retained alongside the fixture.
+- Delivered separate continuous real-browser video: `deliverables/NEXUS-Memory-Recall-and-Context.mp4` (1920x1080 close-up camera pan, approximately six minutes, no cuts/still insertion/captions/audio). Full source: `deliverables/NEXUS-Memory-Recall-FullBrowser.mp4`; separate narration/producer notes: `deliverables/NEXUS-Memory-Recall-Voiceover.txt`. Exported frames checked at historical recall, saved-memory storage and current decision scenes.
+- OPEN: graph-chat context metadata keeps node identity but ontology/ontology_prefix are blank despite a selected ontology in Graph Explorer. The video preserves the actual Memory insights search-scope text. Recommendation goal scope retains those fields correctly. Do not claim complete ontology-context persistence across all pages; no fix applied under the no-development constraint.
+- OPEN: governed learning-review functionality currently concerns published ontology mappings. This video demonstrates memory retrieval, conversation continuity, durable references and reuse, not automatic engineering-outcome learning, engineering-lesson approval, model retraining or implementation in PLM/MES. Authoring historical records does not prove an autonomous learning loop. No commit/push performed.
+
+### Past-decision evidence recording — 18 November 2026
+
+- Recorded a separate uninterrupted live Memory insights walkthrough: `deliverables/NEXUS-Past-Decisions-and-Evidence.mp4` (1920x1080, 30 fps, approximately three minutes), plus the full browser recording and optional voiceover text. No captions, audio, cuts or inserted still frames.
+- Shows retained case 8D-2024-017, all four historical options and dispositions, source citations, current-to-past investigation relationship, saved follow-up selection, business identity and PostgreSQL storage explanation. Engineering ODS scenario provenance remains visible; this is not customer incident evidence or engineering approval.
+- Admin inspection found no dedicated detailed decision-report tab. Maintenance telemetry was unavailable in the current browser session. The clip accurately uses Memory insights and does not claim to demonstrate successful Admin telemetry.
+- Existing blank ontology fields in graph-chat history and engineering self-learning limitations remain open. No application code or configuration changed for this recording.
+### Standalone Engineering ODS toolkit — 19 November 2026
+
+- Delivered `deliverables/NEXUS-Engineering-ODS-Toolkit.zip` and extracted utility folder. Independent editable scenario generator, bundled CEIM/ODS schema and SHACL, API loader, prompts, sample outputs and deployment/use guide. No application Python imports, media, credentials or previous registration state included.
+- One generated case has 45 business identities, five historical case/option records and 70 business links. Historical dispositions, applicability and dates remain distinct from current evaluation records. Scenario provenance is retained; no customer incident, model training or engineering approval is asserted.
+- Loading uses existing ontology and central CR/CO APIs, with explicit lifecycle, release, submit, accept, authorize and execute operations. No direct PostgreSQL/Neo4j writes or automatic approval loop. Publication verification requires the matching current artifact digest and ontology identity.
+- Twelve offline tests pass, including an extracted ZIP execution/generation check. Customer endpoints, gateway authentication, role separation, worker readiness and live agent acceptance remain installation-specific and unverified. No customer load performed.
+- Existing graph-chat ontology-scope persistence defect and broader engineering learning/outcome loop remain open. Toolkit historical graph evidence does not manufacture conversation history or agent execution receipts.
+### Customer evaluation follow-up — 20 November 2026
+
+- Fixed the original partial-shutdown failure mode: all tracked API/worker PID identities are checked before any graceful-stop request, and upgrade preflight checks access before frontend/backend shutdown. Hidden identities now fail with service-owner/authorized-administrator guidance; tracking is retained. The isolated tests use only fake PIDs/snapshots, not live process control.
+- Full installation/package suite: 56 passed plus 3 subtests; the separately bounded optional Git Bash environment test passed (57 installation-related checks in total). Windows tests now avoid launching interactive WSL and impose subprocess deadlines. The new graph-chat registration fallback adds four tests; 37 related graph/chat/report tests passed. Final targeted/backend and archive results are recorded with the release qualification below.
+- **ODS/analytics decision-use verification remains open.** Code review confirms `semantic_datasets`, `business_mart` and `semantic_configuration` retain entity IRIs, source artifacts and immutable configuration IDs, while `graph_snapshot` retains graph publication provenance. Existing OSLC TRS/configuration links are real; no second ODS, generic matching-name join or duplicate integration layer was added. Registered agent tools reviewed here expose graph/catalog/product surfaces; a successful agent investigation citing the matching PostgreSQL entity measurements/KPIs and Neo4j paths under one checked baseline has not been demonstrated. This must not be described as completed federated decision reasoning or automatically learned engineering outcomes.
+
+### Customer evaluation release review — 20 November 2026
+
+- Canonical independent toolkit source is `standalone/engineering_ods/`; `tools/package_engineering_ods.py` builds a reproducible clean ZIP. Generation/API loading is optional and never runs during startup, upgrade or application imports. Credentials, environment files, previous load state, operator receipts and media are excluded. APIM subscription headers and approved private-CA trust bundles are configurable without disabling TLS verification. Toolkit offline tests: 13 passed.
+- Video recording/editing, caption, slide-authoring and captured demonstration artifacts remain outside the application runtime/customer package. Source release selection explicitly excludes their authoring locations; no video capture/LLM-seeding service was added. Acceptance questions are functional test inputs, not recording programs.
+- Retired five excluded manual port-8000/import demonstration scripts; active compatibility and regression tests remain. Four superseded Markdown reports were preserved in full under Archived superseded UX and workflow reports in this tracker, with document links redirected. Seven earlier obsolete frontend/script removals remain included. No customer data or conversation history was deleted.
+- `infra/deployment/retired-files.json` records exact legacy vendor hashes; the shared root installer cleans only matching files after stopped-process and configuration checks. Customized versions remain with a warning. Upgrade preflight is read-only. Isolated tests exercise preservation, hash-only removal, traversal/directory rejection and preflight behavior. No live setup/upgrade/reset was run during this review.
+- Installation source completeness includes the new CR/CO, numbering, graph-computation and decision modules plus the independent toolkit. Package checks verify exact OWL-DL JAR and Java source digests. Ready customer ZIPs include the worker; GitHub source needs the documented reviewed worker build. PostgreSQL migrations, configuration and credentials remain under the existing upgrade workflow; no new DDL migration or automatic data seeding was introduced here.
+- Corrected a real analytics recovery CAS baseline defect: terminal ODS loads can rebuild missing evidence without changing the expected stored value before compare-and-swap. Regression covers a completed worker's retained record; no XML reload or new data approval occurs.
+- Corrected graph-chat scope fallback: newly selected business records retain the selected ontology registration when projection metadata omits it; explicit node scope takes precedence. Four scope tests plus 33 related graph/chat/report tests passed. Earlier saved conversations were not rewritten. Removed the duplicate normalized report type field identified by the frontend build.
+- Full frontend run: 1246 tests in 182 files passed. Production build passed (existing large-bundle advisory remains). Focused repaired backend tests: 72 passed before the final retirement-hash portability fix; the dedicated installation/package suite subsequently passed 56 tests plus 3 subtests, and its optional POSIX environment regression passed separately. Full backend remains **not green**: latest broad run stopped at 30 failures / 982 passed / 4 skipped / 83 subtests. Failures include older actor/ID assumptions, direct-approval expectations, mocks for current schema contracts, old removed-helper references and optional validation dependencies; unresolved outcomes remain acceptance work, not silently deleted tests.
+- Engineering ODS architecture clarification: PostgreSQL semantic datasets and analytics marts retain subject/entity IRIs and configuration/dataset lineage; graph snapshots retain publication provenance. OSLC TRS and configuration management connections already exist and must be reused. The toolkit's graph publication is not proof of a materialized PostgreSQL ODS, a published data product, or agent use of matching ODS/KPI evidence. Customer acceptance must follow existing snapshot → RDF preparation → mart/model → governed product publication and verify agent evidence against the exact business/configuration/source versions and units. No duplicate store/integration was introduced.
+- Remaining customer gates: live external connector/IIF/provider interoperability, multi-principal approval, restart/restore/rollback, concurrency/volume, and demonstrated combined KG–ODS–analytics decision evidence. This is a customer **evaluation** handoff, not production acceptance.
+
+Previous OPEN-05 master text retained as historical context:
+
+| OPEN-05 | P1 · Regression and UI acceptance open | Latest full frontend suite is green: 180 files / 1223 tests passed in 326.76s, recorded in grounding-full-frontend-final.log outside application code. Three obsolete recommendation test expectations were corrected to verify visible business results and explicitly expanded Supporting report evidence. Finish page/field/button/link acceptance, including multi-tab credentials, Back/Forward, refresh, stale response, cancellation, interruption and restart. Both Data Flow handoffs were activated during the coordinated release journey; wider page/recovery acceptance remains open. | Current suite receipt plus page/component/element acceptance results. Last full frontend run before the reporting-scope increment: 181 files / 1,225 tests passed (447.73s), recorded in action-register-frontend-tests.log outside the application. Subsequent reporting increment: 8 frontend and 13 backend checks passed. Product flow increment: duplicate XML loader removed from retained-evidence publication; new direct publication and manual approver removed, legacy uncertain-outcome reconciliation preserved; raw product JSON removed, readable provenance and authenticated download added. Retired unused PageTaskWorkspace component, stylesheet and component-only tests. The subsequent complete run passed after the report/export and three test-contract corrections. Wider page/recovery acceptance remains open. Targeted passing tests do not certify all pages. |
 
 ## Consolidated review: current status and detailed evidence
 
@@ -2959,3 +3047,244 @@ Golden identity follow-up: 58 passed, 3 skipped, 9 subtests passed after adding 
 
 
 Final functional review receipt: the live named mBOM_Rotor Shaft query now excludes Rotor/SysML and shaft-assembly superset matches. Master-reference aliases consolidate into one directed source-record reference with distinct endpoint labels. The live check exposed a Markdown boundary defect where the supporting-link count was appended to the final table row; fixed by separating the evidence notice. Companion contextual suite: 39 passed. Golden identity suites: 58 passed, 3 skips, 9 subtests. Current historical publication still lacks product number 000886 despite the original source and corrected non-persisted normalization containing it; no source fact was injected into the live answer. Existing approved data must be reprocessed through the governed CR/CO path before this value can appear in the current publication. Provider generation remains unavailable in the live session.
+
+
+
+
+## Archived superseded UX and workflow reports
+
+Historical evidence below is preserved verbatim in substance. It describes earlier builds; current open-item status above is authoritative. Retired UI components and old counts are not current deployment instructions.
+
+<a id="archived-page-task-workspace-2026-10-22"></a>
+
+### Archived: page-task-workspace-2026-10-22.md
+
+### Page task workspace audit — 22 October 2026
+
+#### Changes
+
+- Added compact guidance for all 17 navigation pages, using existing agents and execution engines.
+- Added owned, page-scoped views over existing PostgreSQL goal, workflow and tool registries. History summaries exclude execution payloads and credentials; tool details use an explicit whitelist. Expired tool telemetry is projected as interrupted without falsely claiming process cancellation.
+- Added optional owner-bound read-goal submission UUIDs and queue-lock duplicate checks. Lost-response recovery retrieves the same task; conflicting intent is rejected.
+- Separated browser bookmarks by service endpoints, agent, source context and question. Fixed restored pending-submission state so navigation still offers recovery. Credential changes clear visible state and abort reads.
+- Replaced raw agent execution JSON in the proposal panel with plan, action, evidence, conclusion and review status. Task completion is explicitly separate from publication or delivery receipts.
+- Retained workflow controls come from server allowed actions. Failed detail reads clear controls; uncertain control responses require a fresh status read. No automatic write retry is introduced.
+- Documented deployment, source scope, history boundaries and recovery in INSTALLATION.md and SEMANTIC_AGENT_ARCHITECTURE.md.
+
+#### Validation
+
+- 56 backend tests passed across page history, read-goal routes/runner, durable workflow worker, control plane and telemetry.
+- 31 frontend tests passed across page workspace, progress evidence, read-goal recovery, proposal controls, inference and Agentic API metadata.
+- Vite production build passed with Node.js 24. Existing bundle-size advisory and React test act deprecation remain non-failing.
+- Git whitespace check passed.
+
+#### Deployment and limits
+
+Source is in the reviewed workspace and the existing Governor/Steward update package. This agent session cannot inspect tracked Windows process identities, so it cannot safely stop and replace the installed runtime. Run the existing Apply-PMem-Governor-Steward.cmd from the normal Windows administrator session. The updater validates hashes, backs up sources, rebuilds and restarts PMem; PostgreSQL and Neo4j data are not deleted or approved by it.
+
+Live acceptance of this new panel remains pending deployment. This change does not claim new domain jobs have completed. Native import, pipeline, QIF and product histories remain authoritative for their own task types; untagged earlier agent runs remain in their original history. No new database table or migration is required. Read investigations still require configured worker authorization and an available supported model. Write approvals remain unchanged.
+
+
+#### Live verification after deployment
+
+All 79 deployed update files matched their manifest SHA-256 values. All ten microservices returned HTTP 200 readiness with configured PostgreSQL/Neo4j dependencies ready. The refreshed Home UI displayed the task workspace; registered agents loaded, and a read-only goal queued and was claimed by the worker. Navigating to Import showed an isolated empty page-agent history and preserved the native import workspace. Returning to Home reopened the original retained task without resubmission. The goal stopped with goal_rate_limited before any tool actions; provider availability blocks successful model-driven acceptance. The UI reported failure without claiming evidence, publication or completion. The current registry and graph remain empty. No domain data was approved or published by this check.
+
+<a id="archived-frontend-navigation-session-2026-11-02"></a>
+
+### Archived: frontend-navigation-session-2026-11-02.md
+
+### Frontend navigation, session and runtime refactor — 2026-11-02
+
+#### Scope and architecture decisions
+
+PMem remains one React/Vite SPA. Existing lazy routes, shared API interceptors, single-flight delegated-session renewal, server approval checks and bounded workflow receipts remain in place. No new framework, query package, identity provider or service is introduced.
+
+URL state owns workspace views for Data Flow, Data Products, Catalog, Metadata Registry and Ontology Junction. Existing structural/pipeline/portfolio deep links remain recognized. Form data and D3 coordinates are not promoted into URL state. Change Control already uses abortable reads; its read-only approval boundary is preserved.
+
+#### Confirmed gap register
+
+| Severity | Location | Root cause / reproduction | Result |
+| --- | --- | --- | --- |
+| High | frontend/src/services/serviceAuth.js:52 | Logout in one tab did not clear another tab. A delayed cross-tab signal could also clear a newer connection. | Same-deployment non-secret storage signals; logout across tabs, same-delegation expiry matching, timestamp guard against pre-reconnect signals. Tokens never travel through the signal. Independently authenticated tabs retain their own credentials and renewals. |
+| High | frontend/src/app/AppPageOutlet.js:15 | Route ErrorBoundary retained its error when moving to another page; shared Products/Catalog component could retain the wrong workspace state. | Boundary keyed by page, isolating errors and page-local state. |
+| Medium | frontend/src/pages/DataFlowPage.js:147 | Leaving/reconnecting discarded late results but continued unnecessary reads. | Owned AbortController for health, telemetry, runs, definitions and selected-run reads; abort on departure, reconnect and run-link changes. Already submitted writes retain receipt recovery rather than pretending HTTP cancellation undoes execution. |
+| Medium | frontend/src/app/useRouteView.js | Local tab state diverged from history/deep links. | Shared validated URL-backed view hook, with legacy Product link aliases; run selection also writes its run_id. Back/forward does not submit work. |
+| Medium | frontend/src/app/AppShell.js:52 | Focus stayed on departed page controls; transient access banner insertion moved content. | Main-landmark route focus, body scroll reset and a reserved access-status area. Existing nonmodal Companion focus return retained. |
+| Medium | frontend/src/app/pageRegistry.js:12 | Cold route chunks waited for click. | Shared finite import-promise cache and hover/focus prefetch; save-data/2G avoids speculative loads. This caches code, not approval evidence or credentials. |
+| Medium | frontend/src/services/analyticsProductDraft.js:36 | Retained sources containing analytics schema metadata but no artifact_id were dropped. | Preserve schema lineage alongside the originating immutable run; original draft is not mutated. |
+| Medium | backend/depo_platform/service_log_stream.py | Actively redirected Windows logs were unbounded. | Standard rotating handler with a thread-safe text stream: 10 MiB per file, five backups per stdout/stderr stream. Dedicated bootstrap redirects avoid Windows file ownership conflicts. Previous launch logs still archive before restart. |
+
+#### Rendering changes and limits
+
+Stable workspace skeleton geometry, stable scrollbar space, visible keyboard focus, 44px controls, reduced-motion support and transform-based quality-bar animation replace avoidable layout work. Off-screen native reporting sections use content-visibility with intrinsic sizing; D3 canvases and virtualized grids are excluded because they measure their parent geometry. Existing 25-row run rendering remains bounded.
+
+Do not interpret these changes as measured zero CLS or an INP/LCP guarantee. Large chart/grid bundles remain a build warning. Prefetch is interaction-driven, not a request to download every route merely because all navigation items are visible. Existing per-workspace retained snapshots and single-flight refresh remain the stale-while-revalidate boundary; no global cache of mutable authorization/proposals is introduced.
+
+#### Verification protocol
+
+1. Cold-load each affected route in browser DevTools Performance with network/CPU throttling. Record LCP, interaction latency and layout-shift clusters, excluding expected user-triggered changes. Compare identical data/viewport/cache conditions; target CLS <=0.1, INP <=200ms, LCP <=2.5s, but record actual results rather than declaring compliance from CSS alone.
+2. Open URL view/run deep links, switch tabs rapidly, then use Back/Forward. Verify URL, selected tab and run identity agree and Network shows no write caused by history navigation.
+3. Delay read responses, navigate away and reconnect. Verify requests abort, old responses cannot populate the new scope, and submitted writes remain inspectable by immutable receipt.
+4. Use two app tabs. Disconnect one; the other must clear displayed access. Reconnect, then deliver an old logout signal: new access must remain. Expiry of a shared delegation clears its clone; an independently connected session must not inherit credentials from another tab.
+5. Cycle six workspaces at least 20 times with browser Memory/Performance recordings. After GC, inspect detached nodes, listeners, timers, D3 simulations and retained promises. A finite module cache is expected; growing business-record retention is not.
+6. Test keyboard navigation, focus visibility, Companion close/Escape, reduced motion and narrow viewports. Check parent overflow, grid clipping and stable graph bounds.
+7. Verify runtime log rotation with an isolated temporary writer (including simultaneous writes, Unicode and oversized output), and verify current service startup plus request/worker correlation after managed deployment. Archive deletion remains an explicit operational retention decision.
+
+#### Acceptance boundary
+
+Local automated and live results are recorded below. Customer-origin/APIM networking, sustained production workload, actual customer KPI acceptance and the unreproduced customer-specific “not processed” response require that deployment's evidence. No credentials were rotated, customer product approved, graph republished or application database reset by this refactor.
+
+#### Automated verification results
+
+- Final complete frontend suite: **151 files passed, 924 tests passed** (302.45 seconds). Evidence: workspace `outputs/frontend-full-final-2026-11-02.log`.
+- Runtime/installation cohort: **48 passed, 3 subtests passed, 1 skipped** (Bash unavailable). Includes log-stream rotation, request outcome logging, actual PowerShell archive execution and installer compatibility. Evidence: `outputs/frontend-runtime-install-check.log`.
+- Production Vite build passed; existing >500 kB chart/grid/shared chunk warnings remain. Evidence: `outputs/frontend-build-2026-11-02.log`.
+- Offline package validation passed: 84 PowerShell scripts parsed, 38 documented paths, ten APIs, three workers, 190 locked distributions and 18 migrations. No dependency or migration added.
+
+The first broad run found a genuine schema-lineage loss and outdated replay test fixtures (missing identity preflight, assuming health implied run-list completion). The source/fixtures were corrected before the final complete green run. Earlier failing logs are diagnostic history, not the final result.
+
+#### Final deployment and browser evidence
+
+The release-wide rerun after retained-run reuse correction passed **151 files / 925 tests**. Final browser-found focus/landmark corrections passed **16 targeted tests** with existing retention/deferred-render tests preserved. Runtime logging rerun passed **26 tests**, including real logging reconfiguration in an isolated subprocess.
+
+The first managed launch exposed Uvicorn dictConfig closing a handler owned by the text stream. The live stream now reopens its file after logging reconfiguration; the new subprocess regression reproduces that boundary. The managed retry completed, all ten service browser-session checks passed, and environment hashes were preserved. Prior failure/boot logs remain retained. No customer job was replayed or graph republished.
+
+Real browser checks passed: URL-backed Data Flow/Product tabs and Back; selected-tab focus after Back; one main landmark; two tabs both disconnected after clearing one, then both independently reconnected. At the sampled 1265px viewport there was no document horizontal overflow; the sampled tab was 48.68px high. Access verification preserved the banner's 52px height and top position. No captured console errors remained in the tested tab. These observations are not a page-wide CLS/INP/LCP measurement or a sustained memory soak.
+
+Evidence: workspace `outputs/frontend-release-final-2026-11-02.log`, `frontend-landmarks-final.log`, `runtime-log-final.log`, `frontend-refactor-deploy-retry.log`, `frontend-final-service-check.log`, `frontend-browser-acceptance.json` and `frontend-refactor-verified.png`. A final invalid-authorization probe produced a correlated 403 log without its marker credential. Runtime source/deployment hashes matched for all changed runtime files.
+
+#### Performance and upgrade follow-up
+
+An explicit `?measure_ui=1` query before the hash enables a local, bounded Web Vitals probe, for example `http://127.0.0.1:3000/?measure_ui=1#/data-flow?view=runs`. Normal sessions do not load this chunk. The probe registers once and stores only CLS/INP/LCP numeric values, rating and units in `script#depo-performance-probe`; it sends no telemetry. Missing observations remain null. It uses the pinned [official Web Vitals library](https://github.com/GoogleChrome/web-vitals) and measures one document, not independent SPA route loads.
+
+Local visible-browser sample: CLS 0.039083, INP 64 ms, LCP 924 ms. Eighteen navigation actions across Products, Catalog, Registry, Ontology, Graph and Data Flow produced no captured console errors. This is a navigation smoke test and local lab sample, not a long-duration heap-leak or customer acceptance certificate. Evidence: `outputs/performance-browser-2026-11-02.json` and `.png`.
+
+A 180.5-second localhost read-only service soak completed 1,352 reads at concurrency four: no failures, median 16 ms, p95 63 ms, max 109 ms. Two temporary sessions renewed successfully; revocation returned 401 while the independent session remained 200. No QoS rejections were reported. No customer jobs were replayed. Evidence: `outputs/local-read-soak-2026-11-02.json`.
+
+The updater now checks installed direct frontend dependencies against the lockfile before stopping services. Missing/changed versions enable the existing checkpointed dependency installation; unchanged Python environments reuse their checkpoints. This is a direct build-dependency check, not exhaustive transitive integrity verification. Offline upgrades still require the locked packages in the npm cache or an accessible registry. `-SkipFrontend` remains respected.
+
+Verification: probe/startup tests 12 passed; dependency/upgrade cohort 9 passed, 1 skipped, 3 subtests passed; source and deployed production builds passed. Existing bundle-size warnings remain. Customer-network/slow-link acceptance, production-scale load and long-duration heap profiling remain unverified.
+
+<a id="archived-workflow-presentation-audit-2026-10-30"></a>
+
+### Archived: workflow-presentation-audit-2026-10-30.md
+
+### Presentation implementation audit — 30 October 2026
+
+Scope: 12-slide workflow deck against local PMem source. This is a documentation audit with focused backend regression tests, not full customer acceptance.
+
+#### Confirmed presentation defects corrected
+
+| Severity | Slide | Defect and root cause | Correction / evidence |
+|---|---|---|---|
+| High | 7 | Conversation history and mapping lesson review implied one automatic learning chain. Separate implementations have different scope. | Split conversation context from mapping outcomes. backend/agentic_service/companion_memory.py:6; learning_review.py:133,162,198. Lessons remain advisory, revision-bound, and do not train models. |
+| High | 4 | Ontology publication implied approval of a semantic asset release. These are distinct approval contracts. | Explicitly separated ontology publication from semantic release. backend/ingestion_service/workflow.py:84; backend/ontology_service/publication_jobs.py. |
+| High | 10 | Graph storage implied ownership of retained ontology versions. | PostgreSQL authoritative ontology artifact ownership, graph published projections. backend/ontology_service/catalog.py:105. |
+| Medium | 3 | All ingestion implied worker ownership and required agent involvement, source owner capture and unified catalog receipt. | Changed to import services, supported metadata and retained import/publication evidence; optional investigations. |
+| Medium | 8,11 | Dimensional functionality described too broadly as absent. | Explicit dimension / aggregate fact views are supported. Full automatic mart design and KPI semantics remain gaps. backend/data_pipeline_service/xml_analytics.py:120-192. |
+| Medium | 2,9 | Flow diagrams could imply a universal executable pipeline. | Qualified as capability flows and specifically validated bridge workflow. Actual bridge-validated-automation sequence in backend/agentic_service/catalog.json:774-797. |
+
+#### Verified boundaries
+
+Governor proposes; Steward evaluates retained previews; server authorization controls publication. Actual workflow tools: bridge.mapping.preview, bridge.mapping.evaluate, bridge.mapping.publish_automatic. Ontology union produces a draft, not an automatically approved graph release. HermiT consistency is scoped to exact checked artifacts and does not establish mapping correctness or business suitability. Change Control aggregation is read-only visibility, not a complete unified CR/CO process. Presentation pipeline labels are not executable job identifiers.
+
+#### Execution evidence
+
+Focused pytest: test_steward_governance.py, test_governed_learning.py, test_xml_analytics_materialization.py, test_change_control.py.
+Result: 60 passed, 9 subtests passed. First attempt had six temporary-directory fixture access errors; rerun with a workspace-owned fresh --basetemp passed. No application source changed during this audit.
+
+#### Limits
+
+No new customer deployment, LLM availability test, full browser acceptance or load benchmark was performed. Prior JEP30 and real PostgreSQL observations are historical acceptance evidence, not rerun in this audit. The deck explicitly lists open compatibility and acceptance gaps. Do not treat this deck as customer-release certification.
+
+<a id="archived-workflow-ingestors-2026-11-01"></a>
+
+### Archived: workflow-ingestors-2026-11-01.md
+
+### Workflow and Semantica ingestor audit
+
+Date: 1 November 2026. Source branch: `codex/windows-setup-audit-fixes`.
+
+The shared workflow presentation now has explicit responsibilities across the six requested workspaces, reconnect-safe task controls and a single polling loop. Existing pipeline workers, agent workflows and owning-service approvals remain authoritative. This is a focused shared-layer refactor, not a replacement of all six page implementations.
+
+#### Findings and corrections
+
+| Finding | Severity | Root cause and reproduction | Correction |
+| --- | --- | --- | --- |
+| Task history survives delegated-session replacement | High | `frontend/src/Components/PageTaskWorkspace.js:50` omitted `depo:session-replaced`. Replace access while a task is selected; earlier controls could remain visible. | Replacement aborts reads, closes task scope and invalidates the control generation. |
+| Late control acknowledgement updates another selection | High | A pending resume/pause/cancel response had no generation check. Change access, route or task before the response resolves. | Generation fence and synchronous submission lock; stale acknowledgements cannot update notices or refresh another selection. |
+| Aborted refresh schedules another poll | Medium | The old history request always scheduled its next timer even after a newer refresh aborted it. Rapid refresh could create competing loops. | Only a current, unaborted request schedules the next poll. A fake-timer regression verifies one poll after overlapping requests. |
+| Loading appears as empty history | Medium | Initial empty rows rendered as successful empty history during retrieval. | Separate loading status and successful empty state. |
+| Lazy acquisition dependency absent in isolated pipeline runtime | High | Pipeline locks intentionally omit Semantica to keep local ML out. `_worker_command` used pipeline Python, so REST lazy import would fail despite successful OpenAPI import. | Reuse the existing ontology runtime for the bounded acquisition child in isolated mode. Add actual acquisition-child smoke checks to shared and isolated installation. Keep pipeline locks unchanged. |
+| Library availability confused with PMem connector support | Medium | Only REST had a direct Semantica acquisition adapter and configurable Admin registration. | Authenticated inventory endpoint and Admin support table explicitly classify all 17 types. No unsupported connector is presented as executable. |
+| Fresh EmailIngestor import fails | Medium, upstream and unintegrated | A clean Python subprocess importing `EmailIngestor` raises `AttributeError: module 'email' has no attribute 'message'` in installed Semantica 0.6.7. | PMem now imports the missing stdlib prerequisite through its allowlisted lazy loader. A fresh-process regression passes without patching third-party files. No Email acquisition adapter is exposed or enabled. |
+
+#### Ingestor inventory
+
+Import checks used a separate process per class in the installed shared Python runtime, with a 15-second budget. Import success does not establish configured external SDKs, source connectivity, safe acquisition or PMem integration.
+
+| Semantica ingestor | Fresh import | Admin configuration and PMem execution | PostgreSQL connector registration | Installation |
+| --- | --- | --- | --- | --- |
+| FileIngestor | Pass | No generic Semantica adapter; existing Import file workflows | None for this class | Shared Semantica; native parser profiles separate |
+| WebIngestor | Pass | Not connected | None | Optional adapter/dependencies not provisioned as a PMem connector |
+| ParquetIngestor | Pass | Not connected | None | Optional adapter/dependencies not provisioned as a PMem connector |
+| XMLIngestor | Pass | Native engineering XML import and approved XML analytics; not this generic class | None for this class; native run/analytics tables separate | Existing XML parser profiles |
+| RESTIngestor | Pass | Admin Data sources; preview and approved `rest-source-ingest` worker job | `depo_registry`, namespace `rest_sources` | Shared Semantica, or existing ontology runtime in isolated mode |
+| PublicAPIIngestor | Pass | Not connected; allowed public endpoints can use the REST adapter within its limits | None for this class | Optional adapter not provisioned |
+| DBIngestor | Pass | Not connected; existing PostgreSQL application persistence is not DBIngestor acquisition | None | Optional source DB drivers not provisioned as a PMem connector |
+| DatabricksIngestor | Pass | Not connected | None | Optional SDK and adapter not provisioned |
+| SnowflakeIngestor | Pass | Not connected | None | Optional SDK and adapter not provisioned |
+| EmailIngestor | Direct import fails; PMem compatibility loader passes | Not connected; class import is repaired, acquisition remains unimplemented | None | No email adapter enabled |
+| FeedIngestor | Pass | Not connected | None | Optional adapter/dependencies not provisioned |
+| MCPIngestor | Pass | Not connected; existing agent MCP tools are distinct from ingestion | None | Optional ingestion adapter not provisioned |
+| OntologyIngestor | Pass | Native RDF/OWL lifecycle exists; RDFLib parsing and Semantica validation do not call this generic ingestor | None for this class | Existing ontology dependency runtime |
+| RepoIngestor | Pass | Not connected; Code Audit is a separate deterministic workflow | None | Optional acquisition adapter not provisioned |
+| StreamIngestor | Pass | Not connected; existing bounded speed-event API is a separate path | None for this class | No Kafka/RabbitMQ/cloud broker connector provisioned |
+| ArrowIngestor | Pass | Not connected | None | Optional SDK and adapter not provisioned |
+| CloudStorageIngestor | Pass | Not connected | None | No cloud source SDK/credential registration provisioned |
+
+The implemented inventory is review metadata, not a dynamic plugin loader. It imports no optional ingestor classes, opens no external connections and exposes no secrets. Its route requires read authorization. Registration and execution retain their existing separate scopes.
+
+#### Workflow and database verification
+
+The workflow ownership map is in [Workflow engine and workspace responsibilities](../WORKFLOW-ENGINE.md). Six workspace contract tests cover Change Control, Data Flow, Ontology Junction, Data Catalog, Data Products and Metadata Registry. Domain tests additionally exercise Data Flow, product/catalog loading, Registry, semantic bridging, merge controls and inference presentation.
+
+A read-only transaction against local PostgreSQL schema `semantic` verified `depo_registry(namespace,key,value,updated_at)`, its primary key and ten additional indexes, including source lookup, runnable-worker and job-identity indexes. At inspection it contained 10 job definitions and 83 run records, and no REST-source registrations. This is schema and queue evidence, not an external source acquisition test. No schema drop, migration, data cleanup or credential rotation was needed.
+
+The initial direct-Semantica pipeline dependency change failed the existing lean-service test because it introduced local ML/notebook packages. That approach was removed. Regenerated locks match the original pipeline profiles: 74 packages for the API and 69 for the worker. The final boundary reuses the already installed semantic dependency runtime without another API service.
+
+#### Validation
+
+- Worker, control, error, manifest-concurrency and acquisition timing group: 57 tests passed.
+- Final connector, authorization, runtime-selection, actual acquisition-child smoke, dependency-profile and REST group: 46 tests passed.
+- Frontend targeted coverage: 106 distinct tests across 11 files passed, including 16 final shared task-panel tests. Groups overlap; their run totals are not added together.
+- Pipeline API and worker import/OpenAPI smoke passed. The production frontend build passed using the native configuration loader. Default bundled configuration loading failed on sandbox directory traversal before application compilation; the native loader succeeded.
+- React act/deprecation warnings, module-type warnings and existing large frontend chunks remain. No performance throughput claim is made from functional tests.
+- The Windows isolated runtime path and missing-runtime failure are tested with temporary filesystem fixtures; a clean isolated customer installation and external SDK/source credentials still require customer acceptance. The shared acquisition child was executed locally.
+
+These changes are source changes, not a deployed customer release. Customer environments and their source credentials were not changed. No LLM was invoked. Unsupported ingestor integrations remain explicit product gaps, rather than being represented by placeholder configuration or empty database tables.
+
+
+#### Optimization follow up
+
+The compatibility entrypoint `backend/depo_platform/semantica_ingestors.py` now owns the reviewed class allowlist and stdlib prerequisites. REST uses it without changing endpoint policy or acquisition limits. The Email import failure is mitigated by importing `email.message` before Semantica resolves its lazy class; installed third-party files and dependencies remain unchanged. Loading a class does not instantiate a connector or enable source access.
+
+Task history stops periodic requests after 401/403 and resumes after verified access or manual refresh. Transient failures back off instead of polling at a fixed rate. Selected-task read failures retry safely without replaying controls. Hidden workspaces stop their polling and immediately refresh on return, while rejected access remains stopped. Agent proposal controls initialize only when their section opens; the retained goal panel is lazy-loaded only for a selected goal. Admin runtime details distinguish the API package environment from the acquisition runtime, avoiding a false missing-package impression in isolated deployments.
+
+Follow-up validation: 34 focused frontend tests passed, including hidden-tab return, transient status-read recovery, authorization rejection, deferred controls and malformed inventory protection. The backend connector/runtime/dependency group passed 49 tests, including a fresh-process Email import through the compatibility loader. These tests do not exercise email servers or provision any of the 13 unintegrated source adapters.
+
+
+#### Implemented follow-up: registered adapters and deferred workspaces
+
+The earlier 13 unintegrated-adapter gap is superseded by the registered connector workflow documented in [CONNECTOR-SOURCES.md](../CONNECTOR-SOURCES.md). All 17 kinds have an application path: three existing native import paths, REST acquisition and 13 profile-bound worker adapters. This is implementation coverage, not customer connection acceptance. No cloud/mail/warehouse credentials were configured.
+
+Confirmed fixes: Data Flow query-string run links now select the requested historical run; run lists paginate at 25 rows; workspace panels initialize on their first visit and retain state afterward; heavy Data Products subpanels load lazily; Catalog presence no longer appears as a blank delivery cell. The alternate Siemens manual-chunk experiment increased runtime size and was discarded.
+
+Final focused checks: 49 frontend tests across six files and 35 backend connector/catalog/submission tests passed. Backend tests include real Parquet/Arrow/SQLite reads, a real child acquisition process and separate connector receipt recovery. React test deprecation warnings remain. These totals are targeted groups, not a whole-repository test claim.
+
+The baseline source was committed and deployed locally as 76c4dbb with environment hashes preserved. The adapter/performance follow-up is a separate release. Customer deployment acceptance remains excluded at the user's request. External drivers require reviewed optional SDK locks; acquisition is not semantic validation or governed publication.
+
+Production bundle analysis: the Data Products route chunk fell from 103,796 to 23,284 bytes (about 78%); its immediate imports no longer include the data-grid vendor chunk. The extracted panels still exist and download when visited. This is a route-loading improvement, not a 78% reduction in total application size. The existing large shared runtime warning remains.
+
+
+Local upgrade acceptance exposed a read-access timeout while the ingestion registry was processing a synchronous graph query in an async route. The registry route now runs in FastAPI's thread pool. A concurrent-request regression holds the graph read and verifies an unrelated async probe remains responsive. Startup now distinguishes HTTP 0/404/5xx verification failures from actual 401/403 authentication rejection; transient failures do not recommend credential rotation. This finding was discovered by deployment, beyond the earlier mocked test groups.

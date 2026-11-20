@@ -60,3 +60,14 @@ test('same-name candidate records retain distinct identities for review',()=>{
  expect(screen.getByText('part-two')).toBeInTheDocument();
  expect(screen.getAllByText('Record identity and source')).toHaveLength(2);
 });
+
+
+test('upstream traversal keeps the original assembly-to-part arrow direction',()=>{
+ const data={change_entity:{node_id:'part',name:'Bearing'},realization_chain:[{node_id:'assembly',name:'Drive assembly',path_names:['Bearing','Drive assembly'],path:[{relationship_id:'bom',start_id:'assembly',end_id:'part',relationship_type:'HAS_PART'}]}]};
+ const {container}=render(<DependencyPathGraph data={data}/>);
+ const arrow=screen.getByLabelText('HAS_PART');
+ expect(arrow.getAttribute('d')).toBe('M215,40 L165,40');
+ expect(container.querySelector('text')).toHaveAttribute('font-size','12');
+ fireEvent.click(screen.getByRole('button',{name:'Inspect Drive assembly'}));
+ expect(screen.getByRole('status')).toHaveTextContent('Bearing \u2192 Drive assembly');
+});

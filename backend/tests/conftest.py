@@ -18,13 +18,8 @@ import pytest
 
 
 _MANUAL_LIVE_TESTS = [
-    "integration_test.py",
     "test_api_smoke.py",
     "test_e2e_ontology.py",
-    "test_end_to_end_integration.py",
-    "test_ontology_corrected.py",
-    "test_ontology_creation.py",
-    "test_ontology_e2e.py",
     "test_ontology_upload.py",
 ]
 
@@ -68,3 +63,25 @@ def pytest_sessionfinish(session, exitstatus):
         # A Spark import/runtime may be intentionally absent from a unit-test
         # environment. Never turn test cleanup into a false failure.
         pass
+
+
+@pytest.fixture(autouse=True)
+def _isolate_object_identity(monkeypatch):
+    """Unit tests must never allocate identifiers in a customer database."""
+    from contextlib import contextmanager
+    from threading import RLock
+    from backend.mesh_store import InMemoryRegistry
+    from backend.depo_platform import resource_identity
+    class IdentityStore(InMemoryRegistry):
+        def __init__(self):super().__init__();self.lock=RLock()
+        @contextmanager
+        def advisory_lock(self,key):
+            with self.lock:yield True
+    monkeypatch.setattr(resource_identity,'registry',IdentityStore())
+    monkeypatch.setattr(resource_identity,'configuration',IdentityStore())
+
+
+@pytest.fixture(autouse=True)
+def _isolate_approval_matrix(monkeypatch, _isolate_object_identity):
+    from backend.depo_platform import approval_matrix, resource_identity
+    monkeypatch.setattr(approval_matrix,'configuration',resource_identity.configuration)

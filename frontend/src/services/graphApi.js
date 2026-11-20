@@ -10,6 +10,15 @@ const readHeaders = () => {
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
 export const graphApi = {
+  computationOptions(ontologyId = '', signal) {
+    return apiClient.get(graphUrl('/api/v1/graph/computation/options'), {params:{ontology_id:ontologyId},signal,timeout:20000,headers:readHeaders()});
+  },
+  computeGraph(intent, signal) {
+    return apiClient.post(graphUrl('/api/v1/graph/computation'), intent, {signal,timeout:60000,headers:readHeaders()});
+  },
+  computationEvidence(id, ontologyId, signal) {
+    return apiClient.get(graphUrl(`/api/v1/graph/computation/evidence/${encodeURIComponent(id)}`), {params:{ontology_id:ontologyId},signal,timeout:20000,headers:readHeaders()});
+  },
   searchBusiness(query, signal) {
     return apiClient.get(graphUrl('/api/v1/graph/search'), {
       params: {query, limit: 80, business_only: true}, signal,

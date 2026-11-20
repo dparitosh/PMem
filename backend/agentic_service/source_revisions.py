@@ -1,6 +1,7 @@
 """Read authoritative ontology revision receipts through the owning API."""
 import re
 import asyncio
+import httpx
 from urllib.parse import quote
 from backend.depo_platform.network import bounded_timeout_seconds
 
@@ -25,8 +26,22 @@ async def capture(scope, headers):
 async def _capture(scope, headers):
     receipts = []
     for identifier in ontology_ids(scope):
-        body, _ = await _read_json('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011',
-            '/ontologies/' + quote(identifier, safe='') + '/revision', {}, headers)
+        try:
+            body, _ = await _read_json('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011',
+                '/ontologies/' + quote(identifier, safe='') + '/revision', {}, headers)
+        except httpx.HTTPStatusError as failure:
+            # A legacy source namespace is not a registered ontology artifact.
+            # Preserve the revision guard using the owning graph's exact source.
+            if failure.response.status_code!=404 or not scope.get('node_id') or identifier!=scope.get('ontology_id'):
+                raise
+            body,_=await _read_json('GRAPH_SERVICE_URL','http://127.0.0.1:8013','/graph/source-revision',
+                {'node_id':scope['node_id'],'ontology_id':identifier},headers)
+            if (body.get('kind')!='graph-source-revision' or body.get('node_id')!=scope['node_id']
+                or body.get('ontology_id')!=identifier or body.get('limited') is not False
+                or body.get('status')!='retained_graph' or not re.fullmatch(r'[0-9a-f]{64}',str(body.get('revision_sha256','')))):
+                raise ValueError('Invalid selected graph revision receipt')
+            receipts.append({key:body[key] for key in ('kind','node_id','ontology_id','revision_sha256','status','limited')})
+            continue
         if (body.get('ontology_id') != identifier or
                 not re.fullmatch(r'[0-9a-f]{64}', str(body.get('artifact_sha256', '')))):
             raise ValueError('Invalid ontology revision receipt')

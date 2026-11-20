@@ -85,3 +85,20 @@ def legacy_artifact(task_id: str, artifact_path: str):
     if path is None:
         raise HTTPException(404, 'Workflow artifact not found')
     return FileResponse(path, filename=path.name)
+
+
+from backend.depo_platform.request_bodies import BridgeChangeCommand
+
+def _change_actor(request: Request):
+    return approval_identity(request,{},token_env='AGENTIC_APPROVAL_TOKEN')
+
+@router.get('/bridge/previews/{preview_id}/change',dependencies=[Depends(graph_read_identity)])
+def mapping_change_status(preview_id: str):
+    from .bridge_change import view
+    return translate(lambda:view(jobs,preview_id))
+
+@router.post('/bridge/previews/{preview_id}/change')
+def mapping_change_command(preview_id: str,payload: BridgeChangeCommand,actor: str=Depends(_change_actor)):
+    from .bridge_change import transition
+    return translate(lambda:transition(jobs,preview_id,payload.action,actor,payload.expected_revision,
+        payload.expected_plan_digest,payload.reason,payload.candidate_ids))

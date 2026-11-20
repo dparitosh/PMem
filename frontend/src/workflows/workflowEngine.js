@@ -45,6 +45,7 @@ export const supportedFormats = [
   { ext: '.ttl', name: 'Turtle' },
   { ext: '.plmxml', name: 'PLMXML' },
   { ext: '.reqif', name: 'ReqIF' },
+  { ext: '.qif', name: 'QIF XML' },
   { ext: '.reqifz', name: 'ReqIFZ' },
   { ext: '.3dxml', name: '3DXML (3DEXPERIENCE)' },
   { ext: '.archimate', name: 'ArchiMate' },
@@ -100,8 +101,8 @@ export const workflowCatalog = [
   },
   {
     id: 'document.unstructured',
-    label: 'Unstructured document pipeline',
-    title: 'Unstructured document pipeline',
+    label: 'Document processing workflow',
+    title: 'Document processing workflow',
     category: 'AI Ingestion',
     description: 'Retain source documents, extract traceable text chunks, generate embeddings and review-only semantic proposals, and index GraphRAG context.',
     inputs: 'PDF, Word, PowerPoint, Text, Markdown, HTML',
@@ -228,6 +229,17 @@ export const workflowCatalog = [
   },
 ];
 
+// Compatibility classification for older services. Canonical IDs are never renamed.
+export const ingestionFamilyIds = ['instance.import', 'ontology.create', 'document.unstructured'];
+export const workflowFamilyId = (workflow) => {
+  const id = typeof workflow === 'string' ? workflow : workflow?.id;
+  const family = typeof workflow === 'object' ? workflow?.family : null;
+  if (ingestionFamilyIds.includes(family)) return family;
+  if (['instance.import', 'architecture.archimate', 'instance.link'].includes(id)) return 'instance.import';
+  if (id === 'document.unstructured') return id;
+  return getWorkflowById(id) ? 'ontology.create' : null;
+};
+
 export const executableWorkflowIds = workflowCatalog.map(workflow => workflow.id);
 
 const normalizeWorkflowStatus = (status) => {
@@ -246,12 +258,23 @@ export const mergeWorkflowRuntimeOptions = (catalog, runtimeOptions = []) => {
       ...workflow,
       status: normalizeWorkflowStatus(runtime.status || workflow.status),
       runtimeStatus: runtime.status || workflow.status,
+      family: ingestionFamilyIds.includes(runtime.family) ? runtime.family : workflowFamilyId(workflow),
+      activity: typeof runtime.activity === 'string' ? runtime.activity : workflow.activity,
+      adapter: runtime.adapter === null || typeof runtime.adapter === 'string' ? runtime.adapter : workflow.adapter,
       label: runtime.label || runtime.title || workflow.label,
       title: runtime.label || runtime.title || workflow.title,
       category: runtime.category || workflow.category,
       execution_surface: runtime.execution_surface || workflow.execution_surface,
       execution: runtime.execution || workflow.execution,
       prerequisite: runtime.prerequisite || workflow.prerequisite,
+      // The service owns capabilities. Local stages/icons remain presentation
+      // fallbacks for older servers, never authority to permit an operation.
+      inputs: typeof runtime.inputs === 'string' ? runtime.inputs : workflow.inputs,
+      outputs: Array.isArray(runtime.outputs) ? runtime.outputs
+        : typeof runtime.outputs === 'string' ? runtime.outputs.split(',').map(value => value.trim()).filter(Boolean)
+        : workflow.outputs,
+      writes_to_neo4j: typeof runtime.writes_to_neo4j === 'boolean' ? runtime.writes_to_neo4j : workflow.writes_to_neo4j,
+      retains_artifacts: typeof runtime.retains_artifacts === 'boolean' ? runtime.retains_artifacts : workflow.retains_artifacts,
     };
   });
 };
@@ -375,3 +398,24 @@ export const buildWorkflowStages = (workflow) =>
 
 export const getStageLabel = (stageId) =>
   pipelineStages.find(stage => stage.id === stageId)?.label || stageId;
+
+
+// Navigate to existing review workspaces; this never submits or approves work.
+export const activityWorkspaceLink = (workflowId, {ontologyId='', targetOntologyId='', importTaskId=''} = {}) => {
+  const params = new URLSearchParams();
+  let path = '#/ontology';
+  if (workflowId === 'instance.link') {
+    params.set('view','alignment'); params.set('mode','instance');
+    if (ontologyId) params.set('target',ontologyId);
+    if (importTaskId) params.set('import_task_id',importTaskId);
+  } else if (workflowId === 'ontology.merge') {
+    params.set('view','alignment'); params.set('mode','merge');
+    if (ontologyId) params.set('merge_source',ontologyId);
+    if (targetOntologyId) params.set('target',targetOntologyId);
+  } else if (['ontology.validate','taxonomy.generate'].includes(workflowId)) {
+    params.set('view','taxonomy'); if (ontologyId) params.set('target',ontologyId);
+  } else if (workflowId === 'dictionary.generate') {
+    path='#/registry'; params.set('view','dictionary'); if (ontologyId) params.set('ontology_id',ontologyId);
+  } else return null; // Chunk export has no equivalent owner-page command yet.
+  return path+'?'+params.toString();
+};

@@ -64,12 +64,29 @@ def pre_commit(task_id: str):
 @router.post('/commit/{task_id}')
 async def commit(task_id: str, payload: ApprovalBody, request: Request):
     actor = approval_identity(request, payload, token_env='INGESTION_WRITE_TOKEN')
-    _status(task_id)
-    try:
-        result = await _service().commit_import(task_id)
-        return {'success': True, 'task_id': task_id, 'approved_by': actor, **result, 'result': result}
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc
+    from . import import_change
+    from backend.depo_platform.request_bodies import MergeChangeCommand
+    current=import_change.view(task_id)
+    return await import_change.command(task_id,MergeChangeCommand(action='execute',expected_revision=current['change_request']['revision'],expected_plan_digest=current['current_plan_digest']),actor)
+
+from backend.depo_platform.request_bodies import MergeChangeCommand
+
+@router.post('/{task_id}/change/submit')
+def submit_load_change(task_id: str,payload: ApprovalBody,request: Request):
+    from . import import_change
+    actor=approval_identity(request,payload,token_env='INGESTION_WRITE_TOKEN')
+    return import_change.submit(task_id,actor,'Load retained engineering records')
+
+@router.get('/{task_id}/change',dependencies=[Depends(graph_read_identity)])
+def load_change_status(task_id: str):
+    from . import import_change
+    return import_change.view(task_id)
+
+@router.post('/{task_id}/change')
+async def load_change_command(task_id: str,payload: MergeChangeCommand,request: Request):
+    from . import import_change
+    actor=approval_identity(request,{},token_env='INGESTION_WRITE_TOKEN')
+    return await import_change.command(task_id,payload,actor)
 
 @router.post('/cancel/{task_id}')
 def cancel(task_id: str):

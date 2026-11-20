@@ -13,7 +13,7 @@ const ChangeImpactResult = ({ data }) => {
 
   const ce = data.change_entity || {};
   if (data.evidence_status === 'insufficient') {
-    return <section aria-label="Change impact evidence" role="status"><h3>{businessDisplayName(ce.name)}</h3><p>{data.message}</p></section>;
+    return <section aria-label="Change impact evidence" role="status"><h3>{businessDisplayName(ce.name)}</h3><p>CO scope cannot be established from the current linked evidence.</p></section>;
   }
   const tabs = [
     { id: 'overview',      label: 'Overview',           color: C.orange  },

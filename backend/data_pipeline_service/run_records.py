@@ -108,12 +108,25 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
             "record_count": _input_count(payload),
             "artifact_ids": sorted(set([*supplied_artifact_ids, raw_artifact["artifact_id"]])),
             "raw_payload_artifact_id": raw_artifact["artifact_id"],
+            **({key:payload[key] for key in ('event_review_id','event_intent_digest') if key in payload}),
             **({'configuration_id': payload['configuration_id']} if payload.get('configuration_id') else {}),
         },
         "checkpoint": checkpoint,
         "output_manifest": None,
     }
+    if isinstance(store, PostgresRegistry):
+        from backend.depo_platform.resource_identity import identify, resolve_object, file_reference
+        identity=identify('RUN','data-pipeline',run_id,name=payload.get('source_system') or definition.get('name',''),links={'workflow_id':definition['job_id']})
+        record.update(object_uuid=identity['object_id'],run_number=identity['number'])
+        if payload.get('source_file_id'):
+            source=resolve_object(payload['source_file_id'])
+            if not source or source.get('kind')!='FILE' or source.get('links',{}).get('artifact_id') not in supplied_artifact_ids:
+                raise ValueError('File identity does not match a retained input artifact')
+            record['input_manifest']['file_references']=[file_reference(source)]
+    if isinstance(payload.get('source_name'),str) and payload['source_name'].strip():record['source_name']=payload['source_name'][:500]
     record["deadline_at"] = execution_deadline(record)
+    from backend.depo_platform.run_labels import present
+    record = present(record)
     return store.put(run_id, record)
 
 
@@ -142,7 +155,7 @@ def claim_next(*, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | 
                 expired = datetime.fromisoformat(lease["expires_at"]) <= now
         except ValueError:
             expired = True
-        if record.get("status") == "queued" or (record.get("status") == "running" and expired):
+        if record.get("status") == "queued" or (record.get("status") == "running" and record.get("worker_id") and lease.get("expires_at") and expired):
             claimed = {**record, "status": "running", "worker_id": worker_id, "attempt": int(record.get("attempt") or 0) + 1,
                        "lease": {"claimed_at": _now(), "heartbeat_at": _now(), "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}}
             return store.put(record["run_id"], claimed)
@@ -165,13 +178,13 @@ def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 30
     return store.put(record["run_id"], {**record, "lease": lease})
 
 
-def _persist_execution(record: dict[str, Any], updated: dict[str, Any]) -> dict[str, Any]:
+def _persist_execution(record: dict[str, Any], updated: dict[str, Any], *, expected_record=None) -> dict[str, Any]:
     if record.get("worker_id") and hasattr(store, "transition_owned"):
         return store.transition_owned(record["run_id"], record, updated)
     # Unowned (inline) executions must not overwrite a record that a racing
     # writer already retained, e.g. a completion that landed before a late failure.
     if hasattr(store, "compare_and_put"):
-        if store.compare_and_put(record["run_id"], record, updated):
+        if store.compare_and_put(record["run_id"], expected_record if expected_record is not None else record, updated):
             return updated
         current = store.get(record["run_id"])
         if current is None:
@@ -216,7 +229,7 @@ def replay_payload(record: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "replay_of": record["run_id"]}
 
 
-def _retain_analytics_evidence_pending(record, result):
+def _retain_analytics_evidence_pending(record, result, *, expected_record=None):
     from backend.depo_platform.execution_guard import ensure_execution_allowed
     ensure_execution_allowed()
     receipt = result.get('ods_receipt')
@@ -225,22 +238,22 @@ def _retain_analytics_evidence_pending(record, result):
     output = {'contract': 'postgres-xml-load-v1', 'counts': dict(receipt.get('counts') or {}),
               'result_artifact_id': None, 'partition_artifacts': {}, 'evidence_status': 'pending',
               'load_status': 'completed', 'ods_receipt': receipt, 'recovery_action': 'rebuild_evidence'}
-    return _persist_execution(record, {**record, 'status': 'completed', 'completed_at': _now(), 'output_manifest': output})
+    return _persist_execution(record, {**record, 'status': 'completed', 'completed_at': _now(), 'output_manifest': output}, expected_record=expected_record)
 
 
 @ontology_writer
-def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+def complete(record: dict[str, Any], result: dict[str, Any], *, expected_record=None) -> dict[str, Any]:
     if record.get('job_type') == 'xml-analytics-materialize' and result.get('evidence_status') == 'pending':
-        return _retain_analytics_evidence_pending(record, result)
+        return _retain_analytics_evidence_pending(record, result, expected_record=expected_record)
     try:
-        return _complete_with_evidence(record, result)
+        return _complete_with_evidence(record, result, expected_record=expected_record)
     except Exception:
         if record.get('job_type') != 'xml-analytics-materialize' or not result.get('ods_receipt'):
             raise
-        return _retain_analytics_evidence_pending(record, result)
+        return _retain_analytics_evidence_pending(record, result, expected_record=expected_record)
 
 
-def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any], *, expected_record=None) -> dict[str, Any]:
     result_artifact = ArtifactStore().ingest_bytes(
         json.dumps(result, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8"),
         filename=f"{record['job_id']}-{record['job_version']}-{record['run_id']}-result.json",
@@ -310,7 +323,7 @@ def _complete_with_evidence(record: dict[str, Any], result: dict[str, Any]) -> d
         output["checkpoint_candidate"] = next_checkpoint
         output["checkpoint_state"] = "awaiting_approved_publication"
     completed = {**record, "status": result.get("status", "completed"), "completed_at": _now(), "output_manifest": output}
-    return _persist_execution(record, completed)
+    return _persist_execution(record, completed, expected_record=expected_record)
 
 
 def failed(record: dict[str, Any], message: str) -> dict[str, Any]:
@@ -349,14 +362,18 @@ def publication_succeeded(record: dict[str, Any], publication: dict[str, Any]) -
 
 
 def get(run_id: str) -> dict[str, Any] | None:
-    return store.get(run_id)
+    from backend.depo_platform.run_labels import present
+    record = store.get(run_id)
+    return present(record) if record else None
 
 
 def list_runs(*, limit: int = 100) -> list[dict[str, Any]]:
     if hasattr(store, 'page'):
-        return store.page(limit=max(1, min(limit, 1000)), order_field='started_at')[1]
+        from backend.depo_platform.run_labels import present
+        return [present(row) for row in store.page(limit=max(1, min(limit, 1000)), order_field='started_at')[1]]
     records = sorted(store.all().values(), key=lambda item: item.get("started_at", ""), reverse=True)
-    return records[:max(1, min(limit, 1000))]
+    from backend.depo_platform.run_labels import present
+    return [present(row) for row in records[:max(1, min(limit, 1000))]]
 
 
 def telemetry_summary(*, limit: int = 100) -> dict[str, Any]:

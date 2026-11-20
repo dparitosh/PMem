@@ -32,8 +32,20 @@ def selected(agent_id):
 def scoped_tools(tools, context):
     """A selected recommendation needs its own read, not every analyst tool."""
     from .recommendation_goals import selection
-    chosen = selection(context or {})
-    return [tool for tool in tools if tool['id'] == chosen['tool_id']] if chosen else tools
+    context = context or {}
+    chosen = selection(context)
+    if chosen:
+        return [tool for tool in tools if tool['id'] == chosen['tool_id']]
+    if (context.get('page') == 'graph' or (context.get('page') == 'recommendations' and context.get('decision_analysis') == 'alternatives')) and context.get('node_id') and context.get('ontology_id'):
+        # A selected published graph object is not an OSLC provider resource or
+        # PostgreSQL context object. Keep its investigation on the owning source.
+        graph_reads = {'graph.search', 'graph.business_context', 'graph.neighborhood',
+                       'graph.query', 'graph.document_evidence', 'ontology.semantic.evidence',
+                       'ontology.consistency.check', 'ontology.foundation.inspect',
+                       'recommendation.change_impact', 'recommendation.similar_parts',
+                       'recommendation.manufacturing'}
+        return [tool for tool in tools if tool['id'] in graph_reads]
+    return tools
 
 
 def model_contract():
@@ -267,12 +279,16 @@ async def execute_candidate(record):
         from .proposal_contracts import proposal_mode
         # Reserve duplicated native/structured schemas, policy, goal and framing
         # before selecting observation results. The final outbound guard rechecks.
-        overhead = (len(json.dumps(protect(available), ensure_ascii=False).encode('utf-8')) * 2 +
+        from .local_llm import proposal_prompt_tools
+        mode = proposal_mode()
+        overhead = (len(json.dumps(protect(available), ensure_ascii=False).encode('utf-8')) +
+                    len(json.dumps(protect(proposal_prompt_tools(available, mode)), ensure_ascii=False).encode('utf-8')) +
                     len(proposal_instructions(prompt_agent, proposal_mode()).encode('utf-8')) +
                     len(claimed['goal'].encode('utf-8')) + 5000)
         budget = int(os.getenv('AGENTIC_MODEL_CONTEXT_TOKENS', '32768')) - overhead
         if budget < 2048:
-            raise ValueError('Selected tools leave no model context for the investigation; narrow the tool selection')
+            from backend.core.payload_limits import PromptBudgetExceeded
+            raise PromptBudgetExceeded('Selected tools leave no model context for the investigation; narrow the tool selection')
         scratchpad = engine.scratchpad(claimed, limit=min(120000, budget))
         from .recommendation_goals import selection, bound_inputs
         chosen = selection(claimed.get('context') or {})

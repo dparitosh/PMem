@@ -18,7 +18,7 @@ class CredentialCheckTests(TestCase):
             def __init__(self, status, detail): self.status = status
         fastapi = ModuleType('fastapi'); fastapi.HTTPException = Rejected
         auth = ModuleType('backend.depo_platform.authorization')
-        auth.service_write_identity = Mock(return_value='actor')
+        auth.approval_identity = Mock(return_value='actor')
         scope = {'Request': object, '__name__': 'backend.depo_platform.service_runtime', '__package__': 'backend.depo_platform'}
         with patch.dict(sys.modules, {'fastapi': fastapi, 'backend.depo_platform.authorization': auth}):
             exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), 'exec'), scope)
@@ -28,11 +28,11 @@ class CredentialCheckTests(TestCase):
             self.assertEqual(len(profiles), 17)
             for profile in set(profiles) - {'GRAPH_READ_TOKEN', 'ADMIN_API_KEY'}:
                 self.assertEqual(scope['credential_check'](request, profile)['status'], 'authorized')
-                auth.service_write_identity.assert_called_with(request, token_env=profile, default_actor='credential-check')
-            auth.service_write_identity.reset_mock()
+                auth.approval_identity.assert_called_with(request, {}, token_env=profile)
+            auth.approval_identity.reset_mock()
             with self.assertRaises(Rejected): scope['credential_check'](request, 'DATABASE_PASSWORD')
-            auth.service_write_identity.assert_not_called()
-            auth.service_write_identity.side_effect = Rejected(403, 'invalid key')
+            auth.approval_identity.assert_not_called()
+            auth.approval_identity.side_effect = Rejected(403, 'invalid key')
             with self.assertRaises(Rejected): scope['credential_check'](request, 'INGESTION_WRITE_TOKEN')
 
 

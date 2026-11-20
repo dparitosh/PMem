@@ -53,3 +53,67 @@ def test_teamcenter_plmxml_adapter_is_registered_in_the_openapi_service():
     assert payload["standard"] == "plmxml"
     assert payload["representation"] == "normalized-ceim-v1"
     assert payload["source_artifact_id"].startswith("sha256:")
+
+
+def test_declared_requirement_specs_keep_revision_and_trace_carriers():
+    content=b"""<PLMXML xmlns='http://www.plmxml.org/Schemas/PLMXMLSchema'>
+    <Product id='master' name='Motor requirement specification' subType='RequirementSpec' productId='R-1'/>
+    <ProductRevision id='rev' name='Motor requirement specification A' subType='RequirementSpec Revision' masterRef='#master' revision='A'/>
+    <Product id='other' name='Subsystem requirement specification' subType='RequirementSpec'/>
+    <GeneralRelation id='trace' subType='FND_TraceLink' relatedRefs='#rev #other'/>
+    </PLMXML>"""
+    result=plmxml_to_ceim_batch(content)
+    entities={row['id']:row for row in result['entities']}
+    assert entities['plmxml:master']['ceim_type']=='Requirement'
+    assert entities['plmxml:rev']['properties']['revision']=='A'
+    assert entities['plmxml:trace']['ceim_type']=='Resource'
+    links={(row['source_id'],row['target_id'],row['relationship']) for row in result['relationships']}
+    assert ('plmxml:rev','plmxml:master','TRACE_TO') in links
+    assert ('plmxml:trace','plmxml:rev','TRACE_TO') in links
+    assert ('plmxml:trace','plmxml:other','TRACE_TO') in links
+    assert not any(row['relationship']=='SATISFIES' for row in result['relationships'])
+
+
+def test_manufacturing_occurrence_chain_retains_declared_process_and_part_references():
+    source=b"""<PLMXML xmlns='http://www.plmxml.org/Schemas/PLMXMLSchema'>
+    <Product id='part' name='Motor shaft'/>
+    <Process id='process' name='Finish grinding'/>
+    <ProcessRevision id='revision' name='Finish grinding A' masterRef='#process' revision='A'/>
+    <ProcessOccurrence id='operation' name='Grinding operation' instancedRef='#revision' occurrenceRefs='consumed'/>
+    <Occurrence id='consumed' subType='MEConsumed' instancedRef='#part' parentRef='#operation'/>
+    </PLMXML>"""
+    batch=plmxml_to_ceim_batch(source)
+    rows={row['id']:row for row in batch['entities']}
+    assert rows['plmxml:operation']['ceim_type']=='Process'
+    assert rows['plmxml:consumed']['ceim_type']=='Resource'
+    links={(row['source_id'],row['target_id']) for row in batch['relationships']}
+    assert ('plmxml:operation','plmxml:revision') in links
+    assert ('plmxml:revision','plmxml:process') in links
+    assert ('plmxml:operation','plmxml:consumed') in links
+    assert ('plmxml:consumed','plmxml:part') in links
+    assert not any(row['relationship']=='CONSUMES' for row in batch['relationships'])
+
+
+def test_declared_external_reference_is_not_silently_counted_as_complete():
+    batch=plmxml_to_ceim_batch(b'<PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema"><ProductRevision id="r" masterRef="other.xml#id1"/></PLMXML>')
+    assert batch['mapping_diagnostics']['status']=='review_required'
+    assert batch['source_summary']['unresolved_references'] > 0
+    assert any(row['target_id']=='other.xml#id1' for row in batch['mapping_diagnostics']['unresolved_reference_samples'])
+
+
+def test_duplicate_identity_in_unmapped_plmxml_content_cannot_shadow_a_product():
+    with pytest.raises(ValueError,match='duplicate identifier'):
+        plmxml_to_ceim_batch(b'<PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema"><Product id="p"/><VendorRecord id="p"/></PLMXML>')
+
+
+def test_work_area_chain_preserves_resources_and_resolves_declared_manufacturing_links():
+    source=b'<PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema"><ProcessOccurrence id="op" occurrenceRefs="wa"/><WorkAreaOccurrence id="wa" parentRef="#op" instancedRef="#rev" instanceRefs="#i"/><WorkArea id="master" name="Boring station"/><WorkAreaRevision id="rev" masterRef="#master" revision="A"/><WorkAreaInstance id="i" partRef="#view"/><PlantRevisionView id="view" revisionRef="#rev"/></PLMXML>'
+    batch=plmxml_to_ceim_batch(source)
+    entities={row['id']:row for row in batch['entities']}
+    assert set(entities)=={'plmxml:op','plmxml:wa','plmxml:rev','plmxml:master','plmxml:i','plmxml:view'}
+    assert all(entities['plmxml:'+key]['ceim_type']=='Resource' for key in ['wa','rev','master','i','view'])
+    assert batch['source_summary']['unresolved_references']==0
+    assert batch['mapping_diagnostics']['status']=='complete_for_declared_profile'
+    links={(row['source_id'],row['target_id']) for row in batch['relationships']}
+    assert {('plmxml:op','plmxml:wa'),('plmxml:wa','plmxml:rev'),('plmxml:wa','plmxml:i'),('plmxml:i','plmxml:view'),('plmxml:view','plmxml:rev'),('plmxml:rev','plmxml:master')} <= links
+    assert contract.validate_projection(entities=batch['entities'],relationships=batch['relationships'])['conforms']

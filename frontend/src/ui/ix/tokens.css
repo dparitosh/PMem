@@ -61,11 +61,11 @@
 
 .ui-form-help {
   color: var(--theme-text-caption, inherit);
-  font-size: 0.875rem;
+  font-size: max(12px, 0.875rem);
   margin-top: 4px;
 }
 .ui-form-error {
   color: var(--ui-status-danger);
-  font-size: 0.875rem;
+  font-size: max(12px, 0.875rem);
   margin-top: 4px;
 }

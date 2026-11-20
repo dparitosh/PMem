@@ -51,10 +51,10 @@ def test_execution_identity_is_server_resolved_and_requires_execution_access():
     from backend.data_pipeline_service import router as pipeline
     app=FastAPI();app.include_router(pipeline.router,prefix='/api/v1')
     client=TestClient(app)
-    with patch.object(pipeline,'service_write_identity',return_value='verified-actor') as identity:
+    with patch.object(pipeline,'approval_identity',return_value='verified-actor') as identity:
         response=client.get('/api/v1/pipeline/jobs/execution-identity',headers={'Authorization':'Bearer scoped-test-token'})
         assert response.status_code==200
         assert response.json()=={'actor':'verified-actor','source':'authenticated-connection'}
         assert identity.call_args.kwargs['token_env']=='DATA_JOB_EXECUTION_TOKEN'
-    with patch.object(pipeline,'service_write_identity',side_effect=HTTPException(403,'denied')):
+    with patch.object(pipeline,'approval_identity',side_effect=HTTPException(403,'denied')):
         assert client.get('/api/v1/pipeline/jobs/execution-identity').status_code==403

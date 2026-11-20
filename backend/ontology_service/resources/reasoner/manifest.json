@@ -1,8 +1,9 @@
 {
-    "build":  "infra/reasoner/pom.xml",
-    "version":  "1.4.5.519",
-    "worker_version":  "1.0.0",
-    "file":  "depo-owl-dl.jar",
-    "sha256":  "e7f49fe71f59522822d5bb916de2a0fb374647cc1ca76126d3738ae30515a963",
-    "engine":  "HermiT"
+  "source_sha256": "ba39ff187ad0b12620d15b801e677b9375652b27f9f6218dd33776bd804ea027",
+  "worker_version": "1.0.0",
+  "version": "1.4.5.519",
+  "build": "infra/reasoner/build.ps1 -UseBundledDependencies",
+  "engine": "HermiT",
+  "sha256": "24e401fc172a4f1955626890fb3d83c5a29cf7ef4d0eb299a08dceaad8a734d8",
+  "file": "depo-owl-dl.jar"
 }

@@ -94,6 +94,9 @@ Invoke-DepoStage 'Deployment configuration preflight (before dependency installa
     & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1') -RootEnvFile $envPath
   }
 }
+Invoke-DepoStage 'Retired vendor file cleanup (reviewed hashes only)' {
+  & (Join-Path $windows 'remove-retired-release-files.ps1') -Root $root
+}
 $artifactStorage = $settings['ARTIFACT_STORAGE']
 if (-not $artifactStorage -or -not [IO.Path]::IsPathRooted($artifactStorage)) {
   throw 'ARTIFACT_STORAGE must be an absolute durable directory shared by the DEPO APIs and workers.'
@@ -175,6 +178,16 @@ Invoke-DepoStage 'Detect first installation or existing database' {
 }
 Invoke-DepoStage 'PostgreSQL schema migration' {
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') -Action InitializeDatabase -EnvFile $envPath -Profile $Profile
+}
+Invoke-DepoStage 'Object identity metadata upgrade (no approval or publication)' {
+  Import-DepoEnvironment -Root $root -EnvFile $envPath
+  Push-Location -LiteralPath $root
+  try {
+    . (Join-Path $windows 'service-runtimes.ps1')
+    $identityPython = Get-DepoServicePython -Root $root -ServiceId 'data-pipeline' -Mode $settings.DEPO_SERVICE_RUNTIME_MODE
+    Invoke-DepoNativeCommand -Executable $identityPython -NativeArguments @('-m','backend.scripts.backfill_change_labels','--env-file',$envPath,'--apply')
+    if ($LASTEXITCODE -ne 0) { throw 'Object identity upgrade failed; services were not started. Resolve the reported cause and rerun setup.' }
+  } finally { Pop-Location }
 }
 if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
   $credentialStage = if ($ReplaceExistingCredentials) { 'Central credential synchronization from selected environment (before service launch)' } else { 'Central credential validation (before service launch)' }

@@ -31,6 +31,35 @@ def descriptive_properties(properties):
     return result
 
 
+def is_business_result(node):
+    """Reject vocabulary and infrastructure rows, including schema-typed resources."""
+    props = node.get('properties') or {}
+    excluded = {'class', 'ontologyclass', 'objectproperty', 'datatypeproperty',
+                'annotationproperty', 'restriction', 'property', 'datatype', 'expression',
+                'axiom', 'ontology', 'ontologypublication', 'retainedontologyidentity',
+                'stagedontologyresource', 'graphchunk', 'datasheetchunk'}
+    kinds = {str(props.get('kind') or '').casefold()}
+    kinds.update(str(value).casefold() for value in node.get('labels') or [])
+    schema_types = {
+        'http://www.w3.org/2002/07/owl#' + name for name in
+        ('Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty', 'Restriction', 'Ontology')
+    } | {'http://www.w3.org/2000/01/rdf-schema#Class',
+         'http://www.w3.org/2000/01/rdf-schema#Datatype',
+         'http://www.w3.org/1999/02/22-rdf-syntax-ns#Property'}
+    return not (kinds & excluded or set(props.get('rdf_types') or []) & schema_types)
+
+
+def unresolved_identity(subject, source):
+    from .business_answers import cell
+    return {'status':'unresolved_identity', 'answerable':False,
+            'response':('I could not identify “' + cell(subject) +
+                '” in the retrieved business records. Check the part number or revision, or select the intended record.'),
+            'evidence':[], 'sources':[source],
+            'retrieval':{'answer_scope':'business_identity','identity_resolution':'unresolved',
+                         'context_invalidated':True,'graph_status':'available','semantic_entailment_verified':False},
+            'generation':{'enabled':False,'status':'not_requested'}}
+
+
 class KnowledgeCompanion:
     max_nodes = 200
     max_evidence = 12
@@ -68,6 +97,16 @@ class KnowledgeCompanion:
                 selected.setdefault('retrieval', {})['answerability'] = {key: coverage[key] for key in ('status', 'answerable')}
             if on_token: await on_token(selected['response'])
             return selected
+        if page == 'modeling' and node_id and ontology_id and re.search(r'\brequirement\s+(?:value|text|number|details?|description)\b', query, re.I):
+            from .companion_context import selected_model_answer
+            try:
+                selected = await selected_model_answer(node_id, headers=headers, ontology_id=ontology_id)
+            except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
+                selected = {'status': 'unavailable', 'answerable': False,
+                    'response': 'The selected model requirement could not be verified. Refresh the source model and retry; no other record was substituted.',
+                    'evidence': [], 'sources': [], 'generation': {'enabled': False, 'status': 'not_requested'}}
+            if on_token: await on_token(selected['response'])
+            return selected
         from .companion_context import semantic_context
         try:
             semantic = await semantic_context(query, headers=headers, ontology_id=ontology_id)
@@ -91,6 +130,9 @@ class KnowledgeCompanion:
                     'generation': {'enabled': False, 'status': 'not_requested'}}
         from backend.depo_platform.plm_questions import intent
         business_intent=intent(query)
+        from backend.depo_platform.plm_questions import property_subject
+        explicit_subject = property_subject(query) if not business_intent and not node_id else ''
+        search_query = explicit_subject or query
         from .companion_context import mapping_context
         context = {'evidence': [], 'status': 'unavailable'}
         model_support = None
@@ -102,7 +144,7 @@ class KnowledgeCompanion:
         except (httpx.HTTPError, TimeoutError, ValueError, RuntimeError):
             logging.getLogger(__name__).warning('Companion retained mapping retrieval unavailable')
         page_result={'evidence':[],'status':'not_requested'}
-        if page and not business_intent:
+        if page and not business_intent and not node_id:
             from .companion_context import page_context
             try:
                 page_result=await page_context(query,page=page,headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
@@ -134,6 +176,11 @@ class KnowledgeCompanion:
                     'retrieval':{'answer_scope':'business_instance_associations', 'business_answer_status':'unavailable',
                                  'semantic_entailment_verified':False},
                     'generation':{'enabled':False,'status':'not_requested'}}
+        if typed_answer and typed_answer.get('intent') == 'product_assembly' and not typed_answer.get('rows'):
+            from backend.depo_platform.plm_questions import business_subject
+            named = business_subject(query, node_id)
+            if named:
+                return unresolved_identity(named, self._graph_root() + '/graph/business-answer')
         graph_status = 'not_requested' if typed_answer else 'available'
         resolved_context = None
         try:
@@ -150,7 +197,7 @@ class KnowledgeCompanion:
                     from backend.depo_platform.network import gateway_subscription_headers
                     headers = {**headers, **gateway_subscription_headers(endpoint)}
                     from .response_limits import read_bounded_response
-                    async with client.stream('GET', endpoint, params={"query": query, "limit": self.max_nodes, "ontology_id": ontology_id, "ontology_prefix": ontology_prefix, "business_only": True}, headers=headers) as response:
+                    async with client.stream('GET', endpoint, params={"query": search_query, "limit": self.max_nodes, "ontology_id": ontology_id, "ontology_prefix": ontology_prefix, "business_only": True}, headers=headers) as response:
                         response.raise_for_status()
                         graph = json.loads(await read_bounded_response(response))
         except (httpx.HTTPError, TimeoutError, ValueError) as exc:
@@ -175,11 +222,17 @@ class KnowledgeCompanion:
         if any(not isinstance(edge.get('start'), str) or not isinstance(edge.get('end'), str)
                or edge['start'] not in identities or edge['end'] not in identities for edge in relationships):
             raise RuntimeError('Graph retrieval returned a relationship outside its evidence resources')
-        query_tokens = self._tokens(query)
+        query_tokens = self._tokens(search_query)
         # Do not turn a legacy/unfiltered search response into a business fact.
-        schema_kinds = {'class','ontologyclass','objectproperty','datatypeproperty','annotationproperty','restriction','property','datatype','expression','axiom'}
-        nodes = [node for node in nodes if str((node.get('properties') or {}).get('kind') or '').lower() not in schema_kinds
-                 and not set(node.get('labels') or []) & {'OntologyClass','ObjectProperty','DatatypeProperty','Restriction'}]
+        nodes = [node for node in nodes if is_business_result(node)]
+        if explicit_subject:
+            subject_tokens = self._tokens(explicit_subject)
+            nodes = [node for node in nodes if subject_tokens and subject_tokens <= self._tokens(str(node['properties'].get('name') or node['properties'].get('label') or ''))]
+            exact_nodes = [node for node in nodes if self._tokens(str(node['properties'].get('name') or node['properties'].get('label') or '')) == subject_tokens]
+            if exact_nodes:
+                nodes = exact_nodes
+        if explicit_subject and not nodes and graph_status == 'available':
+            return unresolved_identity(explicit_subject, endpoint)
         business_ids = {node['elementId'] for node in nodes}
         relationships = [edge for edge in relationships if edge.get('start') in business_ids and edge.get('end') in business_ids]
         scored: list[tuple[int, dict[str, Any]]] = []
@@ -215,6 +268,7 @@ class KnowledgeCompanion:
                     business_status='available'
                 except (httpx.HTTPError,TimeoutError,ValueError,RuntimeError):
                     logging.getLogger(__name__).warning('Companion business context unavailable')
+        selected = [node for node in selected if is_business_result(node)]
         selected_ids = {str(node.get("elementId")) for node in selected}
         edge_budget = max(0, self.max_evidence - len(selected))
         selected_edges = [edge for edge in relationships if str(edge.get("start")) in selected_ids and str(edge.get("end")) in selected_ids][:edge_budget]
@@ -225,7 +279,7 @@ class KnowledgeCompanion:
                 "label": str((node.get("properties") or {}).get("label") or node.get("elementId") or ""),
                 "kind": (declared_business_kind(node) if declared_business_kind(node) != 'unclassified' else
                          str((node.get("properties") or {}).get("kind") or (node.get("labels") or ["resource"])[0])),
-                "ontology_id": (node.get("properties") or {}).get("ontology_id"), "source": endpoint,
+                "ontology_id": (node.get("properties") or {}).get("ontology_id") or (node.get("properties") or {}).get("source_ontology"), "source": endpoint,
                 "properties": descriptive_properties(node.get("properties") or {}),
                 "why_included": inclusion.get(node['elementId']),
             }
@@ -244,6 +298,12 @@ class KnowledgeCompanion:
                 'source': 'ontology-service:current-semantic-evidence', 'assessment': model_support})
         selection_truncated = len(scored)>len(selected) or len(relationships)>len(selected_edges)
         retrieval = {"nodes_examined": len(nodes), "relationships_examined": len(relationships), "truncated": bool((graph.get("view") or {}).get("truncated")), 'graph_status': graph_status, 'mapping_history_status': context['status'], 'page_evidence_status': page_result['status'], 'page':page, 'selection_truncated': selection_truncated, 'selected_resources': len(selected), 'selected_relationships': len(selected_edges), 'answer_scope': 'bounded_retrieval', 'semantic_entailment_verified': False, 'retrieved_at': datetime.now(timezone.utc).isoformat(), 'evidence_sha256': hashlib.sha256(json.dumps(evidence,sort_keys=True,ensure_ascii=False).encode()).hexdigest()}
+        # Retain the actual evidence baseline separately from the user's search scope.
+        # Historical memory is advisory; subsequent questions must re-read the graph.
+        from .companion_memory import evidence_grounding
+        grounding_root = node_id or (selected[0]['elementId'] if explicit_subject and len(nodes) == 1 and selected
+                                    and not (graph.get('view') or {}).get('truncated') else '')
+        retrieval['grounding'] = evidence_grounding(evidence, grounding_root)
         retrieval['page_representation'] = page_result.get('representation', 'not_available')
         retrieval['document_evidence_status'] = document_result['status']
         retrieval['document_retrieval_mode'] = 'lexical_fulltext'
@@ -284,24 +344,21 @@ class KnowledgeCompanion:
         if labels and not business_items:
             from .business_answers import cell
             response_text += ("\n\n" if response_text else '') + 'Retrieved business records:\n\n| Name | Description / value | Evidence |\n|---|---|---|'
+            missing_record_details = False
             for item in evidence:
                 if item['evidence_type'] != 'graph_resource': continue
                 props = item.get('properties') or {}
-                description = props.get('description') or props.get('definition') or props.get('value') or props.get('comment')
-                attributes=[]
-                if props.get('value') is not None:
-                    attributes.append('Value: '+cell(props['value'])+' '+cell(props.get('units') or props.get('unit') or '').replace('Not recorded',''))
-                for key in ('revision','material','mass','weight','diameter','length','tolerance','status'):
-                    if props.get(key) is not None:attributes.append(key.capitalize()+': '+cell(props[key]))
-                details='; '.join([cell(description),*attributes]) if attributes else cell(description)
+                from .business_answers import instance_details
+                details = instance_details(props)
+                missing_record_details = missing_record_details or not details
+                details = details or 'Property read incomplete'
                 response_text += f"\n| {cell(item['label'])} | {details} | [evidence:{item['resource_id']}] |"
-            connections=[item for item in evidence if item['evidence_type']=='graph_relationship']
-            if connections:
-                from .business_answers import connection_label
-                names={item['resource_id']:item['label'] for item in evidence if item['evidence_type']=='graph_resource'}
-                response_text+='\n\n| From | Recorded relationship | To | Evidence |\n|---|---|---|---|'
-                for edge in connections:
-                    response_text+=f"\n| {cell(names.get(edge['source_id']))} | {connection_label({'business_label':edge.get('business_label'),'type':edge['relationship']})} | {cell(names.get(edge['target_id']))} | [evidence:{edge['source_id']}] [evidence:{edge['target_id']}] |"
+            if missing_record_details:
+                response_text += '\n\nProperty values could not be established for the marked records from this bounded read. The source has not been checked for missing assertions; inspect the cited instance before drawing a conclusion.'
+            from .business_answers import render_instance_connections
+            connection_text = render_instance_connections(evidence)
+            if connection_text:
+                response_text += '\n\n' + connection_text
         if retrieval['truncated'] or selection_truncated: response_text += '\n\nThis answer uses a limited evidence selection; it does not establish whole-graph counts, completeness or absence of other matches.'
         if page_result.get('representation') == 'postgres_business_context':
             response_text += '\n\nBusiness-context evidence comes from the PostgreSQL-backed Semantica context graph; synchronization with Neo4j is not established.'
@@ -311,7 +368,7 @@ class KnowledgeCompanion:
         if document_result['status'] in {'unavailable','not_indexed'}:
             response_text += '\n\nIndexed document evidence could not be checked; this answer does not establish document coverage.'
         if relation_types and not business_items:
-            response_text += f" {len(selected_edges)} recorded connections are included in the evidence."
+            response_text += '\n\nSupporting link records are available in the evidence.'
         if business_status=='available':
             response_text += '\n\nConnected objects are included through recorded graph paths. Source references do not by themselves establish business impact or semantic equivalence.'
         elif business_status=='ambiguous':
@@ -328,7 +385,7 @@ class KnowledgeCompanion:
                 summary = await summarize(query, evidence, prompt_details=prompt_details)
                 # The model may explain typed facts; it must not replace their
                 # deterministic table or erase recorded uncertainty/coverage.
-                response_text = response_text + '\n\nModel interpretation (not independently verified):\n\n' + summary if business_items else summary
+                response_text = response_text + '\n\nModel interpretation (not independently verified):\n\n' + summary if business_items or labels else summary
                 generation = {'enabled': True, 'status': 'completed', 'provider': os.getenv('USE_LLM', 'ollama').strip().lower(), 'prompt_details': prompt_details, 'grounding': 'citation-identifiers-checked', 'semantic_entailment_verified': False}
             except Exception as failure:
                 from .local_llm import failure_status, failure_action

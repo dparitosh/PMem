@@ -7,7 +7,7 @@ import { confirmedSubmissionRejection } from '../services/workflowSubmission';
 import WorkflowRecoveryActions from './WorkflowRecoveryActions';
 import { withApiRequestId } from '../utils/apiErrorMessage';
 
-export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled, onResult, governed = false, stepInputs, onActivityChange }) {
+export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled, onResult, governed = false, stepInputs, onActivityChange, concise = false }) {
   const key = JSON.stringify(['depo:task-run', publicationRecoveryScope(), workflowId, inputs, stepInputs || null, governed]);
   const [run, setRun] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [runId, setRunId] = useState('');
@@ -118,7 +118,8 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       }}>Inspect retained workflow</button>
       <small>Find this task in agent workflow history. Inspect its status before submitting another merge.</small>
     </div>}
-    {runId && <p role="status">Workflow {runId}: {run?.execution_state || run?.status || 'checking'}. Results remain retained after leaving this page.</p>}
+    {runId && !concise && <p role="status">Workflow {runId}: {run?.execution_state || run?.status || 'checking'}. Results remain retained after leaving this page.</p>}
+    {concise && run && ['queued','running'].includes(run.status) && <p role="status">Assessing mappings…</p>}
     {run?.error_message && <p role="alert">{businessText(run.error_message)}</p>}
     {run?.status === 'failed' && !run.error_message && <p role="alert">This older run retained no failure detail. Inspect service logs using its workflow ID. A new run will retain diagnostic details.</p>}
     {run?.pending_step?.child_run_id && <p>Waiting for dependent data job: {String(run.pending_step.child_run_id)}. Workflow completion requires its result.</p>}
@@ -128,9 +129,9 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       catch { if (!controller.signal.aborted) setError('Control was not confirmed. Refresh status before retrying.'); }
       finally { if (!controller.signal.aborted) setBusy(false); }
     }}>{action}</button>)}
-    {run && <TaskProgress run={run} kind="workflow" />}
+    {run && !concise && <TaskProgress run={run} kind="workflow" />}
     <WorkflowRecoveryActions key={runId} run={run} disabled={busy} onRefresh={() => setRevision(value => value + 1)} />
-    {runId && <small>Controls take effect between tools. Completed writes remain retained.</small>}
+    {runId && !concise && <small>Controls take effect between tools. Completed writes remain retained.</small>}
     {runId && error && <p>Reconnect access and refresh this retained workflow. An inaccessible run cannot be cleared while its outcome is unverified.</p>}
     {['completed', 'cancelled', 'failed', 'timed_out'].includes(run?.status) && !run?.reconciliation_required && <button type="button" onClick={() => {
       try { sessionStorage.removeItem(key); } catch {} setRunId(''); setRun(null); setError('');

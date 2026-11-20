@@ -39,3 +39,14 @@ test('isolated runtime details do not imply that acquisition requires Semantica 
  expect(screen.getByText(/REST acquisition uses the existing semantic runtime/)).toBeVisible();
  expect(screen.getByText(/acquisition runtime is checked separately/)).toBeVisible();
 });
+
+
+test('source capabilities use a selectable list rather than a table',async()=>{
+ api.ingestorCapabilities.mockResolvedValue(result);render(<IngestorCapabilities/>);
+ await screen.findByRole('list',{name:'Source types'});
+ expect(screen.queryByRole('table')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:/Email Not connected/}));
+ expect(screen.getByText('Email connection')).toBeVisible();
+ expect(screen.getByText('No adapter')).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Configure REST source below'})).not.toBeInTheDocument();
+});

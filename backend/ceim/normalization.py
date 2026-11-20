@@ -13,6 +13,14 @@ _NUMBER_KEYS = {"amount", "count", "length", "width", "height", "weight", "quant
 
 
 def _string(value: str, key: str) -> tuple[Any, str | None]:
+    # Identifiers are opaque strings, not measurements. Preserve leading zeros,
+    # case and internal whitespace; do not run decimal/date/text rewriting.
+    field = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', key).casefold()
+    compact = field.replace('_', '')
+    if (compact in {'partnumber', 'productnumber', 'productid', 'serialnumber', 'operationnumber', 'sourceidentifier', 'sourceid', 'sourcekey'}
+            or field in {'id', 'uid', 'uuid', 'iri', 'uri', 'href', 'number', 'identifier', 'revision'}
+            or field.endswith(('_id', '_uid', '_uuid', '_iri', '_uri', '_identifier', '_number', '_ref', '_refs'))):
+        return value, None
     cleaned = _SPACE.sub(" ", _CONTROL.sub("", unicodedata.normalize("NFC", value).replace("\ufeff", ""))).strip()
     if not cleaned:
         return "", "empty_after_text_cleanup" if value else None

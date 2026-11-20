@@ -96,15 +96,14 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
     if mode != "entra":
         from .credentials import uses_postgres, verify_key
         if uses_postgres() and mode != 'disabled':
-            if not payload.get('approved_by'):
-                raise HTTPException(403, 'An approver is required')
             return verify_key(token_env, payload.get('approval_token') or _request_api_key(request))
         require_active_token(token_env)
         expected = os.getenv(token_env, "").strip()
         supplied = payload.get('approval_token') or _request_api_key(request)
-        if expected and payload.get("approved_by") and isinstance(supplied, str) and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
-            return token_actor(token_env, str(payload['approved_by']))
-        raise HTTPException(403, "A valid approval token and approver are required")
+        if expected and isinstance(supplied, str) and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
+            # A shared key identifies a credential, never an arbitrary name in JSON.
+            return token_actor(token_env, 'credential:' + token_env)
+        raise HTTPException(403, "A valid approval credential is required")
     _require_trusted_gateway(request)
     encoded = request.headers.get("x-ms-client-principal", "")
     principal: dict[str, Any] = {}

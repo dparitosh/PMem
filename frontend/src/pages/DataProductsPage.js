@@ -62,7 +62,6 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const [detailLoading, setDetailLoading] = useState(false);
   const [runDraft, setRunDraft] = useState(null);
   const [analyticsProjection, setAnalyticsProjection] = useState(null);
-  const [runInputs, setRunInputs] = useState(null);
   const [runDraftError, setRunDraftError] = useState('');
   const listRequest = useRef(null);
   const detailRequest = useRef(null);
@@ -154,22 +153,13 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       const current = ++sequence;
       request?.abort();
       const controller = new AbortController(); request = controller;
-      setRunDraft(null); setRunInputs(null); setAnalyticsProjection(null); setRunDraftError('');
+      setRunDraft(null); setAnalyticsProjection(null); setRunDraftError('');
       if (catalog || !runId) return;
       try {
         const response = await dataPipelineAPI.getRun(runId, { signal: controller.signal, timeout: 15000 });
         const run = response?.data?.data || response?.data || response;
         if (run?.run_id !== runId) throw new Error('Pipeline returned a different run identity.');
         if (active && current === sequence) setAnalyticsProjection(run.output_manifest?.ods_receipt || null);
-        let inputEvidence = run.output_manifest?.data_product_draft || null;
-        if (run.analytics_inputs) {
-          const inputs = run.analytics_inputs;
-          inputEvidence = {artifacts: [
-            {kind:'schema', artifact_id:inputs.schema_artifact_id},
-            {kind:'instance', artifact_id:inputs.xml_artifact_id},
-            ...Object.entries(inputs.schema_dependencies || {}).map(([relative_path,artifact_id])=>({kind:'schema-dependency',relative_path,artifact_id}))].filter(item=>item?.artifact_id)};
-        }
-        if (active && current === sequence) setRunInputs(inputEvidence);
         const value = productDraftFromRun(run);
         if (active && current === sequence) {
           setRunDraft(value);
@@ -211,14 +201,14 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
   const keys = [...new Set(state.rows.map(row => catalog ? row.product_id : `${row.product_id}:${row.version}`))];
   const visibleRows=state.rows.filter(row=>[row.product_id,row.name,row.domain,row.owner,row.version,row.status,row.lifecycle_state].some(value=>String(value || '').toLowerCase().includes(filter.toLowerCase())));
   return <section className="depo-panel data-cockpit" aria-label={title}>
-    <div className="data-cockpit__intro"><div><h2>{catalog?'Find trusted data':'Data for reporting and decisions'}</h2><p>{catalog ? 'Find data to reuse: discover ingested sources, identify owners and inspect published product versions.' : 'Find useful data, prepare reports and share approved results with your team.'}</p></div><IxButton onClick={load} disabled={state.loading}>Refresh</IxButton></div>
+    <div className="data-cockpit__intro"><div><h2>{catalog?'Find trusted data':'Data for reporting and decisions'}</h2><p>{catalog ? 'Discover sources and published products.' : 'Prepare, review and publish data.'}</p></div><IxButton onClick={load} disabled={state.loading}>Refresh</IxButton></div>
     {(catalog||!['analytics','prepare'].includes(workspace))&&<><DataJourney current={catalog?'catalog':'products'}/>
     <div className="product-overview" aria-label="Workspace overview">
       <article><span>{catalog?'Catalog versions':'Retained package versions'}</span><strong>{state.loading||state.error?'—':state.total??'Unknown'}</strong><a href={catalog?'#/data-products':'#/catalog'}>{catalog?'Manage products and delivery':'Browse Data Catalog'}</a></article>
       <article><span>{catalog?'Registered ontologies (loaded)':'Imported schema drafts (loaded)'}</span><strong>{ontologyLoading||ontologyError||ontologyWarning?'—':catalog?(ontologies||[]).length:drafts.length}</strong><a href="#/import">Import source evidence</a></article>
       <article><span>{catalog?'Domains represented (loaded)':'Pending catalog delivery (loaded versions)'}</span><strong>{state.loading||state.error?'—':catalog?new Set(state.rows.map(row=>row.domain).filter(Boolean)).size:state.rows.filter(row=>row.status==='pending_catalog_registration').length}</strong>{catalog?<a href="#/data-products">Inspect package delivery</a>:<button type="button" className="product-overview__action" onClick={()=>setWorkspace('library')}>Inspect delivery status</button>}</article>
     </div>
-    <p>Totals count product versions. Catalog entries and retained packages are separate records; pending delivery can make their totals differ.</p></>}
+    <p>Counts show product versions; package delivery is tracked separately.</p></>}
     {state.loading && <p role="status">Loading products…</p>}
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
@@ -229,7 +219,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
     {!state.loading && <section aria-label="Discover product versions">
       <div className="product-discovery"><label>Find a product <input value={filter} onChange={event=>setFilter(event.target.value)} placeholder="Name, domain, owner, status or ID" /></label><span>{visibleRows.length} of {state.rows.length} loaded versions match</span></div>
       {!catalog&&state.rows.some(row=>row.status==='pending_catalog_registration')&&<p role="status">Some packages are retained but catalog delivery is pending. Select a package to inspect its delivery evidence.</p>}
-      <p>Select a row to inspect ownership, readiness, source evidence and delivery.</p>
+
       {!state.error && <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={visibleRows} columns={productColumns} height={320} showFilter={false} onRowClicked={row=>{if(row?.product_id)showDetail(catalog?row.product_id:`${row.product_id}:${row.version}`);}} />}
       <label htmlFor="product-detail">Product details and versions</label>
       <select style={{padding:8,margin:8}} id="product-detail" value={selected} onChange={event=>showDetail(event.target.value)}>
@@ -237,7 +227,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       </select>
       {detailLoading&&<p role="status">Loading product details…</p>}
       {detailError&&<div role="alert">{detailError}</div>}
-      {detail&&<><SemanticSupport report={detail.semantic_support}/><ProductEvidenceDetails detail={detail}/></>}
+      {detail&&<><SemanticSupport report={detail.semantic_support}/><ProductEvidenceDetails detail={detail} catalog={catalog}/></>}
     </section>}
       {!state.loading&&!state.error&&!state.rows.length&&!catalog&&<div className="data-cockpit__empty" aria-label="First governed product workflow"><h3>Start with retained evidence</h3><p>No retained packages or published products are available yet. Complete these governed steps in order:</p><ol><li><a href="#/admin">Connect publication access</a> with ingestion and data-product approval scopes. Admin maintenance access is separate.</li><li><button type="button" className="product-overview__link" onClick={()=>{revealEvidence('structural');}}>Inspect and validate the schema drafts</button> or <a href="#/data-flow">review a completed Data Flow run</a>.</li><li><a href="#/ontology">Obtain an approved semantic release</a>, then return here to publish.</li></ol><button type="button" className="depo-button" onClick={()=>setWorkspace('create')}>Open Create &amp; review</button></div>}
       {!state.loading&&!state.error&&!state.rows.length&&catalog&&<div className="data-cockpit__empty"><h3>No published products yet</h3><p>Ingested sources remain discoverable in the Ingested sources tab. Published products appear here after approval and catalog delivery.</p><button type="button" className="depo-button" onClick={()=>setWorkspace('sources')}>Browse ingested sources</button></div>}
@@ -254,9 +244,9 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
           <dt>Loaded records</dt><dd>{analyticsProjection.counts?.entities ?? 'Not recorded'}</dd>
           <dt>Business views</dt><dd>{analyticsProjection.business_views?.length ?? 0}</dd></dl>
         <p>Review this retained result before creating another load. Product approval and publication are available below.</p>
-        <details><summary>Prepare a separate analytics load</summary><XmlAnalyticsLoader selectedSchemaId={selectedDraft} sources={drafts} runEvidence={runInputs} /></details>
-      </section> : <XmlAnalyticsLoader selectedSchemaId={selectedDraft} sources={drafts} runEvidence={runInputs} />}
-      <h3>Data Flow evidence</h3><p>Select a completed run in <a href="#/data-flow">Data Flow</a> to create a draft from its retained artifacts. Graph publication and product packaging are separate approved operations.</p>
+
+      </section> : !runDraft && <p>Select a completed run in <a href="#/data-flow">Data Flow</a>.</p>}
+      <h3>Data Flow evidence</h3>
       {runDraftError && <p role="alert">{runDraftError}</p>}
       {runDraft && <SchemaProductPublisher draft={runDraft} />}
     </section></details>}
@@ -274,7 +264,7 @@ export default function DataProductsPage({ mode = 'products', onCompanionRecordC
       {!ontologyLoading && !ontologyError && !ontologyWarning && !drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
     </section></details>}
       </>,governance:<>
-      <div className="data-cockpit__guidance"><div><strong>Review readiness before publication</strong><p>Confirm source provenance, ownership, quality evidence and an approved semantic release. Agent recommendations support the review; approval remains an explicit action.</p></div><a href="#/ontology">Review semantic releases</a></div>
+      <div className="data-cockpit__guidance"><div><strong>Review readiness before publication</strong><p>Review ownership, quality and semantic release before approval.</p></div><a href="#/ontology">Review semantic releases</a></div>
     {!state.loading && !state.error && !state.warning && state.rows.length === 0 && <details className="product-workspace-details"><summary>How to publish your first governed product</summary><FirstProductGuide catalog={catalog} /></details>}
     <details className="product-workspace-details"><summary>Ask the product governor to review evidence</summary><AgentProposalPanel key={detail?.product_id ? `${detail.product_id}:${detail.version || ''}` : 'discovery'} title="Product governance recommendations" agentIds={['data-product-governor']} context={{ page: catalog ? 'catalog' : 'data-products', ...(detail?.product_id ? {product_id:detail.product_id,...(!catalog && detail.version ? {product_version:detail.version}: {})} : {product_ids: state.rows.map(row => row.product_id).slice(0, 20)}) }} /></details>
       </>}}

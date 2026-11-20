@@ -1,0 +1,16 @@
+1. Historical evidence — Graph Explorer, selected Previous bearing-seat investigation
+Show the recorded lesson and four past corrective-action options associated with this previous bearing-seat investigation. Include their historical review dispositions and applicability. Cite the source records.
+
+2. Short-term follow-up — same selected object and conversation
+Which one was selected in that case, and what applicability was recorded for it?
+
+3. Current contextual linkage — selected Bearing overheating investigation
+Show how this current bearing investigation recalls the previous case. Show the current alternatives, their links to the past options and the separate current evaluation records. Do not treat historical selection as current validation or approval.
+
+4. Decision alternatives — Recommendations, selected Bearing overheating investigation
+Compare the current corrective-action options derived from the past bearing case. Require temperature <=80 degC, vibration <=2.8 mm/s RMS, speed >=1500 rpm, outer diameter <=62 mm and lead time <=10 days. Choose the lowest incremental-cost feasible option using current evaluation records, not historical success alone.
+
+Expected unedited scenario result: B alone meets all five criteria; incremental cost USD 8/unit. A fails temperature/vibration/envelope/lead time, C fails rated speed, D fails temperature/vibration. This is authored evaluation evidence, not engineering approval.
+
+5. Memory insights — saved interaction
+Open the actual saved question and answer, retained business identity and storage explanation. Expand Evidence (11) in the Companion where this result exposes eleven references, then expand Source identity and scroll through the records. Evidence counts can change with the retrieval scope or edited data; never assert a fixed count without checking the live result.

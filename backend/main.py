@@ -4577,47 +4577,15 @@ def pre_commit_check(task_id: str):
 @app.post("/api/v1/import/commit/{task_id}")
 @app.post("/api/import/commit/{task_id}")
 @app.post("/data-import/commit/{task_id}")
-async def commit_import(task_id: str):
-    """Commit import data to Neo4j."""
-    try:
-        # Only the unified importer owns commit state and recovery.
-        # Never fall back to independent, partially committed graph writes.
-        try:
-            from backend.Services.unified_data_import import UnifiedDataImportService
-        except Exception:
-            UnifiedDataImportService = None
+async def commit_import(task_id: str, request: Request):
+    """Compatibility entry point delegates to the same retained CR/CO authority."""
+    from backend.depo_platform.authorization import approval_identity
+    from backend.depo_platform.request_bodies import MergeChangeCommand
+    from backend.ingestion_service import import_change
+    actor=approval_identity(request,{},token_env='INGESTION_WRITE_TOKEN')
+    current=import_change.view(task_id)
+    return await import_change.command(task_id,MergeChangeCommand(action='execute',expected_revision=current['change_request']['revision'],expected_plan_digest=current['current_plan_digest']),actor)
 
-        # If unified service available, use its commit path which understands
-        # the `parsed_rows` shape written by the parser.
-        if UnifiedDataImportService is not None:
-            try:
-                result = await UnifiedDataImportService.commit_import(task_id)
-                invalidate_graphvis_cache()
-                try:
-                    await run_in_threadpool(OSLCTRSService.publish_event,
-                        OSLCTRSService.import_resource_uri(task_id),
-                        "Modification",
-                        title=f"Import committed for {task_id}",
-                        metadata={"task_id": task_id, "path": "unified_commit", "result_summary": str(result)[:500]},
-                    )
-                except Exception as exc:
-                    logger.warning("OSLC TRS publish skipped for import commit %s: %s", task_id, exc)
-                return {"success": True, "task_id": task_id, "message": "Committed via unified service", "result": result}
-            except ValueError as ve:
-                # Task not found or not ready
-                raise HTTPException(status_code=404 if str(ve).startswith('Task not found:') else 409, detail=str(ve))
-            except HTTPException:
-                raise
-            except Exception as ue:
-                logger.error(f"Unified commit failed for {task_id}: {ue}", exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Unified commit failed: {ue}")
-
-        raise HTTPException(503, 'Unified import service is unavailable; no legacy writes were attempted')
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        safe_error("/api/v1/import/commit/{task_id}", e)
 
 
 # ============================================================================

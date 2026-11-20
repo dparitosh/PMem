@@ -16,7 +16,7 @@ from backend.mesh_store import InMemoryRegistry
 @pytest.fixture(autouse=True)
 def isolated_environment():
     with patch.dict(os.environ, {'AUTH_MODE': 'token', 'GRAPH_READ_TOKEN': 'read-test',
-                    'AGENTIC_APPROVAL_TOKEN': 'approve-test', 'GRAPH_SERVICE_URL': 'http://graph/api/v1'}, clear=True):
+                    'AGENTIC_APPROVAL_TOKEN': 'approve-test', 'AGENTIC_APPROVAL_TOKEN_ACTOR': 'reviewer', 'GRAPH_SERVICE_URL': 'http://graph/api/v1'}, clear=True):
         yield
 
 

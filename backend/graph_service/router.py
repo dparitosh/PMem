@@ -200,3 +200,41 @@ def analytics_snapshot(ontology_id: str,namespace: str=Query('',max_length=800))
     except Exception as exc:
         logger.exception('Published graph snapshot failed')
         raise HTTPException(503,'Snapshot unavailable; graph publication or service recovery may be active') from exc
+
+
+from .computation import ComputationRequest
+
+@router.post('/computation', dependencies=[Depends(graph_read_identity)], summary='Compute selected published business-graph evidence without writing graph data')
+def graph_computation(payload: ComputationRequest) -> dict:
+    from .computation import compute, retain
+    try:
+        return retain(compute(publisher, payload))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(504, 'Graph computation deadline exceeded') from exc
+    except Exception as exc:
+        logger.exception('Selected graph computation failed')
+        raise HTTPException(503, 'Graph computation unavailable; inspect service logs using the request ID') from exc
+
+
+@router.get('/computation/evidence/{evidence_id}', dependencies=[Depends(graph_read_identity)], summary='Read retained computation evidence for an exact ontology scope')
+def graph_computation_evidence(evidence_id: str, ontology_id: str = Query(...,min_length=1,max_length=128)) -> dict:
+    import re
+    from backend.mesh_store import PostgresRegistry
+    if not re.fullmatch('[a-f0-9]{64}',evidence_id): raise HTTPException(422,'Invalid computation evidence identity')
+    record=PostgresRegistry('graph_computation_evidence_v1').get(evidence_id)
+    if not record or record.get('ontology_id')!=ontology_id: raise HTTPException(404,'Computation evidence not found in the selected scope')
+    return record
+
+
+@router.get('/computation/options', dependencies=[Depends(graph_read_identity)], summary='Select named published scopes, business records and predicates for graph analytics')
+def graph_computation_options(ontology_id: str = Query(default='',max_length=128)) -> dict:
+    from .computation import options
+    try:
+        return options(publisher,ontology_id)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from None
+    except Exception:
+        logger.exception('Graph computation selections unavailable')
+        raise HTTPException(503,'Graph analytics selections unavailable; retry after checking service readiness') from None

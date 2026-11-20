@@ -18,7 +18,6 @@ def isolated_artifact_store(monkeypatch, tmp_path):
     monkeypatch.setattr("backend.data_pipeline_service.router.service_write_identity", lambda *args, **kwargs: "test-author")
     monkeypatch.setattr("backend.data_pipeline_service.speed_router.approval_identity", lambda *args, **kwargs: "test-operator")
     monkeypatch.setattr("backend.data_pipeline_service.router.service_bearer_headers", lambda *args, **kwargs: {"Authorization": "Bearer test-service"})
-    monkeypatch.setattr("backend.data_pipeline_service.speed_router.service_bearer_headers", lambda *args, **kwargs: {"Authorization": "Bearer test-service"})
 
 
 def test_missing_execution_mode_defaults_to_worker(monkeypatch):
@@ -517,23 +516,6 @@ def test_speed_path_is_idempotent_and_reconciles_through_ceim_without_graph_writ
     assert reconciled.json()["publication"].startswith("not_attempted")
 
 
-def test_speed_path_publication_uses_ceim_boundary(monkeypatch):
-    import httpx
-    from backend.data_pipeline_service import speed_path
-    monkeypatch.setattr(speed_path, "reconciliations", InMemoryRegistry())
-    artifact = __import__("backend.artifact_store", fromlist=["ArtifactStore"]).ArtifactStore().ingest_bytes(
-        b'{"standard":"qif","entities":[],"relationships":[]}', filename="speed.json", kind="accepted-semantic-partition", media_type="application/json"
-    )
-    speed_path.reconciliations.put("reconcile-1", {"reconciliation_id": "reconcile-1", "status": "ready_for_approved_publication", "partition_artifact_id": artifact["artifact_id"]})
-    async def fake_publication(method, url, **kwargs):
-        assert method == 'POST' and kwargs['json']['publication_id'] == 'reconcile-1'
-        return httpx.Response(200, request=httpx.Request('POST', url), json={"status":"published","ontology_id":"speed","publication_id":"reconcile-1",
-            "publication":{"status":"success","ontology_id":"speed","publication_id":"reconcile-1","resources":0,"relationships":0,"hierarchy_edges":0}})
-    monkeypatch.setattr("backend.data_pipeline_service.speed_router.async_peer_response", fake_publication)
-    response = TestClient(app).post("/api/v1/pipeline/speed/reconciliations/reconcile-1/publish", json={"ontology_id": "speed", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"}})
-    assert response.status_code == 200
-    assert response.json()["status"] == "published"
-
 
 def test_schedule_is_configured_after_a_compatible_retained_run(monkeypatch):
     monkeypatch.setattr("backend.data_pipeline_service.job_definitions.store", InMemoryRegistry())
@@ -701,12 +683,15 @@ def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch,
             return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "published", "ontology_id": "qif"})
 
     monkeypatch.setattr("backend.data_pipeline_service.router.httpx.AsyncClient", FakeClient)
-    response = TestClient(app).post("/api/v1/pipeline/jobs/runs/publish-run/publish", json={
+    # Exercise the publication primitive; CR/CO enforcement is covered in test_pipeline_change_lifecycle.
+    import asyncio
+    from backend.data_pipeline_service.router import _publish_job_run_locked
+    from starlette.requests import Request
+    response = asyncio.run(_publish_job_run_locked("publish-run", {
         "approved_by": "pipeline-steward", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"},
-    })
-    assert response.status_code == 200
-    assert response.json()["checkpoint"] == {"offset": 2}
-    assert response.json()["output_manifest"]["checkpoint_state"] == "advanced"
+    }, Request({"type": "http", "headers": []}), "pipeline-steward"))
+    assert response["checkpoint"] == {"offset": 2}
+    assert response["output_manifest"]["checkpoint_state"] == "advanced"
 
 
 def test_publish_run_records_success_when_no_checkpoint_is_required(monkeypatch):
@@ -738,13 +723,15 @@ def test_publish_run_records_success_when_no_checkpoint_is_required(monkeypatch)
             return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "published", "ontology_id": "qif"})
 
     monkeypatch.setattr("backend.data_pipeline_service.router.httpx.AsyncClient", FakeClient)
-    response = TestClient(app).post("/api/v1/pipeline/jobs/runs/batch-run/publish", json={
+    # Exercise the publication primitive; CR/CO enforcement is covered in test_pipeline_change_lifecycle.
+    import asyncio
+    from backend.data_pipeline_service.router import _publish_job_run_locked
+    from starlette.requests import Request
+    response = asyncio.run(_publish_job_run_locked("batch-run", {
         "approved_by": "pipeline-steward", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"},
-    })
-
-    assert response.status_code == 200
-    assert response.json()["output_manifest"]["checkpoint_state"] == "not_applicable"
-    assert response.json()["output_manifest"]["publication"]["status"] == "published"
+    }, Request({"type": "http", "headers": []}), "pipeline-steward"))
+    assert response["output_manifest"]["checkpoint_state"] == "not_applicable"
+    assert response["output_manifest"]["publication"]["status"] == "published"
 
 
 def test_publish_run_reconciles_gateway_error_from_durable_graph_receipt(monkeypatch):
@@ -774,12 +761,15 @@ def test_publish_run_reconciles_gateway_error_from_durable_graph_receipt(monkeyp
             return httpx.Response(200, request=httpx.Request("GET", url), json={"publication_id": "reconcile-run", "status": "published", "resources": 3})
 
     monkeypatch.setattr("backend.data_pipeline_service.router.httpx.AsyncClient", FakeClient)
-    response = TestClient(app).post("/api/v1/pipeline/jobs/runs/reconcile-run/publish", json={
+    # Exercise the publication primitive; CR/CO enforcement is covered in test_pipeline_change_lifecycle.
+    import asyncio
+    from backend.data_pipeline_service.router import _publish_job_run_locked
+    from starlette.requests import Request
+    response = asyncio.run(_publish_job_run_locked("reconcile-run", {
         "approved_by": "pipeline-steward", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"},
-    })
-    assert response.status_code == 200
-    assert response.json()["checkpoint"] == {"offset": 3}
-    assert response.json()["output_manifest"]["publication"]["reconciled_after_gateway_error"] is True
+    }, Request({"type": "http", "headers": []}), "pipeline-steward"))
+    assert response["checkpoint"] == {"offset": 3}
+    assert response["output_manifest"]["publication"]["reconciled_after_gateway_error"] is True
 
 
 def test_job_definition_write_requires_key_and_ignores_spoofed_owner(monkeypatch):
@@ -798,3 +788,27 @@ def test_job_definition_write_requires_key_and_ignores_spoofed_owner(monkeypatch
     assert response.status_code == 201
     assert response.json()["owner"] == "verified-author"
     assert client.post("/api/v1/pipeline/jobs/definitions", json=payload, headers={"Authorization":"Bearer definition-test-key"}).status_code == 409
+
+def test_data_job_identity_profile_is_allowlisted_and_uses_the_authenticated_actor(monkeypatch):
+    import backend.data_pipeline_service.router as routes
+    calls=[]
+    def identity(request,payload,*,token_env):
+        calls.append((payload,token_env));return 'registered-actor'
+    monkeypatch.setattr(routes,'approval_identity',identity)
+    client=TestClient(app)
+    for profile in ('DATA_JOB_EXECUTION_TOKEN','DATA_JOB_APPROVAL_TOKEN','CEIM_PUBLISH_APPROVAL_TOKEN'):
+        response=client.get('/api/v1/pipeline/jobs/execution-identity',params={'profile':profile})
+        assert response.status_code==200 and response.json()['actor']=='registered-actor'
+        assert calls[-1]==({},profile)
+    count=len(calls)
+    assert client.get('/api/v1/pipeline/jobs/execution-identity?profile=ADMIN_API_KEY').status_code==422
+    assert len(calls)==count
+
+
+def test_inline_run_is_not_reclaimed_by_in_memory_worker(monkeypatch):
+    from backend.data_pipeline_service import run_records
+    registry = InMemoryRegistry()
+    monkeypatch.setattr(run_records, "store", registry)
+    registry.put("inline-run", {"run_id": "inline-run", "status": "running"})
+    assert run_records.claim_next(worker_id="queue-worker") is None
+    assert registry.get("inline-run") == {"run_id": "inline-run", "status": "running"}

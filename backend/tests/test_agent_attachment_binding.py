@@ -31,7 +31,7 @@ class AttachmentBindingTests(unittest.IsolatedAsyncioTestCase):
         async def io(fn, *args): return fn(*args)
         scope = {'__name__':'backend.agentic_service.router', '__package__':'backend.agentic_service', 'Any':object,'Request':object,'HTTPException':Failure,'httpx':SimpleNamespace(HTTPError=OSError),
                  'base64':base64,'binascii':binascii,'os':os,'json':json,
-                 'catalog':SimpleNamespace(item=lambda kind, key: agent if kind == 'agents' else tool),
+                 'catalog':SimpleNamespace(read=lambda: {'agents':[agent],'tools':[tool]}, item=lambda kind, key, **kwargs: agent if kind == 'agents' else tool),
                  '_proposal_tools':selected,'_preflight_tools':preflight,'_agent_io':io,
                  'plan':lambda command:{'requires_approval':True},'graph_read_identity':lambda req:'actor',
                  'sessions':SimpleNamespace(owner=lambda *args:'owner'),

@@ -7,6 +7,7 @@ import asyncio
 import copy
 import hashlib
 import json
+import re
 import httpx
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +24,7 @@ PLAN = {'id': 'goal.plan', 'description': 'Decompose or revise the goal into evi
             'subtasks': {'type': 'array', 'minItems': 1, 'maxItems': 8, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 400}}}}}
 COMPLETE = {'id': 'goal.complete', 'description': 'Report a model-assisted conclusion supported by completed observation IDs. When citing ontology.consistency.check or ontology.semantic.evidence, supply semantic_conclusion equal to its exact status (unknown for mixed or not_checked statuses). The controller renders the semantic verdict; consistency is not engineering approval.',
             'input_schema': {'type': 'object', 'additionalProperties': False, 'required': ['summary', 'evidence_steps'], 'properties': {
-                'summary': {'type': 'string', 'minLength': 1, 'maxLength': 4000},
+                'summary': {'type': 'string', 'minLength': 1, 'maxLength': 4000, 'description': 'Final user-facing answer, not instructions or drafting notes. State the requested finding or preferred option with supporting numeric values, units and source record identifiers. For alternatives, list failed criteria and costs. Do not write a plan to answer, speculate about omitted values, or include self-directed questions.'},
                 'semantic_conclusion': {'type': 'string', 'enum': ['consistent', 'inconsistent', 'unknown', 'unsupported']},
                 'evidence_steps': {'type': 'array', 'minItems': 1, 'maxItems': 8, 'uniqueItems': True,
                                    'items': {'type': 'string', 'maxLength': 40}}}}}
@@ -113,6 +114,71 @@ class MissingGoalInput(ValueError):
         super().__init__('Required source inputs are missing')
 
 
+def graph_context_prompt(result, goal=""):
+    """Compact business assertions; retain identity and predicate maps for citations."""
+    if not isinstance(result, dict) or not isinstance(result.get('nodes'), list) or not isinstance(result.get('relationships'), list):
+        return result
+    from backend.graph_service.search_evidence import search_properties
+    original_count = len(result['nodes'])
+    comparison_projection = False
+    if re.search(r'\b(compare|comparison|alternatives|options)\b', goal, re.I):
+        def relation(edge):
+            raw = (edge.get('properties') or {}).get('predicate') or edge.get('type') or ''
+            return re.sub(r'[^a-z0-9]', '', re.split(r'[/#]', str(raw))[-1].lower())
+        root = result.get('root_node_id')
+        alternatives = {edge['end'] for edge in result['relationships'] if edge.get('start') == root
+                        and relation(edge) in {'considersalternative','hasalternative','hasoption'}}
+        if alternatives:
+            keep = {root, *alternatives}
+            keep.update(edge['end'] for edge in result['relationships'] if edge.get('start') in alternatives
+                        and relation(edge) in {'verifiedby','validatedby','hastestresult','hasevidence'})
+            result = {**result, 'nodes':[node for node in result['nodes'] if node['elementId'] in keep],
+                      'relationships':[edge for edge in result['relationships'] if edge.get('start') in keep and edge.get('end') in keep]}
+            comparison_projection = True
+    aliases = {node['elementId']:'n'+str(index) for index,node in enumerate(result['nodes'])}
+    nodes = []
+    for node in result['nodes']:
+        props = node.get('properties') or {}
+        nodes.append({'ref':aliases[node['elementId']], 'id':node['elementId'],
+                      'label':props.get('label') or props.get('name') or node['elementId'],
+                      'properties':search_properties(props)})
+    # Factor repeated provenance out without discarding it.
+    shared = {}
+    if nodes:
+        for key,value in list(nodes[0]['properties'].items()):
+            if all(row['properties'].get(key)==value for row in nodes):
+                shared[key]=value
+                for row in nodes:row['properties'].pop(key,None)
+    predicates = {}; edges = []
+    for edge in result['relationships']:
+        if edge.get('start') not in aliases or edge.get('end') not in aliases:continue
+        predicate = (edge.get('properties') or {}).get('predicate') or edge.get('type')
+        identity = (str(predicate), str(edge.get('business_label') or ''))
+        if identity not in predicates:predicates[identity]='p'+str(len(predicates))
+        edges.append([aliases[edge['start']],predicates[identity],aliases[edge['end']],edge.get('elementId')])
+    comparison_rows = []
+    if comparison_projection:
+        by_id = {node['elementId']: node for node in result['nodes']}
+        projected_by_id = {node['id']: node for node in nodes}
+        for option in sorted(alternatives):
+            node = by_id[option]
+            facts = projected_by_id[option]['properties']
+            tests = []
+            for edge in result['relationships']:
+                if edge.get('start') == option and edge.get('end') in by_id and relation(edge) in {'verifiedby','validatedby','hastestresult','hasevidence'}:
+                    evidence = by_id[edge['end']]
+                    tests.append({'record_id':edge['end'], 'values':projected_by_id[edge['end']]['properties']})
+            comparison_rows.append({'option_record_id':option, 'option':(node.get('properties') or {}).get('label') or facts.get('name'), 'option_values':facts, 'evaluations':tests})
+        nodes = [{**node, 'properties':{}} for node in nodes]
+    return {'comparison_rows':comparison_rows, 'root_node_id':result.get('root_node_id'), 'nodes':nodes, 'shared_properties':shared,
+            'predicates':{alias:{'iri':key[0],'label':key[1]} for key,alias in predicates.items()},
+            'relationships':edges,'relationship_columns':['source_ref','predicate_ref','target_ref','relationship_id'],
+            'view':result.get('view',{}),'properties_projected':True,
+            'nodes_omitted_from_prompt':original_count-len(nodes),
+            'projection_scope':('Recorded alternatives and their linked validation evidence; other context omitted.' if comparison_projection else
+                                'Allowlisted business assertions; full published source remains authoritative.')}
+
+
 def scratchpad(record, limit=120000):
     """Budget results newest first; never replace durable state with an excerpt."""
     state = {key: protect(record.get(key)) for key in ('goal', 'scope', 'plans', 'decisions', 'max_decisions')}
@@ -128,11 +194,19 @@ def scratchpad(record, limit=120000):
     for index in reversed(range(len(record['observations']))):
         item = record['observations'][index]
         if 'result' not in item: continue
-        remaining = limit - len(json.dumps(state, ensure_ascii=False, default=str).encode('utf-8')) - 512
+        # The scratchpad is JSON inside a message string in a JSON request.
+        remaining = limit - len(json.dumps(json.dumps(state, ensure_ascii=False, default=str), ensure_ascii=False).encode('utf-8')) - 512
         if remaining < 256:
             state['omitted_observation_results'].append(item['id'])
             continue
-        state['observations'][index]['result'] = bounded(item['result'], min(32000, remaining))
+        projected_result = item['result']
+        if item.get('tool_id', '').startswith('recommendation.') and item.get('status') == 'completed':
+            from .recommendation_goals import prompt_evidence
+            try:
+                projected_result = prompt_evidence(record.get('context', {}), item)
+            except (ValueError, KeyError):
+                pass
+        state['observations'][index]['result'] = bounded(projected_result, min(32000, remaining // 2))
         projected = state['observations'][index]['result']
         if isinstance(projected, dict) and projected.get('truncated'):
             state['omitted_observation_results'].append(item['id'])
@@ -228,6 +302,18 @@ def semantic_completion(record, inputs):
         f"{row.get('ontology_id', 'Selected model')}: {row.get('status', 'unknown')}. {row['business_summary']}" for row in rows)}
 
 
+def completion_action(record):
+    """Bind completion citations to retained observations, never graph predicates."""
+    action = copy.deepcopy(COMPLETE)
+    eligible = [item['id'] for item in record['observations']
+                if item.get('status') == 'completed' and item.get('result')
+                and not (isinstance(item['result'], dict) and item['result'].get('truncated')
+                         and not item['result'].get('verdict_complete'))]
+    if eligible:
+        action['input_schema']['properties']['evidence_steps']['items']['enum'] = eligible
+    return action
+
+
 async def drive(record, *, propose, dispatch, save, tools):
     """Callbacks keep persistence/transport outside the independently testable loop."""
     async def persist():
@@ -242,7 +328,12 @@ async def drive(record, *, propose, dispatch, save, tools):
             while record['decisions'] < record['max_decisions']:
                 record['decisions'] += 1
                 await persist()
-                available = [PLAN, NEEDS_INPUT] if not record['plans'] else [*tools, COMPLETE, NEEDS_INPUT] + ([PLAN] if len(record['plans']) < 3 else [])
+                available = [PLAN, NEEDS_INPUT] if not record['plans'] else [*tools, completion_action(record), NEEDS_INPUT] + ([PLAN] if len(record['plans']) < 3 else [])
+                # A rejected duplicate must not consume the remaining budget on
+                # identical proposals. Conclude from retained evidence or ask for
+                # missing inputs; neither option grants approval.
+                if record['observations'] and record['observations'][-1].get('error_code') == 'duplicate_read':
+                    available = [completion_action(record), NEEDS_INPUT]
                 # A recommendation is already a user-selected bounded read.
                 # After retaining its result, ask for a conclusion instead of
                 # inviting another identical read or an unrelated re-plan.
@@ -269,7 +360,24 @@ async def drive(record, *, propose, dispatch, save, tools):
                         return record
                     else:
                         available = [tool for tool in tools if tool['id'] == chosen['tool_id']]
-                proposal = await propose(available, scratchpad(record))
+                comparison = None
+                if (record.get('context', {}).get('decision_analysis') == 'alternatives'
+                        and record.get('context', {}).get('page') == 'recommendations'):
+                    completed_context = [item for item in record['observations'] if item.get('tool_id') == 'graph.business_context'
+                                         and item.get('status') == 'completed' and isinstance(item.get('result'), dict)
+                                         and not item['result'].get('truncated')]
+                    if completed_context:
+                        # The selected comparison read is retained. Report what it
+                        # supports (including missing criteria), never repeat it.
+                        from .decision_comparison import evaluate
+                        try:
+                            comparison = evaluate(record['goal'], completed_context[-1]['result'])
+                        except ValueError:
+                            record.update(status='needs_input', missing_fields=['explicit criteria or complete alternative evidence'], completed_at=now())
+                            await persist()
+                            return record
+                proposal = ({'tool_id':COMPLETE['id'], 'inputs':{'summary':comparison['business_summary'][:4000], 'evidence_steps':[completed_context[-1]['id']]}}
+                            if comparison else await propose(available, scratchpad(record)))
                 try:
                     tool_id, inputs = validate_action(record, proposal, tools)
                 except MissingGoalInput as exc:
@@ -277,9 +385,12 @@ async def drive(record, *, propose, dispatch, save, tools):
                                   message='Select or supply the missing source fields, then start a new investigation.', completed_at=now())
                     await persist()
                     return record
-                except ValueError:
+                except ValueError as exc:
+                    duplicate = str(exc) == 'This exact read was already attempted; revise the plan or inputs'
                     record['observations'].append({'id': f"observation-{record['decisions']}", 'status': 'held',
-                        'error_code': 'invalid_plan_action', 'message': 'Choose a valid action, preserve scope, and do not repeat attempted reads.'})
+                        'error_code': 'duplicate_read' if duplicate else 'invalid_plan_action',
+                        'message': ('This read is already retained. Use goal.complete with the supplied observation IDs to report the concrete findings, or goal.needs_input for missing required fields.' if duplicate else
+                                    'Choose a valid action, preserve scope, and cite only supplied completed observation IDs.')})
                     await persist()
                     continue
                 if tool_id == PLAN['id']:
@@ -294,7 +405,7 @@ async def drive(record, *, propose, dispatch, save, tools):
                 if tool_id == COMPLETE['id']:
                     from .recommendation_goals import completion_evidence
                     binding = completion_evidence(record.get('context', {}), record['observations'], inputs['evidence_steps'])
-                    record.update(status='completed', result={**inputs, **(binding or {}), **semantic_completion(record, inputs),
+                    record.update(status='completed', result={**inputs, **(binding or {}), **(comparison or {}), **semantic_completion(record, inputs),
                         'semantic_entailment_verified': False, 'interpretation': 'model_assisted_advisory'}, completed_at=now())
                     await persist()
                     return record
@@ -310,7 +421,7 @@ async def drive(record, *, propose, dispatch, save, tools):
                     if isinstance(result, dict) and result.get('status') in {'failed', 'error', 'timed_out', 'cancelled'}:
                         observation.update(status='failed', error_code='read_result_failed', result=bounded(result), finished_at=now())
                     else:
-                        observation.update(status='completed', result=bounded(result), finished_at=now())
+                        observation.update(status='completed', result=bounded(graph_context_prompt(result, record.get('goal', '')) if tool_id == 'graph.business_context' else result, 262144 if chosen and tool_id == chosen['tool_id'] else 32000), finished_at=now())
                 except HTTPException as exc:
                     from .workflow_errors import workflow_error
                     observation.update(status='failed', **workflow_error(exc, tool_id), finished_at=now())

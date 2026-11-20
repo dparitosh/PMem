@@ -172,3 +172,9 @@ test('navigation preserves same-session data, while an access change clears data
   expect(screen.getByTestId('graph-data')).not.toHaveTextContent('old-session-node');
   expect(screen.getByTestId('schema-instance').dataset.instance).not.toBe(schemaInstance);
 });
+
+test('menu navigation notifies route consumers and drops unrelated workspace parameters',async()=>{
+ window.history.replaceState({},'','/#/data-products?view=analytics&analytics_step=2&run_id=old');
+ const notify=vi.fn();window.addEventListener('hashchange',notify);
+ try{render(<App/>);await screen.findByTestId('page-products');fireEvent.click(screen.getByRole('button',{name:'Import',exact:true}));await screen.findByTestId('page-import');expect(window.location.hash).toBe('#/import');expect(notify).toHaveBeenCalledTimes(1);}finally{window.removeEventListener('hashchange',notify);}
+});

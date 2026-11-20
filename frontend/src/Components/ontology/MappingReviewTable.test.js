@@ -21,7 +21,7 @@ test('pagination retains all proposals and shows truthful unassessed status', ()
   render(<MappingReviewTable candidates={Array.from({length:26},(_,index)=>({...candidate,candidate_id:String(index),import_row_key:String(index),source_term:`source-${index}`}))} />);
   expect(screen.getByText('source-24')).toBeVisible();
   expect(screen.queryByText('source-25')).not.toBeInTheDocument();
-  expect(screen.getAllByText('Not assessed')).toHaveLength(26); // rows plus filter option
+  expect(screen.getAllByText('Policy assessment pending')).toHaveLength(25);
   fireEvent.click(screen.getByRole('button',{name:'Next'}));
   expect(screen.getByText('source-25')).toBeVisible();
   expect(screen.queryByText('source-24')).not.toBeInTheDocument();

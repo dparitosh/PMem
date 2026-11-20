@@ -72,3 +72,27 @@ async def test_revision_set_has_one_total_deadline(monkeypatch):
         return receipt(), 'owner'
     monkeypatch.setattr(revisions, '_read_json', slow)
     with pytest.raises(TimeoutError): await revisions.capture({'ontology_id':'selected'}, {})
+
+@pytest.mark.asyncio
+async def test_legacy_selected_node_uses_graph_owner_receipt_after_artifact_404(monkeypatch):
+    import httpx
+    failure=httpx.HTTPStatusError('not registered',request=httpx.Request('GET','http://ontology/revision'),response=httpx.Response(404))
+    value={'kind':'graph-source-revision','node_id':'node-1','ontology_id':'legacy-uri','revision_sha256':'b'*64,'status':'retained_graph','limited':False}
+    read=AsyncMock(side_effect=[failure,(value,'graph-owner')]);monkeypatch.setattr(revisions,'_read_json',read)
+    assert await revisions.capture({'ontology_id':'legacy-uri','node_id':'node-1'}, {})==[value]
+    assert read.call_args.args[2]=='/graph/source-revision'
+    assert read.call_args.args[3]=={'node_id':'node-1','ontology_id':'legacy-uri'}
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status',[401,403,503])
+async def test_graph_receipt_never_bypasses_owner_auth_or_unavailability(monkeypatch,status):
+    import httpx
+    failure=httpx.HTTPStatusError('denied',request=httpx.Request('GET','http://ontology/revision'),response=httpx.Response(status))
+    read=AsyncMock(side_effect=failure);monkeypatch.setattr(revisions,'_read_json',read)
+    with pytest.raises(httpx.HTTPStatusError):await revisions.capture({'ontology_id':'legacy','node_id':'node-1'}, {})
+    assert read.await_count==1
+@pytest.mark.asyncio
+async def test_graph_revision_cannot_substitute_a_different_selected_node(monkeypatch):
+    import httpx
+    failure=httpx.HTTPStatusError('missing',request=httpx.Request('GET','http://ontology/revision'),response=httpx.Response(404))
+    monkeypatch.setattr(revisions,'_read_json',AsyncMock(side_effect=[failure,({'kind':'graph-source-revision','node_id':'other','ontology_id':'legacy','revision_sha256':'b'*64,'status':'retained_graph','limited':False},'graph')]))
+    with pytest.raises(ValueError):await revisions.capture({'ontology_id':'legacy','node_id':'node-1'}, {})

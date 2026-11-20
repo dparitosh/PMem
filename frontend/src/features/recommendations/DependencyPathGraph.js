@@ -15,7 +15,7 @@ export default function DependencyPathGraph({data}) {
         const target=edge.start_id===current?edge.end_id:edge.start_id;
         if(!nodes.has(target)&&nodes.size>=60)break;
         if(!nodes.has(target))nodes.set(target,{id:target,name:businessDisplayName(item.path_names?.[index+1],'Business name not recorded'),depth:index+1});
-        edges.set(edge.relationship_id,{id:edge.relationship_id,source:current,target});
+        edges.set(edge.relationship_id,{id:edge.relationship_id,source:edge.start_id,target:edge.end_id,label:edge.predicate || edge.relationship_type || 'Recorded relationship'});
         current=target;
       }
     }
@@ -29,15 +29,15 @@ export default function DependencyPathGraph({data}) {
   if(!graph.nodes.length)return null;
   const record=(data.realization_chain || []).find(item=>item.node_id===selected);
   return <section aria-label="Dependency graph">
-    <p>Follow the recorded dependency paths from the selected object. Select a record to inspect its path. Arrows show the investigation route; retained evidence records the original relationship direction.</p>
+    <p>Follow the recorded dependency paths from the selected object. Select a record to inspect its path. Arrows show the recorded relationship direction.</p>
     {graph.limited&&<p role="status">The diagram shows up to 60 records. The evidence table retains the remaining results.</p>}
     <div style={{overflow:'auto',maxHeight:540,border:`1px solid ${C.border}`}}>
       <svg viewBox={`0 0 1000 ${graph.height}`} style={{width:'100%',minWidth:800,height:graph.height}} role="img" aria-label="Recorded engineering dependency paths">
         <defs><marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill={C.textSec}/></marker></defs>
-        {graph.edges.map(edge=><path key={edge.id} d={`M${edge.a.x+65},${edge.a.y} L${edge.b.x-65},${edge.b.y}`} fill="none" stroke={C.textSec} markerEnd={`url(#${markerId})`} opacity={.6}/>)}
+        {graph.edges.map(edge=><path key={edge.id} d={`M${edge.a.x+(edge.b.x>=edge.a.x?65:-65)},${edge.a.y} L${edge.b.x+(edge.b.x>=edge.a.x?-65:65)},${edge.b.y}`} aria-label={edge.label} fill="none" stroke={C.textSec} markerEnd={`url(#${markerId})`} opacity={.6}/>)}
         {graph.nodes.map(node=><g key={node.id} role="button" tabIndex={0} aria-label={`Inspect ${node.name}`} onClick={()=>setSelected(node.id)} onKeyDown={event=>{if(['Enter',' '].includes(event.key)){event.preventDefault();setSelected(node.id);}}} style={{cursor:'pointer'}}>
           <title>{node.name}</title><rect x={node.x-70} y={node.y-17} width="140" height="34" rx="5" fill={selected===node.id?C.primary:C.surface} stroke={C.primary}/>
-          <text x={node.x} y={node.y+4} textAnchor="middle" fontSize="11" fill={selected===node.id?'#fff':C.textPrimary}>{node.name.length>22?node.name.slice(0,20)+'…':node.name}</text>
+          <text x={node.x} y={node.y+4} textAnchor="middle" fontSize="12" fill={selected===node.id?'#fff':C.textPrimary}>{node.name.length>22?node.name.slice(0,20)+'…':node.name}</text>
         </g>)}
       </svg>
     </div>

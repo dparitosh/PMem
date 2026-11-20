@@ -136,7 +136,13 @@ class PostgresRegistry:
                 any(not isinstance(part, str) for part in path) for name, path in projection.items()
             ):
                 raise ValueError('Invalid registry projection')
-            selection = 'jsonb_build_object(' + ','.join('%s::text, value #> %s::text[]' for _ in projection) + ')'
+            # PostgreSQL limits function arguments to 100. Each projected field
+            # uses two, so build bounded objects before combining them.
+            entries = list(projection.items())
+            selection = '(' + ' || '.join(
+                'jsonb_build_object(' + ','.join('%s::text, value #> %s::text[]' for _ in entries[start:start+32]) + ')'
+                for start in range(0, len(entries), 32)
+            ) + ')'
             selection_args = [item for name, path in projection.items() for item in (name, path)]
         where = 'namespace=%s'
         args = [self.namespace]
@@ -161,22 +167,37 @@ class PostgresRegistry:
             return total, [row[0] for row in cursor.fetchall()]
 
     def transition_bundle(self, key, value, *, related_store, expected_rows, updated_rows, expected_value):
-        """CAS related registry rows and a receipt in one PostgreSQL transaction."""
+        """CAS related registry rows (including absent revisions) and a receipt."""
         ensure_execution_allowed()
         if set(expected_rows)!=set(updated_rows) or not 1<=len(expected_rows)<=500:
             raise ValueError('Invalid related transition set')
-        with self._connect() as db, db.transaction(), db.cursor() as cursor:
-            cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND key=%s FOR UPDATE',(self.namespace,key))
-            current=cursor.fetchone()
-            if not current or current[0]!=expected_value:return False
-            cursor.execute('SELECT key,value FROM depo_registry WHERE namespace=%s AND key=ANY(%s) ORDER BY key FOR UPDATE',
-                           (related_store.namespace,sorted(expected_rows)))
-            if dict(cursor.fetchall())!=expected_rows:return False
-            cursor.executemany('UPDATE depo_registry SET value=%s::jsonb,updated_at=now() WHERE namespace=%s AND key=%s',
-                [(json.dumps(updated_rows[row]),related_store.namespace,row) for row in sorted(updated_rows)])
-            cursor.execute('INSERT INTO depo_registry(namespace,key,value) VALUES(%s,%s,%s::jsonb) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value,updated_at=now()',
-                           (self.namespace,key,json.dumps(value)))
-        return True
+        class ConcurrentInsert(Exception):
+            pass
+        try:
+            with self._connect() as db, db.transaction(), db.cursor() as cursor:
+                cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND key=%s FOR UPDATE',(self.namespace,key))
+                current=cursor.fetchone()
+                if not current or current[0]!=expected_value:return False
+                cursor.execute('SELECT key,value FROM depo_registry WHERE namespace=%s AND key=ANY(%s) ORDER BY key FOR UPDATE',
+                               (related_store.namespace,sorted(expected_rows)))
+                if dict(cursor.fetchall())!={row:expected for row,expected in expected_rows.items() if expected is not None}:return False
+                # Unique insertion detects a competing new revision even if it
+                # was absent from the SELECT snapshot. Throw to roll back all
+                # inserts/updates together; never commit a partial bundle.
+                for row in sorted(expected_rows):
+                    if expected_rows[row] is None:
+                        cursor.execute('INSERT INTO depo_registry(namespace,key,value) VALUES(%s,%s,%s::jsonb) ON CONFLICT(namespace,key) DO NOTHING RETURNING key',
+                                       (related_store.namespace,row,json.dumps(updated_rows[row])))
+                        if cursor.fetchone() is None:raise ConcurrentInsert()
+                existing=[row for row in sorted(updated_rows) if expected_rows[row] is not None]
+                if existing:
+                    cursor.executemany('UPDATE depo_registry SET value=%s::jsonb,updated_at=now() WHERE namespace=%s AND key=%s',
+                        [(json.dumps(updated_rows[row]),related_store.namespace,row) for row in existing])
+                cursor.execute('INSERT INTO depo_registry(namespace,key,value) VALUES(%s,%s,%s::jsonb) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value,updated_at=now()',
+                               (self.namespace,key,json.dumps(value)))
+            return True
+        except ConcurrentInsert:
+            return False
 
     def put_with_related(self, key, value, *, related_namespace, related_key, related_value):
         """Commit a product and its approval evidence as one database unit."""
@@ -302,7 +323,9 @@ class PostgresRegistry:
                   SELECT key FROM depo_registry
                   WHERE namespace = CAST(%s AS text) AND (
                     value->>'status' = 'queued' OR
-                    (value->>'status' = 'running' AND (NULLIF(value->'lease'->>'expires_at','') IS NULL OR NULLIF(value->'lease'->>'expires_at','')::timestamptz <= CAST(%s AS timestamptz)))
+                    (value->>'status' = 'running' AND NULLIF(value->>'worker_id','') IS NOT NULL
+                      AND NULLIF(value->'lease'->>'expires_at','') IS NOT NULL
+                      AND (value->'lease'->>'expires_at')::timestamptz <= CAST(%s AS timestamptz))
                   ) AND (NULLIF(value->>'available_at','') IS NULL OR NULLIF(value->>'available_at','')::timestamptz <= CAST(%s AS timestamptz))
                   ORDER BY updated_at, key FOR UPDATE SKIP LOCKED LIMIT 1
                 )

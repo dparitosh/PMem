@@ -186,3 +186,24 @@ def test_unavailable_source_authority_does_not_queue_goal(setup, monkeypatch):
     monkeypatch.setattr(source_revisions, 'capture', AsyncMock(side_effect=RuntimeError('fixture unavailable')))
     assert create(client).status_code == 503
     assert not store.records
+
+
+def test_selected_graph_investigation_keeps_reads_on_owning_source():
+    tools=[{'id':key} for key in ('graph.business_context','graph.query','recommendation.change_impact','oslc.graph_rag','context.search')]
+    context={'page':'graph','node_id':'selected','ontology_id':'retained'}
+    assert [row['id'] for row in routes.scoped_tools(tools,context)]==['graph.business_context','graph.query','recommendation.change_impact']
+    assert routes.scoped_tools(tools,{'page':'change-control'})==tools
+    assert routes.scoped_tools(tools,{'page':'graph','node_id':'selected'})==tools
+
+
+def test_explicit_recommendation_binding_still_takes_priority():
+    tools=[{'id':key} for key in ('graph.business_context','recommendation.change_impact','oslc.graph_rag')]
+    context={'page':'graph','node_id':'selected','ontology_id':'retained',
+             'recommendation_service':'change-impact','recommendation_object':'Bearing'}
+    assert [row['id'] for row in routes.scoped_tools(tools,context)]==['recommendation.change_impact']
+
+
+def test_decision_alternatives_on_recommendations_use_graph_owned_reads():
+    tools=[{'id':key} for key in ('graph.business_context','oslc.graph_rag','context.search')]
+    context={'page':'recommendations','decision_analysis':'alternatives','node_id':'selected','ontology_id':'retained'}
+    assert routes.scoped_tools(tools,context)==[{'id':'graph.business_context'}]

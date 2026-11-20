@@ -30,6 +30,7 @@ const CodeAuditPage = lazyPage('code-audit', () => import('../pages/CodeAuditPag
 const ModelWorkbenchPage = lazyPage('modeling', () => import('../pages/ModelWorkbenchPage'));
 const QualityPage = lazyPage('data-quality', () => import('../pages/QualityPage'));
 const RecommendationsPage = lazyPage('recommendations', () => import('../pages/RecommendationsPage'));
+const GraphAnalyticsPage = lazyPage('graph-analytics', () => import('../pages/GraphAnalyticsPage'));
 const ReportsPage = lazyPage('reports', () => import('../pages/ReportsPage'));
 const AdminPage = lazyPage('admin', () => import('../pages/AdminPage'));
 const WhereUsedPage = lazyPage('whereused', () => import('../pages/WhereUsedPage'));
@@ -52,6 +53,7 @@ export const pageRegistry = {
   qif: { component: QifPage },
   whereused: { component: WhereUsedPage, props: ({ graphProps, data }) => ({ ...graphProps, data }) },
   recommendations: { component: RecommendationsPage, props: ({ onNavigate }) => ({ setActiveTab: onNavigate }) },
+  'graph-analytics': {component: GraphAnalyticsPage},
   reports: { component: ReportsPage, props: ({ data, searchResults, chatResults }) => ({ graphData: data, searchResults, chatResults }) },
   admin: { component: AdminPage, props: ({ onSchemaCleaned }) => ({ onSchemaCleaned }) },
 };

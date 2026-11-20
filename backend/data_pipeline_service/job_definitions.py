@@ -121,6 +121,10 @@ def create(payload: dict[str, Any]) -> dict[str, Any]:
         "approved_at": None,
         "approved_by": None,
     }
+    if isinstance(store, PostgresRegistry):
+        from backend.depo_platform.resource_identity import identify
+        identity=identify('WF','data-pipeline',record['job_id'],name=record['name'])
+        record.update(workflow_uuid=identity['object_id'],workflow_number=identity['number'])
     return store.create(key(record["job_id"], record["version"]), record)
 
 
@@ -138,44 +142,45 @@ def _update(record: dict[str, Any], updated: dict[str, Any]) -> dict[str, Any]:
     return updated
 
 
-def approve(job_id: str, version: str, approved_by: str) -> dict[str, Any]:
-    record = get(job_id, version)
-    if not record:
-        raise LookupError("Data job definition was not found")
-    if record["lifecycle_state"] == "disabled":
-        raise ValueError("A disabled job version cannot be approved")
-    approved = {**record, "lifecycle_state": "approved", "approved_at": now(), "approved_by": approved_by}
-    return _update(record, approved)
+def reviewed_update(record, operation, parameters, actor):
+    """Compute a known maintenance update; caller owns atomic persistence."""
+    if operation == 'revise':
+        if record.get('job_type') not in {'normalize-ceim','validate-semantic-batch','normalize-unstructured-ceim','connector-ceim-normalize'}:
+            raise ValueError('Source-support revisions apply only to semantic source workflows')
+        version=parameters.get('version');standards=parameters.get('allowed_standards')
+        if record.get('lifecycle_state')!='approved' or not record.get('enabled'):
+            raise ValueError('Revise an approved enabled workflow')
+        if not isinstance(version,str) or not _SEMVER.fullmatch(version) or tuple(map(int,version.split('.'))) <= tuple(map(int,record['version'].split('.'))):
+            raise ValueError('Choose a newer semantic workflow version')
+        if not isinstance(standards,list) or not 1<=len(standards)<=12 or any(not isinstance(value,str) or not re.fullmatch('[a-z][a-z0-9-]{1,62}',value) for value in standards) or len(set(standards))!=len(standards):
+            raise ValueError('Choose distinct supported source standards')
+        from backend.ceim.contract import contract
+        for standard in standards:contract.mapping_pack(standard)
+        return {**record,'version':version,'allowed_standards':sorted(standards),'schedule':None,
+                'derived_from_version':record['version'],'created_at':now(),'approved_at':now(),'approved_by':actor}
+    if operation == 'approve':
+        if record['lifecycle_state'] == 'disabled':raise ValueError('A disabled job version cannot be approved')
+        return {**record,'lifecycle_state':'approved','approved_at':now(),'approved_by':actor}
+    if operation == 'disable':
+        return {**record,'enabled':False,'lifecycle_state':'disabled','disabled_at':now(),'disabled_by':actor}
+    if operation == 'clear':return {**record,'schedule':None,'schedule_cleared_at':now(),'schedule_cleared_by':actor}
+    if operation != 'schedule':raise ValueError('Unsupported workflow maintenance operation')
+    if record.get('lifecycle_state') != 'approved' or not record.get('enabled'):
+        raise ValueError('Only an approved, enabled job can be scheduled')
+    schedule={key:parameters.get(key) for key in ('interval_seconds','replay_run_id')}
+    errors=_schedule_errors(schedule)+_retry_errors(parameters.get('retry_policy'))
+    if errors:raise ValueError('; '.join(errors))
+    return {**record,'schedule':{**schedule,'configured_at':now(),'configured_by':actor},
+            'retry_policy':dict(parameters.get('retry_policy') or record.get('retry_policy') or {'max_attempts':1,'backoff_seconds':30})}
 
 
-def disable(job_id: str, version: str, disabled_by: str) -> dict[str, Any]:
-    record = get(job_id, version)
-    if not record:
-        raise LookupError("Data job definition was not found")
-    disabled = {**record, "enabled": False, "lifecycle_state": "disabled", "disabled_at": now(), "disabled_by": disabled_by}
-    return _update(record, disabled)
+def _maintain(job_id,version,operation,parameters,actor):
+    record=get(job_id,version)
+    if not record:raise LookupError('Data job definition was not found')
+    return _update(record,reviewed_update(record,operation,parameters,actor))
 
 
-def configure_schedule(job_id: str, version: str, payload: dict[str, Any], configured_by: str) -> dict[str, Any]:
-    record = get(job_id, version)
-    if not record:
-        raise LookupError("Data job definition was not found")
-    if record.get("lifecycle_state") != "approved" or not record.get("enabled"):
-        raise ValueError("Only an approved, enabled job can be scheduled")
-    schedule = {"interval_seconds": payload.get("interval_seconds"), "replay_run_id": payload.get("replay_run_id")}
-    errors = _schedule_errors(schedule) + _retry_errors(payload.get("retry_policy"))
-    if errors:
-        raise ValueError("; ".join(errors))
-    updated = {
-        **record,
-        "schedule": {**schedule, "configured_at": now(), "configured_by": configured_by},
-        "retry_policy": dict(payload.get("retry_policy") or record.get("retry_policy") or {"max_attempts": 1, "backoff_seconds": 30}),
-    }
-    return _update(record, updated)
-
-
-def clear_schedule(job_id: str, version: str, configured_by: str) -> dict[str, Any]:
-    record = get(job_id, version)
-    if not record:
-        raise LookupError("Data job definition was not found")
-    return _update(record, {**record, "schedule": None, "schedule_cleared_at": now(), "schedule_cleared_by": configured_by})
+def approve(job_id,version,approved_by):return _maintain(job_id,version,'approve',{},approved_by)
+def disable(job_id,version,disabled_by):return _maintain(job_id,version,'disable',{},disabled_by)
+def configure_schedule(job_id,version,payload,configured_by):return _maintain(job_id,version,'schedule',payload,configured_by)
+def clear_schedule(job_id,version,configured_by):return _maintain(job_id,version,'clear',{},configured_by)

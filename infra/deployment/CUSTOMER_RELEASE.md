@@ -28,6 +28,10 @@ configuration mocks are not production certification.
    Production endpoint validation, ReleasePreflight and an authorized browser
    workflow. Record a rollback point before opening access.
 
+## Historical decision evaluation (optional)
+
+Use `standalone/engineering_ods/README.md` only after normal service readiness. Generation is offline; registration, lifecycle review, central CR/CO authorization and publication verification are separate. Retain exact artifact/receipt hashes with customer acceptance evidence. Do not confuse authored historical case data with customer incidents, existing agent conversation history or automatically approved learning.
+
 ## Acceptance evidence
 
 | Evidence | Required result |

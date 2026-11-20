@@ -21,3 +21,22 @@ test('analytics step never overrides a different workspace breadcrumb',()=>{
  expect(screen.getByText('Governance')).toHaveAttribute('aria-current','page');
  expect(screen.queryByText('Configure analysis')).toBeNull();
 });
+
+test.each(['definitions','pipelines'])('Data Flow %s breadcrumb matches the pipeline job view',view=>{
+ window.history.replaceState(null,'',`#/data-flow?view=${view}`);
+ render(<WorkspaceBreadcrumbs page="data-flow" label="Data Flow"/>);
+ expect(screen.getByText('Pipeline jobs')).toHaveAttribute('aria-current','page');
+ expect(screen.queryByText('Definitions')).toBeNull();
+});
+
+
+test('retained run context does not hide the selected Event reviews breadcrumb',()=>{
+ window.history.replaceState(null,'','#/data-flow?view=events&run_id=retained-run');render(<WorkspaceBreadcrumbs page="data-flow" label="Data Flow"/>);
+ expect(screen.getByText('Event reviews')).toBeInTheDocument();expect(screen.queryByText('Run details')).toBeNull();
+});
+
+test.each(['data-flow','admin','graph','modeling','requirements','qif','registry','home'])('foreign analytics parameters do not label the %s workspace',page=>{
+ window.history.replaceState(null,'',`#/${page}?view=analytics&analytics_step=1&run_id=foreign`);render(<WorkspaceBreadcrumbs page={page} label={page}/>);
+ expect(screen.queryByText('Available analytics')).not.toBeInTheDocument();expect(screen.queryByText('Configure analysis')).not.toBeInTheDocument();
+ if(page!=='data-flow')expect(screen.queryByText('Run details')).not.toBeInTheDocument();
+});

@@ -20,3 +20,11 @@ test('query and path deep links select the same retained run identity',async()=>
  expect(readRequestedRunId('#/data-flow?run_id=retained-run')).toBe('retained-run');
  expect(readRequestedRunId('#/data-flow/retained-run')).toBe('retained-run');
 });
+
+
+test('import status uses a business reference while retaining the canonical run link',()=>{
+ const status=governedRunStatus({run_id:'private-long-uuid',run_number:'RUN-2026-000005',status:'completed'});
+ expect(status.message).toContain('RUN-2026-000005');
+ expect(status.message).not.toContain('private-long-uuid');
+ expect(status.dataJobRunId).toBe('private-long-uuid');
+});

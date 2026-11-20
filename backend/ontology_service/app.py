@@ -16,13 +16,15 @@ from .publication_worker import publication_lifespan
 app = create_service_app(title="DEPO Ontology Service", version="1.0.0", lifespan_hook=publication_lifespan)
 app.include_router(create_odata_catalog_router(
     service_name="DEPOOntology",
-    capabilities=[
+    capabilities=[ServiceCapability("Ontology publication review", "/api/v1/ontologies/{ontology_id}/change", description="Inspect exact ontology artifact and release scope"), ServiceCapability("Ontology publication decision", "/api/v1/ontologies/{ontology_id}/change", "POST", "Submit, accept, authorize, queue or reconcile native graph publication"),
         ServiceCapability("Health", "/api/v1/ontologies/health", description="Ontology service health"),
         ServiceCapability("Generate ontology", "/api/v1/ontologies/generate", "POST", "Generate and validate an ontology"),
         ServiceCapability("Quality gate", "/api/v1/ontologies/quality-gate", "POST", "Run governed quality checks"),
         ServiceCapability("Ontology versions", "/api/v1/ontologies/versions", description="List ontology versions"),
         ServiceCapability("Policy evaluation", "/api/v1/ontologies/policies/evaluate", "POST", "Evaluate publication policies"),
         ServiceCapability("Governed merge preview", "/api/v1/ontologies/merges/preview", "POST", "Review an ontology merge before approval"),
+        ServiceCapability("Merge review status", "/api/v1/ontologies/merges/{preview_id}/change", description="Read native request and exact retained plan"),
+        ServiceCapability("Submit merge for review", "/api/v1/ontologies/merges/{preview_id}/change/submit", "POST", "Submit a retained plan only; cannot approve, execute or publish"),
         ServiceCapability("Approved ontology merge", "/api/v1/ontologies/merges/{preview_id}/apply", "POST", "Persist an approved merge with provenance"),
         ServiceCapability("Legacy catalog migration", "/api/v1/ontologies/migrations/legacy", "POST", "Adopt named legacy ingestion artifacts with stable IDs"),
         ServiceCapability("Legacy analytics backfill", "/api/v1/ontologies/migrations/legacy/analytics", "POST", "Add draft analytics and lifecycle metadata from retained ontology artifacts"),

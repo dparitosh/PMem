@@ -13,8 +13,10 @@ EXCLUDED = ['StagedOntologyResource', 'RetainedOntologyIdentity', 'OntologyPubli
             'GraphChunk', 'DatasheetChunk', 'OntologyClass', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty']
 IMPACT = {'impacts', 'affects', 'cmhasimpacteditem', 'cmhasproblemitem', 'cmhassolutionitem',
           'hasimpacteditem', 'hasproblemitem', 'hassolutionitem'}
-TRACE = {'satisfies', 'seg0satisfy', 'fndtracelink', 'tracelink', 'realizes', 'tracesto', 'traceto', 'allocatedto'}
+TRACE = {'hasrequirement', 'satisfies', 'seg0satisfy', 'fndtracelink', 'tracelink', 'realizes', 'tracesto', 'traceto', 'allocatedto'}
 BOM = {'haschildinstance', 'haschild', 'contains', 'haspart', 'partof', 'childof', 'parentof', 'usedby', 'dependson'}
+EVIDENCE = {'describedby', 'hasdocument', 'hasgeometry', 'hasshape', 'haspmi', 'hasmeasurement',
+            'verifiedby', 'testedby', 'simulatedby', 'hassimulation', 'hastestresult'}
 PROCESS = {'manufacturedby', 'processedby', 'produces', 'consumes', 'uses', 'performs', 'processes'}
 REFERENCE = {'relatedrefs', 'relatedref', 'masterref', 'masterreference', 'partref', 'productref', 'revisionref', 'instancedref'}
 
@@ -65,7 +67,7 @@ def display(record):
 def provenance(record):
     props = record.get('properties') or {}
     return {'node_id': record['id'], **{key:props[key] for key in
-            ('ontology_id','source_ontology','import_id','publication_revision','source_revision','artifact_digest','updated_at')
+            ('ontology_id','source_ontology','import_id','publication_revision','source_revision','revision','configuration','effectivity','artifact_digest','updated_at')
             if isinstance(props.get(key),(str,int,float)) and not isinstance(props.get(key),bool)}}
 
 
@@ -215,7 +217,7 @@ class RecommendationEngine:
             'elementId(startNode(r)) AS start_id, elementId(endNode(r)) AS end_id, '
             'collect(DISTINCT coalesce(cls.iri,cls.name,cls.label)) AS mapped_types '
             'ORDER BY from_id, relationship_id', frontier=frontier, excluded=EXCLUDED,
-            relations=sorted(IMPACT | TRACE | BOM | PROCESS | REFERENCE), reference_relations=sorted(REFERENCE),
+            relations=sorted(IMPACT | TRACE | BOM | PROCESS | EVIDENCE | REFERENCE), reference_relations=sorted(REFERENCE),
             carrier_types=['generalrelation','relationshipcarrier'], **self.scope(scope))
 
     @graph_projection_reader
@@ -257,10 +259,13 @@ class RecommendationEngine:
                     continue
                 if category == 'carrier' and not carrier_edge:
                     continue
-                if category not in {'part', 'assembly', 'process', 'requirement', 'carrier'}:
+                if category not in {'part', 'assembly', 'process', 'requirement', 'carrier',
+                                    'document', 'dataset', 'geometry', 'pmi', 'system', 'test', 'measurement', 'resource'}:
                     continue
                 # Impact predicates point from the change to affected records.
                 # BOM parent->child is traversed upward for change propagation.
+                if relation in EVIDENCE and edge['start_id'] != source:
+                    continue
                 if relation in IMPACT and edge['start_id'] != source:
                     continue
                 if relation in {'haschildinstance', 'haschild', 'contains', 'haspart', 'parentof'} and edge['end_id'] != source:
@@ -301,6 +306,8 @@ class RecommendationEngine:
             frontier = sorted(set(next_frontier))
             if limited:
                 break
+        depth_limit_reached = bool(frontier) and depth == 4
+        limited |= depth_limit_reached
         entries = sorted(results.values(), key=lambda row: (row['depth'], row['node_id']))
         return {'change_entity': {'node_id': root_id, 'name': display(root), 'source_tag': root['properties'].get('ontology_id'),
                                  'revision': (values(root['properties']).get('revision') or [None])[0]},
@@ -313,5 +320,5 @@ class RecommendationEngine:
             'evidence_status': 'linked_candidates' if entries else 'insufficient',
             'message': 'Review the retained dependency paths and configuration/effectivity before authorizing a change.' if entries else 'Impact is unknown: no eligible dependency paths were found within the selected scope and traversal budget.',
             'coverage': {'depth': 4, 'node_limit': 200, 'relationships_examined': examined,
-                         'limit_reached': limited, 'whole_graph_complete': False},
+                         'limit_reached': limited, 'depth_limit_reached': depth_limit_reached, 'whole_graph_complete': False},
             'traceability': 'Bounded four-hop dependency analysis, including explicit impact carriers, upward assembly links, traceability and process dependencies. Paths retain relationship identity and direction. Configuration/effectivity and impact severity require review.'}

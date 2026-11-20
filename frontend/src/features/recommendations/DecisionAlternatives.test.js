@@ -1,0 +1,31 @@
+import React from 'react';
+import {render,screen,fireEvent,cleanup} from '@testing-library/react';
+import DecisionAlternatives from './DecisionAlternatives';
+import {API_METHODS} from '../../services/apiClient';
+vi.mock('../../services/apiClient',()=>({API_METHODS:{recommendations:{resolve:vi.fn()}}}));
+vi.mock('../../Components/ReadGoalPanel',()=>({default:props=><button disabled={props.disabled} data-context={JSON.stringify(props.context)} data-task={props.task}>{props.startLabel}</button>}));
+afterEach(()=>{cleanup();vi.clearAllMocks();window.location.hash='';});
+test('selected identity and criteria are bound; editing the name invalidates selection',async()=>{
+ window.location.hash='#/recommendations?ontology_id=retained';
+ API_METHODS.recommendations.resolve.mockResolvedValue({data:{matches:[{node_id:'node-one',name:'Investigation',scope:{ontology_id:'retained'}}],truncated:false}});
+ render(<DecisionAlternatives ready/>);
+ fireEvent.change(screen.getByLabelText('Investigation or business object'),{target:{value:'Investigation'}});
+ fireEvent.click(screen.getByRole('button',{name:'Find business objects'}));
+ await screen.findByText('Investigation',{selector:'strong'});
+ fireEvent.change(screen.getByLabelText('Decision criteria and objective'),{target:{value:'Require speed >=1500 rpm. Minimize cost.'}});
+ const action=screen.getByRole('button',{name:'Recommend with agent'});
+ expect(action).toBeEnabled();
+ expect(JSON.parse(action.dataset.context)).toEqual({page:'recommendations',decision_analysis:'alternatives',node_id:'node-one',ontology_id:'retained'});
+ expect(action.dataset.task).toContain('Require speed >=1500 rpm');
+ expect(API_METHODS.recommendations.resolve.mock.calls[0][1]).toEqual({ontology_id:'retained'});
+ fireEvent.change(screen.getByLabelText('Investigation or business object'),{target:{value:'Other'}});
+ expect(action).toBeDisabled();
+});
+test('malformed source scope cannot enable a recommendation',async()=>{
+ API_METHODS.recommendations.resolve.mockResolvedValue({data:{matches:[{node_id:'node-one',name:'Investigation',scope:{secret:'bad'}}],truncated:false}});
+ render(<DecisionAlternatives ready/>);
+ fireEvent.change(screen.getByLabelText('Investigation or business object'),{target:{value:'Investigation'}});
+ fireEvent.click(screen.getByRole('button',{name:'Find business objects'}));
+ await screen.findByRole('alert');
+ expect(screen.getByRole('button',{name:'Recommend with agent'})).toBeDisabled();
+});

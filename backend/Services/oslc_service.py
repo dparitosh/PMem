@@ -71,6 +71,18 @@ class OSLCService:
     CM_CHANGE_REQUEST_URI = "http://open-services.net/ns/cm#ChangeRequest"
     QM_TEST_RESULT_URI = "http://open-services.net/ns/qm#TestResult"
     QM_TEST_CASE_URI = "http://open-services.net/ns/qm#TestCase"
+    # Explicit RDF types emitted by the supported projection and standard providers.
+    DOMAIN_RDF_TYPES = {
+        'requirements': ['http://open-services.net/ns/rm#Requirement', 'https://depo.example.org/ceim/0.1/Requirement'],
+        'requirement-collections': ['http://open-services.net/ns/rm#RequirementCollection'],
+        'change-requests': ['http://open-services.net/ns/cm#ChangeRequest'],
+        'test-results': ['http://open-services.net/ns/qm#TestResult'],
+        'test-cases': ['http://open-services.net/ns/qm#TestCase'],
+        'architecture-resources': ['http://open-services.net/ns/am#Resource'],
+    }
+    XMI_AM_TYPES = ['system', 'subsystem', 'component', 'interface', 'function', 'capability',
+                    'operationalactivity', 'performer', 'package', 'project', 'usecase', 'actor',
+                    'activity', 'signal', 'flowport', 'itemflow', 'constraintblock', 'view']
     DOMAIN_SHAPES = {
         AM_RESOURCE_TYPE: {
             "title": "OSLC AM Architecture Resource Shape",
@@ -179,6 +191,7 @@ class OSLCService:
             "type": "oslc:ServiceProviderCatalog",
             "title": f"{cfg.provider_title} Catalog",
             "serviceProviders": [
+                {"uri": f"{cfg.base_url}/oslc/automation", "title": "Nexus workflow automation", "details": f"{cfg.base_url}/oslc/automation"},
                 {
                     "uri": provider_uri,
                     "title": cfg.provider_title,
@@ -231,7 +244,8 @@ class OSLCService:
             "supportProfile": {"read_only": True, "operations": ["discovery", "query", "resource_read", "shape_read"],
                                "unsupported_operations": ["create", "update", "delete", "workflow_transition"],
                                "conformance": "partial_domain_projection"},
-            "oslc:domain": canonical_domains,
+            "oslc:domain": canonical_domains + ['http://open-services.net/ns/auto#', 'http://open-services.net/ns/config#'],
+            "trs:trackedResourceSet": {"uri": f"{cfg.base_url}/oslc/trs", "type": "trs:TrackedResourceSet"},
             "services": [{
                 "domain": service_domain,
                 "queryCapabilities": [{
@@ -252,7 +266,18 @@ class OSLCService:
                     for shape_id, definition in cls.DOMAIN_SHAPES.items()
                     if definition['domain'].replace('oslc_', '') == service_domain.rstrip('#').rsplit('/', 1)[-1]
                 ],
-            } for service_domain in canonical_domains],
+            } for service_domain in canonical_domains] + [
+                {"domain": "http://open-services.net/ns/auto#", "serviceProvider": f"{cfg.base_url}/oslc/automation",
+                 "resourceShapes": [f"{cfg.base_url}/oslc/automation/shapes/{kind}" for kind in ('plans','requests','results')], "queryCapabilities": [
+                    {"queryBase": f"{cfg.base_url}/oslc/automation/{kind}",
+                     "resourceTypeUri": 'http://open-services.net/ns/auto#' + resource_type,
+                     "resourceShape": f"{cfg.base_url}/oslc/automation/shapes/{kind}"}
+                    for kind, resource_type in [('plans','AutomationPlan'),('requests','AutomationRequest'),('results','AutomationResult')]],
+                 "support_scope": "Retained workflow adapter; native execution and publication permissions remain required"},
+                {"domain": "http://open-services.net/ns/config#", "resourceShapes": [f"{cfg.base_url}/oslc/change-control/configuration-shape"], "queryCapabilities": [
+                    {"queryBase": f"{cfg.base_url}/oslc/change-control/configurations", "resourceTypeUri": "http://open-services.net/ns/config#Baseline", "resourceShape": f"{cfg.base_url}/oslc/change-control/configuration-shape"}],
+                 "support_scope": "Frozen release baselines and selections; streams, branching and global configuration composition are not implemented"},
+            ],
             "domains": [
                 {
                     "id": "ap242",
@@ -282,6 +307,8 @@ class OSLCService:
                     "namespace": "http://open-services.net/ns/qm#",
                     "description": "Read-only test case and test result discovery profile.",
                 },
+                {"id":"oslc_auto", "title":"OSLC Automation", "namespace":"http://open-services.net/ns/auto#", "description":"Retained plans, execution requests and results"},
+                {"id":"oslc_config", "title":"OSLC Configuration Management", "namespace":"http://open-services.net/ns/config#", "description":"Frozen release baselines and selected versions; partial provider support"},
                 *cls._ontology_domains(),
             ],
             "queryCapabilities": [
@@ -1233,7 +1260,18 @@ class OSLCService:
         for domain in cls._ontology_domains():
             if domain["ontology_id"] == requested_id:
                 return {"ontology_id": requested_id, "prefix": domain["prefix"]}
-        return None
+        # Published graph scopes may precede or intentionally differ from legacy
+        # upload registrations. Resolve an exact retained identity, never a
+        # user-supplied prefix or display name.
+        if len(requested_id) > 256:
+            return None
+        rows = GraphViewService._run(
+            "MATCH (n) WHERE (n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id) "
+            "AND NOT (n:StagedOntologyResource OR n:RetainedOntologyIdentity OR n:OntologyPublication OR n:GraphChunk OR n:DatasheetChunk) "
+            "RETURN coalesce(n.prefix,n.ontology_prefix,'') AS prefix LIMIT 1",
+            {"ontology_id": requested_id},
+        )
+        return {"ontology_id": requested_id, "prefix": rows[0].get("prefix") or ''} if rows else None
 
     @classmethod
     def get_resource(cls, element_id: str, ontology_id: str | None = None) -> Optional[Dict[str, Any]]:
@@ -1241,7 +1279,7 @@ class OSLCService:
             """
             MATCH (n)
             WHERE (($resource_uri IS NULL AND elementId(n) = $element_id)
-                OR ($resource_uri IS NOT NULL AND (n.uri = $resource_uri OR n.rdf_uri = $resource_uri)))
+                OR ($resource_uri IS NOT NULL AND (n.uri = $resource_uri OR n.rdf_uri = $resource_uri OR n.iri = $resource_uri)))
               AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:StagedOntologyResource OR n:OntologyPublication)
               AND ($ontology_id IS NULL OR n.ontology_id = $ontology_id)
             OPTIONAL MATCH (n)-[r]->(m)
@@ -1255,7 +1293,7 @@ class OSLCService:
                 predicateUri: coalesce(r.predicate_uri, r.uri, r.predicate),
                 relationshipElementId: elementId(r),
                 targetElementId: elementId(m),
-                targetUriIdentity: coalesce(m.uri, m.rdf_uri),
+                targetUriIdentity: coalesce(m.uri, m.rdf_uri, m.iri),
                 targetOntologyId: m.ontology_id,
                 targetLabels: labels(m),
                 targetProperties: {
@@ -1294,8 +1332,8 @@ class OSLCService:
         }
         if ontology_scope:
             where_clauses.append(
-                "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
-                "OR (toString(coalesce(n.ontology_id, '')) = '' AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
+                "(n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id "
+                "OR (n.ontology_id IS NULL AND n.source_ontology IS NULL AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
             )
             cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
 
@@ -1349,8 +1387,8 @@ class OSLCService:
         cypher_params: Dict[str, Any] = {}
         if ontology_scope:
             where_clauses.append(
-                "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
-                "OR (toString(coalesce(n.ontology_id, '')) = '' AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
+                "(n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id "
+                "OR (n.ontology_id IS NULL AND n.source_ontology IS NULL AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
             )
             cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
         for index, condition in enumerate(params.where):
@@ -1405,6 +1443,14 @@ class OSLCService:
             "toLower(coalesce(toString(n.semantic_role), '')) = 'test_case' OR "
             "any(value IN [n.element_type, n.entity_type] WHERE toLower(coalesce(toString(value), '')) = 'testcase'))"
         )
+        def declared(kind):
+            values = repr(cls.DOMAIN_RDF_TYPES[kind])
+            return f"any(value IN coalesce(n.rdf_types, []) WHERE value IN {values})"
+        requirement = f"({requirement} OR {declared('requirements')})"
+        collection = f"({collection} OR {declared('requirement-collections')})"
+        change_request = f"({change_request} OR {declared('change-requests')})"
+        test_result = f"({test_result} OR {declared('test-results')})"
+        test_case = f"({test_case} OR {declared('test-cases')})"
         if normalized == cls.DEFAULT_RESOURCE_TYPE:
             return ""
         if normalized == cls.RM_REQUIREMENT_TYPE:
@@ -1429,6 +1475,7 @@ class OSLCService:
                 "toLower(coalesce(toString(n.type), '')) CONTAINS 'sysml:' OR "
                 "toLower(coalesce(toString(n.archimate_type), '')) <> '')"
             )
+            architecture = f"({architecture} OR {declared('architecture-resources')} OR any(value IN coalesce(n.rdf_types, []) WHERE value STARTS WITH 'http://depo-onto.local/xmi#' AND toLower(last(split(value, '/'))) IN {repr(cls.XMI_AM_TYPES)}))"
             return f"({architecture} AND NOT {requirement} AND NOT {collection} AND NOT {change_request} AND NOT {test_result} AND NOT {test_case})"
         raise ValueError(f"Unsupported OSLC resource type: {resource_type}")
 
@@ -1506,6 +1553,16 @@ class OSLCService:
             key: str((properties or {}).get(key) or "").strip().lower()
             for key in ("semantic_role", "element_type", "entity_type", "type", "source_format", "archimate_type")
         }
+        declared = (properties or {}).get('rdf_types') or []
+        declared = {value for value in declared if isinstance(value, str)} if isinstance(declared, (list, tuple, set)) else set()
+        domain_uris = {cls.RM_REQUIREMENT_TYPE: cls.RM_REQUIREMENT_URI, cls.RM_COLLECTION_TYPE: cls.RM_COLLECTION_URI,
+                       cls.CM_CHANGE_REQUEST_TYPE: cls.CM_CHANGE_REQUEST_URI, cls.QM_TEST_RESULT_TYPE: cls.QM_TEST_RESULT_URI,
+                       cls.QM_TEST_CASE_TYPE: cls.QM_TEST_CASE_URI, cls.AM_RESOURCE_TYPE: cls.AM_TYPE_URI}
+        matches = [domain_uris[kind] for kind, types in cls.DOMAIN_RDF_TYPES.items() if declared.intersection(types)]
+        if matches:
+            return matches
+        if any(value.startswith('http://depo-onto.local/xmi#') and value.rsplit('/', 1)[-1].lower() in cls.XMI_AM_TYPES for value in declared):
+            return [cls.AM_TYPE_URI]
         if (
             lowered_labels.intersection({"requirement", "requirementrevision", "oslcrequirement", "reqifspecobject"})
             or lowered["semantic_role"] == "requirement"

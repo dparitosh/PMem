@@ -3,6 +3,8 @@ import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
+from backend.ontology_service.publication_jobs import PublicationJobs
 import logging
 import time
 import httpx
@@ -14,6 +16,8 @@ class ApiError(Exception):
 
 class PublicationReceiptsTests(unittest.IsolatedAsyncioTestCase):
     def operation(self, approved=True, valid=True, lookup_body=None, response_body=None, existing=None, declared_digest=None):
+        # Native receipt tests use an empty isolated queue; managed-order behavior has its own lifecycle suite.
+        self.enterContext(patch('backend.ontology_service.publication_jobs.publication_jobs',PublicationJobs(InMemoryRegistry())))
         content = b'<urn:Part> <urn:label> "Part" .'
         records, calls = dict(existing or {}), []
         class Response:

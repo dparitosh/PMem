@@ -162,3 +162,25 @@ def test_worker_has_independent_wall_clock_exit_even_without_api_timeout(tmp_pat
         creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     assert process.returncode==124
     assert not (tmp_path/'never-success.json').exists()
+
+
+def test_property_role_conflict_identifies_offending_terms_without_running_reasoner():
+    with patch.object(owl_dl.subprocess, 'run') as run:
+        result=owl_dl.inspect_graph(rdf('<urn:p> a owl:ObjectProperty,owl:AnnotationProperty .'),artifact_sha256='ambiguous')
+    run.assert_not_called()
+    assert result['ambiguous_property_count']==1
+    assert result['ambiguous_properties'][0]['iri']=='urn:p'
+    assert result['ambiguous_properties'][0]['declared_types']==sorted([str(OWL.ObjectProperty),str(OWL.AnnotationProperty)])
+    assert not result['consistency_verified']
+
+
+def test_unparsed_input_still_reports_profile_findings_without_claiming_complete_audit():
+    require_engine()
+    graph=rdf('<urn:shape-this> a rdfs:Resource . <urn:C> a owl:Class ; rdfs:subClassOf <urn:Undeclared> .')
+    result=owl_dl.inspect_graph(graph,artifact_sha256='unparsed-and-profile',include_foundation=False)
+    assert result['status']=='unsupported' and result['reason']=='unparsed_rdf_statements'
+    assert result['unparsed_statement_count'] > 0
+    assert result['profile_complete_for_input'] is False
+    assert result['owl2_dl_profile'] is None
+    assert result['profile_violation_counts'].get('UseOfUndeclaredClass',0) > 0
+    assert not result['deductive_reasoner_executed'] and not result['consistency_verified']

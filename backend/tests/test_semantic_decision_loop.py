@@ -154,6 +154,9 @@ def test_bridge_holds_only_relevant_unsatisfiable_targets_and_rechecks_before_wr
     from backend.tests.test_bridge_automation_policy import Source
     from backend.tests.test_bridge_jobs import Graph
     source=Source(); graph=Graph()
+    from backend.tests.test_decision_policy_integration import retained_baseline
+    from backend.tests.test_bridge_change_lifecycle import authorize
+    retained_baseline(source)
     source.rows[0]['target_ontology_iri']='urn:PhysicalPart'
     report=assessment({**verdict('consistent',False),'unsatisfiable_classes':['urn:Design'], 'unsatisfiable_class_count':1})
     source.semantic_support=lambda identifier:report
@@ -161,6 +164,7 @@ def test_bridge_holds_only_relevant_unsatisfiable_targets_and_rechecks_before_wr
     preview=jobs.preview('model','import','reader')
     decision=jobs.evaluate_policy(preview['job_id'])
     assert decision['accepted_ids'] # An unrelated unsatisfiable design does not hold this physical-part target.
+    authorize((jobs,preview,decision['accepted_ids']))
     report.update(status='inconsistent',consistency_verified=True)
     assert not jobs.evaluate_policy(preview['job_id'])['accepted_ids']
     with pytest.raises(ValueError,match='logical contradiction'):

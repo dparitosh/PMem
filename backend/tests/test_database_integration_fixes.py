@@ -155,3 +155,20 @@ class DatabaseIntegrationFixes(unittest.TestCase):
 
 
 if __name__=='__main__': unittest.main()
+
+
+def test_deadline_streaming_cursor_delegates_batch_size_and_checks_before_advance():
+    import pytest
+    from backend.depo_platform.postgres_pool import _DeadlineCursor
+    class Cursor:
+        itersize=1
+        def __iter__(self):return iter([(1,),(2,)])
+    raw=Cursor();cursor=_DeadlineCursor(raw);cursor.itersize=1000
+    assert raw.itersize==1000
+    with patch.object(cursor,'_budget') as budget:
+        assert list(cursor)==[(1,),(2,)]
+        assert budget.call_count==3
+        assert all(call.kwargs=={'configure':False} for call in budget.call_args_list)
+    with patch.object(cursor,'_budget',side_effect=[None,TimeoutError('expired')]):
+        rows=iter(cursor);assert next(rows)==(1,)
+        with pytest.raises(TimeoutError):next(rows)

@@ -16,6 +16,8 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState(null);
+  const [releaseReason,setReleaseReason]=useState('');
+  const [reviewRequest,setReviewRequest]=useState(null);
   const request = useRef(null);
   const pending = useRef(null);
   const pendingDraft = useRef(null);
@@ -49,6 +51,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     request.current?.abort(); request.current = null; pending.current = null;
     setFields({ name: draft?.name || '', version: '1.0.0', classification: 'internal' });
     setPreview(null); setReceipt(null); setError(''); setConverted(null); setBusy(false);
+    setReleaseReason('');setReviewRequest(null);
     setSourceChanged(false); setSource(null); setDependencies([]); setPaths('');
     setApprovedReleases([]); setReleaseError('');
   }, [draft]);
@@ -58,7 +61,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
       const response = await apiClient.get(buildSemanticServiceUrl('ontology', '/api/v1/metadata-registry/assets'), { params: { limit: 200, lifecycle_status: 'approved' } });
       const releases = (response?.data?.assets || response?.assets || []).filter(asset => asset.lifecycle_status === 'approved' && asset.asset_id && asset.version);
       setApprovedReleases(releases);
-      if (releases.length === 1) setFields(previous => ({ ...previous, asset_id: releases[0].asset_id, release_version: releases[0].version }));
+      // Selection is explicit so a late lookup cannot replace a validated release contract.
       if (!releases.length) setReleaseError('No approved semantic releases are available. Open Ontology Junction to review or approve one.');
     } catch { setReleaseError('Approved semantic releases could not be loaded. Open Ontology Junction to review or approve a release.'); }
     finally { setReleaseLoading(false); }
@@ -81,7 +84,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     setSourceChanged(true); setConverted(null); setPreview(null); setReceipt(null); setError('');
   }
   async function perform(action) {
-    if (busy || request.current) return;
+    if (busy || request.current || (action === 'publish' && !pending.current)) return;
     const controller = new AbortController(); request.current = controller; setBusy(true); setError('');
     try {
       if (publicationRecoveryScope() !== initialRecoveryScope.current) throw new Error('Service connection changed. Reopen publication before continuing.');
@@ -102,7 +105,11 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
         setConverted(response.data); setFields(previous => ({ ...previous, name: response.data.data_product_draft?.name || previous.name }));
         pending.current = null; setPreview(null); setReceipt(null);
       } else {
-        const payload = pending.current || publicationFromDraft(activeDraft, fields, `schema-product-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const payload = pending.current || publicationFromDraft(activeDraft, fields, `schema-product-${Date.now()}-${Math.random().toString(36).slice(2)}`,{requireApprover:action==='publish'});
+        if(action==='submit'){
+          if(!preview?.valid||!releaseReason.trim())throw new Error('Validate the contract and provide the business reason before review.');
+          setReviewRequest({product_version:`${payload.product_id}:${payload.version}`,confirmed:false});
+        }
         if (action === 'publish') {
           if (!preview?.valid) throw new Error('Validate the publication contract before publishing.');
           // Save before sending; credentials are never included in this record.
@@ -112,10 +119,13 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
           pending.current = payload;
           pendingDraft.current = activeDraft;
         }
-        const response = await apiClient.post(buildSemanticServiceUrl('dataProducts', `/api/v1/data-products/${action === 'publish' ? 'publish' : 'preview'}`), payload,
+        const response = await apiClient.post(buildSemanticServiceUrl('dataProducts', `/api/v1/data-products/${action==='submit'?'change-requests/submit':action === 'publish' ? 'publish' : 'preview'}`), action==='submit'?{publication:payload,reason:releaseReason}:payload,
           { headers, signal: controller.signal, timeout: 60000 });
         if (controller.signal.aborted) return;
-        if (action === 'publish') {
+        if(action==='submit'){
+          if(response.data?.product_version!==`${payload.product_id}:${payload.version}`)throw new Error('Release request identity is unverified; inspect Change Control before retrying.');
+          setReviewRequest({product_version:response.data.product_version,confirmed:true});
+        }else if (action === 'publish') {
           sessionStorage.removeItem(pendingStorageKey.current); pendingStorageKey.current = null;
           pending.current = null; pendingDraft.current = null;
           setReceipt(response.data); productChanged(); onPublished?.();
@@ -123,6 +133,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
         else setPreview(response.data);
       }
     } catch (failure) {
+      if(!controller.signal.aborted&&action==='submit'&&isDefinitivePublicationRejection(failure))setReviewRequest(null);
       if (!controller.signal.aborted && action === 'publish' && isDefinitivePublicationRejection(failure)) {
         sessionStorage.removeItem(pendingStorageKey.current); pendingStorageKey.current = null;
         pending.current = null; setPreview(null);
@@ -136,24 +147,28 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     <h3>{pipeline ? 'Publish retained pipeline evidence' : ontologyEvidence ? 'Publish ontology evidence' : 'Publish schema design evidence'}</h3>
     <p>{pipeline ? 'Package the retained run artifacts for steward review. Job completion does not certify their quality.' : ontologyEvidence ? 'Package the retained source and normalized RDF for sharing and review. Product publication does not run Semantic Bridge, merge ontologies or publish the knowledge graph.' : 'This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics.'} The service verifies the referenced approved semantic release during publication.</p>
     {!pipeline && !ontologyEvidence && <details><summary>Inspect an XSD with dependency files</summary>
-      <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setSource(event.target.files[0] || null); }} /></label>
-      <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setDependencies(Array.from(event.target.files)); }} /></label>
+      <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current || !!reviewRequest} onChange={event => { invalidateInspection(); setSource(event.target.files[0] || null); }} /></label>
+      <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current || !!reviewRequest} onChange={event => { invalidateInspection(); setDependencies(Array.from(event.target.files)); }} /></label>
       <p>Selected dependency order: {dependencies.map(file => file.name).join(', ') || 'None'}</p>
-      <label>Relative paths, one per file (e.g. types/Part.xsd)<textarea value={paths} disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setPaths(event.target.value); }} /></label>
-      <IxButton disabled={busy || !!pending.current} onClick={() => perform('inspect')}>Inspect schema set</IxButton>
+      <label>Relative paths, one per file (e.g. types/Part.xsd)<textarea value={paths} disabled={busy || !!pending.current || !!reviewRequest} onChange={event => { invalidateInspection(); setPaths(event.target.value); }} /></label>
+      <IxButton disabled={busy || !!pending.current || !!reviewRequest} onClick={() => perform('inspect')}>Inspect schema set</IxButton>
     </details>}
     {sourceChanged && !activeDraft && <p role="status">Source selection changed. Inspect the schema set again before validating or publishing.</p>}
     {activeDraft && <>
       <p>Readiness: {activeDraft.analytics_readiness || 'Requires review'}; quality: {activeDraft.quality_status || 'Not assessed'}</p>
       {converted?.analytics_schema_plan?.ddl_blockers?.length > 0 && <div role="alert">Schema materialization blockers: {converted.analytics_schema_plan.ddl_blockers.join('; ')}</div>}
-      <div className="product-publication__release-help"><strong>Approved semantic release</strong><p>Choose a release already approved in Ontology Junction. Its Asset ID and version are filled automatically; you do not need to find or copy identifiers manually.</p><div><button type="button" className="depo-button depo-button--secondary" disabled={releaseLoading} onClick={loadApprovedReleases}>{releaseLoading ? 'Loading releases…' : 'Load approved releases'}</button> <a href="#/ontology">Open Ontology Junction</a></div>{releaseError&&<span role="alert">{releaseError}</span>}</div>
-      {approvedReleases.length > 0 && <label>Approved semantic release<select aria-label="Approved semantic release" value={`${fields.asset_id || ''}|${fields.release_version || ''}`} disabled={busy || !!pending.current} onChange={event => { const [asset_id, release_version] = event.target.value.split('|'); setFields(previous => ({ ...previous, asset_id, release_version })); setPreview(null); }}><option value="">Select an approved release</option>{approvedReleases.map(release => <option key={`${release.asset_id}|${release.version}`} value={`${release.asset_id}|${release.version}`}>{release.name || release.asset_id} · {release.version}</option>)}</select></label>}
+      <div className="product-publication__release-help"><strong>Approved semantic release</strong><p>Choose a release already approved in Ontology Junction. Its Asset ID and version are filled automatically; you do not need to find or copy identifiers manually.</p><div><button type="button" className="depo-button depo-button--secondary" disabled={releaseLoading || busy || !!pending.current || !!reviewRequest} onClick={loadApprovedReleases}>{releaseLoading ? 'Loading releases…' : 'Load approved releases'}</button> <a href="#/ontology">Open Ontology Junction</a></div>{releaseError&&<span role="alert">{releaseError}</span>}</div>
+      {approvedReleases.length > 0 && <label>Approved semantic release<select aria-label="Approved semantic release" value={`${fields.asset_id || ''}|${fields.release_version || ''}`} disabled={busy || !!pending.current || !!reviewRequest} onChange={event => { const [asset_id, release_version] = event.target.value.split('|'); setFields(previous => ({ ...previous, asset_id, release_version })); setPreview(null); }}><option value="">Select an approved release</option>{approvedReleases.map(release => <option key={`${release.asset_id}|${release.version}`} value={`${release.asset_id}|${release.version}`}>{release.name || release.asset_id} · {release.version}</option>)}</select></label>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-        {Object.entries(labels).map(([key, label]) => <label key={key}>{label}<input style={{ width: '100%' }} value={fields[key] || ''} disabled={busy || !!pending.current}
+        {Object.entries(labels).filter(([key])=>key!=='approved_by'&&(approvedReleases.length===0||!['asset_id','release_version'].includes(key))).map(([key, label]) => <label key={key}>{label}<input style={{ width: '100%' }} value={fields[key] || ''} disabled={busy || !!pending.current || !!reviewRequest}
           onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); setPreview(null); setReceipt(null); }} /></label>)}
       </div>
-      <IxButton disabled={busy || !!pending.current} onClick={() => perform('preview')}>Validate publication contract</IxButton>
-      <IxButton disabled={busy || !preview?.valid || !!receipt} onClick={() => perform('publish')}>{pending.current ? 'Retry same publication' : 'Approve and publish evidence'}</IxButton>
+      <IxButton disabled={busy || !!pending.current || !!reviewRequest} onClick={() => perform('preview')}>Validate publication contract</IxButton>
+      <label>Business reason for release review<textarea aria-label="Business reason for release review" value={releaseReason} disabled={busy||!!pending.current||!!reviewRequest} onChange={event=>setReleaseReason(event.target.value)}/></label>
+      <IxButton disabled={busy||!preview?.valid||!releaseReason.trim()||!!pending.current||!!reviewRequest} onClick={()=>perform('submit')}>Submit release for review</IxButton>
+
+      {reviewRequest&&<p role="status">{reviewRequest.confirmed?'Release request retained; approval and publication remain separate.':'Submission outcome unconfirmed; inspect retained scope before another action.'} <a href={`#/change-control?record_source=product_changes&record=${encodeURIComponent(reviewRequest.product_version)}`}>Inspect release request in Change Control</a></p>}
+      {pending.current&&<IxButton disabled={busy || !preview?.valid || !!receipt || !!reviewRequest} onClick={() => perform('publish')}>Retry same publication</IxButton>}
       {preview && <p role="status">{preview.valid ? 'Contract valid. Steward approval is still required.' : preview.errors?.join('; ')}</p>}
       {receipt && <p role="status">{receipt.product_id}@{receipt.version}: {receipt.status}. Pending catalog delivery retries through the outbox worker.</p>}
       {pending.current && !receipt && <p>Publication outcome may be uncertain. Retry preserves the exact payload and request identity. Do not change the version to work around an unknown outcome.</p>}

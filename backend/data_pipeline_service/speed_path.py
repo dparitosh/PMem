@@ -176,7 +176,9 @@ def _reconcile(ids,actor):
         artifact=ArtifactStore().ingest_bytes(json.dumps(batch,sort_keys=True,separators=(',',':')).encode(),
             filename=identity+'.json',kind='accepted-semantic-partition' if validation.get('conforms') else 'rejected-semantic-partition',
             media_type='application/json',provenance={'producer':'speed-path','reconciled_by':actor})
-        existing=reconciliations.put(identity,{**existing,'status':'reconciling','standard':standard,
+        names=[row.get('properties',{}).get('name') for row in normalized if isinstance(row.get('properties'),dict) and isinstance(row['properties'].get('name'),str)]
+        name=(names[0][:160] if names else standard.upper()+' incoming changes')+(' + '+str(len(normalized)-1)+' records' if len(normalized)>1 else '')
+        existing=reconciliations.put(identity,{**existing,'name':name,'status':'reconciling','standard':standard,
             'ceim_version':contract.version,'mapping_digest':batch['mapping_digest'],
             'partition_artifact_id':artifact['artifact_id'],'validation':validation,
             'counts':{'events':len(ids),'entities':len(normalized),'relationships':len(links)},
@@ -194,12 +196,15 @@ def _reconcile(ids,actor):
 
 
 def review_context(identity):
+    from .event_jobs import lineage
     row=reconciliations.get(identity)
     if not row:raise LookupError('Reconciliation was not found')
+    linked=lineage(row)
     # Bounded operational evidence, never raw source rows, model prose or secrets.
     return {key:row[key] for key in ('reconciliation_id','status','standard','created_at','created_by',
         'ceim_version','mapping_digest','partition_artifact_id','counts') if key in row} | {
-        'name':str(row.get('standard') or 'Incoming').upper()+' event review',
+        'name':row.get('name') or str(row.get('standard') or 'Incoming').upper()+' event review',
+        'lineage':linked,
         'description':'Retained incoming business changes; review semantic checks and publication evidence separately.',
         'event_ids':row.get('event_ids',[])[:20],
         'event_count':len(row.get('event_ids',[])),
@@ -207,5 +212,5 @@ def review_context(identity):
         'record_digest':_digest(row),
         'owl_dl_checked':False,
         'semantic_conforms':row.get('validation',{}).get('conforms'),
-        'publication_verified':row.get('status')=='published',
+        'publication_verified':linked.get('publication_verified',False) if linked.get('linked') else row.get('status')=='published',
         'advisory_only':True,'business_correctness_established':False}

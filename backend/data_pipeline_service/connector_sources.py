@@ -64,6 +64,10 @@ def register(payload,actor):
     from .job_definitions import now
     record=({key:payload[key] for key in ('source_id','name','profile_id','resource')} |
         {'kind':profile['kind'],'profile_digest':profile_digest(profile),'created_by':actor,'created_at':now()})
+    if isinstance(store, PostgresRegistry):
+        from backend.depo_platform.resource_identity import identify
+        identity=identify('DS','connector',record['source_id'],name=record['name'])
+        record.update(source_uuid=identity['object_id'],source_number=identity['number'])
     try:return store.create(payload['source_id'],record)
     except FileExistsError:
         existing=store.get(payload['source_id'])

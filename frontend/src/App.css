@@ -220,7 +220,7 @@ ix-application .pagination .page-item.disabled .page-link {
 
 /* Table pagination info */
 ix-application .table-pagination-info {
-  font-size: 0.875rem;
+  font-size: max(12px, 0.875rem);
   color: #6c757d;
 }
 
@@ -230,7 +230,7 @@ ix-application .export-buttons {
 }
 
 ix-application .export-buttons .btn {
-  font-size: 0.875rem;
+  font-size: max(12px, 0.875rem);
 }
 
 /* ===== CHALLENGE FIXES ===== */

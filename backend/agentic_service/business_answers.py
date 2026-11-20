@@ -44,6 +44,25 @@ def cell(value):
     return (business_text(value) or 'Not recorded').replace('|',' / ').replace('\n',' ')[:220]
 
 
+def instance_details(properties):
+    """Render supplied safe instance assertions without discarding zero/false values."""
+    from backend.graph_service.search_evidence import BUSINESS_FIELDS
+    descriptions = ('description', 'definition', 'comment', 'requirementText')
+    parts = []
+    seen = set()
+    for key in descriptions:
+        text = business_text(properties.get(key)).strip()
+        if text and text not in seen:
+            parts.append(cell(text))
+            seen.add(text)
+    for key in sorted(BUSINESS_FIELDS - set(descriptions) - {'name', 'title'}):
+        text = business_text(properties.get(key)).strip()
+        if text:
+            label = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', key).replace('_', ' ').capitalize()
+            parts.append(label + ': ' + cell(text))
+    return '; '.join(parts)
+
+
 def connection_label(edge):
     if edge.get('business_label'):
         return cell(edge['business_label'])
@@ -53,6 +72,57 @@ def connection_label(edge):
     if '://' in raw or '#' in raw:
         return 'Recorded connection'
     return re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', raw).replace('_',' ').capitalize()
+
+
+def render_instance_connections(evidence):
+    """Preserve directed record identity; separate reference lineage from business links."""
+    records = {item['resource_id']: item for item in evidence if item.get('evidence_type') == 'graph_resource'}
+    labels = {}
+    for ordinal, (identifier, item) in enumerate(records.items(), 1):
+        props = item.get('properties') or {}
+        details = []
+        for key in ('partNumber', 'part_number', 'revision'):
+            value = business_text(props.get(key)).strip()
+            if value and value not in details:
+                details.append(value)
+        label = cell(item.get('label'))
+        same_name = sum(other.get('label') == item.get('label') for other in records.values()) > 1
+        if same_name:
+            # Ordinals distinguish retained identities without exposing database IDs.
+            label += ' (' + ', '.join([*details, 'source record ' + str(ordinal)]) + ')'
+        labels[identifier] = label
+    business = []
+    references = []
+    seen = set()
+    for edge in evidence:
+        if edge.get('evidence_type') != 'graph_relationship':
+            continue
+        source, target = edge.get('source_id'), edge.get('target_id')
+        if source not in records or target not in records:
+            continue
+        relation = str(edge.get('relationship') or '')
+        alias = re.sub(r'[^A-Za-z0-9]', '', relation).upper()
+        reference = alias in {'MASTERREF', 'MASTERREFERENCE', 'TRACETO', 'DERIVEDFROM'}
+        normalized = 'MASTER_REFERENCE' if alias in {'MASTERREF', 'MASTERREFERENCE'} else relation
+        key = (source, normalized, target)
+        if key in seen:
+            continue
+        seen.add(key)
+        if reference:
+            meaning = 'References source master record' if normalized == 'MASTER_REFERENCE' else connection_label({'type': normalized})
+        else:
+            meaning = connection_label({'business_label': edge.get('business_label'), 'type': relation})
+            # An unlabelled predicate is retained in evidence, not presented as a business conclusion.
+            if meaning == 'Recorded connection':
+                continue
+        row = '| ' + ' | '.join([labels[source], meaning, labels[target],
+              '[evidence:' + source + '] [evidence:' + target + ']']) + ' |'
+        (references if reference else business).append(row)
+    output = []
+    for title, rows in (('Business relationships', business), ('Source-record references', references)):
+        if rows:
+            output.append(title + ':\n\n| From | Recorded relationship | To | Evidence |\n|---|---|---|---|\n' + '\n'.join(rows))
+    return '\n\n'.join(output)
 
 
 def render(items):

@@ -38,6 +38,16 @@ def reqif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> 
     if _local_name(root.tag) != "REQ-IF":
         raise ValueError("The supplied XML is not a ReqIF document")
 
+    # ReqIF IDENTIFIER is document-global, including relations, hierarchy,
+    # datatypes and attribute definitions used by configuration evidence.
+    declared_ids = set()
+    for element in root.iter():
+        identifier = str(element.get('IDENTIFIER') or '').strip()
+        if identifier:
+            if identifier in declared_ids:
+                raise ValueError(f'ReqIF document contains duplicate IDENTIFIER: {identifier}')
+            declared_ids.add(identifier)
+
     active_contract = ceim or CEIMContract()
     entities: list[dict[str, Any]] = []
     relationships: list[dict[str, Any]] = []

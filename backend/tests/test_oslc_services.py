@@ -75,7 +75,11 @@ def test_service_provider_advertises_am_and_rm_domain_capabilities(monkeypatch):
         "http://open-services.net/ns/rm#",
         "http://open-services.net/ns/cm#",
         "http://open-services.net/ns/qm#",
+        "http://open-services.net/ns/auto#",
+        "http://open-services.net/ns/config#",
     }
+    assert provider['trs:trackedResourceSet']['uri'].endswith('/oslc/trs')
+    assert 'http://open-services.net/ns/core/trs#' not in provider['oslc:domain']
     assert {service["domain"] for service in provider["services"]} == set(provider["oslc:domain"])
     assert all(service["queryCapabilities"] for service in provider["services"])
 
@@ -114,7 +118,8 @@ def test_am_and_rm_query_predicates_are_domain_specific():
     assert "'requirementrevision'" in requirement_query
     assert "requirement_specification" in collection_query
     assert "n:ModelElement" in architecture_query
-    assert "AND NOT (any(lbl IN labels(n)" in architecture_query
+    assert "AND NOT ((any(lbl IN labels(n)" in architecture_query
+    assert "https://depo.example.org/ceim/0.1/Requirement" in architecture_query
 
 
 def test_cm_and_qm_query_predicates_are_domain_specific():

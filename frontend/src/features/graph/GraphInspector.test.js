@@ -19,7 +19,7 @@ test('graph inspector explains missing evidence without a zero or high impact sc
 test('recommendations keeps unknown impact distinct from a safety conclusion', () => {
   render(<ChangeImpactResult data={insufficient} />);
   expect(screen.getByRole('status')).toHaveTextContent('Bearing noise');
-  expect(screen.getByRole('status')).toHaveTextContent('Impact is unknown');
+  expect(screen.getByRole('status')).toHaveTextContent('CO scope cannot be established from the current linked evidence.');
   expect(screen.queryByText(/Impact Score/)).not.toBeInTheDocument();
 });
 

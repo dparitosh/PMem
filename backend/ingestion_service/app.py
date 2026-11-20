@@ -26,6 +26,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Execute profile", "/api/v1/source-profiles/{profile_id}/workflow", "POST", "Generate and register a governed ontology draft"),
         ServiceCapability("Import workflow", "/api/v1/import/upload", "POST", "Upload and run the existing tracked import workflow"),
         ServiceCapability("Governed instance import", "/api/v1/governed-import", "POST", "Route STEP/AP242, ReqIF, QIF, or PLMXML into an approved semantic data job"),
+        ServiceCapability("Import load change", "/api/v1/import/{task_id}/change", description="Read retained import CR/CO and native load receipt"),
         ServiceCapability("Import task", "/api/v1/import/status/{task_id}", description="Read tracked import workflow status"),
         ServiceCapability("Document evidence jobs", "/api/v1/documents/jobs", "POST", "Create a governed OCR and document-evidence job"),
         ServiceCapability("Ontology upload compatibility", "/api/v1/ontology/upload", "POST", "Upload an ontology artifact through the ingestion boundary"),

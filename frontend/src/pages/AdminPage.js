@@ -2,6 +2,7 @@ import useRouteView from '../app/useRouteView';
 import CredentialSettings from '../Components/CredentialSettings';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import AgentControlPanel from '../Components/AgentControlPanel';
+import DataFlowAgentContext from '../Components/DataFlowAgentContext';
 import AgentProposalPanel from '../Components/AgentProposalPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
@@ -15,10 +16,12 @@ import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
 import { IxTabsBar } from '../ui/ix';
 import RestSourcesPanel from '../Components/RestSourcesPanel';
 import IngestorCapabilities from '../Components/IngestorCapabilities';
+import '../Components/DataSources.css';
 import ConnectorSourcesPanel from '../Components/ConnectorSourcesPanel';
 import OslcSourcesPanel from '../Components/OslcSourcesPanel';
+import NumberingSchemes from '../Components/NumberingSchemes';
 
-const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
+const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'sources',label:'Data sources'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'numbering',label:'Numbering'}, {id:'maintenance',label:'Maintenance'}];
 
 // One-line description shown under the tab strip for each admin section.
 const ADMIN_VIEWS=adminTabs.map(tab=>tab.id);
@@ -28,6 +31,7 @@ const TAB_DESCRIPTIONS = {
   sources: 'Register REST sources, preview records and submit approved acquisition jobs.',
   agents: 'Review agent recommendations and monitor workflow execution.',
   services: 'Browse service, data-source, configuration and API catalogs.',
+  numbering: 'Business numbering for workflows, sources, files and changes.',
   maintenance: 'Controlled cleanup and current knowledge graph schema status.',
 };
 
@@ -88,6 +92,9 @@ const packageColumns = [
 ];
 
 export default function AdminPage({ onSchemaCleaned }) {
+  const [agentSource,setAgentSource]=useState(()=>new URLSearchParams(window.location.hash.split('?')[1]||'').get('source'));
+  useEffect(()=>{const update=()=>setAgentSource(new URLSearchParams(window.location.hash.split('?')[1]||'').get('source'));window.addEventListener('hashchange',update);window.addEventListener('popstate',update);return()=>{window.removeEventListener('hashchange',update);window.removeEventListener('popstate',update);};},[]);
+  const sourceIsDataFlow=agentSource==='data-flow';
   const [section, setSection] = useRouteView(ADMIN_VIEWS,'overview',undefined,'#/admin');
   const legacySection = useRef((()=>{try{return sessionStorage.getItem('depo:admin-tab');}catch{return null;}})());
   useEffect(() => {
@@ -303,7 +310,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       )}
 
       <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
-      {section === 'sources' && <><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /><OslcSourcesPanel /></>}
+      {section === 'sources' && <div className="admin-data-sources"><IngestorCapabilities /><div id="rest-source-configuration"><RestSourcesPanel /></div><ConnectorSourcesPanel /><OslcSourcesPanel /></div>}
       <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip
@@ -319,8 +326,8 @@ export default function AdminPage({ onSchemaCleaned }) {
       </div>
 
       <div hidden={section !== 'agents'} role="tabpanel" id="depo-admin-panel-agents" aria-labelledby="depo-admin-tab-agents">
-      {section === 'agents' && agenticConfigured && <AgentProposalPanel />}
-      {section === 'agents' && agenticConfigured && <AgentControlPanel />}
+      {section === 'agents' && agenticConfigured && (sourceIsDataFlow ? <DataFlowAgentContext/> : <AgentProposalPanel />)}
+      {section === 'agents' && agenticConfigured && !sourceIsDataFlow && <AgentControlPanel />}
 
       <section className="depo-panel depo-agentic-catalog" aria-busy={agenticLoading} style={{ marginBottom: 12 }}>
         <div className="depo-panel__header">
@@ -389,6 +396,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       </div>
 
       <div>
+        <section hidden={section !== 'numbering'} role="tabpanel" id="depo-admin-panel-numbering" aria-labelledby="depo-admin-tab-numbering">{section === 'numbering' && <NumberingSchemes/>}</section>
         <section className="depo-panel" hidden={section !== 'maintenance'} role="tabpanel" id="depo-admin-panel-maintenance" aria-labelledby="depo-admin-tab-maintenance">
           <div className="depo-panel__header">
             <div>

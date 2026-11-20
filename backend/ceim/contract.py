@@ -144,6 +144,20 @@ class CEIMContract:
         parts = [part for part in str(value).split("_") if part]
         return parts[0] + "".join(part.capitalize() for part in parts[1:]) if parts else "value"
 
+    @staticmethod
+    def _source_reference(provenance: dict[str, Any], local_id: str) -> URIRef:
+        """Keep provenance identities isolated by the same recorded source scope.
+
+        Legacy evidence without scope retains its historical source reference.
+        Document-local ids must not collapse provenance across QIF documents.
+        """
+        standard = quote(str(provenance.get("source_standard") or "unknown"), safe="")
+        scopes = [str(provenance.get(key) or "") for key in ("identity_scope", "document_identity")]
+        if any(scopes):
+            digest = hashlib.sha256(json.dumps(scopes, separators=(",", ":")).encode()).hexdigest()
+            return URIRef(f"urn:depo:source-scoped:{standard}:{digest}:{quote(local_id, safe='')}")
+        return URIRef(f"urn:depo:source:{standard}:{quote(local_id, safe='')}")
+
     def to_rdf(self, *, entities: list[dict[str, Any]], relationships: list[dict[str, Any]], decision: dict[str, Any] | None = None) -> Graph:
         """Create a deterministic RDF projection suitable for SHACL and graph publication."""
         graph = Graph()
@@ -188,7 +202,7 @@ class CEIMContract:
                 if value not in (None, ""):
                     graph.add((uri, ceim[self._predicate_name(str(key))], Literal(value)))
             provenance = dict(entity.get("provenance") or {})
-            source = URIRef(f"urn:depo:source:{quote(str(provenance.get('source_standard') or 'unknown'), safe='')}:{quote(str(provenance.get('source_id') or entity_id), safe='')}")
+            source = self._source_reference(provenance, str(provenance.get("source_id") or entity_id))
             activity_digest = hashlib.sha256(json.dumps(provenance, sort_keys=True, default=str).encode()).hexdigest()
             activity = URIRef(f"urn:depo:activity:mapping:{activity_digest}")
             graph.add((uri, prov.wasDerivedFrom, source)); graph.add((uri, prov.wasGeneratedBy, activity))
@@ -206,7 +220,7 @@ class CEIMContract:
             provenance = dict(relationship.get("provenance") or {})
             provenance["normalization"] = [*list(provenance.get("normalization") or []), *relationship_changes]
             assertion = URIRef(f"urn:depo:assertion:{hashlib.sha256(f'{source_id}|{relation}|{target_id}|{json.dumps(provenance, sort_keys=True, default=str)}'.encode()).hexdigest()}")
-            source = URIRef(f"urn:depo:source:{quote(str(provenance.get('source_standard') or 'unknown'), safe='')}:{quote(str(provenance.get('source_type') or relation), safe='')}")
+            source = self._source_reference(provenance, str(provenance.get("source_type") or relation))
             graph.add((assertion, RDF.type, RDF.Statement))
             graph.add((assertion, RDF.subject, entity_uris[source_id])); graph.add((assertion, RDF.predicate, predicate)); graph.add((assertion, RDF.object, entity_uris[target_id])); graph.add((assertion, prov.wasDerivedFrom, source))
             graph.add((assertion, ceim.sourceStandard, Literal(str(provenance.get("source_standard") or "unknown"))))

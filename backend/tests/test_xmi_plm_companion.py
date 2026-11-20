@@ -132,3 +132,41 @@ def test_explicit_predicate_takes_precedence_over_storage_label(monkeypatch):
         'relationship':'TRACE_TO','predicate':'https://depo.example.org/ceim/0.1/hasCharacteristic'}]))
     result=retrieve(publisher,query='Which parts have PMI?')
     assert result['rows'][0]['association_status']=='recorded_association'
+
+
+def test_selected_model_context_requires_exact_retained_membership(monkeypatch):
+    from backend.ontology_service import xmi_diagrams as models
+    manifest = {'nodes': [{'id': 'req-47', 'name': 'Bearing Life', 'properties': {'sysml_Id': '47.4'}}],
+                'source_artifact_id': 'source-sha'}
+    monkeypatch.setattr(models, 'retained_diagrams', lambda _: manifest)
+    read = Mock(return_value=[{'properties': {'iri': 'urn:model/req-47'}}])
+    monkeypatch.setattr(models, '_context_query', read)
+    result = models.selected_model_context('selected-model', 'graph-47')
+    assert result['model_element']['id'] == 'req-47'
+    assert read.call_args.args[1] == {'node_id': 'graph-47', 'ontology_id': 'selected-model'}
+    assert 'NOT n:StagedOntologyResource' in read.call_args.args[0]
+    read.return_value = [{'properties': {'iri': 'urn:model/foreign'}}]
+    with pytest.raises(LookupError): models.selected_model_context('selected-model', 'graph-47')
+
+
+@pytest.mark.asyncio
+async def test_requirement_value_in_modeling_uses_exact_source_not_business_instance(monkeypatch):
+    from unittest.mock import AsyncMock
+    from backend.agentic_service import companion_context, companion
+    read = AsyncMock(return_value=({'status':'resolved', 'node_id':'graph-47', 'ontology_id':'model',
+        'source_id':'req-47', 'source_artifact_id':'source-sha', 'model_element':{
+            'id':'req-47', 'name':'Bearing Life', 'properties':{
+                'sysml_Id':'47.4', 'sysml_Text':'Bearing should have 2 years or 20000 hrs of life'}}}, 'owning-service'))
+    monkeypatch.setattr(companion_context, '_read_json', read)
+    result = await companion.KnowledgeCompanion().ask('What requirement value is recorded for this element?',
+        headers={}, page='modeling', node_id='graph-47', ontology_id='model')
+    assert result['answerable'] is True
+    assert '20000 hrs' in result['response'] and '47.4' in result['response']
+    assert result['retrieval']['source_artifact_id'] == 'source-sha'
+    assert read.await_count == 1
+    assert read.call_args.args[2] == '/modeling/xmi-context/model'
+    assert read.call_args.args[3] == {'node_id':'graph-47'}
+    read.return_value[0]['node_id'] = 'foreign'
+    refused = await companion.KnowledgeCompanion().ask('Show requirement text for this element',
+        headers={}, page='modeling', node_id='graph-47', ontology_id='model')
+    assert refused['answerable'] is False and refused['evidence'] == []

@@ -18,7 +18,7 @@ def admin_guard():
     # Execute the real guard independently of the optional ontology engine.
     tree = ast.parse(Path('backend/routes/admin_routes.py').read_text(encoding='utf-8'))
     nodes = [node for node in tree.body if getattr(node, 'name', '') in
-             {'_is_production_environment', 'require_admin_api_key'}]
+             {'require_admin_api_key'}]
     scope = dict(os=os, hmac=hmac, Request=Request, HTTPException=HTTPException,
                  run_in_threadpool=run_in_threadpool)
     exec(compile(ast.Module(body=nodes, type_ignores=[]), '<admin-guard>', 'exec'), scope)
@@ -28,12 +28,12 @@ def admin_guard():
 @pytest.mark.parametrize('host,opt_in,environment,allowed', [
     ('10.20.30.40', 'true', {}, False),
     ('127.0.0.1', '', {}, False),
-    ('127.0.0.1', 'true', {}, True),
-    ('::1', 'true', {}, True),
+    ('127.0.0.1', 'true', {}, False),
+    ('::1', 'true', {}, False),
     ('127.0.0.1', 'true', {'DEPO_ENV': 'production', 'APP_ENV': 'development'}, False),
     ('127.0.0.1', 'true', {'APP_ENV': 'development', 'DEPLOYMENT_ENV': 'staging'}, False),
 ])
-def test_keyless_admin_requires_explicit_loopback_development(host, opt_in, environment, allowed):
+def test_keyless_admin_is_rejected_including_loopback(host, opt_in, environment, allowed):
     request = Request({'type': 'http', 'headers': [], 'client': (host, 1234)})
     with patch.dict(os.environ, {'DEPO_CREDENTIAL_STORE': 'environment',
                                'DEPO_ALLOW_INSECURE_LOCAL_AUTH': opt_in, **environment}, clear=True):
@@ -82,7 +82,7 @@ def test_credential_discovery_profiles_are_all_supported(monkeypatch):
     profiles = operation['x-depo-credential-check']['supported_profiles']
     assert 'ADMIN_API_KEY' not in profiles
     assert 'GRAPH_READ_TOKEN' not in profiles
-    with patch('backend.depo_platform.authorization.service_write_identity', return_value='verified'):
+    with patch('backend.depo_platform.authorization.approval_identity', return_value='verified'):
         for profile in profiles:
             response = TestClient(app).get('/auth/credential-check', params={'profile': profile})
             assert response.status_code == 200
@@ -113,5 +113,6 @@ def test_pipeline_helper_approval_is_documented():
     metadata = operation['x-depo-authorization']
     assert metadata['credential_profiles'] == ['DATA_JOB_EXECUTION_TOKEN']
     assert metadata['approval_fields'] == ['approved_by', 'approval_token']
-    assert metadata['required_fields_in_token_mode'] == ['approved_by']
+    assert metadata['required_fields_in_token_mode'] == []
+    assert metadata['identity_source'] == 'verified-credential'
     assert {} in operation['security']  # credential can be supplied in the body

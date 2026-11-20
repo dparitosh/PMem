@@ -8,6 +8,9 @@ from typing import Any, Dict, List
 WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     {
         "id": "instance.import",
+        "family": "instance.import",
+        "activity": "ingestion",
+        "adapter": None,
         "label": "Import instance graph",
         "category": "Import",
         "execution_surface": "upload",
@@ -21,6 +24,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "ontology.create",
+        "family": "ontology.create",
+        "activity": "ingestion",
+        "adapter": None,
         "label": "Create ontology",
         "category": "Ontology",
         "execution_surface": "upload",
@@ -34,7 +40,10 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "document.unstructured",
-        "label": "Unstructured document pipeline",
+        "family": "document.unstructured",
+        "activity": "ingestion",
+        "adapter": None,
+        "label": "Document processing workflow",
         "category": "AI Ingestion",
         "execution_surface": "upload",
         "inputs": "PDF, Word, PowerPoint, Text, Markdown, HTML",
@@ -47,6 +56,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "architecture.archimate",
+        "family": "instance.import",
+        "activity": "ingestion",
+        "adapter": "archimate",
         "label": "Import ArchiMate process model",
         "category": "Architecture",
         "execution_surface": "upload",
@@ -60,6 +72,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "instance.link",
+        "family": "instance.import",
+        "activity": "alignment",
+        "adapter": None,
         "label": "Link instances to ontology",
         "category": "Mapping",
         "execution_surface": "artifact",
@@ -73,6 +88,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "ontology.merge",
+        "family": "ontology.create",
+        "activity": "merge",
+        "adapter": None,
         "label": "Merge ontologies",
         "category": "Ontology",
         "execution_surface": "artifact",
@@ -86,6 +104,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "ontology.validate",
+        "family": "ontology.create",
+        "activity": "validation",
+        "adapter": None,
         "label": "Validate ontology",
         "category": "Quality",
         "execution_surface": "artifact",
@@ -99,6 +120,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "dictionary.generate",
+        "family": "ontology.create",
+        "activity": "dictionary",
+        "adapter": None,
         "label": "Build data dictionary",
         "category": "Governance",
         "execution_surface": "artifact",
@@ -112,6 +136,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "taxonomy.generate",
+        "family": "ontology.create",
+        "activity": "taxonomy",
+        "adapter": None,
         "label": "Build taxonomy",
         "category": "Ontology",
         "execution_surface": "artifact",
@@ -125,6 +152,9 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
     },
     {
         "id": "graph.chunk",
+        "family": "ontology.create",
+        "activity": "export",
+        "adapter": None,
         "label": "Export graph chunks",
         "category": "Graph",
         "execution_surface": "artifact",
@@ -157,7 +187,7 @@ def get_workflow_map() -> Dict[str, Dict[str, Any]]:
     return {workflow["id"]: dict(workflow) for workflow in WORKFLOW_REGISTRY}
 
 
-def get_workflow_options() -> List[Dict[str, str]]:
+def get_workflow_options() -> List[Dict[str, Any]]:
     return [
         {
             "id": workflow["id"],
@@ -168,6 +198,13 @@ def get_workflow_options() -> List[Dict[str, str]]:
             "status": workflow["status"],
             "execution": workflow["execution"],
             "prerequisite": workflow["prerequisite"],
+            "family": workflow["family"],
+            "activity": workflow["activity"],
+            "adapter": workflow["adapter"],
+            "inputs": workflow["inputs"],
+            "outputs": workflow["outputs"],
+            "writes_to_neo4j": workflow["writes_to_neo4j"],
+            "retains_artifacts": workflow["retains_artifacts"],
         }
         for workflow in WORKFLOW_REGISTRY
     ]

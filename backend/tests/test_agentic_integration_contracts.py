@@ -61,7 +61,9 @@ def test_bridge_retains_ambiguity_and_unmatched(monkeypatch):
     assert result["ambiguous_count"] == result["unmatched_count"] == 1
     assert len(result["alignment_items"]) == 2
     assert result["alignment_items"][0]["candidate_count"] == 2
-    assert "domain_range_compatibility" in result["alignment_items"][0]["unresolved_checks"]
+    assert len(result["alignment_candidates"]) == 2
+    assert all("human_approval" in candidate["unresolved_checks"] for candidate in result["alignment_candidates"])
+    assert all(candidate["validation_checks"]["domain_range_compatibility"] == "not_applicable" for candidate in result["alignment_candidates"])
 
 
 def test_bridge_cap_preserves_all_sources(monkeypatch):

@@ -5,6 +5,11 @@ import json
 import os
 
 def scope_batch(entities, relationships, *, source_system='', required=False):
+    identifiers = [item.get('id') for item in entities]
+    if any(not isinstance(value, str) or not value.strip() for value in identifiers):
+        raise ValueError('CEIM entities require non-empty source identities')
+    if len(identifiers) != len(set(identifiers)):
+        raise ValueError('Duplicate CEIM source identity; records must not overwrite one another')
     source = str(source_system or '').strip()
     if not source:
         scopes = {str((item.get('provenance') or {}).get('source_system') or '').strip() for item in entities}

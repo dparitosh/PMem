@@ -150,6 +150,11 @@ async def ontology_publication_status(ontology_id: str, include_job: bool = True
                         503: {'description': 'Publication unavailable or outcome requires verification'}})
 async def publish_registered_ontology(ontology_id: str, payload: ApprovalBody, request: Request, background: bool = False) -> dict:
     import asyncio
+    from .publication_jobs import publication_jobs
+    managed=await run_in_threadpool(publication_jobs.get,ontology_id)
+    if managed and managed.get('change_request'):
+        approval_identity(request,payload,token_env='ONTOLOGY_APPROVAL_TOKEN')
+        raise HTTPException(409,'Use the retained Change Control request to authorize and queue this publication')
     try:
         if background:
             from .publication_jobs import publication_jobs
@@ -177,8 +182,18 @@ async def cancel_publication_job(ontology_id: str, job_id: str, payload: Approva
         raise HTTPException(409, str(exc)) from exc
 
 
+from backend.depo_platform.release_chain import guarded as release_guard
+
+def _publication_release_reference(ontology_id,*args,**kwargs):
+    from .publication_jobs import publication_jobs
+    return 'publications',ontology_id,publication_jobs.registry
+
+
+@release_guard(_publication_release_reference)
 async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any], request: Request, *, approved_actor=None, expected_sha256=None) -> dict:
     actor = approved_actor or approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+    from .publication_change import dispatch_guard
+    await run_in_threadpool(dispatch_guard,ontology_id,actor,expected_sha256)
     metadata = await run_in_threadpool(catalog.get, ontology_id)
     if not metadata: raise HTTPException(404, 'Prepare this retained ontology in the catalog before review and publication')
     if metadata.get('lifecycle_status') != 'approved' or metadata.get('status') == 'superseded': raise HTTPException(409, 'Approve the ontology before graph publication')
@@ -301,11 +316,16 @@ async def semantic_evidence(ontology_id: str) -> dict:
 
 @router.get('/{ontology_id}/consistency', summary='Check retained ontology with embedded foundation using OWL-DL')
 @ontology_writer
-async def owl_dl_consistency(ontology_id: str, target_iri: list[str] = Query(default=[])) -> dict:
+async def owl_dl_consistency(ontology_id: str, target_iri: list[str] = Query(default=[]), artifact_digest: str | None = Query(default=None, pattern=r'^[0-9a-f]{64}$')) -> dict:
     from .owl_dl import inspect_retained
     registry = PostgresRegistry('ontology_dl_evidence_v1')
     try:
-        return await run_in_threadpool(inspect_retained, ontology_id, catalog, registry, target_iris=target_iri)
+        if artifact_digest and await run_in_threadpool(catalog.artifact_digest, ontology_id) != artifact_digest:
+            raise HTTPException(409,'Ontology changed after intake; start a new review')
+        result = await run_in_threadpool(inspect_retained, ontology_id, catalog, registry, target_iris=target_iri)
+        if artifact_digest and result.get('artifact_sha256') != artifact_digest:
+            raise HTTPException(409,'Ontology changed during logical review; start a new review')
+        return result
     except (ValueError, OSError) as exc:
         logging.getLogger(__name__).warning('OWL-DL artifact unavailable; error_class=%s',type(exc).__name__)
         raise HTTPException(422,'Retained ontology artifact is unavailable or invalid; restore the source before checking consistency') from None
@@ -467,7 +487,7 @@ async def apply_merge(preview_id: str, payload: MergeApplyBody, request: Request
         publish = payload.get('publish', False)
         if type(publish) is not bool:
             raise ValueError('publish must be a boolean')
-        result = await run_in_threadpool(merges.apply, preview_id, approver)
+        result = await run_in_threadpool(merges.apply, preview_id, approver, publish_requested=publish)
         ontology_id = result['ontology']['ontology_id']
         if not publish:
             return {**result, 'publication_status': 'not_requested'}
@@ -740,3 +760,45 @@ def transition_ontology(ontology_id: str, payload: TransitionBody, request: Requ
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+from backend.depo_platform.request_bodies import MergeChangeCommand, MergeChangeSubmission
+
+def _merge_change_actor(request: Request):
+    return approval_identity(request, {}, token_env='ONTOLOGY_APPROVAL_TOKEN')
+
+@router.get('/merges/{preview_id}/change', dependencies=[Depends(graph_read_identity)])
+def merge_change_status(preview_id: str):
+    try: return merges.change_status(preview_id)
+    except ValueError as exc: raise HTTPException(409, str(exc)) from None
+
+@router.post('/merges/{preview_id}/change')
+async def merge_change_command(preview_id: str, payload: MergeChangeCommand, actor: str = Depends(_merge_change_actor)):
+    from .merge_change import ChangeConflict
+    try:
+        return await run_in_threadpool(merges.change_transition, preview_id, payload.action, actor,
+            payload.expected_revision, payload.expected_plan_digest, payload.reason)
+    except ChangeConflict as exc: raise HTTPException(409, str(exc)) from None
+    except ValueError as exc: raise HTTPException(422, str(exc)) from None
+
+@router.post('/merges/{preview_id}/change/submit')
+async def submit_merge_change(preview_id: str, payload: MergeChangeSubmission, actor: str = Depends(_merge_change_actor)):
+    """Submit a retained plan for human review. Cannot accept, authorize or execute."""
+    return await merge_change_command(preview_id, MergeChangeCommand(action='submit', **payload.model_dump()), actor)
+
+
+from backend.depo_platform.request_bodies import MergeChangeCommand
+
+
+@router.get('/{ontology_id}/change',dependencies=[Depends(graph_read_identity)])
+def ontology_publication_change_status(ontology_id: str):
+    from .publication_change import view
+    return view(ontology_id)
+
+
+@router.post('/{ontology_id}/change')
+@ontology_writer
+def ontology_publication_change_command(ontology_id: str,payload: MergeChangeCommand,request: Request):
+    actor=approval_identity(request,{},token_env='ONTOLOGY_APPROVAL_TOKEN')
+    from .publication_change import transition
+    return transition(ontology_id,payload.action,actor,payload.expected_revision,payload.expected_plan_digest,payload.reason)

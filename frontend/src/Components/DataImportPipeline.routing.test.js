@@ -92,11 +92,12 @@ describe('DataImportPipeline workflow routing', () => {
     await renderPipeline();
     await waitFor(()=>expect(reads).toBeGreaterThan(1),{timeout:5000});
     await waitFor(()=>expect(screen.getAllByText('39').length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole('button',{name:/Instance-to-Ontology Bridge|Link instances to ontology/}));
-    expect(screen.queryByText('No completed import artifacts available')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Review or preparation activity')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:/Related activities/})).not.toBeInTheDocument();
+    expect(screen.getByText('requirements.xml')).toBeInTheDocument();
   });
 
-  it('task-scoped load review shows the selected preview and requires an approver', async () => {
+  it('task-scoped load review opens the exact centralized CR without typed approver', async () => {
     setCredentialProfile('INGESTION_WRITE_TOKEN','test-write-token');
     localStorage.setItem('depo.import.jobs.v2',JSON.stringify({files:[
       {fileId:'first',name:'requirements.xml',persisted:true,workflowId:'instance.import'},
@@ -109,20 +110,22 @@ describe('DataImportPipeline workflow routing', () => {
       {task_id:url.includes('task-first')?'task-first':'task-last',status:'ready_for_commit',current_stage:'preview',progress:75,stats:{row_count:22}}}));
     await renderPipeline();
     expect(await screen.findByText(/2 parsed imports are waiting for your review/)).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole('button',{name:'Load to knowledge graph'})[0]);
+    fireEvent.click(screen.getAllByRole('button',{name:'Review graph load'})[0]);
     await screen.findByText('SELECTED_REQUIREMENT');
     expect(screen.queryByText('OTHER_BOP')).not.toBeInTheDocument();
-    const loads=screen.getAllByRole('button',{name:'Load to knowledge graph'});
-    expect(loads[loads.length-1]).toBeDisabled();
-    fireEvent.click(screen.getByText('Approval credentials (required by token authentication for loading)'));
-    fireEvent.change(screen.getByLabelText('Import approver'),{target:{value:'pmem-ui-test'}});
-    await waitFor(()=>expect(screen.getAllByRole('button',{name:'Load to knowledge graph'}).at(-1)).toBeEnabled());
+    expect(screen.queryByLabelText('Import approver')).not.toBeInTheDocument();
+    apiClient.post.mockResolvedValueOnce({data:{preview_id:'task-first',task_id:'task-first'}});
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Review load in Change Control'})).toBeEnabled());
+    fireEvent.click(screen.getByRole('button',{name:'Review load in Change Control'}));
+    await waitFor(()=>expect(apiClient.post).toHaveBeenCalledWith('/api/v1/import/task-first/change/submit',{},expect.objectContaining({headers:{Authorization:'Bearer test-write-token'}})));
+    await waitFor(()=>expect(window.location.hash).toContain('record=task-first'));
     setCredentialProfile('INGESTION_WRITE_TOKEN','');
   });
 
   it('restored ontology source can be reattached without losing its saved metadata', async () => {
     localStorage.setItem('depo.import.jobs.v2', JSON.stringify({files:[{fileId:'restored', name:'schema.xsd', size:6, sourceDigest:await fileSha256(new File(['schema'],'schema.xsd')), persisted:true, workflowId:'ontology.create', ontologyName:'Saved ontology', fileType:'xsd', generationType:'owl', pendingMetadata:false}], pipelineStatus:{restored:{status:'pending',stage:'upload',progress:0}}, startedFiles:[]}));
     await renderPipeline();
+    fireEvent.click(screen.getByRole('button',{name:'Create ontology',exact:true}));
     const input = await screen.findByLabelText('Re-attach source');
     fireEvent.change(input, {target:{files:[new File(['schema'], 'schema.xsd')]}});
     await waitFor(() => expect(screen.getByText('Source re-attached. Review details before starting.')).toBeInTheDocument());
@@ -133,6 +136,8 @@ describe('DataImportPipeline workflow routing', () => {
   it('unverified restored submissions cannot be reattached for a blind retry', async () => {
     localStorage.setItem('depo.import.jobs.v2', JSON.stringify({files:[{fileId:'uncertain',name:'schema.xsd',persisted:true,workflowId:'ontology.create'}],pipelineStatus:{uncertain:{status:'outcome_unknown',stage:'error',outcomeUnknown:true}},startedFiles:[]}));
     await renderPipeline();
+    expect(screen.queryByLabelText('Re-attach source')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:/^Create ontology(?: Suggested)?$/}));
     expect(screen.queryByLabelText('Re-attach source')).not.toBeInTheDocument();
     expect(screen.getByText(/earlier submission has an unverified outcome/)).toBeInTheDocument();
   });
@@ -160,6 +165,50 @@ describe('DataImportPipeline workflow routing', () => {
     mockWorkflowOptions.mockResolvedValue({ data: { workflows: [] } });
     mockOntologyUpload.mockReset();
     window.localStorage.clear();
+  });
+
+  it('clears only finished history belonging to the selected workflow', async()=>{
+    localStorage.setItem('depo.import.jobs.v2',JSON.stringify({files:[{fileId:'failed-instance',name:'failed.csv',persisted:true,workflowId:'instance.import'},{fileId:'vocabulary',name:'vocabulary.xsd',persisted:true,workflowId:'ontology.create'}],pipelineStatus:{'failed-instance':{status:'failed',stage:'error'},vocabulary:{status:'completed',stage:'verify',registered:true,taskId:'registered-vocabulary'}},startedFiles:[]}));
+    await renderPipeline();
+    expect(screen.getByText('failed.csv')).toBeInTheDocument();
+    expect(screen.queryByText('vocabulary.xsd')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Clear finished/failed history'}));
+    await waitFor(()=>expect(screen.queryByText('failed.csv')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button',{name:'Create ontology',exact:true}));
+    expect(screen.getByText('vocabulary.xsd')).toBeInTheDocument();
+  });
+
+  it('shows three import families and keeps ArchiMate as a source adapter', async () => {
+    await renderPipeline();
+    expect(screen.getByRole('button', {name:/Import instance graph/})).toHaveAttribute('aria-pressed','true');
+    expect(screen.getByRole('button', {name:/Create ontology/})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name:/Document processing workflow/})).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:/Import ArchiMate/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:/Instance-to-Ontology Bridge|Link instances to ontology/})).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Source format'),{target:{value:'architecture.archimate'}});
+    expect(screen.getByRole('button', {name:/Import instance graph/})).toHaveAttribute('aria-pressed','true');
+    const input=document.querySelector('input[type="file"]');
+    fireEvent.change(input,{target:{files:[new File(['<model/>'],'process.xml',{type:'application/xml'})]}});
+    await screen.findByText('process.xml');
+    expect(screen.getByLabelText('Source format')).toHaveValue('architecture.archimate');
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it('automatically selects the ArchiMate adapter without adding another family', async () => {
+    await renderPipeline();
+    fireEvent.change(document.querySelector('input[type="file"]'),{target:{files:[new File(['<model/>'],'process.archimate')]}});
+    await screen.findByText('process.archimate');
+    expect(screen.getByLabelText('Source format')).toHaveValue('architecture.archimate');
+    expect(screen.getByRole('button', {name:/Import instance graph/})).toHaveAttribute('aria-pressed','true');
+  });
+
+  it('shows ontology publication settings only in ontology creation', async () => {
+    await renderPipeline();
+    expect(screen.queryByLabelText(/Register XSD/)).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:/Document processing workflow/}));
+    expect(screen.queryByLabelText(/Register XSD/)).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:/^Create ontology(?: Suggested)?$/}));
+    expect(screen.getByLabelText(/Register XSD/)).toBeVisible();
   });
 
   it('auto-routes XSD files from instance import into ontology registration and shows the filename', async () => {
@@ -216,10 +265,11 @@ describe('DataImportPipeline workflow routing', () => {
 
     await renderPipeline();
     // This case intentionally tests source-only SHACL registration.
+    fireEvent.click(screen.getByRole('button', {name:/Create ontology/}));
     fireEvent.click(screen.getByLabelText(/Register XSD/));
 
     const input = document.querySelector('input[type="file"]');
-    const file = new File(['schema'], 'bom.xsd', { type: 'application/xml' });
+    const file = new File(['<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="https://example.org/bom"/>'], 'bom.xsd', { type: 'application/xml' });
 
     await act(async () => {
       fireEvent.change(input, { target: { files: [file] } });
@@ -269,6 +319,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('defaults to knowledge graph publication and makes register-only behavior explicit', async () => {
     await renderPipeline();
+    fireEvent.click(screen.getByRole('button', {name:/Create ontology/}));
     const publication = screen.getByLabelText(/Register XSD/);
     expect(publication).toBeChecked();
     expect(screen.getByText(/Publication is confirmed only by a graph receipt/)).toBeInTheDocument();
@@ -284,8 +335,9 @@ describe('DataImportPipeline workflow routing', () => {
       fireEvent.change(input, { target: { files: [new File(['schema'], 'demo.xsd', { type: 'application/xml' })] } });
       await flushAsyncEffects();
     });
+    await waitFor(()=>expect(document.getElementById('ontology-generation-select')).toBeInTheDocument());
     const select = document.getElementById('ontology-generation-select');
-    expect(select).toHaveValue('owl');
+    await waitFor(() => expect(select).toHaveValue('owl'));
     expect(Array.from(select.options).map(option => option.value)).not.toContain('shacl');
     expect(Array.from(select.options).map(option => option.value)).not.toContain('both');
     apiClient.post.mockResolvedValueOnce({ data: {
@@ -328,6 +380,7 @@ describe('DataImportPipeline workflow routing', () => {
       fireEvent.change(input, { target: { files: [new File(['schema'], 'demo.xsd', { type: 'application/xml' })] } });
       await flushAsyncEffects();
     });
+    await waitFor(()=>expect(document.getElementById('ontology-generation-select')).toBeInTheDocument());
     const select = document.getElementById('ontology-generation-select');
     expect(select).toHaveValue('owl');
     expect(Array.from(select.options).map(option => option.value)).not.toContain('shacl');
@@ -348,6 +401,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('sends multiple companion schemas through the engineering workflow in selected order', async () => {
     await renderPipeline();
+    fireEvent.click(screen.getByRole('button', {name:/Create ontology/}));
     fireEvent.click(screen.getByLabelText(/Register XSD/));
     apiClient.post.mockClear();
     apiClient.post.mockResolvedValueOnce({ data: {
@@ -380,6 +434,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('combines multiple XSD selections into one metadata prompt and registration', async () => {
     await renderPipeline();
+    fireEvent.click(screen.getByRole('button', {name:/Create ontology/}));
     fireEvent.click(screen.getByLabelText(/Register XSD/));
     const xml = '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:test"/>';
     const selected = ['bom.xsd', 'assembly.xsd'].map(name => {
@@ -418,6 +473,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('register-only RDF uses the retained draft workflow without requesting graph publication', async () => {
     await renderPipeline();
+    fireEvent.click(screen.getByRole('button', {name:/Create ontology/}));
     fireEvent.click(screen.getByLabelText(/Register XSD/));
     apiClient.post.mockClear();
     apiClient.post.mockResolvedValueOnce({ data: {
@@ -521,7 +577,7 @@ test('restored errors count as attention and instance jobs stay off ontology sta
   fireEvent.click(screen.getByRole('button',{name:/^Create ontology/}));
   expect(screen.getByRole('group',{name:'Generate ontology preview: 0 files'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Import instance graph',exact:true}));
-  expect(screen.getByRole('group',{name:'Review and approve load: 1 files'})).toBeInTheDocument();
+  expect(screen.getByRole('group',{name:'Review load: 1 files'})).toBeInTheDocument();
 });
 
 test('retained STEP validation does not claim graph loading completed', async () => {

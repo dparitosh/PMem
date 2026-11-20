@@ -5302,7 +5302,7 @@ with `namespace`, `key`, `value` and `updated_at` columns. Credentials remain
 server environment references. This change does not require a schema migration
 or modify existing source records, credentials, graph publications or products.
 See [workflow responsibilities](../WORKFLOW-ENGINE.md) and the
-[ingestor audit](../audits/workflow-ingestors-2026-11-01.md).
+[ingestor audit](../audits/NEXUS-short-release-tracker-2026-11-13.md#archived-workflow-ingestors-2026-11-01).
 
 
 ## Optional registered source connectors
@@ -5346,3 +5346,308 @@ Deploy the complete matching release and run the normal repository-root `update-
 The Windows launcher now gives the runtime exclusive ownership of application `.out.log`/`.err.log` files so rotation works. Check `.bootstrap.err.log` if initialization fails before those files receive output. No new environment setting, package, database migration or credential rotation is required. Existing workflow receipts remain authoritative after reconnect; switching pages or browser history never approves work.
 
 Frontend upgrades check direct locked npm dependency versions before shutdown and enable checkpointed dependency installation when needed. For optional local UI measurements open /?measure_ui=1#/data-flow?view=runs; inspect script#depo-performance-probe in DevTools. Null means no observation, not a zero score. Measurements remain local and are not customer field certification. Offline installation requires cached locked packages or registry access.
+
+## Registering and managing REST APIs in Admin
+
+Open **Admin → Data sources**. The **Data source capabilities** list describes available source types; it is not the list of your registered endpoints. Select REST for its setup guidance.
+
+The separate **Registered REST APIs** inventory loads on entry. Each registration is a durable PostgreSQL registry record in namespace `rest_sources`, keyed by its source ID. Ten APIs are ten independent records, displayed together within the default 50-record page. Search matches names, source IDs and endpoints on the loaded page; paging is available for larger inventories.
+
+1. In **Admin > Data sources**, choose **Add source** or **Import OpenAPI JSON**. For OpenAPI 3.0/3.1, select a supported GET operation, review its populated name/endpoint and save with **Register source**. The internal source ID is generated; optional overrides and records path remain under **Additional settings**. PostgreSQL retains the source and selected operation; the original JSON document is retained as an immutable artifact reference. Registration alone does not fetch data or grant endpoint access. A source whose host is not yet in `DEPO_REST_ALLOWED_HOSTS` is listed as **Host setup needed**; preview and worker acquisition remain blocked until the operator configures it.
+2. Select the authentication header and, when required, enter the dedicated server-secret reference. Do not paste an outbound API key into the source form. Deployment administrators configure the actual secret and allowed host on the server.
+3. Choose **Register source**. The saved API appears in the inventory and is selected for the next step. Register the other endpoints using distinct source IDs.
+4. Use the inventory's **Select API** action, then **Test connection and preview**. A registered reference alone does not prove the connection is healthy.
+5. Select an approved acquisition job and choose **Fetch records with worker**. Follow its retained run in Data Flow. Acquisition does not approve mappings or publish a data product.
+
+Registrations are immutable: use a new source ID for a revised registration. Refreshing a retained submission is read-only; **Recover same submission** is an explicit execution action that reuses the retained reference. Existing approval and execution scopes still apply.
+
+### Lifecycle source panel: access versus provider and workflow setup
+
+Admin → Data sources → Review linked lifecycle records distinguishes setup states. A successful general API sign-in/health probe does not itself grant access to retained lifecycle snapshots.
+
+- **Lifecycle snapshot access needs setup:** the snapshot API rejected the separate resource permission. Do not create a preparation workflow to resolve this error; revalidation of the same API credentials does not add the lifecycle grant. The page keeps the request ID/details under Request details and hides preparation controls until reads succeed.
+- **No retained provider snapshots:** access is available, but there are no staged provider records. Configure the intended provider with `OSLC_REMOTE_ENABLED`, `OSLC_REMOTE_BASE_URL` and its server-side credential when required, then acquire the records through the existing authorized synchronization flow.
+- **No approved preparation workflow:** retained snapshots are available, but the relevant job is not approved/enabled. Review definitions in Data Flow or create a draft; creating the draft never approves it.
+- **Missing source evidence / incomplete snapshot:** preparation is held until retained provenance, stage and resource bounds match the existing worker contract. This is source eligibility, not a substitute for ontology validation or mapping approval.
+
+For retained snapshot listing, merge a `syncs:*` grant for the verified read identity into `OSLC_LIFECYCLE_READ_GRANTS` only when that identity is intended to review the full snapshot inventory. A specific `syncs:<snapshot-uuid>` grant supports individual resource access but does not enable the full inventory listing. The verified execution identity also needs the intended snapshot permission for preparation. Use the actual server credential/principal identity; a browser display label such as source-reader is not the grant authority. Preserve unrelated existing grants.
+
+Apply grant-policy changes to the OSLC API **and** Data Pipeline API/worker using the same selected root environment. The standard repository-root restart handles those processes together without stopping database servers:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Restart -EnvFile .\.env.local -SkipBaselineProvisioning
+```
+
+The restart applies configuration; it does not create a provider, grant permission or approve a workflow. Do not disable authentication to resolve a missing lifecycle resource grant.
+
+
+## Approval identity after the November 14 workflow correction
+
+Data Flow and agent review verify the connected credential before submitting an approval or execution; users do not type an approver name. PostgreSQL credential mode uses the registered actor. Environment-token mode uses the configured token actor, or an explicitly identified credential account when no actor is configured. Set the existing strict token-actor requirement when named attribution is mandatory; a shared credential does not establish an individual human identity. Request-body names are not authoritative.
+
+Deploy backend and frontend together and restart all application APIs/workers through the existing lifecycle script. No new migration or package is required by this correction. Existing credentials and database servers are preserved. Reconnect browser access after credential changes. The existing credential-check response now includes the verified actor; unsupported profiles remain rejected. Graph publication receipts in Change Control do not imply product approval or successful catalog delivery.
+
+
+## Import family presentation
+
+Import presents three entry families: instance import, ontology creation and unstructured processing. Select ArchiMate Model Exchange XML under Source format within instance import for .xml exports; .archimate files select that adapter automatically. Review/preparation activities remain under Related activities. Existing workflow IDs, retained tasks and parser endpoints are preserved. Deploy the canonical workflow API metadata with the rebuilt frontend; older workflow APIs retain a compatible display fallback. This UI correction requires an application restart, not a database migration.
+
+
+## Native change dossier
+
+Change Control Inspect reads the exact owning-service record and displays request, retained baseline and native execution/delivery evidence. Merge baselines bind source IDs/artifact digests; incomplete historical records stay explicit. The view does not create an independent CR approval or CO execution permission. It does not revalidate live source content; the owning workflow performs current policy, artifact and authorization checks. Recorded configuration snapshots are Nexus extensions, not a full OSLC Configuration Management provider.
+
+Deploy the OSLC service change and rebuilt frontend together through the existing application restart. No database migration or credential change is needed. Record-detail reads support private, representation-specific ETags; existing native task records remain authoritative.
+
+
+### Native dossier compatibility correction
+
+The reviewed-plan identity is versioned as `nexus.native-merge-plan.v1` and includes output registration metadata. It is not a release approval. Exact dossier GETs use weak representation-specific ETags; nested request summaries no longer create a second RDF ChangeRequest. Change Control retains selected records and pagination in the URL, including legacy source/record links. Evidence-only records are not labelled as CRs or COs. Deploy OSLC/backend code and rebuilt frontend together through the normal application restart; no migration, package or credential update is required.
+
+
+### Central merge change requests and draft authorization
+
+In Change Control, inspect a retained merge proposal. Submit a business reason, accept the request, then separately authorize the exact merged draft. Each command requires explicit review consent and existing ontology approval access; actor identity comes from the verified credential. Acceptance alone never executes a merge. Creation uses the existing native source locks, baseline and validation checks. Graph publication remains a separate native approval.
+
+The OSLC service routes GET/POST `/api/v1/change-control/merges/{preview_id}/request` to the ontology service's `/api/v1/ontologies/merges/{preview_id}/change`. Allow this route through an existing gateway; do not provision a second executor or approval key. Both services must be upgraded together. There are no additional packages, migrations or services for this change. Records persist in the existing retained merge-preview store.
+
+After a timeout, refresh retained status and use **Verify retained result**. Do not replay an uncertain write. Recovery verifies the native receipt; if no valid receipt exists, the request remains unresolved for operator investigation. Historical applied merges cannot be retroactively approved. This release covers ontology merges only, not centralized authorization of bridge, ingestion or product publication, nor complete configuration/TRS transitions.
+
+
+### Governor handoff to merge review
+
+The existing Ontology Governor can read a retained merge request using `ontology.merge.change.status`, then propose `ontology.merge.change.submit`. Approve that tool invocation only to submit the exact retained plan for review. Supply the preview identity, `expected_revision: 0`, current plan digest and a business reason. The server fixes the action to submission; the tool cannot accept, authorize, execute or publish. Use Change Control for subsequent human decisions. There are no new credentials or dependencies. Native token-mode audit identity is the configured service credential owner; originating human workflow approval remains in the workflow audit.
+
+After uncertain submission, workflow reconciliation reads the native request and verifies plan and reason without repeating the write. A mismatched or missing request requires investigation. Deploy the ontology and agentic service updates together, retaining the existing catalog override if `AGENTIC_CATALOG_PATH` is set; custom catalogs need these two allowlisted tool entries before this capability is available. No customer data needs to be reset.
+
+
+### Interpreting retained merge authorization
+
+Change Control's list reports **Authorization recorded; verify current plan**. This is retained evidence, not a claim that sources or execution prerequisites are currently valid. Open the exact dossier and review the source baseline before deciding. A CO is shown only when request/order identity, plan, authorizer and draft-only scope agree; native execution revalidates its current plan and sources. Incomplete authorization needs review and cannot use a legacy actor as a substitute. This correction needs matching backend and frontend updates, with no new database migration or credential.
+
+
+### Merge review freshness through TRS
+
+PostgreSQL merge review decisions retain notification intent in the existing `oslc_trs_outbox` transaction alongside native state. Keep the existing **data-product-outbox** worker running: it already delivers these TRS notifications. No new worker, migration, package or credential is required. A disabled or unavailable TRS leaves intent pending; the next normal worker cycle retries.
+
+Notifications identify the stable OSLC change-control merge record and latest revision/plan/state. Pending updates may be coalesced; consumers must read the authoritative resource and use its revision, rather than interpreting the notification stream as the complete decision audit. Full decision history stays in the native record. Delivery is eventual, with cadence controlled by existing DATA_PRODUCT_RECONCILE_SECONDS. This increment does not provide complete configuration-management or lifecycle deletion/rebase acceptance.
+
+TRS Base recovery reads canonical retained merge-proposal membership from PostgreSQL, independently of the bounded changelog. It streams identifiers into the existing bounded snapshot pages; old merge events cannot recreate membership for a removed native record. This does not add a deletion command or establish full lifecycle deletion-event support.
+
+
+### Removal and TRS recovery for tracked merge records
+
+The existing outbox worker emits Deletion only after verifying that a previously tracked native merge record is absent. It does not delete native data. Database outages leave notification pending; retries keep the same delivery identity. Previously completed notices are checked through a bounded query, so removal after initial publication is also detected. Pending deletion for a restored record is suppressed: use its next native transition or re-read the TRS Base to obtain authoritative current state.
+
+Clients must honor rebase_required and rebuild from Base. A cursor ahead of a reset stream head now explicitly requests rebase; the reporting consumer preserves its active generation during rebuilding. Full destructive installation reset clears native/outbox/TRS history together and requires consumers to rebase. Stream-generation identity for resets whose head has already regrown beyond an old cursor remains outside this increment. No additional package, schema migration, credential or worker is required.
+
+
+### Review mapping changes centrally
+
+1. Prepare a retained instance-mapping preview using the existing Ontology Junction workflow.
+2. In Change Control, inspect its Instance mapping record. Select eligible source → target candidates and review their recorded relation and match evidence. Scores do not constitute approval.
+3. Enter a business reason and submit. The immutable preview stays unchanged; the native publication job retains request history. Exact selection follows that job's record.
+4. Accept the request, then separately authorize the selected mappings. Each command requires owning-workflow approval access and fresh review consent. Source scope cannot be edited after submission; use a new preview to change it.
+5. Publish the authorized mappings. Native policy and current-source checks still run; this does not merge ontologies or publish a data product.
+6. If execution outcome is uncertain, refresh and verify the retained result. Recovery validates the native graph receipt and never republishes. Missing or mismatched receipts remain unresolved for investigation.
+
+Native GET/POST: `/api/v1/workflows/bridge/previews/{preview_id}/change`. Central GET/POST: `/api/v1/change-control/bridges/{preview_id}/request`. Use existing GRAPH_READ_TOKEN and AGENTIC_APPROVAL_TOKEN profiles; actors come from verified credentials. Update agentic, OSLC and frontend together and allow these paths in an existing gateway. No new dependency, schema migration or additional worker is required. Existing unmanaged native publication history remains valid. This is a second native operation family in central Change Control, not yet one CR ordering all source-to-product operations.
+
+
+### Product release review in Change Control
+
+In Data Products, validate the publication contract, enter the business reason and choose **Submit release for review**. Submission creates a release request, not a retained package. Open its Change Control link; the connected product approver separately accepts the request, authorizes the exact version and publishes it. Changed artifact contents require a new reviewed scope/version. Approval access is the existing DATA_PRODUCT_APPROVAL_TOKEN profile.
+
+A retained package awaiting catalog registration is not a completed release. Use **Verify package and delivery** or **Retry catalog delivery**; the existing delivery worker remains responsible for pending catalog registrations. After an uncertain execution, verify its retained result before any new write. Do not change the version to evade recovery. Customer upgrades must deploy the native product helper, central routes and shared frontend controls together; release-package validation checks those files. No new migration or credential profile is required.
+
+
+### Review publication of imported engineering records
+
+After an approved import workflow completes, use Data Flow → Approval & publication to select an approved semantic release and enter the source and business reason. In Run monitor choose **Request publication review**, then follow **Review publication request** into Change Control. Acceptance does not publish; authorize the exact partition, then publish the authorized partition. Only verified current graph delivery completes the release and advances its checkpoint. If the response is lost, choose **Verify retained result**; do not rerun publication to guess its outcome.
+
+This request belongs to the retained semantic run. File upload and normalization are not CR approvals, and historical publication records cannot be retroactively approved. Deploy pipeline native helper/routes, OSLC central routing and frontend controls together. Existing CEIM_PUBLISH_APPROVAL_TOKEN, registry schema and workers are reused; no migration or additional dependency is required.
+
+
+### Review an ontology graph publication
+
+Approve the retained ontology using its existing lifecycle controls. Open **Review graph publication request** in the publication panel, enter the business reason, review the exact release and submit. Accepting the request does not publish. Authorize the ontology release, then choose **Queue authorized graph publication**. The existing native worker publishes and verifies the current graph receipt. The same request is available in Change Control under Ontology publications.
+
+Managed requests disable legacy direct publication/cancellation. Cancel before queueing. If a queue expires before dispatch, explicitly queue again after reviewing current scope. If execution may have started, use **Verify retained result**; this does not replay publication. Historical attempts cannot be retroactively approved. Deploy the ontology native helper/worker, OSLC central routes and shared frontend together. ONTOLOGY_APPROVAL_TOKEN, existing schema and service configuration are unchanged.
+
+New publication requests also require a verified absent graph receipt and an idle publisher. Missing local history does not prove that the graph is unpublished; restore connectivity and reconcile any existing graph state before requesting release.
+
+
+### One source-to-release change
+
+1. Complete the approved source import/semantic processing job. Prepare the intended native review requests before execution. Prepare the final product from that same run's retained accepted partition and include its run lineage.
+2. In Change Control → All workspaces, open **Plan one source-to-release change**. Enter the title and business reason, select the named retained source run, and choose 2–8 prepared operations in execution order. Use **Move earlier** to order them; finish with the product release. No artifact-ID entry is required. This submits one coordinated CR and freezes its source/configuration scope.
+3. Accept the request, then separately authorize its frozen configuration using connected workflow approval access (DATA_JOB_APPROVAL_TOKEN). This grants coordination, not owning-service publication permission.
+4. Use **Review operation** to review/authorize/execute each native operation with its own profile. Linked direct APIs enforce the same parent and prerequisite checks. Queueing uses the existing ontology worker; product catalog delivery uses the existing outbox worker. Do not repeatedly execute an uncertain operation; verify its retained result first.
+5. Choose **Verify all release receipts** after all steps complete. Closure checks native receipts, package integrity and the exact published catalog version/digest. A package waiting for catalog delivery is not a completed release.
+
+The frozen configuration is visible inside the release. OSLC clients can read its configuration context, selections and version-resource endpoints in JSON/Turtle/RDF/XML/JSON-LD; a mismatched Configuration-Context or stale If-Match is rejected. A TRS reset requires **Review unchanged scope after TRS reset**, followed by acceptance/authorization again. Prior baseline/order evidence remains retained. Rebase does not substitute changed source or operation content. Already-dispatched native work must be verified before cancelling future work.
+
+Upgrade the shared release guard, all affected native services, OSLC and frontend together. Existing PostgreSQL generic registry/indexes and approval profiles are reused; no new migration, database, service, worker or package is needed. Release-package checks reject missing files. Stop/build/restart through manage-depo.ps1 after source changes. Transient read-only endpoint probes retry at most three times; authorization failures and configuration fingerprint mismatches are never bypassed. This local feature does not certify external customer-provider acceptance or full optional OSLC Config conformance.
+
+## External IIF graph-control integration (2026-11-15)
+
+Architecture reference: deliverables/NEXUS-At-a-Glance.pptx, slides 3–4. IIF owns orchestration, handoffs and memory; Graph owns computation; native business services retain approvals. The designated external runtime is D:\GenAI_Projects\IIF_DT. Existing NEXUS agents/workflows remain compatible. This increment does not migrate or remove them, or make every agent an independent deployed microservice.
+
+The framework-independent contract is authenticated POST /api/v1/graph/computation on the Graph service. Required fields: ontology_id, current publication_id, algorithm and 1–12 distinct predicates. top_n is 1–50. node_id is required for personalized-pagerank, node-similarity and traceability; pagerank rejects a seed. Arbitrary queries, graph payloads, URLs and extra fields are rejected. Maximum projection: 1000 published business records and 5000 selected relationships. Oversized scopes fail rather than silently sample. Results never authorize a business write.
+
+PageRank uses installed Neo4j GDS with a private in-memory projection, 64 MiB estimate ceiling and cleanup on success/failure. Scores are not written into the business graph. NetworkX, already installed, is the bounded fallback only when GDS is absent; GDS execution errors fail explicitly. Similarity preserves predicate and direction; typed two-edge paths do not establish requirement satisfaction. SVD++, Triangle Count, community detection and model training are not exposed in this initial allowlist.
+
+Evidence retains publication, parameters, engine/version, projection digest, coverage and evidence_id in the existing PostgreSQL registry namespace graph_computation_evidence_v1; no migration. GET /api/v1/graph/computation/evidence/{evidence_id}?ontology_id=... reads historical evidence and does not revalidate currentness. Apply the agreed evidence-retention/legal-hold policy; do not treat these records as a disposable cache. IIF owns its own workflow memory; Graph does not write IIF SQLite/vector stores.
+
+Install the additive plugin from the repository root:
+
+```powershell
+& .\integrations\iif\install-nexus-graph-plugin.ps1 -IifRoot 'D:\GenAI_Projects\IIF_DT' -CheckOnly
+& .\integrations\iif\install-nexus-graph-plugin.ps1 -IifRoot 'D:\GenAI_Projects\IIF_DT'
+```
+
+Installer preflights every file and refuses differing destinations before copying. It does not modify IIF.exe, core code, environment files, memories or processes. The YAML follows IIF's existing FunctionTool registry. An optional stdio MCP server is included in AgentsRegistry/MCPTools/nexus_graph_mcp.py and requires IIF's existing MCP dependencies. Register/start it explicitly; it is not an HTTP microservice. Other customer frameworks can call REST directly without NEXUS Python imports or LlamaIndex.
+
+Configure in the IIF process environment:
+
+- NEXUS_GRAPH_SERVICE_URL: Graph base URL ending /api/v1; default http://127.0.0.1:8013/api/v1.
+- NEXUS_GRAPH_READ_TOKEN: existing authorized scoped Graph read credential; never in prompts, YAML or the intent.
+- NEXUS_GRAPH_INTENT_FILE: absolute operator-owned JSON file outside application source, containing the selected API request. Restrict its write permissions to the operator. Refresh IIF's registry after configuration.
+
+The FunctionTool accepts no model arguments; it reads only that intent. Remote Graph endpoints require HTTPS; credentials in URLs and redirects are rejected. Results must match the selected request and publication and carry a valid projection digest. Model prose cannot alter algorithms, query code, credentials or scope through this tool. Do not give the agent a separate file-write capability over its intent file.
+
+Existing NEXUS Agentic discovery APIs remain /api/v1/agent-registry, /agents, /tools, /workflows and /mcp-servers. They expose validated contracts, not a readiness or authorization grant. All external controllers must preserve scope and native approvals; this graph plugin receives only read access.
+
+
+## Object identity and configurable numbering
+
+Admin → Numbering configures future CR, CO, workflow, data-source, file and processing-run business references. Prefix, year inclusion and sequence width are configurable; existing references and UUIDs remain unchanged. Read access can inspect settings; verified Admin maintenance access is required to save. Stale revisions and concurrent configuration writes must be refreshed before retry.
+
+Identity mappings and sequence counters use the existing PostgreSQL `semantic.depo_registry` under `resource_identity_v1`; configuration uses `resource_numbering_config_v1`. No extra database or blockchain service is required. UUIDs identify records; business numbers identify them for operators; SHA-256 identifies retained content. These identifiers are distinct: matching content does not establish that two engineering objects or revisions are equivalent.
+
+File events retain source names and hashes. Governed ingestion links file identity to retained input artifacts, workflows and run manifests; existing approval/publication receipts remain authoritative. This is linked provenance, not an independently tamper-proof ledger. Configuration survives the supported local application reset, while reset object mappings and counters are removed with application data.
+
+Deployment status: identity hooks and Admin controls require the matching rebuilt frontend and backend restart. Historical metadata enrichment is an offline operation (`python -m backend.scripts.backfill_change_labels --env-file .env.local --apply`) after supported service shutdown. Preview without `--apply` first. That script currently enriches change references and pipeline source labels; it does not claim to reconstruct all historical file events.
+
+
+## Advanced operations and release-specific checks
+
+Use the [detailed operator reference](../../docs/installation/OPERATOR_REFERENCE.md#release-specific-upgrade-and-verification-notes) for dependency maintenance, connector setup and feature-specific upgrade checks. This release includes additive migration `017_speed_event_pagination.sql`; deploy the complete backend, workers and rebuilt frontend through the existing updater. Never drop the schema to install it.
+
+See [semantic event recovery](../../docs/SEMANTIC-EVENT-WORKFLOW.md), [memory configuration](../../docs/AGENT_MEMORY_AUGMENTATION.md) and [live memory demo readiness](../../docs/demo-narratives/memory/DEMO.md). Optional graph memory remains off unless explicitly configured. Do not interpret stored conversations, approved hints or completed workflows as proof of current business correctness.
+
+See [release verification notes](../../docs/installation/OPERATOR_REFERENCE.md#local-acceptance-fixes-2026-11-02) for the November fixes, demo steps and upgrade acceptance checks.
+
+If Windows hides a tracked process identity, Setup requests elevation before shutdown. Run the same launcher as administrator if elevation is unavailable. ExecutionPolicy Bypass does not grant process privileges; keep PID files and credentials.
+
+For optional model and local demo settings, see the [OpenAI demonstration profile](../../docs/installation/OPERATOR_REFERENCE.md#low-cost-openai-demonstration-profile).
+# Embedded property vocabulary update
+
+The foundation bundle includes PCA IDO, the NEXUS business module and the pinned DIN EN 61360 property pattern 2.0.4. Deploy the complete foundation directory, including `manifest.json`, `dinen61360-2.0.4.ttl`, `DINEN61360-LICENSE.txt` and `NOTICE.md`, through the normal update process. Runtime checks verify module and license hashes and use local imports only. No additional database migration or dependency is needed for this vocabulary addition. Existing customer data and mappings are preserved; previous reasoning evidence must be checked again against the new bundle. See [embedded foundation operation](../../docs/EMBEDDED_SEMANTIC_FOUNDATION.md).
+
+
+### Pinned offline vocabulary imports
+
+OWL consistency checks resolve the bundled SKOS, SHACL, Dublin Core Terms and OSLC Core vocabulary snapshots locally. The import catalog and every vocabulary are checksum verified; unknown imports remain unresolved and corrupt resources fail closed. No ontology import URL is fetched during reasoning. Deploy the complete release resources and restart the ontology service; no PostgreSQL migration or new Python dependency is required for this change. Reasoning evidence is invalidated when the catalog changes. Resolving imports does not establish that the combined ontology satisfies the OWL 2 DL profile or is logically consistent.
+
+### OSLC functional fixes (12 November 2026)
+
+Deploy the complete OSLC service, ontology service and existing data-product-outbox worker together, then restart with the repository lifecycle script. Native ontology publication commits its PostgreSQL receipt and OSLC notification intent together; the existing worker retries idempotent delivery. No new worker, dependency or PostgreSQL table migration is required: state uses the existing registry namespaces. Notification coverage for other graph mutations still needs qualification.
+
+PostgreSQL TRS Base uses streamed graph results and 1,000-member retained pages. `OSLC_TRS_MAX_SNAPSHOT_RESOURCES` bounds the complete snapshot (default 1,000,000; range 1–2,000,000). The older `OSLC_TRS_MAX_BASE_RESOURCES` remains a file-mode development limit. Snapshot metadata is published only after page persistence, expires after 15 minutes, and missing pages require a rebase rather than a partial success. Readiness alone does not certify independent TRS-client conformance. Remote snapshots now retain provider URL, authenticated requester and content digest; old snapshots without these fields remain legacy evidence and must not be represented as newly verified provenance.
+
+
+Remote OSLC query discovery now follows advertised query capabilities under the configured provider origin and path prefix. Set `OSLC_REMOTE_CATALOG_PATH` to a relative catalog path if it differs from `oslc/catalog`. `OSLC_REMOTE_QUERY_MODE=legacy` retains the former fixed-path convention for providers that deliberately use it; the default is capability discovery. Provider-returned continuation cursors are bounded and remain confined to that provider. No remote provider is enabled by this upgrade.
+
+Admin → Data sources includes retained OSLC snapshot selection and an approved preparation-workflow selector. The optional **Create preparation workflow draft** action creates an `oslc-snapshot-ingest` definition only; an authorized owner must review, approve and enable it through Data Flow. Preparation uses the existing pipeline worker and produces retained `connector-records` evidence for the existing `connector-ceim-normalize` mapping workflow. It does not publish the graph. Configure explicit `syncs` lifecycle grants for the intended read and execution identities; the upgrade does not broaden grants. Incomplete or legacy snapshots lacking provider/requester/content-digest provenance must be acquired again. Retained submission references reconcile retries rather than enqueueing duplicate work.
+
+
+Reporting replication: migration 018 is applied by the normal PostgreSQL upgrade. See [OSLC reporting replication](../../docs/architecture/OSLC_LIFECYCLE_RELEASE.md#reporting-replication) for approved feed selection, worker execution, scheduler opt-in, freshness limits and snapshot product review. Existing data does not require a reset.
+
+Compatibility chat consolidation (2026-11-12): the aggregate host's root chat entry points share the canonical /api/v1/chat handlers. Clients must use current authenticated Companion sessions and honor the returned polling URL. Old completed chat-job records remain readable through the legacy lookup; interrupted legacy work is never replayed automatically. No database reset or new package is required. See backend/legacy/README.md for the contract boundary.
+
+
+## OSLC Automation adapter and workflow definition review
+
+The existing OSLC service exposes `/oslc/automation` discovery, bounded `/plans`, `/requests`, `/results` queries and exact resource reads. These project existing PostgreSQL definition/run records. They do not introduce a second execution store, migration, worker or package. Automation uses `http://open-services.net/ns/auto#`; Architecture Management continues to use `am`. This is a scoped adapter, not a claim of full OSLC Automation conformance or independent provider interoperability certification.
+
+`POST /oslc/automation/requests` accepts only `job_id`, `version`, `replay_run_id` and `idempotency_key`. Use the current DATA_JOB_EXECUTION_TOKEN connection. The OSLC service verifies that profile and forwards the existing caller credential to the native pipeline replay endpoint. Never supply a service-wide privileged substitute or put a secret in JSON. Retries must retain the same idempotency key. A timeout is unverified, not a safe new submission. Arbitrary new inputs, code and changed configuration contexts are rejected: choose a retained run with the intended original baseline. Native approval, actor binding, definition status and retained-input checks remain authoritative.
+
+A successful AutomationResult means execution succeeded within its declared scope. It never establishes CR/CO approval, graph publication, product approval or catalog delivery. Agentic control/IIF can discover plans, request authorized execution and retrieve results using these APIs; autonomous IIF policy integration is not enabled by this adapter.
+
+In Data Flow, open a retained run → Technical run references → Verify automation evidence. The inspection validates both the exact plan version and result identity, and clears on session changes. In Change Control → Workflow records, workflow definitions are now discoverable with their WF reference, approval state and exact-version native review link. This central evidence view does not retroactively manufacture CR/CO records for historical definition approvals. Formal definition-change CR/CO transitions remain separate work.
+
+Deploy matching OSLC code and rebuilt frontend with the normal root update/restart. Existing approved definitions and running/history records remain intact. The deployment gateway must preserve existing `/oslc/*` routing and caller authentication. No additional credentials are created.
+
+
+### Central Change Control navigation
+
+Data Flow now contains Run monitor, Pipeline jobs, Event reviews and Agent assistance. Use its exact-record Change Control links for publication proposals and workflow maintenance; use Data Quality for quality assessment. Old Data Flow `view=quality` and `view=settings` links fall back to Run monitor and retain the selected run. Change Control → Workflow records → Data Flow runs → View change provides the approved semantic release, source-system reference and business-reason form for a completed unpublished semantic batch. Submission creates a request only. Acceptance, CO authorization and publication remain separate.
+
+Workflow maintenance is located in Change Control and continues to use the existing DATA_JOB_APPROVAL_TOKEN authority. Its current native approvals are not yet formal definition-change CR/CO transitions. APIs remain owned by their existing microservices. Deploy the matching OSLC/backend changes with the rebuilt frontend; the shared PostgreSQL projection fix requires service restart but no migration or credential update.
+
+
+#### Publication after the central CR/CO update
+
+A publication key alone no longer authorizes an unreviewed Data Flow partition or Bridge mapping. Submit the exact retained candidate in Change Control, accept the request, authorize its CO, then execute. Direct/agent publication without a native CR/CO returns a conflict. Matching policy acceptance is evidence, not release authority. Inspect historical receipts without replaying an old publication; do not fabricate retrospective approvals. Workflow-definition maintenance still uses its native approval contract and is not yet a numbered definition-change CR/CO flow.
+
+The worker only reclaims running queue jobs with a recorded worker identity and expired lease. Running inline or malformed ownership records require operator inspection, rather than automatic duplicate execution. This update uses existing PostgreSQL stores and needs no additional migration or package.
+
+
+Data Flow assistance navigation: the dedicated Agent assistance tab and embedded event-review agent form are retired. Use Open Agent Control from verified run/event evidence. The existing Agents & workflows workspace re-reads the selected processing record with current access; no manually copied ID or repeated assistance question is required for navigation. Agent execution history remains separate from processing run history. Rebuild and restart the frontend for this navigation update; no migration or dependency change is required.
+
+
+#### Unified event processing and Import update
+
+Deploy matching pipeline API, worker and frontend code. No new database migration, dependency, service or credential profile is required. The event preparation endpoint `/api/v1/pipeline/speed/reconciliations/{id}/jobs` requires the existing DATA_JOB_EXECUTION_TOKEN profile and an approved enabled semantic-validation definition. Event publication delegates to the resulting processing run's CR/CO; publication credentials alone no longer release an unlinked event partition. Existing events remain unlinked until explicitly processed. The offline display-metadata upgrade may add descriptive names from verified retained partition artifacts; it never fabricates workflow or approval links. Keep services stopped when applying it.
+
+Import uses three workflow families in one workspace. QIF schemas and SysML XML/XMI are formats, rather than separate import pages. For SysML saved with `.xml`, choose Create ontology and Source format: SysML XML / XMI. QIF inspection instances use Import instance graph; QIF schemas use Create ontology. Existing QIF/SysML deep links enter ontology creation. The separate QIF model/inspection page remains available for its specialist analysis tasks.
+
+
+The third Import family is displayed as **Document processing workflow**. Its persisted `document.unstructured` identifier is unchanged for upgrade compatibility.
+
+
+### Approval matrix configuration and upgrade behavior
+
+Change Control → Approval matrix settings displays the current rules. Admin maintenance is required to save. Configure exact authenticated principal names for CR evidence review and CO authorization; select ALL/ANY signoff and optional separation settings. Principal assignment does not create an account or grant the underlying service permission. The initial version preserves existing credential-bound review behavior until an administrator configures named assignments. Existing requests keep their own snapshot; changing defaults does not approve or rewrite them. Rebase after a configuration/TRS reset invalidates prior signoffs and retains their audit evidence.
+
+Configuration is stored in the existing PostgreSQL registry under `approval_matrix_v1`; no additional package, service or database migration is required. Deploy matching backend/frontend files and restart the owning APIs/workers through the normal scripts. Endpoint validation requires the typed ApprovalMatrixRequest contract. A local single-identity token session cannot demonstrate multi-person separation; use distinct verified enterprise identities for that acceptance test. Agent tool `graph.query` reuses the graph service's existing bounded read-only GraphQL API.
+
+
+#### Workflow definition maintenance
+Submit workflow approval, disablement and schedule changes from Change Control. The pipeline service retains the workflow CR in `data_job_definition_changes_v1`; the existing shared approval matrix governs acceptance and CO authorization. Execution compares the frozen definition and retained schedule input and commits the definition plus receipt atomically. Public legacy maintenance endpoints require that exact authorized request; a credential alone does not bypass review. The existing OSLC notification worker discovers committed workflow changes for TRS delivery, including recovery after a process interruption. This feature uses the existing registry schema and adds no service or package.
+
+
+#### Retained engineering import loads
+From an import preview, choose **Review load in Change Control**. Review and authorize its CR/CO there, then load the retained records and reconcile the native completion receipt. Import credentials alone no longer authorize a direct compatibility load. Requests use `tracked_import_changes_v1` in the existing PostgreSQL registry, with the existing approval matrix, numbering and OSLC notification worker. Restart recovery retains dispatched uncertainty; do not create a blind duplicate load. Missing relationships prevent complete receipt verification. Semantic mapping remains a separate governed operation. No database migration or new package is required for this registry namespace.
+
+
+#### Previously generated XSD ontology versions
+The cardinality generator now emits separate minimum and maximum OWL restrictions. Existing registered artifacts and validation receipts are immutable and are not automatically rewritten during upgrade. Generate a new reviewed ontology version from the original schema and run validation before CR/CO authorization. A successful cardinality check alone does not establish full-model consistency; imported vocabulary/profile blockers still require resolution.
+
+
+### Graph Analytics in Decision intelligence
+
+After the standard frontend build and managed service restart, open `#/graph-analytics`. Choose a current published source, the business question, and up to 12 recorded relationship predicates. Seed-based questions also require a named business record. The service rejects stale publication receipts and projections beyond 1,000 records or 5,000 selected relationships. Results retain a PostgreSQL evidence reference; Read retained evidence reads that historical snapshot and does not revalidate freshness or approve engineering changes.
+
+PageRank can use the existing optional Neo4j GDS installation. Neighborhood similarity, typed traceability paths and triangle counts use the existing NetworkX dependency. Triangle counts use undirected structural closure; zero triangles is valid and says nothing about engineering completeness. No new package, migration or worker is needed. The repository IIF adapter accepts triangle-count; an already-installed external plugin needs a reviewed update before using the new algorithm. The additive installer intentionally refuses to overwrite differing plugin files. Credentials and operator-selected intents stay outside model arguments.
+
+
+### Loading SPLM PLMXML and SysML instances for Graph Analytics
+
+Use Import instance graph. For `.xml` PLMXML exports, choose **PLMXML (.xml)** before Add Files; for SysML exported as XML, choose **SysML XML instances**. The selected adapter is frozen per queued file. Schema/ontology creation remains a separate workflow. Import selects the newest approved, enabled `semantic-source-validation` version that explicitly permits that source standard; a missing approval is an actionable rejection, never an automatic grant.
+
+To enable an implemented source standard, open Data Flow → Pipeline jobs → Review workflow change. Choose **Approve revised source support (new version)**, enter a newer semantic version, select supported sources and submit the workflow CR. Complete its existing accept/authorize/execute sequence in Change Control. The operation atomically creates a new approved definition and receipt; the prior version and its runs remain unchanged. The new version has no automatic schedule. This is a controlled source-support revision, not arbitrary code execution or a new job engine.
+
+The PLMXML mapping pack 0.4.0 preserves explicitly declared requirement specifications/revisions, FND trace carriers, process revisions/views/instances/occurrences and source reference paths. Re-normalize older retained batches with their original files before publication; do not replay an obsolete normalized partition against a different mapping digest. A source trace carrier is retained without asserting requirement satisfaction or consumption semantics that were not mapped and reviewed.
+
+Graph Analytics is now under **Decision intelligence → Memory insights → Graph Analytics**, immediately after Memory records. The existing standalone Graph Analytics deep link remains available. Embedded selections retain the `view=graph-analytics` workspace and use the `algorithm` parameter for the business question.
+
+
+## Release-specific data preservation
+
+Lineage/projection updates include `backend/depo_platform/product_lineage.py` and `artifact_references.py`. Deploy them with the owning catalog/product/graph code through the normal `update-depo.ps1` workflow and restart services; release preflight verifies their presence. No new PostgreSQL table, credential rotation or automatic data deletion is required. Product source references now resolve through configured `ONTOLOGY_SERVICE_URL` and `DATA_PIPELINE_SERVICE_URL`. Retention refuses referenced/provenanced artifacts; do not bypass that protection by deleting files manually. See [lineage and projection qualification](../audits/lineage-projection-fixes-2026-10-29.md).
+
+For ontology upgrades, follow [Ontology release versions](../ONTOLOGY_RELEASES.md): register a replacement, declare its family/version/predecessor, validate and review, then approve/publish separately. `update-depo.ps1` installs the code; it does not invent versions or migrate mappings automatically. Release records use the existing PostgreSQL registry table. Preserve that table, ontology files and graph receipts together in backups; see [local recovery qualification and remaining gates](../audits/recovery-qualification-2026-10-29.md).
+
+For a destructive test-environment reset, use [Reset to vanilla state](../VANILLA_RESET.md). This separately confirmed Admin operation clears application records, agent/workflow history and retained uploads while preserving credentials and the embedded foundation. Installation and update never perform this reset automatically.

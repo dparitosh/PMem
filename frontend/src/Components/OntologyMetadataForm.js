@@ -54,6 +54,7 @@ export default function OntologyMetadataForm({
   onSubmit,
   onCancel,
   selectedFile,
+  sourceFormat = null,
   isLoading = false,
   initialValues = null,
   publicationMode = false,
@@ -110,6 +111,7 @@ export default function OntologyMetadataForm({
   // Determine file type from selected file
   const getFileType = () => {
     if (!selectedFile) return null;
+    if (sourceFormat === 'xmi') return 'xmi';
     const ext = selectedFile.name.split('.').pop().toLowerCase();
     return ext;
   };

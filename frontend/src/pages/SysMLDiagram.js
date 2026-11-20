@@ -31,7 +31,7 @@ export function businessFields(props) {
     append('Requirement number',props.sysml_Id || props.profile_Id || props.requirementId || props.Id);
     append('Text',props.sysml_Text || props.profile_Text || props.requirementText || props.Text || props.text);
   }
-  for (const key of ['documentation','body','value','units','unit','lower','upper','ownedFeatures']) append(key,props[key]);
+  for (const key of ['documentation','body','value','units','unit','lower','upper']) append(key,props[key]);
   return fields;
 }
 const nodeTypes={sysml:SysMLNode};

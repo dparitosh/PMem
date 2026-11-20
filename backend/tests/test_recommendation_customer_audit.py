@@ -283,6 +283,44 @@ def test_unsupported_legacy_scope_cannot_broaden_to_all_customer_data():
     assert error.value.status_code==422
 
 
+def test_projection_does_not_overwrite_conflicting_rdf_evidence():
+    comparison = compare({'material':'Steel','rdf_properties':{'material':[{'@value':'Aluminium'}]}}, {'material':'Aluminium'})
+    material = next(row for row in comparison if row['property']=='material')
+    assert material['source']==['Steel','Aluminium']
+    assert material['status']=='unassessed'
+    assert 'Multiple values' in material['reason']
+
+
+def test_jsonld_numeric_evidence_retains_explicit_units():
+    comparisons = compare({'rdf_properties':{'diameter':[{'@value':25.4,'unit':'mm'}]}}, {'diameter':'1 in'})
+    assert next(row for row in comparisons if row['property']=='diameter')['status']=='match'
+
+
+def test_digital_thread_keeps_cad_pmi_simulation_mbse_and_quality_evidence():
+    records=[record('root','Shaft',revision='A'), record('cad','Shaft CAD','CADModel'),
+             record('pmi','Diameter tolerance','PMIAnnotation'),record('sim','Stress results','SimulationDataset'),
+             record('mbse','Drive subsystem','Block'),record('qif','Inspection result','QualityMeasurement')]
+    links=[('root','cad','DESCRIBED_BY','cad-link'),('root','pmi','HAS_PMI','pmi-link'),
+           ('root','sim','SIMULATED_BY','sim-link'),('root','mbse','TRACES_TO','mbse-link'),
+           ('root','qif','HAS_MEASUREMENT','qif-link')]
+    result=RecommendationEngine(Graph(records,links)).impact('root')
+    assert {row['node_id'] for row in result['realization_chain']}=={'cad','pmi','sim','mbse','qif'}
+    assert result['source_evidence']['revision']=='A'
+    assert all(row['evidence_kind']=='dependency_candidate' for row in result['realization_chain'])
+    assert all(row['effectivity_verified'] is False for row in result['realization_chain'])
+    assert result['coverage']['depth_limit_reached'] is False
+
+
+def test_four_hop_frontier_is_reported_as_unexpanded_not_complete():
+    records=[record(str(i),'Assembly '+str(i),'Assembly') for i in range(6)]
+    links=[(str(i+1),str(i),'HAS_PART',str(i)) for i in range(5)]
+    result=RecommendationEngine(Graph(records,links)).impact('0')
+    assert len(result['realization_chain'])==4
+    assert result['coverage']['depth_limit_reached'] is True
+    assert result['coverage']['limit_reached'] is True
+    assert result['coverage']['whole_graph_complete'] is False
+
+
 @pytest.mark.parametrize('field', ['revision','configuration'])
 def test_source_baseline_identifiers_remain_case_sensitive(field):
     checked={row['property']:row for row in compare({field:'A'},{field:'a'})}

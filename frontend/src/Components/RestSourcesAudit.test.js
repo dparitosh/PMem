@@ -14,9 +14,9 @@ beforeEach(()=>{
 });
 async function selectSource() {
   fireEvent.click(screen.getByText('Refresh sources and jobs'));
-  await screen.findByText('Parts');
+  await screen.findByRole('button',{name:'Select Parts'});
   await waitFor(()=>expect(screen.getByText('Refresh sources and jobs')).not.toBeDisabled());
-  fireEvent.change(screen.getByLabelText('Registered source'),{target:{value:'parts'}});
+  fireEvent.click(screen.getByRole('button',{name:'Select Parts'}));
 }
 test('failed preview must remove previous connection-success data',async()=>{
   api.previewRestSource.mockResolvedValueOnce({data:{record_count:1,records:[{name:'Old Part'}]}}).mockRejectedValueOnce(new Error('Connection failed'));
@@ -40,7 +40,7 @@ test('source browsing remains available when only the job catalog fails',async()
   render(<RestSourcesPanel/>);
   fireEvent.click(screen.getByText('Refresh sources and jobs'));
   await screen.findByRole('alert');
-  expect(screen.getByRole('option',{name:'Parts'})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Select Parts'})).toBeInTheDocument();
 });
 test('reconnect must not enable a second submission while the first outcome is unknown',async()=>{
   let complete;

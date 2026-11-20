@@ -42,6 +42,24 @@ class _DeadlineCursor:
         self.cursor = cursor
         self._bulk_rowcount = None
     @property
+    def itersize(self):
+        return self.cursor.itersize
+    @itersize.setter
+    def itersize(self, value):
+        self.cursor.itersize = value
+    def __iter__(self):
+        iterator = iter(self.cursor)
+        while True:
+            # Do not execute timeout-setting SQL on a streaming cursor: that
+            # would replace its retained result. Keep the cancellation/deadline
+            # fence before each driver advance instead.
+            self._budget(configure=False)
+            try:
+                row = next(iterator)
+            except StopIteration:
+                return
+            yield row
+    @property
     def rowcount(self):
         return self.cursor.rowcount if self._bulk_rowcount is None else self._bulk_rowcount
     def __getattr__(self, name):

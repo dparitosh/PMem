@@ -196,3 +196,78 @@ def test_qif_xsd_validation_distinguishes_structural_and_mapping_fixtures():
     response = TestClient(app).post("/api/v1/ceim/adapters/qif/validate", files={"file": (valid_fixture.name, valid_fixture.read_bytes(), "application/xml")})
     assert response.status_code == 200
     assert response.json()["conforms"] is True
+
+
+def test_qif_document_identity_prevents_cross_document_numeric_id_collision():
+    def source(qpid, name='Bearing'):
+        return f'<QIFDocument><QPId>{qpid}</QPId><Part id="1" name="{name}"/><MeasurementResults id="2" planId="3"/><InspectionPlan id="3"/></QIFDocument>'.encode()
+    first = qif_to_ceim_batch(source('fd43400a-29bf-4ec6-b96c-e2f846eb6ff6'))
+    other = qif_to_ceim_batch(source('fd43400a-29bf-4ec6-b96c-e2f846eb6ff7'))
+    changed = qif_to_ceim_batch(source('FD43400A-29BF-4EC6-B96C-E2F846EB6FF6', 'Bearing revised'))
+    assert first['entities'][0]['id'] != other['entities'][0]['id']
+    assert first['entities'][0]['id'] == changed['entities'][0]['id']
+    assert first['entities'][0]['provenance']['source_id'] == '1'
+    assert first['entities'][0]['provenance']['source_artifact_sha256'] != changed['entities'][0]['provenance']['source_artifact_sha256']
+    ids = {entity['id'] for entity in first['entities']}
+    assert all(edge['source_id'] in ids and edge['target_id'] in ids for edge in first['relationships'])
+    assert contract.validate_projection(entities=first['entities'], relationships=first['relationships'])['conforms']
+
+
+def test_qif_missing_qpid_uses_explicit_artifact_scope_not_shared_local_id():
+    a=qif_to_ceim_batch(b'<QIFDocument><Part id="1" name="A"/></QIFDocument>')
+    b=qif_to_ceim_batch(b'<QIFDocument><Part id="1" name="B"/></QIFDocument>')
+    assert a['entities'][0]['id'] != b['entities'][0]['id']
+    assert a['mapping_diagnostics']['identity_basis'] == 'artifact_sha256'
+    assert a == qif_to_ceim_batch(b'<QIFDocument><Part id="1" name="A"/></QIFDocument>')
+
+
+def test_qif_external_document_qpid_does_not_replace_current_document():
+    batch=qif_to_ceim_batch(b'<QIFDocument><ExternalQIFReferences><ExternalQIFDocument id="9"><QPId>fd43400a-29bf-4ec6-b96c-e2f846eb6ff6</QPId></ExternalQIFDocument></ExternalQIFReferences><Part id="1"/></QIFDocument>')
+    assert batch['mapping_diagnostics']['identity_basis'] == 'artifact_sha256'
+    assert batch['mapping_diagnostics']['status'] == 'review_required'
+    assert batch['mapping_diagnostics']['unmapped_identified_elements'] == {'ExternalQIFDocument':1}
+    assert batch['mapping_diagnostics']['external_document_references'] == [{'source_id':'9','document_qpid':'fd43400a-29bf-4ec6-b96c-e2f846eb6ff6'}]
+
+
+def test_qif_rejects_invalid_document_identity_and_duplicates_in_unmapped_content():
+    import pytest
+    for content in (b'<QIFDocument><QPId>not-a-uuid</QPId></QIFDocument>',b'<QIFDocument><Part id="1"/><VendorRecord id="1"/></QIFDocument>'):
+        with pytest.raises(ValueError): qif_to_ceim_batch(content)
+
+
+def test_qif_mixed_mapping_and_unresolved_references_require_review():
+    batch=qif_to_ceim_batch(b'<QIFDocument><Part id="1"/><Part/><MeasurementResults id="2" planId="missing"/></QIFDocument>')
+    assert batch['mapping_diagnostics']['status'] == 'review_required'
+    assert batch['mapping_diagnostics']['missing_identifiers'] == {'Part':1}
+    assert batch['source_summary']['unresolved_references'] == 1
+
+
+def test_qif_local_reference_cannot_resolve_to_the_wrong_record_type():
+    batch=qif_to_ceim_batch(b'<QIFDocument><Part id="1"><FeatureNominalIds><Id>2</Id></FeatureNominalIds></Part><InspectionPlan id="2"/><MeasurementResults id="3" planId="1"/></QIFDocument>')
+    assert batch['relationships'] == []
+    assert batch['source_summary']['unresolved_references'] == 2
+    assert {row['actual_type'] for row in batch['mapping_diagnostics']['unresolved_reference_samples']} == {'InspectionPlan','Part'}
+    assert batch['mapping_diagnostics']['status'] == 'review_required'
+
+
+def test_qif_rdf_provenance_does_not_collapse_local_ids_across_documents():
+    from rdflib import Namespace, URIRef
+    prov=Namespace('http://www.w3.org/ns/prov#')
+    sources=[]
+    for qpid in ('fd43400a-29bf-4ec6-b96c-e2f846eb6ff6','fd43400a-29bf-4ec6-b96c-e2f846eb6ff7'):
+        batch=qif_to_ceim_batch(f'<QIFDocument><QPId>{qpid}</QPId><Part id="1"/></QIFDocument>'.encode())
+        graph=contract.to_rdf(entities=batch['entities'],relationships=batch['relationships'])
+        sources.append(set(graph.objects(None,prov.wasDerivedFrom)))
+    assert sources[0].isdisjoint(sources[1])
+    assert contract._source_reference({'source_standard':'qif'}, '1') == URIRef('urn:depo:source:qif:1')
+
+
+def test_qif_entity_resolution_preserves_distinct_documents_with_same_external_number():
+    from backend.ceim.resolution import analyze_entities
+    entities=[]
+    for qpid in ('fd43400a-29bf-4ec6-b96c-e2f846eb6ff6','fd43400a-29bf-4ec6-b96c-e2f846eb6ff7'):
+        entities.extend(qif_to_ceim_batch(f'<QIFDocument><QPId>{qpid}</QPId><Part id="1"/></QIFDocument>'.encode())['entities'])
+    result=analyze_entities(entities)
+    assert not result['blocking'] and len(result['entities'])==2
+    assert result['duplicate_merges']==[]
+    assert contract.validate_projection(entities=entities,relationships=[])['conforms']

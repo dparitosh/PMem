@@ -1,6 +1,10 @@
 """Parameterized, read-only Cypher queries used by graph read surfaces."""
 from __future__ import annotations
 from .business_types import business_instance_filter
+from .search_evidence import BUSINESS_FIELDS
+# Project only approved business attributes; never return arbitrary node properties.
+BUSINESS_PROPERTY_PROJECTION = 'n{' + ','.join('.' + key for key in sorted(BUSINESS_FIELDS)) + '} AS business_properties, '
+
 
 # Older ingestion writes typed nodes directly, without an OntologyResource
 # projection. Keep its counts distinct from explicit RDF declarations.
@@ -39,7 +43,7 @@ LEGACY_SEARCH = (
     "WHEN toLower(label) CONTAINS term OR toLower(iri) CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 RETURN elementId(n) AS id, label, "
     "coalesce(n.concept_type, head(labels(n)), 'resource') AS type, "
-    "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, iri, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "coalesce(n.ontology_id, n.source_ontology, n.prefix) AS ontology_id, iri, " + BUSINESS_PROPERTY_PROJECTION + "left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
     "ORDER BY score DESC, label, id LIMIT $limit"
 )
 IMPORTED_INSTANCE_SEARCH = LEGACY_SEARCH.replace(LEGACY_NODE_FILTER, IMPORTED_INSTANCE_FILTER)
@@ -105,7 +109,7 @@ ONTOLOGY_SEARCH_NODES = (
     "WHEN n.search_label = term OR n.search_iri ENDS WITH '/' + term OR n.search_iri ENDS WITH '#' + term THEN 5 "
     "WHEN n.search_label CONTAINS term OR n.search_iri CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 "
-    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, " + BUSINESS_PROPERTY_PROJECTION + "left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
     "ORDER BY score DESC, label, id LIMIT $limit"
 )
 ONTOLOGY_BUSINESS_SEARCH = ONTOLOGY_SEARCH_NODES.replace('RETURN n LIMIT $candidate_limit', 'AND ('+business_instance_filter('n')+') RETURN n LIMIT $candidate_limit')

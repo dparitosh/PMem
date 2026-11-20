@@ -22,29 +22,30 @@ async function openB(){
  fireEvent.click(within(row).getByRole('button',{name:'Replay'}));
  return screen.getByRole('dialog',{name:'Replay retained run'});
 }
-function confirm(dialog){fireEvent.change(within(dialog).getByLabelText('Action approver'),{target:{value:'reviewer'}});fireEvent.click(within(dialog).getByRole('button',{name:'Confirm replay retained run'}));}
+function confirm(dialog){fireEvent.click(within(dialog).getByRole('button',{name:'Confirm replay retained run'}));}
 
 test('review identifies the clicked row before any request and cancel never replays',async()=>{
  const dialog=await openB();
- expect(within(dialog).getByText('Job B')).toBeVisible();
- for(const text of ['job-b','run-b','2','system-b','sysml-v1','1288','digest-b'])expect(within(dialog).getByText(text)).toBeVisible();
+ expect(within(dialog).getAllByText('Job B').every(element=>element.textContent==='Job B')).toBe(true);
+ for(const text of ['2','system-b','sysml-v1','1288','digest-b'])expect(within(dialog).getByText(text)).toBeVisible();
  expect(within(dialog).queryByText('run-a')).toBeNull();
  expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
  fireEvent.click(within(dialog).getByRole('button',{name:'Cancel'}));
  expect(screen.queryByRole('dialog')).toBeNull();expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
 });
 
-test('missing approver blocks confirmation and accepted replay retains both original and new IDs',async()=>{
+test('verified execution identity replaces typed approver and preserves the original target',async()=>{
  setCredentialProfile('DATA_JOB_EXECUTION_TOKEN','synthetic-key');
  const dialog=await openB();
- expect(within(dialog).getByRole('button',{name:'Confirm replay retained run'})).toBeDisabled();
+ expect(within(dialog).queryByLabelText('Action approver')).toBeNull();
  expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
  confirm(dialog);
- await waitFor(()=>expect(dataPipelineAPI.replay).toHaveBeenCalledWith('run-b',expect.objectContaining({approved_by:'reviewer',idempotency_key:expect.any(String)})));
+ await waitFor(()=>expect(dataPipelineAPI.replay).toHaveBeenCalledWith('run-b',expect.objectContaining({approved_by:'ui-user',idempotency_key:expect.any(String)})));
  expect(await within(dialog).findByText('Replay accepted')).toBeVisible();
- expect(within(dialog).getByText('run-b')).toBeVisible();expect(within(dialog).getByText('new-run')).toBeVisible();
+ fireEvent.click(within(dialog).getByText('Technical reference'));expect(within(dialog).getByText('new-run')).toBeVisible();
+ expect(dataPipelineAPI.replay.mock.calls[0][0]).toBe('run-b');
  expect(within(dialog).getByRole('link',{name:'Open resulting run'})).toHaveAttribute('href','#/data-flow/new-run');
- expect(screen.getByRole('status',{name:'Last action result'})).toHaveTextContent('original run run-b');
+ expect(screen.getByRole('status',{name:'Last action result'})).toHaveTextContent('rerun queued');
 });
 
 test('failed replay retains row identity and retry reuses its submission key after background refresh',async()=>{
@@ -55,7 +56,7 @@ test('failed replay retains row identity and retry reuses its submission key aft
  dataPipelineAPI.runs.mockResolvedValue({data:{runs:[a]}});
  fireEvent(window,new Event('depo:access-verified'));
  await waitFor(()=>expect(dataPipelineAPI.runs).toHaveBeenCalledTimes(2));
- expect(within(dialog).getByText('run-b')).toBeVisible();
+ expect(within(dialog).getAllByText('Job B').length).toBeGreaterThan(0);
  fireEvent.click(within(dialog).getByRole('button',{name:'Confirm replay retained run'}));
  await waitFor(()=>expect(dataPipelineAPI.replay).toHaveBeenCalledTimes(2));
  expect(dataPipelineAPI.replay.mock.calls[1][0]).toBe('run-b');
@@ -84,8 +85,8 @@ test.each([['draft',true],['disabled',false],['approved',false]])('blocked defin
  expect(within(dialog).getByText('Replay unavailable')).toBeVisible();
  expect(within(dialog).getByRole('button',{name:'Confirm replay retained run'})).toBeDisabled();
  fireEvent.click(within(dialog).getByRole('button',{name:'Review job definition'}));
- expect(screen.getByRole('tab',{name:'Pipeline jobs'})).toHaveAttribute('aria-selected','true');
- expect(screen.getByText(/Selected job: job-b/)).toHaveTextContent('Version: 2');
+ expect(window.location.hash).toContain('#/change-control?');
+ expect(window.location.hash).toContain('record=job-b%3A2');
  expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
 });
 test('definition disabled after opening review is rechecked before replay',async()=>{
@@ -93,7 +94,7 @@ test('definition disabled after opening review is rechecked before replay',async
  dataPipelineAPI.definitions.mockResolvedValue({data:{definitions:[{job_id:b.job_id,version:b.job_version,lifecycle_state:'disabled',enabled:false}]}});
  confirm(dialog);await within(dialog).findByRole('alert');
  expect(dataPipelineAPI.replay).not.toHaveBeenCalled();
- expect(within(dialog).getByText('run-b')).toBeVisible();
+ expect(within(dialog).getAllByText('Job B').length).toBeGreaterThan(0);
  expect(within(dialog).queryByRole('button',{name:'Confirm replay retained run'})).toBeNull();
 });
 test('a different approved version does not authorize replay of the old version',async()=>{
@@ -107,7 +108,7 @@ test('a different approved version does not authorize replay of the old version'
 test('server lifecycle rejection is not offered as a blind retry',async()=>{
  dataPipelineAPI.replay.mockRejectedValueOnce({response:{status:409,data:{detail:'Only an approved and enabled data-job definition can be replayed'}}});
  const dialog=await openB();confirm(dialog);await within(dialog).findByRole('alert');
- expect(within(dialog).getByText('run-b')).toBeVisible();
+ expect(within(dialog).getAllByText('Job B').length).toBeGreaterThan(0);
  expect(within(dialog).queryByRole('button',{name:'Confirm replay retained run'})).toBeNull();
  expect(within(dialog).getByRole('button',{name:'Review job definition'})).toBeVisible();
  expect(within(dialog).queryByText(/Retry reuses/)).toBeNull();

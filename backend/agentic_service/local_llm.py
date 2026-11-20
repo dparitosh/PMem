@@ -135,6 +135,7 @@ async def summarize(question, evidence, on_token=None, prompt_details=None):
     from backend.agentic_service.prompt_security import protect, prompt_identity, evidence_ids, validate_summary
     system += ' Use the supplied published vocabulary labels and definitions to explain relationship and property meanings in natural language. Facts must come from business instances and recorded paths; vocabulary alone does not prove an association. Present business names, descriptions, values and units. Never output XML or JSON serialization, schema tags, minOccurs/maxOccurs, raw relationship codes or execution traces. If no vocabulary label is supplied, describe the recorded connection conservatively without inventing equivalence, ownership or compliance.'
     system += ' The embedded IDO/DEPO foundation is reference vocabulary: keep a physical part distinct from its design, its documents and activities involving it. Do not reclassify a source record from its name alone. Logical consistency is established only by supplied executed reasoner evidence for matching artifact and foundation versions; unknown, unsupported or absent checks do not establish consistency. Logical consistency does not establish data completeness, business suitability or ISO conformance.'
+    system += ' For requested instance attributes, distinguish a supplied literal (including zero and false), an unresolved object, an incomplete property read, and a verified absent source assertion. Never describe a property as absent merely because it was omitted from the supplied projection. Cite the instance owning each value; do not transfer values between similarly named records.'
     safe_evidence = protect(evidence)
     identifiers = evidence_ids(safe_evidence)
     if not identifiers:
@@ -245,6 +246,11 @@ async def summarize(question, evidence, on_token=None, prompt_details=None):
         return summary
 
 
+def proposal_prompt_tools(tools, mode):
+    """Native tool definitions already carry schemas; avoid duplicating them in prose."""
+    return [{'id':tool['id'], 'function_name':'tool_'+str(index)} for index,tool in enumerate(tools)] if mode == 'native' else tools
+
+
 async def suggest_tool(agent, tools, task, *, context=None, attachment_metadata=None, prompt_details=None):
     """Model output is untrusted proposal data, never execution authorization."""
     import json
@@ -266,7 +272,7 @@ async def suggest_tool(agent, tools, task, *, context=None, attachment_metadata=
     visible_tools = [{**protect({key: value for key, value in tool.items() if key != 'input_schema'}),
                       'input_schema': protect_schema(tool['input_schema'])} for tool in tools]
     body = {'model': model, 'stream': False, 'options': {'temperature': 0, 'num_predict': 1024},
-            'messages': prompt_messages(instructions, bounded_prompt_json({'task': task, 'context': context, 'attachment': attachment_metadata, 'allowed_tools': visible_tools}))}
+            'messages': prompt_messages(instructions, bounded_prompt_json({'task': task, 'context': context, 'attachment': attachment_metadata, 'allowed_tools': proposal_prompt_tools(visible_tools, mode)}))}
     snapshot = {'user_request': task, 'system_prompt': instructions,
                 'user_prompt': body['messages'][1]['content'], 'model': model,
                 'prompt_version': os.getenv('AGENT_PROMPT_VERSION', '1'), 'proposal_mode': mode, **prompt_identity(instructions)}
@@ -317,6 +323,12 @@ async def suggest_tool(agent, tools, task, *, context=None, attachment_metadata=
         if agent.get('execution_contract') == 'read-goal' and not proposal['tool_id'].startswith('goal.'):
             selected = next(tool for tool in tools if tool['id'] == proposal['tool_id'])
             pad = (context or {}).get('untrusted_scratchpad', {})
+            # The controller owns source identity. Fill omissions only; explicit
+            # conflicts survive for validate_action's independent scope rejection.
+            from .goal_runner import SCOPE_KEYS
+            for key, value in (pad.get('scope') or {}).items():
+                if key in SCOPE_KEYS and key in selected['input_schema'].get('properties', {}) and key not in proposal['inputs']:
+                    proposal['inputs'][key] = value
             from .prompt_security import secret_key
             missing = [field for field in selected['input_schema'].get('required', [])
                        if field not in proposal['inputs'] and not (pad.get('scope') or {}).get(field)

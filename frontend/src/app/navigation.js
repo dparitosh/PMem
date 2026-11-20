@@ -5,7 +5,7 @@ export const navigationItems = [
   { id: 'import', label: 'Import', icon: ixIconName.cloudUpload },
   { id: 'change-control', label: 'Change Control', icon: ixIconName.refreshSettings },
   { id: 'data-flow', label: 'Data Flow', icon: ixIconName.gauge },
-  { id: 'ontology', label: 'Models & Vocabularies', icon: ixIconName.assetNetwork },
+  { id: 'ontology', label: 'Ontology & Vocabularies', icon: ixIconName.assetNetwork },
   { id: 'catalog', label: 'Data Catalog', icon: ixIconName.database },
   { id: 'data-products', label: 'Data Products', icon: ixIconName.networkDevice },
   { id: 'registry', label: 'Data Dictionary', icon: ixIconName.tagEye },
@@ -16,8 +16,9 @@ export const navigationItems = [
   { id: 'qif', label: 'QIF', icon: ixIconName.processControl },
   { id: 'whereused', label: 'Where Used', icon: ixIconName.listGraphics },
   { id: 'data-quality', label: 'Data Quality', icon: ixIconName.auditReport },
+  { id: 'graph-analytics', hidden: true, label: 'Graph Analytics', icon: ixIconName.search },
   { id: 'recommendations', label: 'Recommendations', icon: ixIconName.shieldCheck },
-  { id: 'reports', label: 'Reports', icon: ixIconName.documentCode },
+  { id: 'reports', label: 'Memory insights', icon: ixIconName.documentCode },
   { id: 'admin', label: 'Admin', icon: ixIconName.projectSettings },
 ];
 
@@ -48,6 +49,7 @@ export const pageAliases = {
   requirements: 'requirements',
   reqif: 'requirements',
   qif: 'qif',
+  'graph-analytics': 'graph-analytics',
   recommendations: 'recommendations',
   quality: 'recommendations',
   admin: 'admin',
@@ -60,11 +62,11 @@ export const pageAliases = {
 };
 
 export const navigationGroups = [
+  {label:'Decision intelligence', pages:['recommendations','whereused','reports']},
   {label:'Ingest', pages:['import','data-flow']},
-  {label:'Model', pages:['ontology','registry','modeling','requirements','qif']},
-  {label:'Explore', pages:['graph','catalog','data-products','whereused','code-audit']},
-  {label:'Decide', pages:['quality','change-control','data-quality','reports']},
-  {label:'Administer', pages:['admin']},
+  {label:'Ontology Junction', pages:['ontology','registry','catalog','data-products','data-quality']},
+  {label:'Model Explore', pages:['graph','modeling','requirements','qif','code-audit']},
+  {label:'Administer', pages:['change-control','admin']},
 ].map(group=>({...group,items:group.pages.map(id=>navigationItems.find(item=>item.id===(pageAliases[id]||id)))}));
 
 export function normalizePage(page) {

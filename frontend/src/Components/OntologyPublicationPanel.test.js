@@ -213,3 +213,12 @@ test('committed staging progress is visible without claiming publication succeed
   expect(screen.queryByText('Published')).toBeNull();
   view.unmount();
 });
+
+test('managed publication links central review and hides direct publication/cancel bypasses',async()=>{
+ vi.spyOn(apiClient,'get').mockImplementation(url=>Promise.resolve({data:url.endsWith('/publication')?{status:'publishing',phase:'queued',job_id:'managed-job',managed_change:true}:{lifecycle_status:'approved'}}));
+ render(<OntologyPublicationPanel ontologyId="managed"/>);
+ const link=await screen.findByRole('link',{name:'Inspect publication request in Change Control'});
+ expect(link).toHaveAttribute('href','#/change-control?record_source=publications&record=managed');
+ expect(screen.queryByRole('button',{name:'Publish to knowledge graph'})).toBeNull();
+ expect(screen.queryByRole('button',{name:'Cancel queued publication'})).toBeNull();
+});

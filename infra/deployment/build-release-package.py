@@ -23,8 +23,11 @@ DEVELOPMENT_ONLY = {'scripts/load_ontology_to_neo4j.py',
 def allowed(name):
     path = PurePosixPath(name)
     # Authoring and generated demonstration assets are never customer runtime inputs.
-    if path.parts[:2] in {('scripts', 'presentations'), ('tools', 'documentation'),
-                          ('backend', 'tests'), ('docs', 'demo-narratives')}:
+    if path.parts[:2] in {('scripts', 'presentations'), ('scripts', 'videos'), ('scripts', 'recordings'),
+                          ('tools', 'video'), ('tools', 'recording'), ('tools', 'documentation'),
+                          ('backend', 'tests'), ('docs', 'demo-narratives'), ('tools', 'tests')}:
+        return False
+    if path.parts[:3] == ('backend', 'Services', 'tests') or (path.parts[0] == 'frontend' and (name.endswith('.test.js') or name.endswith('.spec.js'))):
         return False
     if name in DEVELOPMENT_ONLY or path.parts[:2] == ('tools', 'import') or name == 'frontend/tools/check_backend.js':
         return False
@@ -95,6 +98,9 @@ def package(root, output=None):
         reasoner = json.loads((jar.parent/'manifest.json').read_text(encoding='utf-8-sig'))
         if not jar.is_file() or jar.is_symlink() or hashlib.sha256(jar.read_bytes()).hexdigest() != reasoner['sha256']:
             raise ValueError('Build the verified OWL-DL worker before creating a customer release')
+        source = root/'infra/reasoner/src/main/java/org/depo/reasoner/Main.java'
+        if hashlib.sha256(source.read_bytes()).hexdigest() != reasoner.get('source_sha256'):
+            raise ValueError('Build the verified OWL-DL worker for this exact Java source before creating a customer release')
         files = sorted(set(files) | {jar_name})
     for name in files:
         path = root / name

@@ -1,15 +1,17 @@
 import React, {useEffect,useState} from 'react';
 const views={analytics:'Available analytics',prepare:'Prepare data',library:'Product portfolio',create:'Create & review',governance:'Governance',sources:'Ingested sources',runs:'Runs',definitions:'Definitions',alignment:'Semantic Bridge',structural:'Create & review',pipeline:'Create & review'};
-const pageViews={import:{data:'Data import',qif:'QIF workflow',sysml:'SysML repository'},reports:{memory:'Memory records',engineering:'Engineering reports',reporting:'Reporting data'},modeling:{architecture:'Architecture',mbse:'Systems engineering'},admin:{overview:'Overview',access:'API access',sources:'Data sources',agents:'Agents & workflows',services:'Services & catalogs',maintenance:'Maintenance'}};
+const pageViews={'data-flow':{runs:'Run monitor',pipelines:'Pipeline jobs',definitions:'Pipeline jobs',events:'Event reviews'},import:{data:'Data import',qif:'Create ontology',sysml:'Create ontology'},reports:{memory:'Memory records','graph-analytics':'Graph Analytics',engineering:'Engineering reports',reporting:'Reporting data'},modeling:{architecture:'Architecture',mbse:'Systems engineering'},admin:{overview:'Overview',access:'API access',sources:'Data sources',agents:'Agents & workflows',services:'Services & catalogs',numbering:'Numbering',maintenance:'Maintenance'}};
 const steps=['Choose data','Configure analysis','Review workflow'];
 export default function WorkspaceBreadcrumbs({page,label}) {
  const [hash,setHash]=useState(()=>window.location.hash);
  useEffect(()=>{const update=()=>setHash(window.location.hash);window.addEventListener('hashchange',update);window.addEventListener('popstate',update);return()=>{window.removeEventListener('hashchange',update);window.removeEventListener('popstate',update);};},[]);
  const params=new URLSearchParams(hash.split('?')[1]||'');
- const view=pageViews[page]?.[params.get('view')]||views[params.get('view')];
+ const localViews=['data-products','catalog'].includes(page)?views:page==='ontology'?{alignment:'Semantic Bridge'}:pageViews[page]||{};
+ const view=localViews[params.get('view')];
  const step=Number(params.get('analytics_step'));
  const stepLabel=['data-products','catalog'].includes(page)&&params.get('view')==='analytics'&&params.has('analytics_step')&&Number.isInteger(step)&&step>=0&&step<3?steps[step]:null;
- const detail=params.has('run_id')?'Run details':stepLabel||view;
+ const runDetails=['data-products','data-flow'].includes(page)&&params.has('run_id')&&(page!=='data-flow'||!['events','pipelines','definitions'].includes(params.get('view')));
+ const detail=runDetails?'Run details':stepLabel||view;
  return <div className="workspace-navigation"><nav aria-label="Breadcrumb"><ol>
  <li>{page==='home'?<span aria-current="page">Home</span>:<a href="#/home">Home</a>}</li>
  {page!=='home'&&<li>{detail?<a href={`#/${page}`}>{label}</a>:<span aria-current="page">{label}</span>}</li>}

@@ -147,46 +147,29 @@ def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | No
     task = UnifiedDataImportService._restore_task(import_task_id)
     if not task:
         raise ValueError("The selected import task was not found")
-    rows = task.get("parsed_rows")
-    if rows is None:
-        # Persisted task snapshots hold rows in a separate, content-addressed file.
-        # A worker/service restart must not turn real instance evidence into an empty review.
-        snapshot = UnifiedDataImportService._task_snapshot_path(import_task_id)
-        name = task.get('_parsed_rows_file') or (snapshot.name + '.parsed_rows.json')
-        if (not isinstance(name, str) or Path(name).name != name or
-                not re.fullmatch(re.escape(snapshot.name) + r'\.parsed_rows(?:\.[0-9a-f]{64})?\.json', name)):
-            raise ValueError('The selected import task has invalid parsed row data')
-        sidecar = snapshot.parent / name
-        if sidecar.resolve().parent != snapshot.parent.resolve():
-            raise ValueError('The selected import task has invalid parsed row data')
-        try:
-            content = sidecar.read_bytes()
-        except OSError as exc:
-            raise ValueError('The selected import task retained parsed rows are unavailable') from exc
-        if name != snapshot.name + '.parsed_rows.json' and hashlib.sha256(content).hexdigest() != name.rsplit('.', 2)[1]:
-            raise ValueError('The selected import task has invalid parsed row data')
-        try:
-            rows = json.loads(content)
-        except (ValueError, UnicodeError) as exc:
-            raise ValueError('The selected import task has invalid parsed row data') from exc
-    if not isinstance(rows, list):
-        raise ValueError("The selected import task has invalid parsed row data")
+    from backend.Services.import_task_persistence import retained_rows
+    rows=retained_rows(task,UnifiedDataImportService._task_snapshot_path(import_task_id))
     entities: list[str] = []
     attributes: list[str] = []
     relationships: list[str] = []
+    internal_fields = {'import_id', 'import_row_key', 'identity_origin', 'uuid', 'iri',
+                       'source_element_name', 'source_element_namespace', 'semantic_role',
+                       'entity_type', 'element_type', 'metadata_tag', 'related_count'}
     for row in rows:
         if not isinstance(row, dict):
             continue
         for key, value in row.items():
             key_text = str(key)
+            if key_text.casefold() in internal_fields or key_text.startswith('_'):
+                continue
             if any(marker in key_text.lower() for marker in ("ref", "href", "parent", "child", "source", "target")):
                 relationships.append(key_text)
             elif value not in (None, ""):
                 attributes.append(key_text)
-        label = row.get("entity_type") or row.get("element_type") or row.get("type") or row.get("name")
+        label = row.get("entity_type") or row.get("element_type") or row.get("type")
         if label:
             entities.append(str(label))
-    return {"entities": sorted(set(entities)), "attributes": sorted(set(attributes)), "relationships": sorted(set(relationships)), "metadata": [task.get("filename")] if task.get("filename") else []}
+    return {"entities": sorted(set(entities)), "attributes": sorted(set(attributes)), "relationships": sorted(set(relationships)), "metadata": []}
 
 
 def review_ontology(ontology_path: str) -> dict[str, Any]:
@@ -205,7 +188,11 @@ def _review_summary(summary: dict[str, Any]) -> dict[str, Any]:
         issues.append({"severity": "medium", "code": "NO_RANGE_EDGES", "message": "No property range edges were detected."})
     if not summary["individuals"]:
         issues.append({"severity": "low", "code": "NO_INDIVIDUALS", "message": "No ontology individuals were detected; this may be valid for a schema-only artifact."})
-    return {"summary": summary, "issues": issues, "status": "review_required" if issues else "ready"}
+    return {"summary": summary, "issues": issues, "status": "review_required" if issues else "metadata_checks_passed",
+            "review_scope": "declared_metadata_inventory", "logical_audit_performed": False,
+            "coverage": {"metadata_inventory": True, "owl2_dl_profile": False,
+                         "deductive_consistency": False, "shacl_conformance": False,
+                         "instance_conformance": False, "business_equivalence": False}}
 
 
 def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = None,
@@ -241,7 +228,6 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
     duplicates = source_duplicates(instance_metadata)
     candidates = []
     items = []
-    validations = ["datatype_compatibility", "domain_range_compatibility", "duplicate_check", "scope_check", "human_approval"]
     for field, kind in kind_for_field.items():
         for source in instance_metadata.get(field) or []:
             source_details = source
@@ -265,7 +251,7 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
                           "candidate_iris": [row["target_iri"] for row in matches[:3]],
                           "candidate_count": len(matches), "candidates_truncated": len(matches) > 3,
                           "validation_checks": matches[0]["validation_checks"] if len(matches) == 1 else {},
-                          "unresolved_checks": matches[0]["unresolved_checks"] if len(matches) == 1 else validations[:],
+                          "unresolved_checks": matches[0]["unresolved_checks"] if len(matches) == 1 else [],
                           "rationale": "Exact names require semantic and human validation" if matches else
                                        "No exact name found in the inspected term index; further review is required"})
             if len(candidates) < 200:
@@ -280,7 +266,7 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "invalid_count": sum(item["status"] == "invalid" for item in items),
         "candidate_limit_reached": sum(item["candidate_count"] for item in items) > len(candidates) or bool(summary.get("term_index_truncated")),
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
-        "status": "review_required" if any(item["status"] != "candidate" for item in items) or summary.get("term_index_truncated") else "ready_for_mapping",
+        "status": "review_required",
         "publication": "requires_human_approval",
         "llm": _llm_suggestion(plan, instance_metadata, {"terms": sorted(summary.get("term_index", []), key=lambda term: term["iri"] not in {item["target_iri"] for item in candidates[:20]})[:30], "candidates": candidates[:20],
             "artifact_digest": summary.get("artifact_digest"), "term_index_truncated": summary.get("term_index_truncated", False)}),
@@ -360,10 +346,12 @@ def graph_planning_summary(ontology_id: str) -> dict[str, Any]:
 def bridge_plan(payload: dict[str, Any]) -> dict[str, Any]:
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
     ontology_id = str(payload.get('ontology_id') or '').strip()
-    source = payload.get('data_source') or ('neo4j' if ontology_id else 'artifact')
+    source = payload.get('data_source') or ('artifact' if payload.get('artifact_digest') or not ontology_id else 'neo4j')
     if source not in {'neo4j', 'artifact'}:
         raise ValueError('data_source must be neo4j or artifact')
     if source == 'neo4j':
+        if payload.get('artifact_digest'):
+            raise ValueError('An artifact-bound review must use the retained artifact, not a graph projection')
         if not ontology_id:
             raise ValueError('ontology_id is required for graph-backed planning')
         summary = graph_planning_summary(ontology_id)

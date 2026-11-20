@@ -1,0 +1,14 @@
+{
+  "name": "Engineering ODS - historical decision context",
+  "prefix": "engineering_memory_ods",
+  "namespace": "https://example.org/nexus/engineering-ods/customer-evaluation/v1/",
+  "case_key": "BEARING-EVALUATION",
+  "family_id": "engineering-memory-ods-evaluation",
+  "version": "1.0.0",
+  "scenario": "scenario.json",
+  "output": "generated",
+  "ontology_api": "http://127.0.0.1:8011/api/v1/ontologies",
+  "oslc_api": "http://127.0.0.1:8015/api/v1/change-control",
+  "read_token_env": "GRAPH_READ_TOKEN",
+  "write_token_env": "ONTOLOGY_APPROVAL_TOKEN"
+}

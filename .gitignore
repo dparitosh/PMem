@@ -156,3 +156,18 @@ docs/audits/**/*.html
 /ui-refactor-test-results.json
 /workflow-context-test-results.json
 /workflow-context-isolated.json
+
+# Local sales media and rebuilt toolkit archives are not release source.
+/deliverables/*.mp4
+/deliverables/*.srt
+/deliverables/NEXUS-Engineering-ODS-Toolkit.zip
+/deliverables/NEXUS-Engineering-ODS-Toolkit-verification.json
+/deliverables/NEXUS-Engineering-ODS-Toolkit/
+/standalone/engineering_ods/generated/
+/standalone/engineering_ods/customer*.json
+/standalone/engineering_ods/**/load-state.json
+/standalone/engineering_ods/**/*-receipt.json
+
+# Locally generated screenshot decks and narration drafts stay outside source releases.
+/deliverables/NEXUS-Application-Pages.pptx
+/deliverables/NEXUS-*-Voiceover.txt

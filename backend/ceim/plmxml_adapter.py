@@ -69,13 +69,53 @@ def plmxml_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) ->
         if identifier in known:
             raise ValueError(f"PLMXML document contains duplicate id: {identifier}")
         known.add(identifier)
-    # Retain explicitly mapped extension resources without pretending they are
-    # product Parts. The source type remains in canonical provenance.
-    for element in ET.fromstring(content).iter():
+    # Preserve declared Teamcenter requirement-specification types and trace
+    # carriers. Never infer a requirement or a directed pair from its label.
+    xml_root = ET.fromstring(content)
+    source_elements = {e.get('id'): e for e in xml_root.iter() if e.get('id')}
+    for record in raw_entities:
+        element = source_elements.get(str(record.get('id') or ''))
+        if element is None:
+            continue
+        tag = element.tag.rsplit('}', 1)[-1]
+        subtype = ''.join(c.lower() for c in element.get('subType', '') if c.isalnum())
+        specification = (tag == 'Product' and subtype == 'requirementspec') or (tag == 'ProductRevision' and subtype == 'requirementspecrevision')
+        if specification:
+            record['type'] = 'RequirementSpecificationRevision' if tag == 'ProductRevision' else 'RequirementSpecification'
+            attributes = record.setdefault('attributes', {})
+            attributes.update({'subType': element.get('subType'), 'revision': element.get('revision'),
+                               'master_ref': element.get('masterRef', '')})
+    by_source_id = {record['id']: record for record in raw_entities}
+    for identifier, element in source_elements.items():
+        tag = element.tag.rsplit('}', 1)[-1]
+        source_type = 'SourceOccurrence' if tag == 'Occurrence' else tag
+        if source_type not in {'SourceOccurrence','ProcessRevision','ProcessRevisionView','ProcessInstance','ProcessOccurrence','WorkArea','WorkAreaRevision','WorkAreaInstance','WorkAreaOccurrence','PlantRevisionView'}:
+            # Product revision views point to their exact revision, not a guessed master.
+            if tag == 'ProductRevisionView' and identifier in by_source_id:
+                by_source_id[identifier].setdefault('attributes', {})['product_ref'] = element.get('revisionRef', '')
+            continue
+        record = by_source_id.get(identifier)
+        if record is None:
+            record = {'id':identifier,'name':element.get('name'),'attributes':{}}
+            raw_entities.append(record);by_source_id[identifier]=record;known.add(identifier)
+        record['type'] = source_type
+        attributes = record.setdefault('attributes', {})
+        attributes.update(dict(element.attrib))
+        for xml_key, key in [('masterRef','master_ref'),('revisionRef','revision_ref'),('partRef','part_ref'),('instancedRef','instanced_ref'),('parentRef','parent_ref'),('occurrenceRefs','occurrence_refs'),('instanceRefs','instance_refs')]:
+            if element.get(xml_key):attributes[key]=element.get(xml_key)
+    # Retain explicitly mapped extension resources without classifying them as Parts.
+    for element in xml_root.iter():
         source_type = element.tag.removeprefix("{http://www.plmxml.org/Schemas/PLMXMLSchema}")
-        identifier = element.get("id")
-        if source_type in {"Terminal", "ConnectionRevision", "GDE"} and identifier and identifier not in known:
-            raw_entities.append({"id": identifier, "type": source_type, "name": element.get("name"), "attributes": dict(element.attrib)})
+        identifier = element.get('id')
+        is_trace = source_type == 'GeneralRelation' and element.get('subType') == 'FND_TraceLink'
+        if identifier and identifier not in known and (source_type in {'Terminal', 'ConnectionRevision', 'GDE'} or is_trace):
+            attributes = dict(element.attrib)
+            if is_trace:
+                attributes['related_refs'] = element.get('relatedRefs', '')
+                names = [e.get('value') for e in element.iter() if e.tag.rsplit('}', 1)[-1] == 'UserValue' and e.get('title') == 'name' and e.get('value')]
+                attributes['name'] = names[0] if names else 'Recorded trace link'
+            raw_entities.append({'id':identifier,'type':'TraceLink' if is_trace else source_type,
+                                 'name':attributes.get('name'), 'attributes':attributes})
             known.add(identifier)
     normalized_entities = [
         active_contract.normalize_entity(standard="plmxml", record=_source_record(record))
@@ -86,9 +126,11 @@ def plmxml_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) ->
     resource_ids = {record["id"] for record in raw_entities if record["type"] in {"Terminal", "ConnectionRevision", "GDE"}}
     relationship_records: list[dict[str, Any]] = []
     relationship_keys: set[tuple[str, str, str]] = set()
+    unresolved_references: set[tuple[str, str, str]] = set()
 
     def add_relationship(*, source: str, target: str, source_type: str, source_key: str) -> None:
         if not source or not target or source not in emitted_ids or target not in emitted_ids:
+            unresolved_references.add((source, target, source_key))
             return
         # A ProductInstance can reference a mapped extension Resource instead
         # of a Part; preserve the relationship but never misclassify it.
@@ -149,12 +191,19 @@ def plmxml_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) ->
         "standard": "plmxml",
         "entities": normalized_entities,
         "relationships": relationship_records,
+        "mapping_diagnostics": {
+            "status":"review_required" if unresolved_references else "complete_for_declared_profile",
+            "unresolved_reference_samples":[{"source_id":source,"target_id":target,"source_key":key}
+                for source,target,key in sorted(unresolved_references)[:50]],
+            "unresolved_reference_samples_complete":len(unresolved_references)<=50,
+        },
         "source_summary": {
             "parsed_relationships": len(parsed.get("relationships") or []),
             "emitted_relationships": len(relationship_records),
             "declared_reference_rules": len(active_contract.mapping_pack("plmxml").get("reference_rules", [])),
             "emitted_structural_relationships": len(relationship_records),
             "unmapped_relationships": max(0, len(parsed.get("relationships") or []) - len(relationship_records)),
+            "unresolved_references": len(unresolved_references),
             "schema_version": parsed.get("schema_version"),
             "parts": int(parsed.get("total_parts") or 0),
             "product_instances": int(parsed.get("total_instances") or 0),

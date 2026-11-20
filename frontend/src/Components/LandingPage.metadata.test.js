@@ -56,7 +56,7 @@ test('annotation declarations and business instance records remain distinct', ()
 
 test('empty scope states missing records without a misleading zero metric grid', () => {
   render(<GraphProfileMetrics metrics={{ resources: 0, existing_ontology: { resources: 0 } }} />);
-  expect(screen.getByText('Registry registration and graph publication are separate. Review the publication status in Models & Vocabularies; if it is published, refresh data and check the selected version.')).toBeVisible();
+  expect(screen.getByText('Registry registration and graph publication are separate. Review the publication status in Ontology & Vocabularies; if it is published, refresh data and check the selected version.')).toBeVisible();
   expect(screen.queryByLabelText('Published ontology metrics')).not.toBeInTheDocument();
 });
 
@@ -74,3 +74,8 @@ test('empty scope states missing records without a misleading zero metric grid',
   expect(screen.getByRole('link', {name:'Plant vocabulary'})).toBeVisible();
   expect(screen.getByRole('status')).toHaveTextContent('Refreshing registry');
  });
+
+test('populated graph breakdown renders without a runtime token error', () => {
+  render(<GraphProfileMetrics metrics={{ resources: 50, classes: 12, ontology_breakdown: [{ ontology_id: 'plm', name: 'PLM', count: 50 }] }} />);
+  expect(screen.getByLabelText('Published ontology metrics')).toBeVisible();
+});

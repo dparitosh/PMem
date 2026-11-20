@@ -6,6 +6,11 @@ from backend.ontology_service.intelligence import SemanticIntelligence
 from backend.depo_platform.decision_policy import decision, assess_decisions, assess_recommendation
 from backend.tests.test_bridge_jobs import Source, Graph
 from backend.agentic_service.bridge_jobs import BridgeJobs
+from backend.tests.test_bridge_change_lifecycle import authorize
+from backend.depo_platform.bridge_contract import digest
+
+def retained_baseline(source):
+    source.snapshot = lambda *args: {"source": digest(source.revision), "ontology": digest("retained-ontology")}
 
 
 def intelligence():
@@ -61,11 +66,13 @@ def test_policy_or_audit_store_failure_is_unavailable_not_pass(monkeypatch):
 def test_manual_bridge_rechecks_latest_policy_and_retains_hold():
     service = intelligence()
     source, graph, store = Source(), Graph(), InMemoryRegistry()
+    retained_baseline(source)
     jobs = BridgeJobs(store, source, graph, policy_evaluator=service.evaluate_decisions)
     preview = jobs.preview('ontology', 'import', 'reader')
     assert jobs.evaluate_policy(preview['job_id'])['decision_policy']['status'] == 'not_configured'
-    service.add_policy(dict(policy_id='strict', operations=['instance_bridge'], rules={'min_confidence': .99}))
     ids = [preview['candidates'][0]['candidate_id']]
+    authorize((jobs,preview,ids))
+    service.add_policy(dict(policy_id='strict', operations=['instance_bridge'], rules={'min_confidence': .99}))
     with pytest.raises(ValueError, match='decision policy holds'):
         jobs.publish(preview['job_id'], ids, 'reviewer')
     assert graph.calls == []
@@ -131,6 +138,7 @@ def test_automatic_bridge_cannot_bypass_native_policy():
     service = intelligence()
     service.add_policy(dict(policy_id='stricter', operations=['instance_bridge'], rules={'min_confidence': .99}))
     source, graph = Source(), Graph()
+    retained_baseline(source)
     original = source.preview()[1][0]
     source.preview = lambda *args: (source.snapshot(), [{**original, 'confidence':.95, 'rank':1, 'validation_status':'auto_approved'}])
     jobs = BridgeJobs(InMemoryRegistry(), source, graph, policy_evaluator=service.evaluate_decisions)
@@ -162,10 +170,12 @@ def test_policy_lookup_does_not_load_ontology_version_history():
 def test_automatic_retry_reconciles_receipt_after_policy_change():
     service = intelligence()
     source, graph = Source(), Graph()
+    retained_baseline(source)
     original = source.preview()[1][0]
     source.preview = lambda *args: (source.snapshot(), [{**original,'confidence':.95,'rank':1,'validation_status':'auto_approved'}])
     jobs = BridgeJobs(InMemoryRegistry(),source,graph,policy_evaluator=service.evaluate_decisions)
     preview = jobs.preview('ontology','import','reader')
+    authorize((jobs,preview,[preview['candidates'][0]['candidate_id']]))
     graph.lose_response = True
     with pytest.raises(TimeoutError): jobs.publish_automatic(preview['job_id'],'reviewer')
     service.add_policy(dict(policy_id='stricter',operations=['instance_bridge'],rules={'min_confidence':.99}))

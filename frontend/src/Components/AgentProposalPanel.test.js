@@ -1,13 +1,13 @@
 import React from 'react';
 import { vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import AgentProposalPanel from './AgentProposalPanel';
 import { agenticClient } from '../services/agenticApi';
 import { registerServiceContract, clearServiceContracts } from '../services/serviceContractRegistry';
 import { config } from '../config';
 vi.mock('../services/agenticApi', () => ({ agenticClient: { get: vi.fn(), post: vi.fn() } }));
-vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'supervisor' }));
-beforeEach(() => { vi.clearAllMocks(); clearServiceContracts(); });
+vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'supervisor', wasBrowserSessionExpired: () => false }));
+beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); clearServiceContracts(); });
 afterEach(() => clearServiceContracts());
 
 test('discovered approver requirement is enforced before execution', async () => {
@@ -18,11 +18,10 @@ test('discovered approver requirement is enforced before execution', async () =>
   fireEvent.click(screen.getByText('Load saved recommendation'));
   await screen.findByText('Proposed tool: ontology.register');
   fireEvent.click(screen.getByRole('checkbox'));
-  expect(screen.getByText('Execute reviewed recommendation')).toBeDisabled();
-  expect(screen.getByLabelText('Recommendation steward')).toBeRequired();
+  expect(screen.getByText('Execute reviewed recommendation')).toBeEnabled();
+  expect(screen.queryByLabelText('Recommendation steward')).toBeNull();
   expect(agenticClient.post).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText('Recommendation steward'), {target:{value:'reviewer'}});
-  fireEvent.click(screen.getByRole('checkbox'));
+  agenticClient.get.mockResolvedValueOnce({data:{actor:'reviewer'}});
   agenticClient.post.mockResolvedValue({data:{run_id:'contract-run',status:'completed'}});
   fireEvent.click(screen.getByText('Execute reviewed recommendation'));
   await screen.findByText('Execution completed. Agent run: contract-run');
@@ -91,7 +90,7 @@ test('recommendation requires explicit review and approval before execution', as
   await screen.findByText('Proposed tool: bridge.mapping.preview');
   expect(screen.getByText('Execute reviewed recommendation')).toBeDisabled();
   expect(agenticClient.post).toHaveBeenCalledTimes(1);
-  fireEvent.change(screen.getByLabelText('Recommendation steward'),{target:{value:'reviewer'}});
+  agenticClient.get.mockResolvedValueOnce({data:{actor:'reviewer'}});
   fireEvent.click(screen.getByRole('checkbox'));
   agenticClient.post.mockResolvedValueOnce({data:{run_id:'executed-run',status:'completed'}});
   fireEvent.click(screen.getByText('Execute reviewed recommendation'));
@@ -119,4 +118,49 @@ test('saved recommendation for another selection cannot be executed', async () =
   fireEvent.click(screen.getByText('Load saved recommendation'));
   await screen.findByText(/belongs to a different page or selection/);
   expect(screen.queryByText('Execute reviewed recommendation')).toBeNull();
+});
+
+test('session replacement invalidates retained proposal and review consent',async()=>{
+ agenticClient.get.mockResolvedValue({data:{command:{agent_id:'graph-analyst',tool_id:'graph.read',inputs:{}},requires_approval:false}});
+ render(<AgentProposalPanel/>);
+ fireEvent.change(screen.getByLabelText('Saved recommendation ID'),{target:{value:'saved'}});
+ fireEvent.click(screen.getByText('Load saved recommendation'));
+ await screen.findByText('Proposed tool: graph.read');
+ fireEvent.click(screen.getByRole('checkbox'));
+ act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
+ expect(screen.queryByText('Proposed tool: graph.read')).toBeNull();
+ expect(screen.queryByText('Execute reviewed recommendation')).toBeNull();
+});
+test('changing permitted agent list invalidates the loaded selection',async()=>{
+ agenticClient.get.mockResolvedValue({data:{agents:[{id:'old-agent',name:'Old agent'}]}});
+ const view=render(<AgentProposalPanel agentIds={['old-agent']} context={{page:'data-flow'}}/>);
+ fireEvent.click(screen.getByText('Load agents'));
+ await screen.findByRole('option',{name:'Old agent'});
+ view.rerender(<AgentProposalPanel agentIds={['new-agent']} context={{page:'data-flow'}}/>);
+ expect(screen.queryByRole('option',{name:'Old agent'})).toBeNull();
+ expect(screen.getByLabelText('Recommendation agent')).toHaveValue('');
+});
+
+test('business action summary is primary and technical payload remains available under details',async()=>{
+ agenticClient.get.mockResolvedValue({data:{command:{agent_id:'graph-analyst',tool_id:'graph.read',inputs:{node_id:'part-1'}},requires_approval:false,action_summary:{title:'Review component dependencies',description:'Inspect recorded engineering links.',mutates:false}}});
+ render(<AgentProposalPanel/>);
+ fireEvent.change(screen.getByLabelText('Saved recommendation ID'),{target:{value:'business-review'}});
+ fireEvent.click(screen.getByText('Load saved recommendation'));
+ expect(await screen.findByRole('heading',{name:'Review component dependencies'})).toBeVisible();
+ expect(screen.getByText('Inspect recorded engineering links.')).toBeVisible();
+ expect(screen.getByText('Proposed tool: graph.read')).not.toBeVisible();
+ expect(screen.getByText('Technical review details')).toBeVisible();
+});
+
+test('unverified credential identity cannot execute a reviewed agent proposal',async()=>{
+ agenticClient.get.mockResolvedValue({data:{command:{agent_id:'ontology-governor',tool_id:'ontology.register',inputs:{}},requires_approval:true}});
+ render(<AgentProposalPanel/>);
+ fireEvent.change(screen.getByLabelText('Saved recommendation ID'),{target:{value:'identity-check'}});
+ fireEvent.click(screen.getByText('Load saved recommendation'));
+ await screen.findByText('Proposed tool: ontology.register');
+ fireEvent.click(screen.getByRole('checkbox'));
+ agenticClient.get.mockResolvedValueOnce({data:{actor:''}});
+ fireEvent.click(screen.getByText('Execute reviewed recommendation'));
+ expect(await screen.findByText('Approval identity could not be verified. No action was submitted.')).toBeVisible();
+ expect(agenticClient.post).not.toHaveBeenCalled();
 });

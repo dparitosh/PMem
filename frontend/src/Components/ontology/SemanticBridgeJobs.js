@@ -1,7 +1,7 @@
+import BridgeDecisionReview from './BridgeDecisionReview';
 import SemanticSupport from '../SemanticSupport';
 import GovernedLearningPanel from './GovernedLearningPanel';
 import DecisionPolicyAssessment from '../DecisionPolicyAssessment';
-import { matchScore } from './MappingExplanation';
 import MappingReviewTable from './MappingReviewTable';
 import { getCredentialProfile, publicationRecoveryScope } from '../../services/serviceAuth';
 import React, { useEffect, useRef, useState } from 'react';
@@ -10,8 +10,7 @@ import agenticAPI from '../../services/agenticApi';
 import { bridgeReviewPayload } from '../../services/bridgeReviewPayload';
 import WorkflowTaskPanel from '../WorkflowTaskPanel';
 import WorkflowRecoveryActions from '../WorkflowRecoveryActions';
-import { confirmedSubmissionRejection } from '../../services/workflowSubmission';
-import { PrimaryButton, SecondaryButton, TextField, CheckboxField, DataTable } from '../../ui/ix';
+import { PrimaryButton, TextField } from '../../ui/ix';
 import './SemanticBridgeJobs.css';
 
 
@@ -25,7 +24,7 @@ function errorMessage(error) {
   if (typeof detail === 'string') return detail;
   // FastAPI validation details contain objects (and can contain submitted input).
   // Never render the raw response or echo credential-bearing input fields.
-  if (error.response?.status === 422) return 'Some inputs are invalid. Check the selected source and approval fields, then retry.';
+  if (error.response?.status === 422) return 'Some inputs are invalid. Check the selected source and ontology, then retry.';
   return 'The request was interrupted. Refresh the job status, then retry.';
 }
 
@@ -33,12 +32,9 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
   const [preview, setPreview] = useState(null);
   const [learningOpen,setLearningOpen]=useState(false);
   const [job, setJob] = useState(null);
-  const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [actor, setActor] = useState('');
   const [resumeId, setResumeId] = useState('');
-  const [confirmed, setConfirmed] = useState(false);
   const [agentReport, setAgentReport] = useState(null);
   const [policyReport, setPolicyReport] = useState(null);
   const [automationStage, setAutomationStage] = useState('idle');
@@ -60,8 +56,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
   useEffect(() => {
     generation.current += 1;
     activeOperation.current = null;
-    setPreview(null); setJob(null); setSelected([]); setMessage(''); setBusy(false); setAgentReport(null);
-    setConfirmed(false);
+    setPreview(null); setJob(null); setMessage(''); setBusy(false); setAgentReport(null);
     setPolicyReport(null); setAutomationStage('idle'); setAutomationRun(null);
     try {
       setResumeId(sessionStorage.getItem(`bridge-preview:${ontologyId}:${importTaskId}`) || '');
@@ -92,7 +87,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
         value.candidates.some(candidate => !candidate || !candidate.candidate_id)) {
       throw new PreviewInputError('Saved preview is incomplete. Create a new preview before review.');
     }
-    setPreview(value); setSelected([]); setJob(null); setConfirmed(false); setResumeId(value.job_id);
+    setPreview(value); setJob(null); setResumeId(value.job_id);
     try { sessionStorage.setItem(`bridge-preview:${ontologyId}:${importTaskId}`, value.job_id); } catch { /* optional recovery aid */ }
   };
   const refresh = async (isCurrent) => {
@@ -100,16 +95,25 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     try { response = await api.status(preview.publication_job_id, getCredentialProfile('GRAPH_READ_TOKEN')); }
     catch (error) {
       if (error.response?.status === 404 && isCurrent()) {
-        setJob(null); setSelected([]); setConfirmed(false);
-        setMessage('No publication exists yet. Select and review mappings before publishing.');
+        setJob(null);
+        setMessage('No publication exists yet. Review the mappings in Change Control.');
         return;
       }
       throw error;
     }
     if (!isCurrent()) return;
-    setJob(response.data); setSelected(response.data.approved_ids || []);
-    if (response.data.status === 'published') setConfirmed(false);
+    setJob(response.data);
   };
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.hash.split('?')[1] || '').get('bridge_preview');
+    if (!id || !ontologyId || !importTaskId) return;
+    let stopped = false;
+    const stamp = generation.current;
+    api.status(id, getCredentialProfile('GRAPH_READ_TOKEN')).then(response => {
+      if (!stopped && stamp === generation.current) adoptPreview(response.data);
+    }).catch(error => { if (!stopped && stamp === generation.current) setMessage(errorMessage(error)); });
+    return () => { stopped = true; };
+  }, [ontologyId, importTaskId, api, credentialRevision]);
   const adoptAutomation = value => {
     if (typeof value?.run_id !== 'string' || !value.run_id || !['queued','running','paused','completed','failed','timed_out','cancelled','interrupted','recoverable'].includes(value.status) ||
         (value.workflow_id && value.workflow_id !== 'bridge-validated-automation') ||
@@ -133,7 +137,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     if (saved) adoptPreview(saved);
     if (policy && Array.isArray(policy.decisions) && Array.isArray(policy.accepted_ids)) setPolicyReport(policy);
     const published = traces.find(trace => trace.tool_id === 'bridge.mapping.publish_automatic' && trace.status === 'completed')?.result;
-    if (published?.status === 'published') { setJob(published); setSelected(published.approved_ids || []); }
+    if (published?.status === 'published') { setJob(published); }
     setAutomationStage(value.status === 'completed' ? published?.status === 'held' ? 'Completed: all mappings held' : 'Completed' : `Workflow ${value.status}; refresh to inspect progress`);
   };
   useEffect(() => {
@@ -155,41 +159,16 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     timer = setTimeout(poll,3000);
     return () => { stopped = true; clearTimeout(timer); };
   }, [automationRun?.run_id, automationRun?.status, api, credentialRevision, workflowKey]);
-  const fixedSelection = !!job;
-  const hasApproval = Boolean(actor.trim() && getCredentialProfile('AGENTIC_APPROVAL_TOKEN'));
   const hasAutomationAccess = Boolean(getCredentialProfile('AGENTIC_APPROVAL_TOKEN') && getCredentialProfile('GRAPH_READ_TOKEN'));
-  const canPublish = !sourceUnavailable && hasApproval && preview && selected.length > 0 && confirmed && !busy && (!job || ['approved', 'retryable'].includes(job.status));
   return <section className="depo-bridge-review" aria-label="Governed Semantic Bridge jobs">
     <div className="bridge-primary">
     {(!ontologyId || !importTaskId) && <p role="status">Select both an imported instance and a target ontology to enable agent review and mapping.</p>}
-    <p className="mapping-review__note">Propose, validate, then publish. Mappings that fail validation stay held.</p>
-    <ol className="depo-action-steps bridge-stages" aria-label="Mapping automation stages">
-      <li><strong>Propose</strong><span>Create saved mapping evidence</span></li>
-      <li><strong>Validate</strong><span>Check validation, confidence and ambiguity</span></li>
-      <li><strong>Publish</strong><span>Publish policy-approved mappings</span></li>
-    </ol>
-    <p className="mapping-review__note">Starting a run authorizes publication of mappings that pass policy validated-only-v1; individual approval is not required for those mappings.</p>
-    <PrimaryButton disabled={sourceUnavailable || busy || !!automationRun || !ontologyId || !importTaskId || !hasAutomationAccess || !api.automate} onClick={() => invoke(async current => {
-      const identity = {approved_by: actor.trim() || 'bridge-automation', approval_token:getCredentialProfile('AGENTIC_APPROVAL_TOKEN')};
-      setAutomationStage('Proposing, validating and publishing mappings…');
-      try {
-        try { sessionStorage.setItem(workflowKey, 'submission-unconfirmed'); } catch { /* recovery remains in memory */ }
-        const response = await api.automate(ontologyId, importTaskId, identity, manualMappings, candidateOffset);
-        if (current()) adoptAutomation(response.data);
-      } catch (error) {
-        const id = error.response?.headers?.['x-depo-run-id'];
-        if (current()) {
-          if (confirmedSubmissionRejection(error)) {
-            setAutomationRun(null); setAutomationStage('Task rejected; check inputs and access');
-            try { sessionStorage.removeItem(workflowKey); } catch {}
-          } else setAutomationRun({run_id:id || '',status:'unknown'});
-          if (id) try { sessionStorage.setItem(workflowKey, id); } catch { /* optional recovery */ }
-        }
-        throw error;
-      }
-    })}>Run automated mapping and publish</PrimaryButton>
+    <PrimaryButton disabled={sourceUnavailable || busy || !!automationRun || !ontologyId || !importTaskId || !hasAutomationAccess} onClick={() => invoke(async current => {
+      const response = await api.preview(ontologyId, importTaskId, {approval_token:getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings, candidateOffset);
+      if (current()) adoptPreview(response.data);
+    })}>Prepare mappings</PrimaryButton>
     </div>
-    <details className="mapping-run-controls" open={!preview}><summary>Workflow status, controls and policy · {automationRun?.status || 'Ready to start'}</summary>
+    {automationRun && <details className="mapping-run-controls"><summary>Workflow status, controls and policy · {automationRun?.status || 'Ready to start'}</summary>
     {automationRun && <div role="status">Workflow: {automationRun.run_id} · {automationRun.status}
       <button type="button" className="bridge-action" disabled={busy || !automationRun.run_id || !api.automationStatus} onClick={() => invoke(async current => {
         const response = await api.automationStatus(automationRun.run_id);
@@ -204,11 +183,9 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     <WorkflowRecoveryActions key={automationRun?.run_id} run={automationRun} disabled={busy} onRefresh={async () => {
       const response = await api.automationStatus(automationRun.run_id); adoptAutomation(response.data);
     }} />
-    {Number.isInteger(preview?.partition?.next_offset) && ((automationRun?.status === 'completed' && !automationRun.reconciliation_required) || (!automationRun && job?.status === 'published')) && <button type="button" disabled={busy} onClick={() => setCandidateOffset(preview.partition.next_offset)}>Prepare next mapping batch</button>}
-    {preview?.partition && <p>Batch starts at candidate {preview.partition.offset + 1}; {preview.partition.total_candidates} total candidates. Each batch retains its own approval and publication receipt.</p>}
     {['completed', 'failed', 'cancelled', 'timed_out'].includes(automationRun?.status) && !automationRun.reconciliation_required && <button type="button" disabled={busy} onClick={() => {
       try { sessionStorage.removeItem(workflowKey); } catch { /* optional recovery */ }
-      setAutomationRun(null); setAutomationStage('idle'); setPreview(null); setJob(null); setPolicyReport(null); setSelected([]);
+      setAutomationRun(null); setAutomationStage('idle'); setPreview(null); setJob(null); setPolicyReport(null);
     }}>Prepare another mapping run</button>}
     {automationRun?.status === 'unknown' && !automationRun.run_id && <p role="alert">The response was interrupted. Check recent workflows in Agent telemetry, then retry before starting another publication.</p>}
     {automationRun?.status === 'unknown' && !automationRun.run_id && <details className="bridge-recovery"><summary>Recovery: look up a retained workflow</summary>
@@ -217,53 +194,17 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
         const response = await api.automationStatus(recoveryWorkflowId.trim());
         if (current()) adoptAutomation(response.data);
       })}>Inspect retained mapping workflow</button></div></details>}
-    </details>
+    </details>}
     {message && <p role="alert">{message}</p>}
-    {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to run automation.</p>}
+    {!hasAutomationAccess && <p>Connect read and governed agent access in Admin to prepare mappings.</p>}
     {automationStage !== 'idle' && <p role="status" aria-live="polite">{busy ? automationStage : message ? 'Status unavailable. The background workflow may still be running; reconnect and inspect its retained result before retrying.' : automationStage}</p>}
-    {preview && <MappingReviewTable candidates={preview.candidates} decisions={policyReport?.decisions || []} />}
+    {preview && <MappingReviewTable compact candidates={preview.candidates} decisions={policyReport?.decisions || []} />}
     <SemanticSupport report={policyReport?.semantic_support}/>{policyReport && <details><summary>What was checked</summary>
       <DecisionPolicyAssessment report={policyReport.decision_policy} />
       {policyReport.governance && <p>This check covers the suggested classes for each imported item. It does not check every rule, confirm that two items are the same, or approve anything. Source import: {policyReport.governance.provenance?.import_task_id}. No changes were made to the vocabulary.</p>}
     </details>}
-    <WorkflowTaskPanel workflowId="ontology-review-and-bridge-plan" inputs={{ ontology_id: ontologyId, import_task_id: importTaskId }} label="Run ontology agent review" disabled={sourceUnavailable || busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onResult={run => setAgentReport(bridgeReviewPayload({ steps: run.traces.map(trace => ({ result: trace.result })) }))} />
-    <p>Optional: the agent explains how the imported data lines up with the ontology. It does not publish anything. Its findings appear below when it finishes.</p>
-    {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
-    {agentReport && <div role="status" className="bridge-agent-report">
-      <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed. Advisory findings; mapping publication uses the separate validation and approval workflow.
-      {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : Array.isArray(agentReport.steps?.[1]?.result?.issues) ? ' No structural issues reported.' : ' Structural review results are unavailable.'}
-      <p>{agentReport.steps?.at(-1)?.result?.alignment_candidates?.length || 0} exact-name candidate(s) found. These are review evidence only; use a saved Bridge preview to publish mappings.</p>
-      <p>{agentReport.steps?.at(-1)?.result?.unmatched_count || 0} unmatched sources; {agentReport.steps?.at(-1)?.result?.ambiguous_count || 0} ambiguous sources.</p>
-      {(agentReport.steps?.at(-1)?.result?.alignment_items || []).map((item, index) => <div key={`${item.source}:${index}`}><strong>{item.source}</strong>: {item.status}. Checks requiring review: {(item.unresolved_checks || []).join(', ')}</div>)}
-      {(agentReport.steps?.at(-1)?.result?.alignment_candidates || []).length > 0 && <ul>
-        {agentReport.steps.at(-1).result.alignment_candidates.slice(0, 20).map((candidate, index) => <li key={`${candidate.source}:${candidate.target_iri}:${index}`}>
-          {candidate.source} → {candidate.target_iri} ({candidate.target_type}; {candidate.evidence})
-        </li>)}
-      </ul>}
-      {agentReport.steps?.at(-1)?.result?.candidate_limit_reached && <p>Candidate search was limited. Narrow the ontology or review the full Bridge preview.</p>}
-      {agentReport.steps?.at(-1)?.result?.llm && <div>
-        <strong>Model recommendation (review only):</strong>
-        {agentReport.steps.at(-1).result.llm.review && <div>
-          {agentReport.steps.at(-1).result.llm.review.questions?.map((question, index) => <div key={index}>
-            <p>{question.question}</p><p>Evidence IRIs: {question.evidence_iris?.join(', ') || 'No citation supplied'}</p>
-          </div>)}
-          <p>Limitations: {agentReport.steps.at(-1).result.llm.review.limitations}</p>
-          {agentReport.steps.at(-1).result.llm.review.prompt_details && <details><summary>Prompt details used for this review</summary><pre className="bridge-prompt-details">{JSON.stringify(agentReport.steps.at(-1).result.llm.review.prompt_details, null, 2)}</pre></details>}
-        </div>}
-        <p>{agentReport.steps.at(-1).result.llm.text || (agentReport.steps.at(-1).result.llm.enabled ? 'Model unavailable; deterministic review evidence remains available.' : 'Model recommendations are disabled.')}</p>
-      </div>}
-    </div>}
-    <details><summary>Advanced: manual review and approval</summary>
-    <details><summary>Who approves publication?</summary>
-      <p>The approver is the person authorised to accept these mappings. The mapping workflow prepares and checks the operation; it cannot approve on your behalf. Connect governed credentials in Admin.</p>
-      <TextField label="Approver" value={actor} onValueChange={setActor} />
-    </details>
-    {!hasApproval && <p>Enter an approver and connect governed agent access in Admin before preview or publication.</p>}
-    <SecondaryButton className="bridge-action" disabled={sourceUnavailable || busy || !ontologyId || !importTaskId || !hasApproval} onClick={() => invoke(async current => {
-      const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings, candidateOffset);
-      if (current()) adoptPreview(result.data);
-    })}>Create preview</SecondaryButton>
-
+    <WorkflowTaskPanel concise workflowId="ontology-review-and-bridge-plan" inputs={{ ontology_id: ontologyId, import_task_id: importTaskId }} label="Run ontology agent review" disabled={sourceUnavailable || busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onResult={run => setAgentReport(bridgeReviewPayload({ steps: run.traces.map(trace => ({ result: trace.result })) }))} />
+    {agentReport && <details><summary>View compatibility assessment</summary><BridgeDecisionReview report={agentReport} /></details>}
     <details className="depo-saved-recommendation bridge-recovery"><summary>Recovery: resume a saved preview</summary>
     <TextField label="Saved preview ID" value={resumeId} onValueChange={setResumeId} />
     <button type="button" className="bridge-action" disabled={busy || !resumeId.trim() || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
@@ -274,7 +215,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       setJob({ job_id: result.data.publication_job_id, status: 'unknown', approved_ids: [] });
       try {
         const publication = await api.status(result.data.publication_job_id, getCredentialProfile('GRAPH_READ_TOKEN'));
-        if (current()) { setJob(publication.data); setSelected(publication.data.approved_ids || []); }
+        if (current()) { setJob(publication.data); }
       } catch (error) {
         if (error.response?.status !== 404) throw error;
         if (current()) setJob(null);
@@ -282,53 +223,11 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     })}>Load preview</button>
     </details>
     {preview && <>
-      <p><strong>Preview:</strong> {preview.job_id} · {preview.candidates.length} candidates · {selected.length} selected</p>
-      <p>Approvals are bound to this source and ontology snapshot. Source or manual mapping changes require a new preview.</p>
-      {preview.agent_run_id && <p>Preview agent run: {preview.agent_run_id}</p>}
-      {preview.recommendation_summary && <p role="status">{preview.recommendation_summary.total} mapping recommendations; {preview.recommendation_summary.eligible} eligible for review. Recommendations do not grant publication approval.</p>}
-      <div className="bridge-candidates">
-        <DataTable
-          caption="Candidate mappings"
-          columns={[
-            { key: 'approve', label: 'Approve' },
-            { key: 'source', label: 'Source' },
-            { key: 'target', label: 'Ontology target' },
-            { key: 'validation', label: 'Validation' },
-            { key: 'score', label: 'Match score' },
-          ]}
-          rows={preview.candidates}
-          rowKey={candidate => candidate.candidate_id}
-          empty={<span>No candidates found. Check the imported data and ontology before creating another preview.</span>}
-          renderCell={(candidate, column) => {
-            const sourceName = candidate.source_label || candidate.source_term || candidate.import_row_key;
-            switch (column.key) {
-              case 'approve':
-                return <CheckboxField
-                  label={`Approve ${sourceName} to ${candidate.ontology_term}`}
-                  disabled={busy || fixedSelection || !candidate.eligible}
-                  checked={selected.includes(candidate.candidate_id)}
-                  onCheckedChange={checked => {
-                    setConfirmed(false);
-                    setSelected(ids => checked ? [...ids, candidate.candidate_id] : ids.filter(id => id !== candidate.candidate_id));
-                  }}
-                />;
-              case 'source': return sourceName;
-              case 'target': return `${candidate.ontology_term} (${candidate.target_ontology_type})`;
-              case 'validation': return <>{candidate.eligible ? 'Reviewable' : 'Invalid'}{[...(candidate.validation_errors || []), ...(candidate.validation_warnings || [])].map((text, index) => <div key={index}>{text}</div>)}</>;
-              default: return matchScore(candidate);
-            }
-          }}
-        />
-      </div>
-      <label><input type="checkbox" aria-label="Confirm reviewed mappings" checked={confirmed} disabled={busy || !selected.length || job?.status === 'published'} onChange={e => setConfirmed(e.target.checked)} /> I reviewed these {selected.length} mappings and approve their publication.</label><br />
-      <PrimaryButton className="bridge-action" disabled={!canPublish} onClick={() => invoke(async current => {
-        // Freeze the selection immediately; response loss must not allow editing.
-        setJob({ job_id: preview.publication_job_id, status: 'publishing', approved_ids: selected });
-        try {
-          const result = await api.publish(preview.job_id, selected, { approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN') });
-          if (current()) { setJob(result.data); setConfirmed(false); }
-        } finally { /* Shared credentials remain managed in Admin. */ }
-      })}>{busy ? 'Working…' : job ? 'Retry same publication' : 'Publish approved mappings'}</PrimaryButton>
+      {Number.isInteger(preview.partition?.next_offset) && <button type="button" disabled={busy} onClick={() => setCandidateOffset(preview.partition.next_offset)}>Prepare next mapping batch</button>}
+      {preview.partition && <p>Batch starts at candidate {preview.partition.offset + 1}; {preview.partition.total_candidates} candidates in this source.</p>}
+      <p>{preview.candidates.length} mapping candidates</p>
+      {preview.recommendation_summary && <p role="status">{preview.recommendation_summary.total} mapping recommendations; {preview.recommendation_summary.eligible} eligible for review.</p>}
+      <a className="bridge-action" href={`#/change-control?source=bridges&view=workflows&record_source=bridges&record=${encodeURIComponent(preview.job_id)}&return_to=${encodeURIComponent(`#/ontology?view=alignment&mode=instance&target=${encodeURIComponent(ontologyId)}&import_task_id=${encodeURIComponent(importTaskId)}&bridge_preview=${encodeURIComponent(preview.job_id)}`)}`}>Review CR / CO in Change Control</a>
       <button type="button" className="bridge-action" disabled={busy || !preview.publication_job_id} onClick={() => invoke(refresh)}>Refresh publication status</button>
       <button type="button" className="bridge-action" disabled={busy} onClick={() => invoke(async current => {
         const result = await api.artifact(job?.status === 'published' ? job.job_id : preview.job_id, getCredentialProfile('GRAPH_READ_TOKEN'));
@@ -342,7 +241,6 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
         {job.error && <p>{job.error}</p>}
       </div>}
     </>}
-    </details>
     {job?.status === 'published' && <p role="status">{job.receipt?.applied_links || 0} mappings published to knowledge graph. {policyReport?.held_count || 0} mappings held and unchanged. Publication: {job.job_id}.</p>}
     <details onToggle={event=>setLearningOpen(event.currentTarget.open)}><summary>Learning from reviewed mappings</summary>
       {learningOpen&&<GovernedLearningPanel key={`${ontologyId}:${importTaskId}`} ontologyId={ontologyId} importTaskId={importTaskId} publication={job} preview={preview}/>}

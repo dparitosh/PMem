@@ -37,7 +37,7 @@ def capture_trs_start():
         head = page.get('head_order')
         if type(head) is not int or head < 0:
             raise ValueError('TRS head position is unavailable')
-        return {'state': 'captured', 'order': head}
+        return {'state': 'captured', 'order': head,'stream_id':page.get('stream_id')}
     except (DatabaseError, RuntimeError, ValueError, OSError):
         log.warning('Analytics baseline TRS position is unavailable', exc_info=True)
         return {'state': 'unavailable', 'order': None}
@@ -113,7 +113,7 @@ def freeze_configuration(selections, actor=None):
                   'selections': frozen, 'created_at': now(), 'created_by': actor,
                   'configuration_context': '/oslc/lifecycle/analytics-baselines/' + identifier,
                   'approval_status': 'not_granted',
-                  'trs_start_order': trs_start['order'], 'trs_start_state': trs_start['state'],
+                  'trs_start_order': trs_start['order'],'trs_stream_id':trs_start.get('stream_id'), 'trs_start_state': trs_start['state'],
                   'scope': 'Immutable declared selections only; no automatic dependency discovery or full OSLC Config conformance'}
         # Same registry transaction retains the baseline and its pending notification.
         store.put_many({identifier: record, 'event:' + identifier: {
@@ -229,6 +229,8 @@ def review_dataset(dataset_id, configuration_id=None):
             if OSLCTRSService.is_enabled():
                 page = OSLCTRSService.change_log(after=after, limit=200)
                 trs_state = 'gap_requires_review' if page['rebase_required'] else 'more_events_pending' if len(page['events']) >= 200 else 'page_assessed'
+                if page.get('stream_id')!=previous.get('trs_stream_id',baseline.get('trs_stream_id')):
+                    trs_state='gap_requires_review'
                 if page.get('head_order', after) < after:
                     trs_state = 'gap_requires_review'
                 for event in page['events']:
@@ -244,7 +246,7 @@ def review_dataset(dataset_id, configuration_id=None):
             findings = [{'reason':'previous_assessment_requires_refresh','assessed_at':previous.get('assessed_at')}]
         status = 'refresh_required' if findings or previous.get('status') == 'refresh_required' else 'review_required' if missing_start or trs_state != 'page_assessed' or previous.get('trs_gap_unresolved') else 'no_selected_source_change_detected'
         result = {'dataset_id': dataset_id, 'configuration_id': baseline['configuration_id'],
-                  'status': status, 'findings': findings, 'trs_state': trs_state, 'trs_after': after,
+                  'status': status, 'findings': findings, 'trs_state': trs_state, 'trs_after': after,'trs_stream_id':page.get('stream_id') if 'page' in locals() else previous.get('trs_stream_id',baseline.get('trs_stream_id')),
                   'trs_gap_unresolved': missing_start or trs_state == 'gap_requires_review' or previous.get('trs_gap_unresolved', False),
                   'assessed_at': now(), 'publication_changed': False,
                   'scope': 'Selected source revisions and one TRS page; not a completeness certificate. Existing published versions are retained.'}

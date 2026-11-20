@@ -254,7 +254,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
     // property appears in the ontology browser.
     const declaredById = new Map(
       visibleNodes
-        .filter((node) => String(node.source || '').includes('property'))
+        .filter((node) => node.kind === 'property' || (!node.kind && String(node.source || '').includes('property')))
         .map((node) => [node.term_id, {
           id: node.term_id,
           property: node.label || String(node.term_id || '').split(':').pop(),
@@ -267,6 +267,8 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
     );
     const byProperty = new Map();
     edgeRows.forEach((edge) => {
+      const sourceKind = nodeById.get(edge.sourceId)?.kind;
+      if (sourceKind && sourceKind !== 'property') return;
       if (!['DOMAIN', 'RANGE', 'domain', 'range', 'predicate', 'property_of'].includes(edge.axiom)) return;
       if (!byProperty.has(edge.sourceId)) {
         byProperty.set(edge.sourceId, {
@@ -403,17 +405,21 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning, onT
 
   const activeRows = tableMode === 'properties' ? objectPropertyRows : tableMode === 'axioms' ? edgeRows : classRows;
   const activeColumns = tableMode === 'properties' ? propertyColumns : tableMode === 'axioms' ? axiomColumns : classColumns;
-  const activeTitle = tableMode === 'properties'
-    ? `Object/Data Properties (${objectPropertyRows.length})`
-    : tableMode === 'axioms'
-      ? `Axiom relationships in loaded slice (${edgeRows.length})`
-      : `Classes (${classRows.length})`;
-
+  const total = (key, fallback) => Number.isSafeInteger(taxonomy?.summary?.[key]) && taxonomy.summary[key] >= 0
+    ? taxonomy.summary[key] : taxonomy?.page || taxonomy?.summary?.truncated ? '—' : fallback;
+  const totals = {
+    classes: total('total_classes', classRows.length),
+    properties: total('total_properties', objectPropertyRows.length),
+    axioms: total('total_taxonomy_links', edgeRows.length),
+    terms: total('total_terms', visibleNodes.length),
+  };
+  const activeTitle = tableMode === 'properties' ? `Properties (${totals.properties} total)`
+    : tableMode === 'axioms' ? `Axiom relationships (${totals.axioms} total)` : `Classes (${totals.classes} total)`;
   const browserStats = [
-    { label: 'Classes', value: classRows.length },
-    { label: 'Properties', value: objectPropertyRows.length },
-    { label: 'Axiom relationships in slice', value: edgeRows.length },
-    { label: 'Terms', value: visibleNodes.length },
+    { label: 'Classes', value: totals.classes },
+    { label: 'Properties', value: totals.properties },
+    { label: 'Axiom relationships', value: totals.axioms },
+    { label: 'Terms', value: totals.terms },
   ];
 
   const handleOntologyRowSelection = useCallback((row) => {

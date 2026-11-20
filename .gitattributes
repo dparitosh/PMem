@@ -5,3 +5,7 @@ mendix/depo-graph-miner-widget/package-lock.json -diff
 # Linux lifecycle files must remain executable by Bash after a Windows checkout.
 *.sh text eol=lf
 *.service.template text eol=lf
+
+# Preserve the exact portable toolkit/reference artifact digests.
+standalone/engineering_ods/** text eol=lf
+infra/reasoner/src/**/*.java text eol=lf

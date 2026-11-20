@@ -5,8 +5,8 @@ import ReportsTab from './ReportsTab';
 import { dataPipelineAPI } from '../services/apiClient';
 
 vi.mock('../contexts/OntologyContext', () => ({ useOntologies: () => ({ ontologies: [] }) }));
-vi.mock('../services/apiClient', () => ({ apiClient: { get: vi.fn() }, dataPipelineAPI: { telemetry: vi.fn() } }));
-vi.mock('../services/graphApi', () => ({ graphApi: { getOverview: vi.fn(async () => ({ data: { nodes: [], relationships: [] } })) } }));
+vi.mock('../services/apiClient', () => ({ apiClient: { get: vi.fn(async()=>({data:{}})) }, dataPipelineAPI: { telemetry: vi.fn() } }));
+vi.mock('../services/graphApi', () => ({ graphApi: { computationOptions:vi.fn(async()=>({data:{sources:[]}})),getMetrics:vi.fn(async()=>({data:{scope:{sampled:false,type:'published_rdf_projection',ontology_id:null},resources:0,relationships:0,classes:0}})),getOverview: vi.fn(async () => ({ data: { nodes: [], relationships: [] } })) } }));
 vi.mock('./ReportsAnalytics', () => ({ default: ({ telemetry, telemetryError }) => <div>
   {telemetry ? `Recorded runs: ${telemetry.completed_runs}` : 'No current telemetry'}
   {telemetryError && <p>{telemetryError}</p>}

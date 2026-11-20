@@ -189,7 +189,8 @@ class BridgeJobs:
         return {**self.publish(preview_id, decision['accepted_ids'], actor, approval_policy=decision),
                 'policy_decision': decision}
 
-    def publish(self, preview_id, approved_ids, actor, approval_policy=None):
+    def publish(self, preview_id, approved_ids, actor, approval_policy=None, *, expected_change_revision=None, expected_change_plan=None):
+        if not isinstance(actor,str) or not actor.strip():raise ValueError('A verified publication actor is required')
         if not isinstance(preview_id, str) or not preview_id.startswith('bridge-preview-'):
             raise ValueError('Select a saved Semantic Bridge preview before publication.')
         preview = self.get(preview_id)
@@ -199,9 +200,9 @@ class BridgeJobs:
         with self.holds.advisory_lock(key) as acquired:
             if acquired is False:
                 raise BridgeConflict('Semantic review or publication is active; refresh before retrying')
-            return self._publish(preview_id, approved_ids, actor, approval_policy)
+            return self._publish(preview_id, approved_ids, actor, approval_policy, expected_change_revision=expected_change_revision, expected_change_plan=expected_change_plan)
 
-    def _publish(self, preview_id, approved_ids, actor, approval_policy=None):
+    def _publish(self, preview_id, approved_ids, actor, approval_policy=None, *, expected_change_revision=None, expected_change_plan=None):
         if not isinstance(preview_id, str) or not preview_id.startswith('bridge-preview-'):
             raise ValueError('Select a saved Semantic Bridge preview before publication.')
         if not isinstance(approved_ids, list) or not approved_ids or not all(isinstance(x, str) for x in approved_ids):
@@ -212,92 +213,97 @@ class BridgeJobs:
         with self.store.advisory_lock(job_id) as acquired:
             if not acquired:
                 raise BridgeConflict('Publication is already running. Refresh its status.')
-            preview = self.get(preview_id)
-            if preview.get('kind') != 'preview' or digest({k:v for k,v in preview.items() if k != 'preview_digest'}) != preview.get('preview_digest'):
-                raise BridgeConflict('Preview integrity check failed. Create a new preview.')
-            by_id = {c['candidate_id']: c for c in preview['candidates']}
-            if any(i not in by_id or not by_id[i]['eligible'] for i in approved_ids):
-                raise ValueError('Approval contains an unknown or invalid candidate.')
-            from backend.ontology_service.governance import bridge_findings
-            if any(bridge_findings(by_id[key]) for key in approved_ids):
-                raise ValueError('Ontology Steward requires domain review for identity assertions; no automatic predicate downgrade was applied')
-            selected = sorted(approved_ids)
-            existing = self.store.get(job_id)
-            if existing and existing['approved_ids'] != selected:
-                raise BridgeConflict('This preview already has a publication selection. Create a new preview to change it.')
-            job = copy.deepcopy(existing) if existing else {
-                'job_id': job_id, 'kind': 'publication', 'preview_id': preview_id,
-                'status': 'approved', 'approved_ids': selected, 'approved_by': actor,
-                'created_at': now(), 'attempts': 0,
-                'ontology_id': preview['ontology_id'], 'import_task_id': preview['import_task_id']}
-            if approval_policy is not None:
-                if existing and existing.get('approval_policy') != approval_policy:
-                    raise BridgeConflict('Publication approval policy changed. Create a new preview.')
-                job['approval_policy'] = copy.deepcopy(approval_policy)
-            if job['status'] == 'published':
-                receipt = self.graph.receipt(job_id)
-                if receipt:
-                    return self._completed(job, receipt)
-                job.update(status='stale', error='Published graph receipt is missing. Create and approve a new preview.', updated_at=now())
-                self.store.put(job_id, job)
-                raise BridgeConflict(job['error'])
-            self.store.put(job_id, job)
-            # Reconcile a committed graph transaction before checking staleness.
-            # A response may have been lost after the graph committed.
+            from .bridge_change import guarded_publish
+            return guarded_publish(self,preview_id,approved_ids,actor,approval_policy,expected_change_revision,expected_change_plan)
+
+    def _publish_locked(self,preview_id,approved_ids,actor,approval_policy=None):
+        job_id = preview_id.replace('bridge-preview-', 'bridge-publication-', 1)
+        preview = self.get(preview_id)
+        if preview.get('kind') != 'preview' or digest({k:v for k,v in preview.items() if k != 'preview_digest'}) != preview.get('preview_digest'):
+            raise BridgeConflict('Preview integrity check failed. Create a new preview.')
+        by_id = {c['candidate_id']: c for c in preview['candidates']}
+        if any(i not in by_id or not by_id[i]['eligible'] for i in approved_ids):
+            raise ValueError('Approval contains an unknown or invalid candidate.')
+        from backend.ontology_service.governance import bridge_findings
+        if any(bridge_findings(by_id[key]) for key in approved_ids):
+            raise ValueError('Ontology Steward requires domain review for identity assertions; no automatic predicate downgrade was applied')
+        selected = sorted(approved_ids)
+        existing = self.store.get(job_id)
+        if existing and existing['approved_ids'] != selected:
+            raise BridgeConflict('This preview already has a publication selection. Create a new preview to change it.')
+        job = copy.deepcopy(existing) if existing else {
+            'job_id': job_id, 'kind': 'publication', 'preview_id': preview_id,
+            'status': 'approved', 'approved_ids': selected, 'approved_by': actor,
+            'created_at': now(), 'attempts': 0,
+            'ontology_id': preview['ontology_id'], 'import_task_id': preview['import_task_id']}
+        if approval_policy is not None:
+            if existing and 'approval_policy' in existing and existing['approval_policy'] != approval_policy:
+                raise BridgeConflict('Publication approval policy changed. Create a new preview.')
+            job['approval_policy'] = copy.deepcopy(approval_policy)
+        if job['status'] == 'published':
             receipt = self.graph.receipt(job_id)
             if receipt:
                 return self._completed(job, receipt)
-            current = self.source.snapshot(preview['ontology_id'], preview['import_task_id'])
-            if current != preview['snapshot']:
-                job.update(status='stale', error='Source or ontology changed. Create and approve a new preview.')
-                self.store.put(job_id, job)
-                raise BridgeConflict(job['error'])
-            if job['status'] == 'stale':
-                raise BridgeConflict('This preview was invalidated. Create a new preview.')
-            reader = getattr(self.source, 'semantic_support', None)
-            if callable(reader):
-                from backend.depo_platform.semantic_support import target_conflict
-                support = self._semantic_support(preview, locked=True)
-                job['semantic_support'] = support
-                if any(target_conflict(support, by_id[key]) for key in selected):
-                    job.update(status='held', error='The model has a logical contradiction or unresolved target satisfiability; check the selected class and review again.')
-                    self.store.put(job_id, job)
-                    raise ValueError(job['error'])
-            # Recheck current central policy for manual and automatic writes, after receipt reconciliation.
-            from backend.depo_platform.decision_policy import decision
-            shared = self.policy_evaluator('instance_bridge', [decision(by_id[i].get('confidence'),
-                candidate_id=i, candidate_label=str(by_id[i].get('source_term') or '') + ' -> ' + str(by_id[i].get('ontology_term') or ''), preview_digest=preview['preview_digest'], ontology_id=preview['ontology_id'],
-                import_task_id=preview['import_task_id'], approved_by=actor) for i in selected])
-            job['decision_policy'] = shared
-            if shared['blocking']:
-                job.update(status='held', error='Semantica decision policy holds publication; review the retained policy findings.', updated_at=now())
+            job.update(status='stale', error='Published graph receipt is missing. Create and approve a new preview.', updated_at=now())
+            self.store.put(job_id, job)
+            raise BridgeConflict(job['error'])
+        self.store.put(job_id, job)
+        # Reconcile a committed graph transaction before checking staleness.
+        # A response may have been lost after the graph committed.
+        receipt = self.graph.receipt(job_id)
+        if receipt:
+            return self._completed(job, receipt)
+        current = self.source.snapshot(preview['ontology_id'], preview['import_task_id'])
+        if current != preview['snapshot']:
+            job.update(status='stale', error='Source or ontology changed. Create and approve a new preview.')
+            self.store.put(job_id, job)
+            raise BridgeConflict(job['error'])
+        if job['status'] == 'stale':
+            raise BridgeConflict('This preview was invalidated. Create a new preview.')
+        reader = getattr(self.source, 'semantic_support', None)
+        if callable(reader):
+            from backend.depo_platform.semantic_support import target_conflict
+            support = self._semantic_support(preview, locked=True)
+            job['semantic_support'] = support
+            if any(target_conflict(support, by_id[key]) for key in selected):
+                job.update(status='held', error='The model has a logical contradiction or unresolved target satisfiability; check the selected class and review again.')
                 self.store.put(job_id, job)
                 raise ValueError(job['error'])
-            job.update(status='publishing', attempts=job['attempts'] + 1, updated_at=now())
-            job.pop('error', None)
+        # Recheck current central policy for manual and automatic writes, after receipt reconciliation.
+        from backend.depo_platform.decision_policy import decision
+        shared = self.policy_evaluator('instance_bridge', [decision(by_id[i].get('confidence'),
+            candidate_id=i, candidate_label=str(by_id[i].get('source_term') or '') + ' -> ' + str(by_id[i].get('ontology_term') or ''), preview_digest=preview['preview_digest'], ontology_id=preview['ontology_id'],
+            import_task_id=preview['import_task_id'], approved_by=actor) for i in selected])
+        job['decision_policy'] = shared
+        if shared['blocking']:
+            job.update(status='held', error='Semantica decision policy holds publication; review the retained policy findings.', updated_at=now())
             self.store.put(job_id, job)
-            rows = [{**by_id[i], 'selected_for_apply': True, 'approvedByUser': True,
-                     'validation_status': 'approved'} for i in selected]
-            command = {'publication_id': job_id, 'preview_id': preview_id,
-                       'ontology_id': preview['ontology_id'],
-                       'approved_by': job['approved_by'], 'snapshot': preview['snapshot'], 'rows': rows}
-            if job.get('semantic_support', {}).get('consistency_verified') is True:
-                command['semantic_binding'] = {key: job['semantic_support'].get(key)
-                    for key in ('artifact_sha256', 'evidence_id', 'foundation')}
-            command['request_digest'] = digest(command)
-            job['request_digest'] = command['request_digest']
+            raise ValueError(job['error'])
+        job.update(status='publishing', attempts=job['attempts'] + 1, updated_at=now())
+        job.pop('error', None)
+        self.store.put(job_id, job)
+        rows = [{**by_id[i], 'selected_for_apply': True, 'approvedByUser': True,
+                 'validation_status': 'approved'} for i in selected]
+        command = {'publication_id': job_id, 'preview_id': preview_id,
+                   'ontology_id': preview['ontology_id'],
+                   'approved_by': job['approved_by'], 'snapshot': preview['snapshot'], 'rows': rows}
+        if job.get('semantic_support', {}).get('consistency_verified') is True:
+            command['semantic_binding'] = {key: job['semantic_support'].get(key)
+                for key in ('artifact_sha256', 'evidence_id', 'foundation')}
+        command['request_digest'] = digest(command)
+        job['request_digest'] = command['request_digest']
+        self.store.put(job_id, job)
+        try:
+            receipt = self.graph.publish(command)
+        except BridgeConflict as exc:
+            job.update(status='stale', error=str(exc), updated_at=now())
             self.store.put(job_id, job)
-            try:
-                receipt = self.graph.publish(command)
-            except BridgeConflict as exc:
-                job.update(status='stale', error=str(exc), updated_at=now())
-                self.store.put(job_id, job)
-                raise
-            except Exception:
-                job.update(status='retryable', error='Publication response unavailable. Retry the same selection to reconcile its receipt.', updated_at=now())
-                self.store.put(job_id, job)
-                raise
-            return self._completed(job, receipt)
+            raise
+        except Exception:
+            job.update(status='retryable', error='Publication response unavailable. Retry the same selection to reconcile its receipt.', updated_at=now())
+            self.store.put(job_id, job)
+            raise
+        return self._completed(job, receipt)
 
     def reconcile_receipt(self, job_id, approved_ids):
         """Reconcile a verified graph receipt without dispatching publication."""

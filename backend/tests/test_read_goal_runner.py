@@ -134,3 +134,86 @@ def test_source_target_aliases_cannot_be_used_to_escape_selected_ontologies():
     assert goals.validate_action(state, action('read.primary', ontology_id='other-selected'), TOOLS)[0] == 'read.primary'
     assert goals.selected_scope({'ontology_id':None}) == {}
     with pytest.raises(ValueError): goals.selected_scope({'source_ontology_ids':'bad'})
+
+
+def test_graph_prompt_projection_preserves_measurements_identities_and_links():
+    source={'root_node_id':'a','nodes':[
+        {'elementId':'a','properties':{'label':'Test A','temperature':76,'temperature_unit':'degC','password':'excluded','dataOrigin':'ODS scenario'}},
+        {'elementId':'b','properties':{'label':'Option B','estimatedIncrementalCost':8,'cost_unit':'USD/unit','dataOrigin':'ODS scenario'}}],
+        'relationships':[{'elementId':'edge-1','start':'b','end':'a','type':'VERIFIED_BY','properties':{'predicate':'urn:verifiedBy'}}],
+        'view':{'truncated':False}}
+    projected=goals.graph_context_prompt(source)
+    assert projected['nodes'][0]['properties']['temperature']=='76'
+    assert projected['nodes'][0]['properties']['temperature_unit']=='degC'
+    assert projected['nodes'][1]['properties']['estimatedIncrementalCost']=='8'
+    assert projected['nodes'][0]['id']=='a'
+    assert projected['shared_properties']['dataOrigin']=='ODS scenario'
+    assert projected['relationships']==[['n1','p0','n0','edge-1']]
+    assert projected['predicates']['p0']['iri']=='urn:verifiedBy'
+    assert 'password' not in projected['nodes'][0]['properties']
+
+
+def test_scratchpad_budgets_nested_json_escaping():
+    import json
+    original=record(plans=[{'subtasks':['Inspect']}], observations=[
+        {'id':'observation-1','tool_id':'read.primary','status':'completed','result':{'text':'"\\'*5000}}])
+    pad=goals.scratchpad(original,limit=3000)
+    assert len(json.dumps(json.dumps(pad,ensure_ascii=False),ensure_ascii=False).encode())<=3000
+    assert original['observations'][0]['result']['text']=='"\\'*5000
+
+
+def test_alternative_projection_keeps_linked_tests_without_parroting_stored_decision():
+    nodes=[{'elementId':key,'properties':{'label':key,'temperature':76}} for key in ('root','option','test','stored-decision')]
+    edges=[{'elementId':'edge-option','start':'root','end':'option','properties':{'predicate':'urn:considersAlternative'}},
+           {'elementId':'edge-test','start':'option','end':'test','type':'VERIFIED_BY'},
+           {'elementId':'edge-decision','start':'stored-decision','end':'root','type':'BASED_ON'}]
+    # URI local names in actual RDF properties use slash/hash; use the explicit vocabulary URI.
+    edges[0]['properties']['predicate']='https://example.org/eng#considersAlternative'
+    result=goals.graph_context_prompt({'root_node_id':'root','nodes':nodes,'relationships':edges,'view':{'truncated':False}},'Compare recorded alternatives')
+    assert {node['id'] for node in result['nodes']}=={'root','option','test'}
+    assert result['nodes_omitted_from_prompt']==1
+    assert len(result['relationships'])==2
+    assert result['nodes'][2]['properties']=={} or result['shared_properties']['temperature']=='76'
+
+
+@pytest.mark.asyncio
+async def test_duplicate_read_recovers_to_cited_conclusion_without_another_dispatch():
+    seen=[]
+    async def propose(available, context):
+        seen.append(available)
+        step=len(seen)
+        if step==1:return action('goal.plan',subtasks=['Read and compare'])
+        if step in (2,3):return action('read.primary',ontology_id='selected')
+        complete=next(tool for tool in available if tool['id']=='goal.complete')
+        assert complete['input_schema']['properties']['evidence_steps']['items']['enum']==['observation-2']
+        assert {tool['id'] for tool in available}=={'goal.complete','goal.needs_input'}
+        return action('goal.complete',summary='Recorded option B meets the selected criteria.',evidence_steps=['observation-2'])
+    dispatch=AsyncMock(return_value={'temperature':76})
+    result=await goals.drive(record(),propose=propose,dispatch=dispatch,save=AsyncMock(),tools=TOOLS)
+    assert result['status']=='completed'
+    assert result['observations'][-1]['error_code']=='duplicate_read'
+    assert dispatch.await_count==1
+
+
+def test_completion_citation_choices_exclude_failed_and_truncated_evidence():
+    state=record(observations=[{'id':'ok','status':'completed','result':{'temperature':76}},
+        {'id':'failed','status':'failed','result':{'error':'timeout'}},
+        {'id':'partial','status':'completed','result':{'truncated':True}}])
+    action=goals.completion_action(state)
+    assert action['input_schema']['properties']['evidence_steps']['items']['enum']==['ok']
+    assert 'enum' not in goals.COMPLETE['input_schema']['properties']['evidence_steps']['items']
+
+
+@pytest.mark.asyncio
+async def test_selected_alternative_comparison_requires_explicit_criteria():
+    tool={'id':'graph.business_context','input_schema':{'type':'object','properties':{'ontology_id':{'type':'string'}},'required':['ontology_id'],'additionalProperties':False}}
+    state=record(context={'page':'recommendations','decision_analysis':'alternatives'})
+    async def propose(available, context):
+        if not context['plans']:return action('goal.plan',subtasks=['Compare recorded alternatives'])
+        if not context['observations']:return action('graph.business_context',ontology_id='selected')
+        assert [item['id'] for item in available]==['goal.complete']
+        return action('goal.complete',summary='Values are recorded, but suitability remains subject to review.',evidence_steps=['observation-2'])
+    dispatch=AsyncMock(return_value={'nodes':[],'relationships':[],'view':{'truncated':False}})
+    result=await goals.drive(state,propose=propose,dispatch=dispatch,save=AsyncMock(),tools=[tool])
+    assert result['status']=='needs_input'
+    assert dispatch.await_count==1

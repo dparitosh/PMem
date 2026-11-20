@@ -5,7 +5,7 @@ Extension fields are retained for the existing governed downstream validators.
 """
 from typing import Any, Annotated, Literal
 from typing_extensions import TypedDict, Required
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 Text = Annotated[str, Field(min_length=1)]
 
@@ -27,6 +27,9 @@ class RestSourceBody(ApprovalBody, total=False):
     auth_header: Literal['Authorization', 'X-API-Key', 'api-key']
     records_path: Annotated[str, Field(max_length=500)]
     target_model: Annotated[str, Field(max_length=500)]
+
+    openapi_document: dict[str, Any]
+    openapi_path: Annotated[str, Field(min_length=1, max_length=500)]
 
 class ConnectorSourceBody(ApprovalBody, total=False):
     source_id: Required[Annotated[str, Field(pattern=r'^[a-z][a-z0-9-]{2,62}$')]]
@@ -518,6 +521,7 @@ class AnalyticsModelBody(ApprovalBody, total=False):
     definition: Required[dict[str,Any]]
 
 class JobInputBody(ApprovalBody, total=False):
+    source_file_id: Annotated[str,Field(pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')]
     ontology_id: Annotated[str,Field(min_length=1,max_length=256)]
     namespace: Annotated[str,Field(max_length=800)]
     graph_publication_id: Annotated[str,Field(min_length=1,max_length=256)]
@@ -584,3 +588,82 @@ OslcQueryBody = TypedDict("OslcQueryBody", {
     "approved_by": str, "approval_token": str,
 }, total=False)
 OslcQueryBody.__pydantic_config__ = ConfigDict(strict=True, extra="allow")
+
+
+class MergeChangeCommand(BaseModel):
+    """One strict native/central CR command contract; no caller-supplied actor."""
+    model_config = ConfigDict(extra='forbid', strict=True)
+    action: Literal['submit','accept','reject','authorize','cancel','execute','reconcile']
+    expected_revision: int = Field(ge=0)
+    expected_plan_digest: str = Field(pattern=r'^[0-9a-f]{64}$')
+    reason: str = Field(default='', max_length=1000)
+
+
+class MergeChangeSubmission(BaseModel):
+    """Submit for review only; no lifecycle action or identity override."""
+    model_config = ConfigDict(extra='forbid', strict=True)
+    expected_revision: int = Field(ge=0, le=0)
+    expected_plan_digest: str = Field(pattern=r'^[0-9a-f]{64}$')
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class BridgeChangeCommand(MergeChangeCommand):
+    candidate_ids: list[Annotated[str, Field(min_length=1,max_length=300)]] = Field(default_factory=list,max_length=2000)
+
+
+class ProductChangeSubmission(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    publication: ProductPublicationBody
+    reason: str=Field(min_length=1,max_length=1000)
+
+class ProductChangeCommand(MergeChangeCommand):
+    action: Literal['accept','reject','authorize','cancel','execute','reconcile','retry_delivery']
+
+
+class PipelineChangeSubmission(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    publication: JobPublicationBody
+    reason: str=Field(min_length=1,max_length=1000)
+
+
+class PipelineChangeCommand(MergeChangeCommand):
+    action: Literal['accept','reject','authorize','cancel','execute','reconcile']
+
+
+class ReleaseOperation(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    source_kind: Literal['merges','bridges','publications','pipeline','product_changes']
+    identifier: str=Field(min_length=1,max_length=300)
+
+
+class ReleaseChangeSubmission(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    title: str=Field(min_length=1,max_length=200)
+    reason: str=Field(min_length=1,max_length=1000)
+    source_run_id: str=Field(min_length=1,max_length=300)
+    operations: list[ReleaseOperation]=Field(min_length=2,max_length=8)
+
+
+class ReleaseChangeCommand(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    action: Literal['accept','authorize','reject','cancel','verify','rebase']
+    expected_revision: int=Field(ge=1)
+    configuration_id: str=Field(pattern=r'^[0-9a-f]{64}$')
+    reason: str=Field(default='',max_length=1000)
+
+
+class EventJobBody(BaseModel):
+    model_config = ConfigDict(extra='forbid',strict=True)
+    job_id: str = Field(min_length=3,max_length=63)
+    version: str = Field(pattern=r'^\d+\.\d+\.\d+$')
+    expected_digest: str = Field(pattern=r'^sha256:[0-9a-f]{64}$')
+
+
+class DefinitionChangeSubmission(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    request_id: str=Field(pattern=r'^[0-9a-fA-F-]{36}$')
+    job_id: str=Field(min_length=3,max_length=63)
+    version: str=Field(pattern=r'^\d+\.\d+\.\d+$')
+    operation: Literal['approve','disable','schedule','clear','revise']
+    parameters: dict=Field(default_factory=dict)
+    reason: str=Field(min_length=1,max_length=1000)

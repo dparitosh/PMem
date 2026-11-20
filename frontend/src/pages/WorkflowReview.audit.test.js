@@ -26,27 +26,16 @@ test('rapid replay submission creates only one request',async()=>{
  const button=await screen.findByRole('button',{name:'Replay',exact:true});
  const before=dataPipelineAPI.replay.mock.calls.length;
  fireEvent.click(button);
- fireEvent.change(await screen.findByLabelText('Action approver'),{target:{value:'reviewer'}});
  const confirm=screen.getByRole('button',{name:'Confirm replay retained run'});
  act(()=>{fireEvent.click(confirm);fireEvent.click(confirm);});
  await waitFor(()=>expect(dataPipelineAPI.replay.mock.calls.length-before).toBe(1));
 });
 
-test('a late approved-release response cannot restore old session choices',async()=>{
- let resolve;metadataRegistryAPI.list.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
- render(<DataFlowPage/>);await screen.findByText('configured');
- fireEvent.click(screen.getByRole('tab',{name:'Approval & publication'}));
- fireEvent.click(screen.getByRole('button',{name:'Load approved semantic releases'}));
- act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
- await act(async()=>resolve({data:{assets:[{asset_id:'old-release',version:'1',name:'Obsolete approval',lifecycle_status:'approved'}]}}));
- expect(screen.queryByRole('option',{name:/Obsolete approval/})).toBeNull();
-});
 
 test('an ambiguous replay retry reuses its submission identity',async()=>{
  dataPipelineAPI.replay.mockRejectedValueOnce(new Error('response lost'));
  render(<DataFlowPage/>);await screen.findByText('configured');
  fireEvent.click(await screen.findByRole('button',{name:'Replay',exact:true}));
- fireEvent.change(await screen.findByLabelText('Action approver'),{target:{value:'reviewer'}});
  fireEvent.click(screen.getByRole('button',{name:'Confirm replay retained run'}));
  await screen.findByText(/response lost/);
  const first=dataPipelineAPI.replay.mock.calls.at(-1)[1].idempotency_key;

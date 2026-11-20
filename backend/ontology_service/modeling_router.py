@@ -114,10 +114,12 @@ def xmi_diagrams(ontology_id: str) -> dict:
 
 
 @router.get('/xmi-context/{ontology_id}')
-def xmi_context(ontology_id: str, source_id: str = Query(..., min_length=1, max_length=512)) -> dict:
-    from .xmi_diagrams import model_context, ModelContextUnavailable
+def xmi_context(ontology_id: str, source_id: str = Query('', max_length=512), node_id: str = Query('', max_length=256)) -> dict:
+    from .xmi_diagrams import model_context, selected_model_context, ModelContextUnavailable
     try:
-        return model_context(ontology_id, source_id)
+        if bool(source_id) == bool(node_id):
+            raise ValueError('Select exactly one source-model or graph identity')
+        return selected_model_context(ontology_id, node_id) if node_id else model_context(ontology_id, source_id)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:

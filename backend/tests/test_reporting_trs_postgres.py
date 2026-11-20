@@ -28,6 +28,11 @@ def reporting_db(monkeypatch):
                         db.execute(sql.SQL('SET search_path TO {}').format(sql.Identifier(schema)));yield db
                 _session_connect=_connect
             registry=Registry('reporting_test');monkeypatch.setattr(store,'registry',lambda:registry)
+            from backend.depo_platform import release_chain
+            from backend.Services.oslc_trs_service import OSLCTRSService
+            monkeypatch.setattr(release_chain,'registry',lambda:Registry('release_changes'))
+            monkeypatch.setattr(release_chain,'PostgresRegistry',Registry)
+            monkeypatch.setattr(OSLCTRSService,'_store',Registry('oslc_trs'))
             yield registry
         finally:
             control.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))

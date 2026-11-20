@@ -12,7 +12,6 @@ import AppPageOutlet from './app/AppPageOutlet';
 import { normalizePage } from './app/navigation';
 import { platformAPI } from './services/apiClient';
 
-const PageTaskWorkspace = lazy(() => import('./Components/PageTaskWorkspace'));
 const Chatbot = lazy(() => import('./Components/Chatbot'));
 const LandingPage = lazy(() => import('./Components/LandingPage'));
 
@@ -51,6 +50,7 @@ function pushPageLocation(value) {
   const target = value === 'home' ? '#/home' : `#/${value}`;
   if (window.location.hash !== target) {
     window.history.pushState({}, '', target);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   }
 }
 
@@ -251,7 +251,6 @@ function App() {
               </ErrorBoundary>
             )}
             >
-              <Suspense fallback={null}><PageTaskWorkspace key={`tasks-${page === 'home' ? 'home' : activePage}-${serviceAuthRevision}`} page={page === 'home' ? 'home' : activePage} /></Suspense>
               {page === 'home' ? (
                 <Suspense fallback={<PageFallback />}><LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} /></Suspense>
               ) : (

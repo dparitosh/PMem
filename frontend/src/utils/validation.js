@@ -37,7 +37,7 @@ export const validateChatInput = (input) => {
   const suspiciousPatterns = [
     /ignore\s+(previous\s+)?instructions/i,
     /assume\s+you\s+are/i,
-    /without\s+safety|constraints/i,
+    /without\s+(?:safety|constraints)\b/i,
     /delete\s+(all\s+)?.*\s+(database|records)/i,
     /bypass\s+(authentication|security|restrictions)/i,
     /export\s+.*\s+(password|secret|key|credential)/i,

@@ -991,16 +991,16 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         min_v = 0 if min_occurs == "unbounded" else int(min_occurs)
         max_v = None if max_occurs == "unbounded" else int(max_occurs)
 
-        if min_v > 0 or max_v is not None:
+        # OWL RDF mapping permits one cardinality facet per restriction node.
+        # Conjoining separate subclass restrictions preserves both XSD bounds.
+        for facet, bound in ((OWL.minCardinality, min_v if min_v > 0 else None),
+                             (OWL.maxCardinality, max_v)):
+            if bound is None:
+                continue
             restriction = BNode()
             g.add((restriction, RDF.type, OWL.Restriction))
             g.add((restriction, OWL.onProperty, prop_uri))
-            
-            if min_v > 0:
-                g.add((restriction, OWL.minCardinality, Literal(min_v, datatype=XSD.nonNegativeInteger)))
-            if max_v is not None:
-                g.add((restriction, OWL.maxCardinality, Literal(max_v, datatype=XSD.nonNegativeInteger)))
-                
+            g.add((restriction, facet, Literal(bound, datatype=XSD.nonNegativeInteger)))
             g.add((class_uri, RDFS.subClassOf, restriction))
 
         # Emitting OSLC Property rules
@@ -1098,16 +1098,16 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((prop_uri, DC.source, Literal(source_tag)))
 
         # Emitting OWL Definitions for cardinality semantics
-        if min_v > 0 or max_v is not None:
+        # OWL RDF mapping permits one cardinality facet per restriction node.
+        # Conjoining separate subclass restrictions preserves both XSD bounds.
+        for facet, bound in ((OWL.minCardinality, min_v if min_v > 0 else None),
+                             (OWL.maxCardinality, max_v)):
+            if bound is None:
+                continue
             restriction = BNode()
             g.add((restriction, RDF.type, OWL.Restriction))
             g.add((restriction, OWL.onProperty, prop_uri))
-            
-            if min_v > 0:
-                g.add((restriction, OWL.minCardinality, Literal(min_v, datatype=XSD.nonNegativeInteger)))
-            if max_v is not None:
-                g.add((restriction, OWL.maxCardinality, Literal(max_v, datatype=XSD.nonNegativeInteger)))
-                
+            g.add((restriction, facet, Literal(bound, datatype=XSD.nonNegativeInteger)))
             g.add((class_uri, RDFS.subClassOf, restriction))
 
         # Emitting OSLC Property rules
@@ -1459,6 +1459,8 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
         )
 
     build_bridge_pairs(g, cfg)
+    from backend.depo_platform.ontology_semantics import declare_generated_metadata
+    declare_generated_metadata(g, [cfg.ns.hasSchemaFile, PROV.wasDerivedFrom])
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     g.serialize(destination=str(output_path), format="turtle")

@@ -7,23 +7,23 @@ def ontology_report(ontology_id: str) -> dict:
 
     scope = OSLCService._ontology_domain_scope('ontology:' + ontology_id)
     if not scope:
-        raise ValueError('Select a registered ontology')
+        raise ValueError('Select a registered or published ontology scope')
     types = ['requirements', 'requirement-collections', 'architecture-resources',
              'change-requests', 'test-cases', 'test-results']
     predicates = [OSLCService._resource_type_predicate(kind) for kind in types]
     columns = ', '.join(f'sum(CASE WHEN {predicate} THEN 1 ELSE 0 END) AS c{i}'
                         for i, predicate in enumerate(predicates))
-    scoped = "(toString(coalesce(n.ontology_id, '')) = $ontology_id OR ($ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
+    scoped = "(n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id OR (n.ontology_id IS NULL AND n.source_ontology IS NULL AND $ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
     query = f"""
     CALL {{ MATCH (n) WHERE {scoped} AND NOT n:GraphChunk AND NOT n:DatasheetChunk
-      AND NOT (n:StagedOntologyResource OR n:OntologyPublication)
+      AND NOT (n:StagedOntologyResource OR n:RetainedOntologyIdentity OR n:OntologyPublication)
       RETURN count(n) AS resources, {columns},
       sum(CASE WHEN {' OR '.join(predicates)} THEN 0 ELSE 1 END) AS unmapped }}
     CALL {{ MATCH (n)-[r]->(target) WHERE {scoped}
       AND NOT n:GraphChunk AND NOT n:DatasheetChunk
       AND NOT target:GraphChunk AND NOT target:DatasheetChunk
-      AND NOT (n:StagedOntologyResource OR n:OntologyPublication)
-      AND NOT (target:StagedOntologyResource OR target:OntologyPublication)
+      AND NOT (n:StagedOntologyResource OR n:RetainedOntologyIdentity OR n:OntologyPublication)
+      AND NOT (target:StagedOntologyResource OR target:RetainedOntologyIdentity OR target:OntologyPublication)
       RETURN count(r) AS outgoing_links }}
     RETURN resources, unmapped, outgoing_links, {', '.join(f'c{i}' for i in range(len(types)))}
     """

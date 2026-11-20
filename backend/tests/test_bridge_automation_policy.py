@@ -3,6 +3,8 @@ import unittest
 from backend.agentic_service.bridge_jobs import BridgeJobs, BridgeConflict
 from backend.mesh_store import InMemoryRegistry
 from backend.tests.test_bridge_jobs import Graph
+from backend.depo_platform.bridge_contract import digest
+from backend.agentic_service import bridge_change
 
 
 class Source:
@@ -12,7 +14,7 @@ class Source:
                          source_type='Entity', ontology_class_element_id='target', ontology_term='Part',
                          target_ontology_type='Class', validation_status='auto_approved', validation_errors=[],
                          validation_warnings=[], confidence=.98, rank=1, ambiguous=False, generic_match=False)]
-    def snapshot(self, *args): return {'source': self.revision, 'ontology':'one'}
+    def snapshot(self, *args): return {'source': digest(self.revision), 'ontology':digest('one')}
     def preview(self, *args): return self.snapshot(), copy.deepcopy(self.rows)
 
 
@@ -28,6 +30,12 @@ class AutomatedBridgeTests(unittest.TestCase):
     def test_only_validated_specific_mappings_are_published_with_policy_evidence(self):
         self.source.rows.append({**self.source.rows[0], 'import_row_key':'other', 'ambiguous':True})
         preview = self.preview()
+        ids = self.jobs.evaluate_policy(preview)['accepted_ids']
+        for action in ('submit', 'accept', 'authorize'):
+            state = bridge_change.view(self.jobs, preview)
+            bridge_change.transition(self.jobs, preview, action, 'registered-actor',
+                (state['change_request'] or {}).get('revision', 0), state['current_plan_digest'],
+                'Review validated mapping candidates', ids if action == 'submit' else [])
         result = self.jobs.publish_automatic(preview, 'registered-actor')
         self.assertEqual(result['receipt']['applied_links'], 1)
         self.assertEqual(result['approval_policy']['held_count'], 1)
@@ -54,4 +62,10 @@ class AutomatedBridgeTests(unittest.TestCase):
         self.source.rows.append({**self.source.rows[0], 'ontology_class_element_id':'different'})
         result = self.jobs.publish_automatic(self.preview(), 'actor')
         self.assertEqual(result['status'], 'held')
+        self.assertEqual(self.graph.calls, [])
+
+
+    def test_validated_policy_does_not_replace_a_change_order(self):
+        with self.assertRaises(BridgeConflict):
+            self.jobs.publish_automatic(self.preview(), 'registered-actor')
         self.assertEqual(self.graph.calls, [])

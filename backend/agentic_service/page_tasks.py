@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from backend.depo_platform.authorization import graph_read_identity
 from . import sessions
 
-PAGES = {'home','import','ontology','data-flow','catalog','data-products','registry','graph','code-audit','modeling','requirements','qif','whereused','data-quality','quality','reports','admin'}
+PAGES = {'home','import','ontology','data-flow','catalog','data-products','registry','graph','code-audit','modeling','requirements','qif','whereused','graph-analytics','data-quality','quality','reports','admin'}
 ALIASES = {'data-catalog':'catalog','recommendations':'quality'}
 router = APIRouter(prefix='/api/v1/page-tasks',tags=['page-tasks'])
 

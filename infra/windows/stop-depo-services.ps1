@@ -18,6 +18,7 @@ $entries = @($manifest.workers) + @($manifest.services)
 # Discover verified launchers even if tracking was lost. Shared tree control
 # checks creation times, stops children first, and verifies listener cleanup.
 $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+Assert-DepoTrackedServiceIdentities -Root $root -Snapshot $snapshot
 # Request graceful shutdown together, before waiting on any individual service.
 # Only verified launchers receive requests; PID reuse is rechecked by tree control.
 foreach ($entry in $entries) {

@@ -1,3 +1,4 @@
+import DecisionAlternatives from './DecisionAlternatives';
 import SemanticSupport from '../../Components/SemanticSupport';
 import { ManufacturingResult } from "./ManufacturingResult.js";
 import { SimilarPartsResult } from "./SimilarPartsResult.js";
@@ -41,7 +42,7 @@ const RecommendationsWorkspace = () => {
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthRevision, setHealthRevision] = useState(0);
   const [quickResult, setResult] = useState(null);
-  const [executionMode,setExecutionMode]=useState('graph');
+  const [executionMode,setExecutionMode]=useState('agent');
   const [agentRun,setAgentRun]=useState(null);
   const [agentStatus,setAgentStatus]=useState({});
   const [accessRejected,setAccessRejected]=useState(false);
@@ -155,6 +156,8 @@ const RecommendationsWorkspace = () => {
       }
     };
 
+    const params=new URLSearchParams(window.location.hash.split('?')[1]||'');
+    if(params.get('node_id'))applyPrefill({service:params.get('service')||'change-impact',node_name:params.get('name')||'',node:params.get('name')||'',name:params.get('name')||'',node_id:params.get('node_id'),ontology_id:params.get('ontology_id')||'',ontology_prefix:params.get('ontology_prefix')||''});
     const handler = (e) => applyPrefill(e.detail || {});
     window.addEventListener('dt-rec-prefill', handler);
     window.addEventListener('dt-recommendation-prefill', handler);
@@ -239,12 +242,13 @@ const RecommendationsWorkspace = () => {
   useEffect(() => () => { analysisGeneration.current += 1; }, []);
 
   const handleSelect = (id, prefill) => {
-    setActiveService(normalizeRecommendationService(id));
+    setActiveService(id==='decision-alternatives'?id:normalizeRecommendationService(id));
     if (prefill) setInputValue(prefill);
     setResult(null); setError('');
   };
 
   const services = [
+    { id: 'decision-alternatives', Icon: Search, label: 'Decision alternatives', color: C.primaryText },
     { id: 'change-impact',  Icon: Zap,     label: 'Change Impact',        color: C.orange  },
     { id: 'similar-parts',  Icon: Search,  label: 'Similar Parts',        color: C.primaryText },
     { id: 'manufacturing',  Icon: Factory, label: 'Process Context', color: C.green   },
@@ -261,6 +265,7 @@ const RecommendationsWorkspace = () => {
     <div className="recommendation-readiness" role="status"><span className={`recommendation-readiness__badge ${recommendationReady?'is-ready':''}`}>{healthLoading?'Checking':recommendationReady?'Graph data available':'Needs attention'}</span><span>{readinessMessage}</span>{!healthLoading&&!recommendationReady&&<a href="#/import">Review source imports</a>}</div>
     <div className="recommendation-services" role="tablist" aria-label="Recommendation analyses">{services.map((service,index)=><button key={service.id} type="button" role="tab" id={`${tabId}-${service.id}`} aria-controls={`${tabId}-analysis`} aria-selected={activeService===service.id} tabIndex={activeService===service.id?0:-1} ref={node=>{serviceTabs.current[index]=node;}} onClick={()=>handleSelect(service.id)} onKeyDown={event=>navigate(event,index)}><service.Icon size={17} aria-hidden="true"/>{service.label}</button>)}</div>
     <section role="tabpanel" id={`${tabId}-analysis`} aria-labelledby={`${tabId}-${activeService}`} tabIndex={0}>
+      {activeService==='decision-alternatives'?<DecisionAlternatives ready={recommendationReady}/>:<>
       <p className="recommendation-purpose">{activeService==='change-impact'?'Review dependency paths across parts, assemblies, requirements and processes, including configuration and effectivity questions.':activeService==='similar-parts'?'Compare typed parts using engineering properties, units and name similarity. Inspect conflicts and missing evidence before deciding on reuse.':'Inspect process links and operational context around a part or assembly.'}</p>
       {recommendationReady&&(activeServiceReadiness===false||activeServiceReadiness?.ready===false)&&<p role="status" className="recommendation-notice">{activeServiceReadiness?.message||'This analysis is not ready. Review source graph data and retry readiness.'}</p>}
       <div className="recommendation-mode"><label>Analysis method<select value={executionMode} onChange={event=>{analysisController.current?.abort();analysisGeneration.current+=1;setLoading(false);setResult(null);setExecutionMode(event.target.value);}}><option value="agent">Agent investigation + policy review</option><option value="graph">Direct graph analysis</option></select></label><p>{executionMode==='agent'?'Graph Analyst plans reads and explains the evidence with the shared policy assessment.':'Run the bounded graph query directly, with the same shared decision-policy assessment.'}</p></div>
@@ -289,14 +294,15 @@ const RecommendationsWorkspace = () => {
       {error&&<div role="alert" className="recommendation-notice recommendation-notice--error"><p>{error}</p><a href="#/graph">Select a business object in Graph Explorer</a><p>Choose the object's identity and ontology scope before retrying this analysis.</p></div>}
       {loading&&<p role="status">Reading graph context for {inputValue}. Changing the object or analysis cancels this request.</p>}
       {!result&&!loading&&!error&&canAnalyse&&inputValid&&limitValid&&(executionMode!=='agent'||!!objectContext.node_id)&&!(executionMode==='agent'&&(agentRun||agentStatus.error||agentStatus.busy||agentStatus.pending||!agentContract||!agentTools?.has(recommendationTools[activeService])))&&<div className="recommendation-empty"><strong>Ready to analyse</strong><p>Run the analysis to inspect matching evidence.</p><a href="#/graph">Find an object in Graph Explorer</a></div>}
-      {result&&<section className="recommendation-results" aria-label="Recommendation evidence"><div className="recommendation-result-heading"><h3>{selectedService.label} results</h3><span>Object: {inputValue}</span></div><ResultProvenance mode={executionMode} policy={result.decision_policy} observationId={executionMode==='agent'?agentRun?.result?.recommendation_observation_id:''}/>{showRetained&&executionMode==='graph'&&<p role="status">Showing previously read evidence for this selection. Run Analyse to refresh it.</p>}<AIInsightBanner service={activeService} data={result}/><details className="recommendation-method"><summary>Analysis method & scope</summary><p>{result.traceability || result.ranking_scope || 'Graph-derived read-only analysis. The response does not record additional method or coverage details.'}</p><p>Scores are heuristics, not calibrated confidence. In agent mode, the Graph Analyst cites the retained tool observation.</p></details><DecisionPolicyAssessment report={result.decision_policy}/><SemanticSupport report={result.semantic_support}/>
+      {result&&<section className="recommendation-results" aria-label="Recommendation evidence"><div className="recommendation-result-heading"><h3>{selectedService.label} results</h3><span>Object: {inputValue}</span></div>{showRetained&&executionMode==='graph'&&<p role="status">Showing previously read evidence for this selection. Run Analyse to refresh it.</p>}<details className="recommendation-method"><summary>Supporting report</summary><ResultProvenance mode={executionMode} policy={result.decision_policy} observationId={executionMode==='agent'?agentRun?.result?.recommendation_observation_id:''}/><AIInsightBanner service={activeService} data={result}/><DecisionPolicyAssessment report={result.decision_policy}/><SemanticSupport report={result.semantic_support}/><p>{result.traceability || result.ranking_scope}</p></details>
         <RecommendedActions service={activeService} data={result}/>
         {activeService==='change-impact'&&<ChangeImpactResult data={result}/>}
         {activeService==='similar-parts'&&<SimilarPartsResult data={result}/>}
         {activeService==='manufacturing'&&<ManufacturingResult data={result}/>}
       </section>}
+      </>}
     </section>
-    <p className="recommendation-review-note">Results reflect the available graph and are not engineering approval. Neither method approves or publishes changes.</p>
+
   </section>;
 
 };

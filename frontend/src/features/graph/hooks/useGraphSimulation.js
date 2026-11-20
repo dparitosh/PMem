@@ -68,6 +68,7 @@ useEffect(() => {
       gRef.current = svg.append('g'); // Main group for graph elements
       if (!zoomBehaviorRef.current) {
         zoomBehaviorRef.current = d3.zoom()
+          .extent(() => [[0, 0], [svgElement.clientWidth || 800, svgElement.clientHeight || 600]])
           .scaleExtent([0.1, 5])
           .on('zoom', handleZoom);
       }
@@ -151,7 +152,8 @@ useEffect(() => {
     // Re-enable zoom for force-directed layout
     if (!zoomBehaviorRef.current) {
       zoomBehaviorRef.current = d3.zoom()
-        .scaleExtent([0.1, 5])
+        .extent(() => [[0, 0], [svgElement.clientWidth || 800, svgElement.clientHeight || 600]])
+          .scaleExtent([0.1, 5])
         .on('zoom', handleZoom);
     }
     svg.call(zoomBehaviorRef.current);
@@ -178,7 +180,7 @@ useEffect(() => {
     const sizeChanged = lastSizeRef.current !== sizeKey;
     lastSizeRef.current = sizeKey;
     simulationLayoutRef.current = layoutKey;
-    const nodeLabelStyle = { ...getNodeLabelStyle(nodeCount, graphViewMode) };
+    const nodeLabelStyle = { ...getNodeLabelStyle(nodeCount, graphViewMode), ...(model.compact?{maxLength:24}:{}) };
     if (!showNodeLabels) { nodeLabelStyle.fontSize = 12; nodeLabelStyle.maxLength = 48; }
     const labelVisible = d => showNodeLabels || d.elementId === activeSearchResultId || d.elementId === activeTooltipNodeRef.current || highlightedNodeIdsRef.current.has(d.elementId);
     const shouldClusterDenseGraph = graphViewMode === 'ontology' && !graphSearchActive && nodeCount > 140;

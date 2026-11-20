@@ -56,7 +56,7 @@ def name(label, raw):
 @graph_projection_reader
 def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''):
     selected=intent(query)
-    if not selected:raise ValueError('Use a product, assembly or part–PMI question')
+    if not selected:raise ValueError('Use a product, assembly or partâ€“PMI question')
     scope="AND ($scope='' OR p.ontology_id=$scope) AND ($prefix='' OR p.prefix=$prefix) AND ($node_id='' OR elementId(p)=$node_id) "
     common=dict(scope=ontology_id,prefix=ontology_prefix,node_id=node_id)
     if selected == 'associated_requirements':
@@ -64,7 +64,7 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
         rows = []
         if subject or node_id:
             rows = publisher._session_rows(
-                'MATCH (p) WHERE NOT (p:StagedOntologyResource OR p:OntologyPublication) '
+                'MATCH (p) WHERE NOT (p:StagedOntologyResource OR p:OntologyPublication OR p:RetainedOntologyIdentity) '
                 'AND (any(t IN coalesce(p.rdf_types,[]) WHERE t IN $business_types) '
                 'OR (p.import_id IS NOT NULL AND p.import_row_key IS NOT NULL AND any(l IN labels(p) WHERE l IN $business_labels))) '
                 "AND ($scope='' OR p.ontology_id=$scope OR p.source_ontology=$scope) "
@@ -73,13 +73,27 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 "AND ($subject='' OR toLower(coalesce(p.name,p.label,p.title,'')) CONTAINS toLower($subject)) "
                 'WITH p ORDER BY elementId(p) LIMIT 20 '
                 'MATCH path=(p)-[*1..3]-(q) WHERE p<>q '
-                'AND all(n IN nodes(path) WHERE NOT (n:StagedOntologyResource OR n:OntologyPublication OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty) '
+                # Follow declared product composition downwards, never up to a
+                # parent and down to a sibling. The final edge must explicitly
+                # associate a requirement, not merely reach one by proximity.
+                'AND ((all(i IN range(0,length(path)-1) WHERE startNode(relationships(path)[i])=nodes(path)[i]) '
+                'AND all(r IN relationships(path)[0..-1] WHERE r.predicate IN $composition_predicates '
+                'OR (r.predicate IS NULL AND type(r) IN $composition_types)) '
+                'AND (last(relationships(path)).predicate IN $requirement_predicates '
+                'OR (last(relationships(path)).predicate IS NULL AND type(last(relationships(path))) IN $requirement_rel_types))) '
+                'OR (length(path)=1 AND startNode(last(relationships(path)))=q '
+                'AND (last(relationships(path)).predicate IN $inverse_requirement_predicates '
+                'OR (last(relationships(path)).predicate IS NULL AND type(last(relationships(path))) IN $inverse_requirement_types)))) '
+                "AND all(r IN relationships(path) WHERE NOT coalesce(r.predicate,'') IN "
+                "['http://www.w3.org/1999/02/22-rdf-syntax-ns#type','http://www.w3.org/2000/01/rdf-schema#subClassOf'] "
+                "AND NOT type(r) IN ['INSTANCE_OF','TYPED_BY','SUBCLASS_OF']) "
+                'AND all(n IN nodes(path) WHERE NOT (n:StagedOntologyResource OR n:OntologyPublication OR n:RetainedOntologyIdentity OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty) '
                 "AND NOT any(t IN coalesce(n.rdf_types,[]) WHERE t IN $schema_types) "
                 "AND ($scope='' OR n.ontology_id=$scope OR n.source_ontology=$scope) "
                 "AND ($prefix='' OR n.prefix=$prefix OR n.ontology_prefix=$prefix)) "
                 'AND (any(t IN coalesce(q.rdf_types,[]) WHERE t IN $requirement_types) '
                 'OR (q.import_id IS NOT NULL AND q.import_row_key IS NOT NULL '
-                "AND (any(l IN labels(q) WHERE l IN $requirement_labels) OR toLower(coalesce(q.name,q.label,q.title,'')) CONTAINS 'requirement'))) "
+                'AND any(l IN labels(q) WHERE l IN $requirement_labels))) '
                 # Apply the answer limit to business pairs, not alternate paths.
                 # Otherwise one highly connected requirement consumes every row.
                 'WITH p,q,path ORDER BY length(path),[r IN relationships(path) | elementId(r)] '
@@ -88,9 +102,16 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 'elementId(q) AS requirement_id,coalesce(q.name,q.label,q.title) AS requirement, '
                 "coalesce(q.description,q.text,q.value,'') AS detail, q.rdf_properties AS detail_props, "
                 "[r IN relationships(path) | {id:elementId(r),type:type(r),predicate:r['predicate']}] AS path, "
-                'recorded_path_count,coalesce(q.ontology_id,q.source_ontology,q.import_id) AS source,coalesce(q.prefix,q.ontology_prefix) AS prefix '
+                'recorded_path_count,coalesce(p.ontology_id,p.source_ontology,p.import_id) AS subject_source, p.publication_revision AS publication_revision, '
+                'coalesce(q.ontology_id,q.source_ontology,q.import_id) AS source,coalesce(q.prefix,q.ontology_prefix) AS prefix '
                 'ORDER BY subject_id,requirement_id LIMIT 21',
                 **common, subject=subject,
+                composition_predicates=[CEIM+'hasPart',CEIM+'hasComponent'],
+                composition_types=['HAS_PART','HAS_COMPONENT','CONTAINS_PART'],
+                requirement_predicates=[CEIM+'hasRequirement',CEIM+'hasSpecification',CEIM+'satisfies'],
+                requirement_rel_types=['HAS_REQUIREMENT','HAS_SPECIFICATION','SATISFIES'],
+                inverse_requirement_predicates=[CEIM+'allocatedTo'],
+                inverse_requirement_types=['ALLOCATED_TO'],
                 business_types=[CEIM+k for k in ('Product','ProductRevision','Part','Assembly','Requirement','Specification')],
                 business_labels=['Product','ProductRevision','Part','Assembly','ProductInstance','Requirement','Specification','RequirementRevision'],
                 requirement_types=[CEIM+k for k in ('Requirement','Specification','RequirementRevision')],
@@ -111,7 +132,7 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
             "OR r.predicate=$trace_predicate OR (r.predicate IS NULL AND type(r)='TRACE_TO')) "
             'RETURN elementId(p) AS part_id,p.label AS part,p.rdf_properties AS part_props, '
             'elementId(a) AS pmi_id,a.label AS pmi,a.rdf_properties AS pmi_props, '
-            'elementId(r) AS relationship_id,type(r) AS relationship,r.predicate AS predicate,p.ontology_id AS source,p.prefix AS prefix '
+            'elementId(r) AS relationship_id,type(r) AS relationship,r.predicate AS predicate,p.ontology_id AS source,p.prefix AS prefix,p.publication_revision AS publication_revision '
             "ORDER BY CASE WHEN predicate=$trace_predicate OR (predicate IS NULL AND relationship='TRACE_TO') THEN 1 ELSE 0 END,part_id,pmi_id,relationship_id LIMIT 21",
             trace_predicate=CEIM+'traceTo', subject=subject,
             **common,part_types=[CEIM+k for k in ('Part','Product','ProductRevision','Assembly')],pmi_types=[CEIM+'PMIAnnotation',
@@ -137,7 +158,7 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
             "AND ($node_id='' OR elementId(p)=$node_id) "
             "AND ($subject='' OR toLower(coalesce(p.name,p.label,p.title,'')) CONTAINS toLower($subject)) "
             'RETURN elementId(p) AS node_id,coalesce(p.name,p.label) AS name,p.rdf_properties AS props,coalesce(p.rdf_types,[]) AS types,labels(p) AS labels, '
-            'coalesce(p.ontology_id,p.source_ontology,p.import_id) AS source,coalesce(p.prefix,p.ontology_prefix) AS prefix ORDER BY source,node_id LIMIT 21',
+            'coalesce(p.ontology_id,p.source_ontology,p.import_id) AS source,coalesce(p.prefix,p.ontology_prefix) AS prefix,p.publication_revision AS publication_revision ORDER BY source,node_id LIMIT 21',
             **common,subject=subject,types=[CEIM+k for k in ('Product','ProductRevision','Part','Assembly')],labels=['Product','ProductRevision','Part','Assembly','ProductInstance'])
         for row in rows:
             row['name']=name(row['name'],row.pop('props',None));row['kind']=', '.join(t.rsplit('/',1)[-1] for t in row.pop('types') if t.startswith(CEIM)) or ', '.join(t for t in row.pop('labels',[]) if t in {'Product','ProductRevision','Part','Assembly','ProductInstance'})

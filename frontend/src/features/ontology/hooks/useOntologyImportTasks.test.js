@@ -10,6 +10,7 @@ function Workspace() {
   </select><button onClick={state.refreshImportTasks}>Refresh</button><output>{state.selectedImportTaskDetails?.name || 'No details'}</output><output>{state.selectedImportTaskPreview?.name || 'No preview'}</output>{state.selectedImportTaskError&&<p role="alert">{state.selectedImportTaskError}</p>}</>;
 }
 beforeEach(() => {
+  window.history.replaceState(null, '', '#/ontology?view=alignment');
   vi.resetAllMocks();
   api.getTasks.mockResolvedValue({ data: { tasks: [{ task_id: 'A' }, { task_id: 'B' }] } });
   api.getStatus.mockResolvedValue({ data: { name: 'Details A' } });
@@ -90,4 +91,39 @@ test('reconnect clears selected task evidence and reloads the registry',async()=
  act(()=>window.dispatchEvent(new Event('depo:session-replaced')));
  expect(screen.queryByText('Preview A')).toBeNull();
  await waitFor(()=>expect(api.getTasks).toHaveBeenCalledTimes(2));
+});
+
+
+test('linked source selects the exact task and missing links never substitute another source', async () => {
+  window.history.replaceState(null,'','#/ontology?view=alignment&import_task_id=B');
+  api.getStatus.mockImplementation(id=>Promise.resolve({data:{name:'Details '+id}}));
+  api.getPreview.mockImplementation(id=>Promise.resolve({data:{name:'Preview '+id}}));
+  const view=render(<Workspace/>);
+  await screen.findByText('Preview B');
+  expect(api.getStatus.mock.calls.every(([id])=>id==='B')).toBe(true);
+  await act(async()=>{window.history.replaceState(null,'','#/ontology?view=alignment&import_task_id=missing');window.dispatchEvent(new PopStateEvent('popstate'));});
+  expect(screen.queryByText('Preview B')).toBeNull();
+  expect(screen.getByRole('alert')).toHaveTextContent('No different source was selected');
+  expect(api.getTasks).toHaveBeenCalledTimes(1);
+  view.unmount();
+});
+
+test('manual source selection updates the retained link and survives remount', async () => {
+  const view=render(<Workspace/>);await screen.findByText('Preview A');
+  fireEvent.change(screen.getByRole('combobox'),{target:{value:'B'}});
+  expect(window.location.hash).toContain('import_task_id=B');
+  view.unmount();api.getStatus.mockClear();api.getPreview.mockClear();
+  render(<Workspace/>);
+  await waitFor(()=>expect(api.getStatus).toHaveBeenCalledWith('B',expect.anything()));
+  expect(api.getStatus.mock.calls.every(([id])=>id==='B')).toBe(true);
+});
+
+
+test('changing ontology view with the same linked task keeps current evidence', async () => {
+  window.history.replaceState(null,'','#/ontology?view=alignment&import_task_id=A');
+  render(<Workspace/>);await screen.findByText('Preview A');
+  act(()=>{window.history.replaceState(null,'','#/ontology?view=taxonomy&import_task_id=A');window.dispatchEvent(new HashChangeEvent('hashchange'));});
+  expect(screen.getByText('Preview A')).toBeVisible();
+  expect(api.getTasks).toHaveBeenCalledTimes(1);
+  expect(api.getPreview).toHaveBeenCalledTimes(1);
 });

@@ -11,12 +11,13 @@ beforeEach(()=>{vi.resetAllMocks();sessionStorage.clear();window.location.hash='
 afterEach(()=>{window.location.hash='';sessionStorage.clear();});
 async function ready(){render(<DataFlowPage/>);await screen.findByRole('button',{name:'Job B'});}
 function openReplay(){fireEvent.click(within(screen.getByRole('button',{name:'Job B'}).closest('tr')).getByRole('button',{name:'Replay'}));return screen.getByRole('dialog');}
-function confirm(dialog){fireEvent.change(within(dialog).getByLabelText('Action approver'),{target:{value:'reviewer'}});fireEvent.click(within(dialog).getByRole('button',{name:'Confirm replay retained run'}));}
+function confirm(dialog){fireEvent.click(within(dialog).getByRole('button',{name:'Confirm replay retained run'}));}
 test('late detail response cannot replace a more recently selected run',async()=>{
  await ready();const detail=deferred();api.getRun.mockReturnValueOnce(detail.promise);window.location.hash='#/data-flow/old-run';
  fireEvent.click(screen.getByRole('button',{name:'Refresh'}));await waitFor(()=>expect(api.getRun).toHaveBeenCalledWith('old-run', expect.anything()));
  fireEvent.click(screen.getByRole('button',{name:'Job B'}));
  await act(async()=>detail.resolve({data:{...a,run_id:'old-run'}}));
+ fireEvent.click(screen.getByText('Technical run references'));
  expect(within(screen.getByRole('complementary')).getByText('run-b')).toBeVisible();
 });
 test('successful mutation supersedes an in-flight polling read',async()=>{

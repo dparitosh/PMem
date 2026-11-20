@@ -116,7 +116,12 @@ const buildPresetVisibility = (headers, presetId) => {
   return visible;
 };
 
-export const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+export const escapeCsv = (value) => {
+  let text=typeof value==='object'&&value!==null?JSON.stringify(value):String(value??'');
+  // Keep domain text inert when the exported CSV is opened in a spreadsheet.
+  if(typeof value==='string'&&(/^[\t\r\n]/.test(text)||(/^\s*[=+@-]/.test(text)&&!/^\s*-\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\s*$/.test(text))))text="'"+text;
+  return `"${text.replace(/"/g,'""')}"`;
+};
 
 const downloadCsv = (filename, headers, rows) => {
   const csv = [
@@ -130,19 +135,26 @@ const downloadCsv = (filename, headers, rows) => {
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 
-const normalizeReportNode = (item = {}) => {
+const declaredReportType=(raw,props)=>{
+  if(raw&&!['resource','individual','OntologyResource','Node'].includes(raw))return raw;
+  const types=Array.isArray(props.rdf_types)?props.rdf_types:[];
+  const declared=types.filter(value=>typeof value==='string'&&value.trim());
+  const specific=declared.filter(value=>value!=='http://www.w3.org/2002/07/owl#NamedIndividual');
+  return [...new Set((specific.length?specific:declared).map(value=>value.split(/[#/]/).pop()||value))].join(', ')||raw;
+};
+export const normalizeReportNode = (item = {}) => {
   const node = item?.n || item?.node || item;
   const props = node?.properties || item?.properties || {};
   const labels = node?.labels || item?.node_labels || item?.labels || [];
   const type = Array.isArray(labels) ? labels.join(', ') : String(labels || item?.type || node?.label || '');
   return {
     elementId: node?.elementId || node?.element_id || node?.id || item?.elementId || item?.element_id,
-    type,
     ...props,
     ...Object.fromEntries(Object.entries(item || {}).filter(([key]) => !['n', 'node', 'properties', 'labels', 'node_labels'].includes(key))),
+    type: declaredReportType(item.type || node?.type || type,props),
     name: props.name || node?.name || item?.name || props.label || node?.label || item?.label,
     label: props.label || node?.label || item?.label,
   };
@@ -289,13 +301,7 @@ const buildNodeReportRows = (graphData, searchResults) => {
 
   const graphNodes = graphData?.nodes || [];
   const rows = stripUnwanted(
-    graphNodes.map((node) => ({
-      elementId: node.elementId || node.id,
-      type: Array.isArray(node.labels) ? node.labels.join(', ') : (node.label || ''),
-      ...(node.properties || {}),
-      name: node.name || node.properties?.name || node.label || node.properties?.label,
-      label: node.label || node.properties?.label,
-    }))
+    graphNodes.map(normalizeReportNode)
   );
 
   const ontologyTypes = new Set(['OntologyClass', 'ObjectProperty', 'DatatypeProperty']);
@@ -328,7 +334,20 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [selectedXsdOntology, setSelectedXsdOntology] = useState('');
-  const [reportOntology, setReportOntology] = useState('');
+  const readReportOntology = () => new URLSearchParams(window.location.hash.split('?')[1] || '').get('ontology_id') || '';
+  const [reportOntology, setReportOntology] = useState(readReportOntology);
+  useEffect(() => {
+    const changed = () => { setReportOntology(readReportOntology()); setCurrentPage(1); setFilters({}); };
+    window.addEventListener('hashchange', changed); window.addEventListener('popstate', changed);
+    return () => { window.removeEventListener('hashchange', changed); window.removeEventListener('popstate', changed); };
+  }, []);
+  const selectReportOntology = value => {
+    const [path,search=''] = window.location.hash.split('?');
+    const params = new URLSearchParams(search);
+    if(value) params.set('ontology_id', value); else params.delete('ontology_id');
+    window.history.pushState(null, '', `${path || '#/reports'}?${params}`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  };
   const [fullMetrics, setFullMetrics] = useState(null);
   const [fullMetricsError, setFullMetricsError] = useState('');
   const [xsdReport, setXsdReport] = useState(null);
@@ -352,7 +371,35 @@ const ReportsTab = ({ searchResults, graphData }) => {
     };
   }, []);
 
-  const reportPrefix = ontologies.find(row => (row.ontology_id || row.id) === reportOntology)?.prefix || '';
+  const [publishedReportSources, setPublishedReportSources] = useState([]);
+  const [reportSourcesError, setReportSourcesError] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    setPublishedReportSources([]); setReportSourcesError('');
+    if (typeof graphApi.computationOptions !== 'function') return () => controller.abort();
+    const names = typeof dataPipelineAPI.runs === 'function'
+      ? dataPipelineAPI.runs(100, {signal:controller.signal})
+      : Promise.resolve({data:{runs:[]}});
+    Promise.allSettled([graphApi.computationOptions('', controller.signal), names]).then(([inventory, runs]) => {
+      if (controller.signal.aborted) return;
+      if (inventory.status !== 'fulfilled' || !Array.isArray(inventory.value?.data?.sources)) {
+        setReportSourcesError('Published report sources could not be loaded.'); return;
+      }
+      const labels = new Map((runs.status === 'fulfilled' ? runs.value?.data?.runs || [] : []).map(run => [run.run_id,run.source_name]));
+      setPublishedReportSources(inventory.value.data.sources.map(source => ({
+        ...source, label: (labels.get(source.publication_id) || source.name || 'Published source')
+          + (source.published_at ? ` · ${new Date(source.published_at).toLocaleString()}` : ''),
+      })));
+    });
+    return () => controller.abort();
+  }, [contentRevision]);
+  const reportSources = useMemo(() => {
+    const sources = new Map((ontologies || []).map(row => [row.ontology_id || row.id,row]));
+    publishedReportSources.forEach(row => { if (!sources.has(row.ontology_id)) sources.set(row.ontology_id,row); });
+    return [...sources.values()];
+  }, [ontologies,publishedReportSources]);
+  // An exact source/version selection must not broaden to a shared prefix.
+  const reportPrefix = '';
   useEffect(() => {
     const controller = new AbortController();
     setFullMetrics(null); setFullMetricsError('');
@@ -411,7 +458,6 @@ const ReportsTab = ({ searchResults, graphData }) => {
   }, [fallbackGraphData]);
 
   useEffect(() => {
-    const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
     // Fetch the selected scope independently of the current graph canvas.
 
     let cancelled = false;
@@ -653,12 +699,14 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   return (
     <div style={{ minHeight: '100%', padding: '8px 0 0' }}>
-      <label>Report ontology <select aria-label="Report ontology" value={reportOntology} onChange={event => { setReportOntology(event.target.value); setCurrentPage(1); setFilters({}); }}>
+      <label>Report ontology <select aria-label="Report ontology" value={reportOntology} onChange={event => selectReportOntology(event.target.value)}>
+        {reportOntology && !reportSources.some(row => (row.ontology_id || row.id) === reportOntology) && <option value={reportOntology}>Selected ontology unavailable</option>}
         <option value="">All ontologies</option>
-        {ontologies.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label || ontology.prefix}</option>)}
+        {reportSources.map(ontology => <option key={ontology.ontology_id || ontology.id} value={ontology.ontology_id || ontology.id}>{ontology.label || ontology.prefix || ontology.name}</option>)}
       </select></label>
       <button type="button" onClick={() => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); }}>Refresh reports</button>
       <p>Graph reports use a bounded service projection (up to 1,200 nodes); they are not full warehouse totals. Pipeline/job telemetry remains system-wide.</p>
+      {reportSourcesError && <p role="alert">{reportSourcesError}</p>}
       <OntologyOslcReport ontologyId={reportOntology} revision={contentRevision} />
       <section aria-label="Full graph totals">
         <h3>Full graph totals for selected ontology scope</h3>
@@ -947,6 +995,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                 <input
                   type="text"
                   placeholder="Search relationship rows..."
+                  aria-label="Search relationship rows"
                   value={relSearchTerm}
                   onChange={(event) => setRelSearchTerm(event.target.value)}
                   style={{
@@ -1118,6 +1167,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                     <select
                       className="form-select form-select-sm"
                       style={{ width: 'auto' }}
+                      aria-label="Report rows per page"
                       value={itemsPerPage}
                       onChange={(event) => setItemsPerPage(parseInt(event.target.value, 10))}
                     >
@@ -1199,6 +1249,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                       {filterableHeaders.map((header) => (
                         <select
                           key={header}
+                          aria-label={`Filter by ${formatHeaderLabel(header)}`}
                           className="form-select form-select-sm"
                           value={filters[header] || ''}
                           onChange={(event) => handleFilterChange(header, event.target.value)}

@@ -201,11 +201,11 @@ class GovernedMergeService:
         from backend.ontology_service.merge_matching import match_entities
         return match_entities(source_graph, target_graph)[0]
 
-    def apply(self, preview_id: str, approved_by: str) -> dict[str, Any]:
+    def apply(self, preview_id: str, approved_by: str, *, publish_requested=False) -> dict[str, Any]:
         with self._operation_lock(preview_id) as acquired:
             if acquired is False:
                 raise ValueError('A merge operation is already running; refresh and retry')
-            return self._with_source_locks(preview_id, lambda: self._apply(preview_id, approved_by))
+            return self._with_source_locks(preview_id, lambda: self._apply(preview_id, approved_by, publish_requested=publish_requested))
 
     def _with_source_locks(self, preview_id, operation):
         record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
@@ -284,7 +284,22 @@ class GovernedMergeService:
                 return decision
             return {**self._with_source_locks(preview_id, lambda: self._apply(preview_id, approved_by, approval_policy=decision)), 'approval_policy': decision}
 
-    def _apply(self, preview_id: str, approved_by: str, approval_policy=None) -> dict[str, Any]:
+    def change_status(self, preview_id):
+        from .merge_change import view
+        return view(self, preview_id)
+
+    def change_transition(self, preview_id, action, actor, revision, plan, reason=''):
+        from .merge_change import transition, execute
+        if action == 'execute':
+            execute(self, preview_id, actor, revision, plan)
+            return self.change_status(preview_id)
+        return transition(self, preview_id, action, actor, revision, plan, reason)
+
+    def _apply(self, preview_id, approved_by, approval_policy=None, publish_requested=False):
+        from .merge_change import guarded_apply
+        return guarded_apply(self, preview_id, approved_by, approval_policy, publish_requested)
+
+    def _apply_native(self, preview_id: str, approved_by: str, approval_policy=None) -> dict[str, Any]:
         if not str(approved_by).strip():
             raise ValueError("approved_by is required for a governed merge")
         if self.registry is not None:

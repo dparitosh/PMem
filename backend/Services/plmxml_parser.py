@@ -30,9 +30,8 @@ def _normalize_ref(value: str) -> str:
     if not raw:
         return ""
     raw = raw.lstrip("#")
-    plmxml_match = re.search(r"(id[0-9A-Za-z_-]+)(?:\.plmxml)?$", raw, flags=re.IGNORECASE)
-    if plmxml_match and raw.lower().endswith(".plmxml"):
-        return plmxml_match.group(1)
+    # External document locators are not local IDs, even when their filename
+    # resembles id123.plmxml. A resolver must establish that association.
     return raw
 
 
@@ -41,7 +40,7 @@ def _is_external_locator_ref(ref_key: str, ref_value: str) -> bool:
     value = (ref_value or "").strip().lower()
     if key not in {"locationRef", "location", "fileRef", "fileRefs"}:
         return False
-    return value.endswith((".html", ".htm", ".txt", ".zip", ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".cgr", ".jt"))
+    return value.endswith((".html", ".htm", ".txt", ".zip", ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".cgr", ".jt", ".prt", ".qaf", ".stp", ".step", ".stpx", ".x_t", ".catpart", ".catproduct"))
 
 
 @dataclass
@@ -358,19 +357,19 @@ def xsd_datatype_for(plm_type: str) -> str:
     return _XSD_FOR_PLM_TYPE.get((plm_type or "").lower(), "")
 
 
-def _iterparse(path: Path):
+def _iterparse(source):
     try:
         from lxml import etree as _lxml_etree  # type: ignore
         # Lossless: expand the file's own internal entities and accept large valid files.
         # External entities and network access stay disabled (no XXE / SSRF).
-        return _lxml_etree.iterparse(str(path), events=("start", "end"), recover=True, huge_tree=True,
+        return _lxml_etree.iterparse(source, events=("start", "end"), recover=True, huge_tree=True,
                                      resolve_entities="internal", no_network=True, load_dtd=False), True
     except ImportError:
         # Only a missing lxml may fall back. The fallback has no retained tree, so
         # root attributes, ApplicationRef and UserValue capture are unavailable there.
         logger.warning("lxml unavailable: PLMXML parsed without root/ApplicationRef/UserValue capture")
         import defusedxml.ElementTree as _safe_et
-        return _safe_et.iterparse(str(path), events=("start", "end")), False
+        return _safe_et.iterparse(source, events=("start", "end")), False
 
 
 def _primary_id(attrs: Dict[str, str]) -> str:
@@ -512,8 +511,15 @@ def _direct_child_texts(element: ET.Element) -> Dict[str, str]:
 
 
 def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None = None) -> PlmxmlDocument:
+    # Own the stream explicitly: iterator exceptions must release its Windows
+    # handle before the adapter removes its temporary upload.
+    with Path(file_path).open("rb") as stream:
+        return _parse_plmxml_stream(file_path, metadata_exclusion_tags, stream)
+
+
+def _parse_plmxml_stream(file_path, metadata_exclusion_tags, stream) -> PlmxmlDocument:
     start_time = time.perf_counter()
-    context, using_lxml = _iterparse(file_path)
+    context, using_lxml = _iterparse(stream)
     doc = PlmxmlDocument(file_path=file_path)
     resolved_metadata_exclusion_tags = _resolve_metadata_exclusion_tags(metadata_exclusion_tags)
     anon_counts: Dict[str, int] = {}
@@ -567,13 +573,14 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
                 continue
 
         if elem_id in known_ids:
-            duplicate_ids.append(elem_id)
-            logger.warning("PLMXML duplicate identifier detected: id=%s tag=%s file=%s", elem_id, tag, file_path.name)
+            raise ValueError(f"PLMXML duplicate identifier: {elem_id}")
         else:
             known_ids[elem_id] = tag
-        if attrs.get("uid"):
-            alias_to_primary[attrs["uid"]] = elem_id
-        alias_to_primary[elem_id] = elem_id
+        for alias in filter(None, (attrs.get("uid"), elem_id)):
+            previous = alias_to_primary.get(alias)
+            if previous is not None and previous != elem_id:
+                raise ValueError(f"PLMXML ambiguous identifier alias: {alias}")
+            alias_to_primary[alias] = elem_id
         # Attribute-first exports remain untouched; child texts fill only
         # absent fields for XPDMXML-style Product and ProductInst records.
         for key, value in _direct_child_texts(elem).items():
@@ -588,7 +595,7 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
             doc.parts[elem_id] = PlmxmlPart(
                 id=elem_id,
                 name=attrs.get("name", attrs.get("Name", "")),
-                part_number=attrs.get("partNumber", attrs.get("number", attrs.get("itemId", attrs.get("ID", "")))),
+                part_number=attrs.get("partNumber", attrs.get("number", attrs.get("itemId", attrs.get("productId", attrs.get("ID", ""))))),
                 revision=attrs.get("revision", attrs.get("revisionId", attrs.get("RevisionIndex", ""))),
                 description=attrs.get("description", attrs.get("Description", "")),
                 part_type=attrs.get("partType", attrs.get("subType", tag)),

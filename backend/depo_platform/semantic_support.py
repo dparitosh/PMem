@@ -18,9 +18,26 @@ def assessment(evidence):
                    'Review recorded product relationships and engineering constraints before acting.' if coherent else
                    'Logical contradictions or unsatisfiable classes need correction before relying on this model for decisions.' if disposition == 'conflict' else
                    'Logical consistency has not been established for this model. Review missing imports or run its consistency check.')
+    reason = evidence.get('reason')
+    next_action = 'Resolve imports and check the selected ontology'
+    if not coherent and not conflict:
+        if reason == 'unparsed_rdf_statements':
+            explanation = 'Logical validation could not process all statements. Consistency is unverified.'
+            next_action = 'Review the unparsed statements and their source vocabularies'
+        elif status == 'unsupported' and evidence.get('owl2_dl_profile') is False:
+            explanation = 'The model does not pass the supported OWL-DL profile. Consistency is unverified.'
+            next_action = 'Correct the reported profile violations and create a new review'
+        elif reason in {'reasoner_timeout','reasoner_busy'}:
+            explanation = 'The logical check did not finish. Consistency is unverified.'
+            next_action = 'Retry the retained logical check when the reasoner is available'
+        elif reason in {'not_checked',None}:
+            next_action = 'Run the logical check for the selected model'
     keys = ('ontology_id', 'artifact_sha256', 'evidence_id', 'checked_at', 'status', 'reason',
             'consistency_verified', 'deductive_reasoner_executed', 'modeling_coherent',
-            'unsatisfiable_class_count', 'foundation')
+            'unsatisfiable_class_count', 'foundation', 'unparsed_statement_count', 'unparsed_statements',
+            'unparsed_statements_complete', 'owl2_dl_profile', 'profile_violation_count',
+            'profile_violation_counts', 'profile_violation_samples', 'profile_samples_complete',
+            'profile_complete_for_input', 'parsed_axioms_owl2_dl_profile')
     return {**{key: evidence[key] for key in keys if key in evidence}, 'disposition': disposition,
             'consistency_verified': verified,
             'target_checks': {key: value for key, value in (evidence.get('target_checks') or {}).items()
@@ -34,7 +51,7 @@ def assessment(evidence):
             'graph_projection_verified': False,
             'next_action': 'Review source relationships and domain constraints' if coherent else
                            'Correct the model and rerun validation' if disposition == 'conflict' else
-                           'Resolve imports and check the selected ontology'}
+                           next_action}
 
 
 def target_conflict(report, candidate):

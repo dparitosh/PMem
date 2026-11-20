@@ -7,7 +7,14 @@ BUSINESS_FIELDS = {'name','title','partNumber','part_number','revision','materia
                    'shape','geometry','representation','requirementText','identifier','description',
                    'nominalValue','measuredValue','lowerLimit','upperLimit','boreDiameter','nominalDiameter',
                    'geometryType','documentId','documentType','fileName','modelType','operationNumber',
-                   'processType','bomType','requirementId','verificationStatus','releaseStatus','result','studyId'}
+                   'processType','bomType','requirementId','verificationStatus','releaseStatus','result','studyId',
+                   'externalId','finding','rootCauseStatus','applicability','lesson','rule','rationale',
+                   'recommendation','objective','containment','memoryType','dataOrigin','evidenceOrigin',
+                   'engineeringApproved','implementationStatus','effectiveFrom','effectiveTo','assessmentDate',
+                   'temperature','temperature_unit','vibration','vibration_unit','speed','speed_unit',
+                   'outerDiameter','outerDiameter_unit','width','leadTime','leadTime_unit',
+                   'estimatedIncrementalCost','cost_unit','limit','operator','station','measuredAt',
+                   'selectedLot','selectedProduct','asOf','storageStatus','toleranceBasis','recordFormat'}
 
 PREDICATES = {
     'http://www.w3.org/2004/02/skos/core#definition':'definition',
@@ -20,6 +27,9 @@ PREDICATES = {
 
 def search_properties(node):
     output={}
+    projected = node.get('business_properties')
+    if isinstance(projected, dict):
+        node = {**projected, **node}
     for field in BUSINESS_FIELDS:
         if isinstance(node.get(field),(str,int,float,bool)):
             output[field]=str(node[field])[:1000]

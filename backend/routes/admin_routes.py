@@ -6,7 +6,8 @@ Provides endpoints for database cleaning and schema operations
 from backend.depo_platform.ontology_maintenance import ontology_cleanup
 from fastapi import APIRouter, Depends, HTTPException, Request
 import hmac
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 import logging
 import json
 import os
@@ -47,22 +48,16 @@ def _reconcile_reset():
         return {'status': 'partial', 'message': 'Graph data was deleted, but registry/cache reconciliation failed. Check PostgreSQL connectivity and retry reconciliation.'}
 
 
-def _is_production_environment() -> bool:
-    """Any production marker disables the explicit local-development bypass."""
-    return any(os.getenv(name, '').strip().lower() in {"prod", "production", "stage", "staging"}
-               for name in ('DEPO_ENV', 'APP_ENV', 'ENVIRONMENT', 'DEPLOYMENT_ENV'))
-
-
 async def require_admin_api_key(request: Request) -> None:
-    """Require an admin key except for explicitly enabled loopback development."""
+    """Require a verified admin credential for every maintenance request."""
     from backend.depo_platform.credentials import uses_postgres, verify_key
     if uses_postgres():
         supplied = request.headers.get('X-API-Key', '')
         if supplied.startswith('depo_session_'):
             from backend.depo_platform.browser_credentials import verify_session
-            await run_in_threadpool(verify_session, 'ADMIN_API_KEY', supplied, None, maintenance=True)
+            return await run_in_threadpool(verify_session, 'ADMIN_API_KEY', supplied, None, maintenance=True)
         else:
-            await run_in_threadpool(verify_key, 'ADMIN_API_KEY', supplied)
+            return await run_in_threadpool(verify_key, 'ADMIN_API_KEY', supplied)
         return
     expected = os.getenv("ADMIN_API_KEY", "").strip()
     if not expected:
@@ -72,6 +67,36 @@ async def require_admin_api_key(request: Request) -> None:
     require_active_token('ADMIN_API_KEY')
     if not hmac.compare_digest(supplied, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing admin API key")
+
+
+    from backend.depo_platform.authorization import token_actor
+    return token_actor('ADMIN_API_KEY', 'administrator')
+
+
+class NumberingSchemeRequest(BaseModel):
+    model_config = ConfigDict(strict=True, extra='forbid')
+    prefix: str = Field(pattern='^[A-Z][A-Z0-9]{0,11}$')
+    digits: int = Field(ge=4, le=10)
+    include_year: bool
+    expected_revision: int = Field(ge=0)
+
+
+from backend.depo_platform.authorization import graph_read_identity
+
+@router.get('/numbering-schemes', dependencies=[Depends(graph_read_identity)])
+@_maintenance_worker
+def numbering_schemes():
+    from backend.depo_platform.resource_identity import list_schemes
+    return {'schemes': list_schemes(), 'existing_ids_unchanged': True}
+
+
+@router.put('/numbering-schemes/{kind}')
+@_maintenance_worker
+def save_numbering_scheme(kind: str, payload: NumberingSchemeRequest, actor: str = Depends(require_admin_api_key)):
+    from backend.depo_platform.resource_identity import update_scheme
+    try: return update_scheme(kind, payload.model_dump(), actor)
+    except ValueError as exc: raise HTTPException(409 if 'changed' in str(exc) else 422, str(exc)) from exc
+    except RuntimeError as exc: raise HTTPException(409, 'Numbering is busy; refresh and retry.') from exc
 
 
 class CleanSchemaRequest(BaseModel):
@@ -1097,3 +1122,35 @@ def clear_cache():
         "message": "Local caches cleared and shared cache invalidation published." if all(cleared.values()) else "Some caches could not be cleared; check server logs.",
         "cleared": cleared,
     }
+
+
+class ApprovalMatrixStage(BaseModel):
+    model_config=ConfigDict(strict=True,extra='forbid')
+    action: Literal['accept','authorize']
+    function: str = Field(min_length=1,max_length=120)
+    mode: Literal['ALL','ANY']
+    members: list[str] = Field(min_length=1,max_length=30)
+
+
+class ApprovalMatrixRequest(BaseModel):
+    model_config=ConfigDict(strict=True,extra='forbid')
+    name: str = Field(min_length=1,max_length=120)
+    separate_requester: bool
+    distinct_stage_actors: bool
+    stages: list[ApprovalMatrixStage] = Field(min_length=2,max_length=2)
+    expected_revision: int = Field(ge=0)
+
+
+@router.get('/approval-matrix', dependencies=[Depends(graph_read_identity)])
+@_maintenance_worker
+def approval_matrix_settings():
+    from backend.depo_platform.approval_matrix import current
+    return current()
+
+
+@router.put('/approval-matrix')
+@_maintenance_worker
+def save_approval_matrix(payload: ApprovalMatrixRequest, actor: str = Depends(require_admin_api_key)):
+    from backend.depo_platform.approval_matrix import update
+    try:return update(payload.model_dump(),actor)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc

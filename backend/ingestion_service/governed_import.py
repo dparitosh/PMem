@@ -77,11 +77,15 @@ class GovernedImportService:
         if not re.fullmatch(r'[a-z][a-z0-9-]{2,62}',job_id) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',job_version):
             raise ValueError('Select a valid configured job identity and version')
         normalized = await run_in_threadpool(self.normalize, filename=filename, content=content, profile=profile, source_system=source_system)
+        from backend.depo_platform.resource_identity import identify
+        from uuid import uuid4
+        file_identity=await run_in_threadpool(identify,'FILE','ingestion',str(uuid4()),name=filename,
+            links={'artifact_id':normalized['source_artifact_id'],'content_sha256':normalized['source_artifact_id'].removeprefix('sha256:'),'workflow_id':job_id})
         payload = {
             "standard": normalized["standard"], "representation": "normalized-ceim-v1",
             "ceim_version": normalized.get("ceim_version", contract.version), "entities": normalized["entities"],
             "relationships": normalized["relationships"], "artifact_ids": [normalized["source_artifact_id"]],
-            "source_system": source_system or None,
+            "source_system": source_system or None, "source_file_id":file_identity["object_id"],
         }
         # A secured deployment must not rely on the caller's browser context
         # reaching an internal service.  The ingestion service uses its scoped

@@ -246,6 +246,20 @@ export default function MetadataRegistryPage() {
     }
   };
 
+  const dictionaryRouteLoader = useRef(loadDictionary);
+  dictionaryRouteLoader.current = loadDictionary;
+  useEffect(() => {
+    const applyRoute = () => {
+      const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      const id = params.get('ontology_id');
+      if (params.get('view') === 'dictionary' && id) dictionaryRouteLoader.current(id);
+    };
+    applyRoute();
+    window.addEventListener('hashchange', applyRoute);
+    window.addEventListener('popstate', applyRoute);
+    return () => { window.removeEventListener('hashchange', applyRoute); window.removeEventListener('popstate', applyRoute); };
+  }, []);
+
   refreshReadRef.current = () => {
     loadRegistryAssets(registryOffset);
     if (selectedOntology) loadDictionary(selectedOntology);

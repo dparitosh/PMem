@@ -73,11 +73,20 @@ class OSLCTRSService:
     def _load(cls) -> Dict[str, Any]:
         if cls._storage_backend() == "postgres":
             try:
-                state = cls._store.get(cls._state_key) or {"events": [], "counter": 0, "first_retained_order": 0}
+                state = cls._store.get(cls._state_key)
+                if state is None:
+                    initial={"events":[],"counter":0,"first_retained_order":0,"stream_id":str(uuid.uuid4())}
+                    try:state=cls._store.create(cls._state_key,initial)
+                    except FileExistsError:state=cls._store.get(cls._state_key)
+                if isinstance(state,dict) and not state.get('stream_id'):
+                    updated={**state,'stream_id':str(uuid.uuid4())}
+                    if cls._store.compare_and_put(cls._state_key,state,updated):state=updated
+                    else:state=cls._store.get(cls._state_key)
             except RuntimeError as exc:
                 raise RuntimeError("OSLC TRS PostgreSQL state is unavailable") from exc
             if not isinstance(state, dict) or not isinstance(state.get("events", []), list):
                 raise RuntimeError("OSLC TRS PostgreSQL state has an invalid structure")
+            if not isinstance(state.get("stream_id"),str) or not state["stream_id"]:raise RuntimeError("OSLC TRS stream identity is invalid")
             events = state.get("events") or []
             orders = [int(event.get("order") or 0) for event in events if isinstance(event, dict)]
             counter = int(state.get("counter") or 0)
@@ -88,7 +97,7 @@ class OSLCTRSService:
             return state
         path = cls._storage_path()
         if not path.exists():
-            return {'events': [], 'counter': 0, 'first_retained_order': 0}
+            return {'events': [], 'counter': 0, 'first_retained_order': 0,'stream_id':'uninitialized'}
         try:
             state = json.loads(path.read_text(encoding='utf-8'))
         except Exception as exc:
@@ -100,12 +109,14 @@ class OSLCTRSService:
         counter = int(state.get('counter') or 0)
         if orders and counter < max(orders):
             raise RuntimeError(f'OSLC TRS counter is behind its retained events: {path}')
+        state.setdefault('stream_id','legacy')
         state['counter'] = counter
         state['first_retained_order'] = int(state.get('first_retained_order') or (min(orders) if orders else 0))
         return state
 
     @classmethod
     def _save(cls, payload: Dict[str, Any]) -> None:
+        if payload.get('stream_id') in {None,'legacy','uninitialized'}:payload={**payload,'stream_id':str(uuid.uuid4())}
         if cls._storage_backend() == "postgres":
             try:
                 cls._store.put(cls._state_key, payload)
@@ -219,8 +230,9 @@ class OSLCTRSService:
         resource_path = cls._normalize_resource_path(resource_uri)
         with cls._lock:
             with cls._cross_process_lock():
+                state = cls._load()
                 if delivery_id and cls._storage_backend() == 'postgres':
-                    existing = cls._store.get('delivery:' + delivery_id)
+                    existing = cls._store.get('delivery:' + state['stream_id'] + ':' + delivery_id)
                     if existing:return cls._external_event(existing)
                 state = cls._load()
                 order = int(state.get('counter', 0)) + 1
@@ -240,7 +252,7 @@ class OSLCTRSService:
                 state['events'] = retained_events
                 state['first_retained_order'] = int(retained_events[0].get('order') or order) if retained_events else 0
                 if delivery_id and cls._storage_backend() == 'postgres':
-                    cls._store.put_with_related(cls._state_key,state,related_namespace=cls._store.namespace,related_key='delivery:'+delivery_id,related_value=event)
+                    cls._store.put_with_related(cls._state_key,state,related_namespace=cls._store.namespace,related_key='delivery:'+state['stream_id']+':'+delivery_id,related_value=event)
                 else:cls._save(state)
                 return cls._external_event(event)
 
@@ -394,7 +406,7 @@ class OSLCTRSService:
         if len(unique_members) > maximum:
             raise RuntimeError('TRS Base exceeds OSLC_TRS_MAX_BASE_RESOURCES')
         snapshot_id = str(uuid.uuid4())
-        snapshot = {'members': unique_members, 'cutoff_order': int(state.get('counter') or 0),
+        snapshot = {'stream_id':state.get('stream_id'), 'members': unique_members, 'cutoff_order': int(state.get('counter') or 0),
                     'cutoff_event': (state.get('events') or [{}])[-1].get('event_id'),
                     'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}
         if cls._storage_backend() == 'postgres':
@@ -409,6 +421,8 @@ class OSLCTRSService:
     @classmethod
     def _base_page(cls, snapshot_id, snapshot, offset, limit):
         safe_limit = max(1, min(1000, int(limit)))
+        if snapshot.get('stream_id') and snapshot['stream_id']!=cls._load().get('stream_id'):
+            raise RuntimeError('TRS stream reset; restart from /oslc/trs/base')
         if snapshot.get('chunked'):
             from backend.oslc_service.trs_snapshot import read_page
             return read_page(cls, snapshot_id, snapshot, offset, safe_limit)
@@ -417,7 +431,7 @@ class OSLCTRSService:
         more = next_offset < len(snapshot['members'])
         return {'uri': cls.base_resource_uri(), 'type': 'trs:Base', 'members': members,
                 'count': len(members), 'total_count': len(snapshot['members']),
-                'snapshot_id': snapshot_id, 'cutoff_order': snapshot['cutoff_order'],
+                'snapshot_id': snapshot_id, 'stream_id':snapshot.get('stream_id'), 'cutoff_order': snapshot['cutoff_order'],
                 'cutoff_event': snapshot.get('cutoff_event'),
                 'truncated': more, 'nextPage': f'{cls.base_resource_uri()}?snapshot_id={snapshot_id}&offset={next_offset}&limit={safe_limit}' if more else None}
 
@@ -427,7 +441,8 @@ class OSLCTRSService:
         events = [event for event in (state.get('events') or []) if int(event.get('order') or 0) > int(after)]
         events = events[:max(1, min(1000, int(limit or 200)))]
         first_retained_order = int(state.get('first_retained_order') or (events[0].get('order') if events else 0) or 0)
-        rebase_required = bool(first_retained_order and int(after) < first_retained_order - 1)
+        rebase_required = bool((first_retained_order and int(after) < first_retained_order - 1)
+                               or int(after) > int(state.get('counter') or 0))
         external_events = [cls._external_event(event) for event in events]
         return {
             'uri': f'{cls.base_url()}/oslc/trs/changelog',
@@ -436,7 +451,7 @@ class OSLCTRSService:
             'count': len(external_events),
             'next_after': external_events[-1]['order'] if external_events else after,
             'first_retained_order': first_retained_order,
-            'head_order': int(state.get('counter') or 0),
+            'head_order': int(state.get('counter') or 0), 'stream_id':state.get('stream_id'),
             'rebase_required': rebase_required,
             'base': f'{cls.base_url()}/oslc/trs/base',
         }

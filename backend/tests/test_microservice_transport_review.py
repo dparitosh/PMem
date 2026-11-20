@@ -122,29 +122,22 @@ def test_windows_artifacts_support_deep_installation_paths(tmp_path):
     assert len(str(content))>260
 
 
-@pytest.mark.parametrize('failure',['timeout','invalid_receipt','oversized_response'])
-def test_speed_publication_retains_reconciliation_on_peer_failure(monkeypatch,tmp_path,failure):
+def test_speed_publication_uses_native_job_failure_without_replaying(monkeypatch):
     from backend.data_pipeline_service.app import app
-    from backend.data_pipeline_service import speed_router, speed_path
+    from backend.data_pipeline_service import speed_router,speed_path,event_jobs,router
     from backend.mesh_store import InMemoryRegistry
-    registry=InMemoryRegistry()
-    registry.put('r1',{'reconciliation_id':'r1','status':'ready_for_approved_publication','partition_artifact_id':'test'})
+    from fastapi import HTTPException
+    registry=InMemoryRegistry();registry.put('r1',{'reconciliation_id':'r1','status':'ready_for_approved_publication'})
     monkeypatch.setattr(speed_path,'reconciliations',registry)
-    monkeypatch.setattr(speed_router,'approval_identity',lambda *a,**kw:'test-reviewer')
-    monkeypatch.setattr(speed_router,'service_bearer_headers',lambda *a,**kw:{})
-    source=tmp_path/'partition.json'
-    source.write_text('{"standard":"qif","entities":[],"relationships":[]}')
-    monkeypatch.setattr(speed_router,'ArtifactStore',lambda: SimpleNamespace(resolve=lambda key:({},source)))
+    monkeypatch.setattr(speed_router,'approval_identity',lambda *a,**kw:'publisher')
+    monkeypatch.setattr(event_jobs,'linked_run',lambda review:{'run_id':'native-run'})
     calls=[]
-    async def peer(method,url,**kwargs):
-        calls.append(url)
-        if failure=='timeout': raise TimeoutError('private peer details')
-        if failure=='oversized_response': raise ValueError('private response details')
-        return httpx.Response(200,request=httpx.Request(method,url),json={'status':'published','ontology_id':'wrong','publication_id':'r1'})
-    monkeypatch.setattr(speed_router,'async_peer_response',peer)
+    async def native(run_id,payload,request):
+        calls.append(run_id);raise HTTPException(503,'Canonical publication unavailable; inspect retained receipt')
+    monkeypatch.setattr(router,'publish_job_run',native)
     response=TestClient(app).post('/api/v1/pipeline/speed/reconciliations/r1/publish',json={'ontology_id':'test-ontology'})
     assert response.status_code==503 and 'private' not in response.text
-    assert registry.get('r1')['status']=='ready_for_approved_publication' and len(calls)==1
+    assert calls==['native-run'] and registry.get('r1')['status']=='ready_for_approved_publication'
 
 
 def test_sysml_total_timeout_is_reported_as_dependency_unavailable(monkeypatch):

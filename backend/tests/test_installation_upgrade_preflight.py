@@ -90,7 +90,15 @@ class UpgradePreflightTests(unittest.TestCase):
 
 
     def test_linux_environment_comments_quotes_and_redaction(self):
-        bash = shutil.which('bash') or ('C:/Program Files/Git/bin/bash.exe' if Path('C:/Program Files/Git/bin/bash.exe').exists() else None)
+        # System32/bash.exe is a WSL launcher and may wait interactively.
+        # Exercise the POSIX script with Git Bash on Windows, never an installer prompt.
+        if os.name == 'nt':
+            git = shutil.which('git')
+            candidates = [Path('C:/Program Files/Git/bin/bash.exe')]
+            if git: candidates.append(Path(git).resolve().parents[1] / 'bin/bash.exe')
+            bash = next((str(candidate) for candidate in candidates if candidate.is_file()), None)
+        else:
+            bash = shutil.which('bash')
         if not bash:
             self.skipTest('Bash is unavailable')
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
@@ -98,12 +106,12 @@ class UpgradePreflightTests(unittest.TestCase):
             relative = env_file.relative_to(ROOT).as_posix()
             env_file.write_text('A=value # comment\nB="quoted # literal" # comment\nC=url#fragment\n', encoding='utf-8')
             command = 'source infra/linux/common.sh; depo_load_env "$1"; printf "%s|%s|%s" "$A" "$B" "$C"'
-            result = subprocess.run([bash, '-c', command, 'test', relative], cwd=ROOT, text=True, capture_output=True)
+            result = subprocess.run([bash, '-c', command, 'test', relative], cwd=ROOT, text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout, 'value|quoted # literal|url#fragment')
             for malformed in ['private_secret_without_equals', 'BAD KEY=private_secret', 'A="private_secret']:
                 env_file.write_text(malformed, encoding='utf-8')
-                result = subprocess.run([bash, '-c', 'source infra/linux/common.sh; depo_load_env "$1"', 'test', relative], cwd=ROOT, text=True, capture_output=True)
+                result = subprocess.run([bash, '-c', 'source infra/linux/common.sh; depo_load_env "$1"', 'test', relative], cwd=ROOT, text=True, capture_output=True, timeout=30)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn('private_secret', result.stdout + result.stderr)
 

@@ -56,3 +56,27 @@ def test_legacy_sidecar_and_in_memory_rows_remain_supported(tmp_path, monkeypatc
     assert _instance_metadata('task-1', None)['entities'] == ['Part']
     snapshot['parsed_rows'] = [{'entity_type': 'Assembly'}]
     assert _instance_metadata('task-1', None)['entities'] == ['Assembly']
+
+def test_internal_tracking_fields_are_not_business_mapping_terms(tmp_path, monkeypatch):
+    _, snapshot = restored_import(tmp_path, monkeypatch)
+    snapshot['parsed_rows'] = [{'element_type':'Part','name':'Bearing','material':'Steel','import_id':'task-1','import_row_key':'id2','uuid':'u','identity_origin':'generated','source_element_namespace':'urn:source'}]
+    metadata = _instance_metadata('task-1', None)
+    assert metadata['entities'] == ['Part']
+    assert 'material' in metadata['attributes']
+    assert not ({'import_id','import_row_key','uuid','identity_origin'} & set(metadata['attributes']))
+    assert 'source_element_namespace' not in metadata['relationships']
+    assert metadata['metadata'] == []
+
+
+def test_names_without_types_are_not_treated_as_classes(tmp_path, monkeypatch):
+    _, snapshot = restored_import(tmp_path, monkeypatch)
+    snapshot['parsed_rows'] = [{'name':'Rotor Shaft 000684'}]
+    assert _instance_metadata('task-1', None)['entities'] == []
+
+def test_unmatched_terms_do_not_claim_checks_were_executed(monkeypatch):
+    from backend.agentic_service.ontology_orchestrator import plan_bridge
+    monkeypatch.setenv('ONTOLOGY_AGENT_LLM_ENABLED','false')
+    result=plan_bridge({'entities':['Unknown']},ontology_summary={'term_index':[]})
+    assert result['alignment_items'][0]['validation_checks']=={}
+    assert result['alignment_items'][0]['unresolved_checks']==[]
+    assert result['status']=='review_required'

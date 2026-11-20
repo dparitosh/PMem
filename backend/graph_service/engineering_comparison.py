@@ -31,30 +31,31 @@ UNITS = {'mm': ('length', .001), 'cm': ('length', .01), 'm': ('length', 1),
 def values(properties):
     """Read exact vocabulary local names, retaining conflicts instead of picking one."""
     properties = properties if isinstance(properties, dict) else {}
-    combined = dict(properties)
     raw = properties.get('rdf_properties', {})
     if isinstance(raw, str) and len(raw) <= 262144:
         try:
             raw = json.loads(raw)
         except ValueError:
             raw = {}
-    if isinstance(raw, dict):
-        combined.update(raw)
+    # Keep both recorded forms: a projection must not overwrite a conflicting
+    # RDF value and accidentally turn ambiguous evidence into a match.
+    sources = (properties, raw) if isinstance(raw, dict) else (properties,)
+    entries = [(source, key, data) for source in sources for key, data in source.items()]
     output = {}
     for field, aliases in ALIASES.items():
         found = []
-        for key, data in combined.items():
+        for source, key, data in entries:
             if local(key) not in aliases:
                 continue
             for item in data if isinstance(data, list) else [data]:
-                value = item.get('value') if isinstance(item, dict) else item
+                value = item.get('value', item.get('@value')) if isinstance(item, dict) else item
                 if isinstance(value, bool) or not isinstance(value, (str, int, float)):
                     continue
                 text = str(value).strip()
                 if text and len(text) <= 500 and '<' not in text and '{' not in text:
                     unit = item.get('unit') if isinstance(item, dict) else None
                     if not unit:
-                        unit = combined.get(str(key) + '_unit') or combined.get(field + '_unit')
+                        unit = source.get(str(key) + '_unit') or source.get(field + '_unit')
                     text += ' ' + unit if isinstance(unit, str) and unit.strip() else ''
                     if text not in found:
                         found.append(text)
@@ -139,7 +140,8 @@ def kind(record):
     types = [*declared_values(record.get('labels')), *declared_values(props.get('rdf_types')), *declared_values(record.get('mapped_types')),
              props.get('element_type', ''), props.get('semantic_role', '')]
     names = {local(value).removesuffix('type') for value in types}
-    groups = [('requirement', {'requirement', 'requirementspecification'}),
+    groups = [('resource', {'resource'}),
+              ('requirement', {'requirement', 'requirementspecification'}),
               ('process', {'process', 'operation', 'processinstance', 'manufacturingprocess', 'workplan'}),
               ('change', {'change', 'changerequest', 'changenotice', 'engineeringchange'}),
               ('document', {'document', 'engineeringdocument', 'caddocument', 'cadmodel', 'specification', 'documentspecification'}),

@@ -13,6 +13,7 @@ import org.semanticweb.HermiT.ReasonerFactory;
 
 /** Offline, single-operation worker. Python supplies a verified import closure. */
 public final class Main {
+  private static String bounded(String value) { return value.length() <= 2000 ? value : value.substring(0,2000) + "…"; }
   public static void main(String[] args) throws Exception {
     // Independent wall-clock bound survives a forcibly terminated API parent.
     // The property is a CLI test seam; the API never supplies JVM properties.
@@ -36,17 +37,34 @@ public final class Main {
           .setRepairIllegalPunnings(false).setConnectionTimeout(1).setRetriesToAttempt(0)
           .setMissingImportHandlingStrategy(MissingImportHandlingStrategy.THROW_EXCEPTION);
       OWLOntology ontology = manager.loadOntologyFromOntologyDocument(new FileDocumentSource(new File(args[0])),config);
-      long unparsed = manager.getOntologyFormat(ontology).getOntologyLoaderMetaData().map(m -> m.getUnparsedTriples().count()).orElse(0L);
+      List<String> unparsedSamples = new ArrayList<>();
+      long unparsed = manager.getOntologyFormat(ontology).getOntologyLoaderMetaData().map(m -> m.getUnparsedTriples().mapToLong(t -> {
+        if(unparsedSamples.size() < 20) unparsedSamples.add(bounded(t.toString()));
+        return 1L;
+      }).sum()).orElse(0L);
+      result.put("unparsed_statements", unparsedSamples);
+      result.put("unparsed_statements_complete", unparsed <= 20);
+      result.put("unparsed_statement_count", unparsed);
       result.put("parser_guessed_declaration_count",manager.getOntologyFormat(ontology).getOntologyLoaderMetaData().map(m -> m.getGuessedDeclarations().size()).orElse(0));
+      OWLProfileReport profile = new OWL2DLProfile().checkOntology(ontology);
+      result.put("owl2_dl_profile", unparsed == 0 ? profile.isInProfile() : null);
+      result.put("parsed_axioms_owl2_dl_profile", profile.isInProfile());
+      result.put("profile_complete_for_input", unparsed == 0);
+      Map<String,Long> violationCounts = profile.getViolations().stream().collect(Collectors.groupingBy(v -> v.getClass().getSimpleName(), TreeMap::new, Collectors.counting()));
+      result.put("profile_violation_count", profile.getViolations().size());
+      result.put("profile_violation_counts", violationCounts);
+      result.put("profile_violation_samples", profile.getViolations().stream().map(Object::toString).sorted().limit(20).map(Main::bounded).collect(Collectors.toList()));
+      result.put("profile_samples_complete", profile.getViolations().size() <= 20);
+      result.put("parsed_ontology_iri", ontology.getOntologyID().getOntologyIRI().map(Object::toString).orElse(""));
+      result.put("parsed_version_iri", ontology.getOntologyID().getVersionIRI().map(Object::toString).orElse(""));
       if(unparsed > 0) {
         result.put("status","unsupported"); result.put("reason","unparsed_rdf_statements"); result.put("unparsed_statement_count",unparsed);
       } else if(!ontology.getImportsDeclarations().isEmpty()) {
         result.put("reason", "unresolved_imports");
       } else {
-        OWLProfileReport profile = new OWL2DLProfile().checkOntology(ontology);
-        result.put("owl2_dl_profile", profile.isInProfile());
         if(!profile.isInProfile()) {
           result.put("status", "unsupported");
+          result.put("reason", "owl2_dl_profile_violations");
           result.put("profile_violations", profile.getViolations().stream().limit(20).map(v -> v.getClass().getSimpleName()).collect(Collectors.toList()));
         } else {
           reasoner = new ReasonerFactory().createReasoner(ontology);

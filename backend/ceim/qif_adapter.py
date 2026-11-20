@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 from collections import Counter
 import hashlib
+import uuid
+from urllib.parse import quote
 
 from defusedxml import ElementTree as ET
 
@@ -100,15 +102,38 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
         root = ET.fromstring(content)
     except ET.ParseError as exc:
         raise ValueError("QIF XML is invalid") from exc
-    if "qif" not in _local_name(root.tag).lower():
+    if _local_name(root.tag) != "QIFDocument":
         raise ValueError("The supplied XML is not a QIF document")
 
+    # QIF numeric ids are local to a document. The root QPId is the persistent
+    # document UUID; nested external-document QPIds must never become its scope.
+    qpids = [(child.text or "").strip() for child in root if _local_name(child.tag) == "QPId"]
+    if len(qpids) > 1:
+        raise ValueError("QIF document contains multiple root QPId values")
+    document_qpid = ""
+    if qpids:
+        try:
+            document_qpid = str(uuid.UUID(qpids[0]))
+        except (ValueError, AttributeError) as exc:
+            raise ValueError("QIF document QPId must be a UUID") from exc
+    artifact_sha256 = hashlib.sha256(content).hexdigest()
+    document_identity = f"qpid:{document_qpid}" if document_qpid else f"artifact:{artifact_sha256}"
     active_contract = ceim or CEIMContract()
     entities: list[dict[str, Any]] = []
     relationships: list[dict[str, Any]] = []
     known_ids: set[str] = set()
+    known_types: dict[str, str] = {}
+    missing_identifiers = Counter()
+    seen_source_ids: set[str] = set()
+    for element in root.iter():
+        source_identifier = _attribute(element, "id")
+        if source_identifier:
+            if source_identifier in seen_source_ids:
+                raise ValueError(f"QIF document contains duplicate identifier: {source_identifier}")
+            seen_source_ids.add(source_identifier)
     measurements: list[tuple[str, str]] = []
     nominal_definitions: list[tuple[str, str, str]] = []
+    unresolved_reference_samples: list[dict[str, str]] = []
     part_links: list[tuple[str, str, str]] = []
     counts = {"parts": 0, "inspection_plans": 0, "measurement_results": 0, "features": 0, "characteristics": 0, "datums": 0, "datum_reference_frames": 0, "pmi_annotations": 0, "geometry_bodies": 0, "unresolved_references": 0}
     unmapped = Counter(_local_name(element.tag) for element in root.iter())
@@ -137,6 +162,7 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
         if source_type == "PMIDisplay" and not source_id:
             source_id = f"pmi-{hashlib.sha256(ET.tostring(element, encoding='utf-8')).hexdigest()[:20]}"
         if not source_id:
+            missing_identifiers[original_type] += 1
             continue
         if source_id in known_ids:
             raise ValueError(f"QIF document contains duplicate identifier: {source_id}")
@@ -157,6 +183,7 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
             record={"source_type": source_type, "source_id": source_id, "attributes": attributes},
         ))
         known_ids.add(source_id)
+        known_types[source_id] = source_type
         mapped_source_counts[original_type] += 1
         if source_type == "Part":
             counts["parts"] += 1
@@ -198,17 +225,33 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
                 nominal_definitions.append((source_type, source_id, definition_id))
 
     for measurement_id, plan_id in measurements:
-        if plan_id not in known_ids:
+        if known_types.get(plan_id) != "InspectionPlan":
             counts["unresolved_references"] += 1
+            if len(unresolved_reference_samples) < 50:
+                unresolved_reference_samples.append({"source_id":measurement_id,"target_id":plan_id,
+                    "expected_type":"InspectionPlan","actual_type":known_types.get(plan_id, "unresolved")})
             continue
         relationships.append(active_contract.normalize_relationship(
             standard="qif",
             record={"source_type": "MeasurementResults", "source_id": measurement_id, "target_id": plan_id},
         ))
 
+    reference_types = {
+        "PartBody": ("Part", "Body"),
+        "PartFeatureNominal": ("Part", "FeatureNominal"),
+        "PartCharacteristicNominal": ("Part", "CharacteristicNominal"),
+        "PartDatumDefinition": ("Part", "DatumDefinition"),
+        "PartDatumReferenceFrame": ("Part", "DatumReferenceFrame"),
+        "FeatureNominal": ("FeatureNominal", "FeatureDefinition"),
+        "CharacteristicNominal": ("CharacteristicNominal", "CharacteristicDefinition"),
+    }
     for relationship_type, part_id, target_id in [*part_links, *nominal_definitions]:
-        if part_id not in known_ids or target_id not in known_ids:
+        if (known_types.get(part_id), known_types.get(target_id)) != reference_types[relationship_type]:
             counts["unresolved_references"] += 1
+            if len(unresolved_reference_samples) < 50:
+                unresolved_reference_samples.append({"source_id":part_id,"target_id":target_id,
+                    "expected_type":reference_types[relationship_type][1],
+                    "actual_type":known_types.get(target_id,"unresolved")})
             continue
         relationships.append(active_contract.normalize_relationship(
             standard="qif",
@@ -226,13 +269,39 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
         for container, expected_suffix in sorted(required_children.items())
         if unmapped[container] and not any(name.endswith(expected_suffix) for name in mapped_source_counts)
     ]
+    identity_map = {}
+    for entity in entities:
+        original = entity["id"]
+        identity_map[original] = f"qif:{quote(document_identity, safe='')}:{quote(entity['provenance']['source_id'], safe='')}"
+        entity["id"] = identity_map[original]
+        entity["provenance"].update(document_identity=document_identity,
+            document_qpid=document_qpid, source_artifact_sha256=artifact_sha256,
+            identity_version="qif-document-v1")
+    for relationship in relationships:
+        relationship["source_id"] = identity_map[relationship["source_id"]]
+        relationship["target_id"] = identity_map[relationship["target_id"]]
+        relationship["provenance"].update(document_identity=document_identity,
+            source_artifact_sha256=artifact_sha256, identity_version="qif-document-v1")
+    unmapped_identified = Counter(_local_name(element.tag) for element in root.iter()
+        if _attribute(element, "id") and _local_name(element.tag) not in mapped_source_counts)
     return {
         "standard": "qif",
         "entities": entities,
         "relationships": relationships,
         "source_summary": counts,
         "mapping_diagnostics": {
-            "status": "review_required" if unresolved_containers else "complete_for_declared_profile",
+            "status": "review_required" if unresolved_containers or missing_identifiers or unmapped_identified or counts["unresolved_references"] else "complete_for_declared_profile",
+            "document_identity": document_identity,
+            "identity_basis": "QPId" if document_qpid else "artifact_sha256",
+            "missing_identifiers": dict(sorted(missing_identifiers.items())),
+            "unmapped_identified_elements": dict(sorted(unmapped_identified.items())),
+            "unresolved_reference_samples": unresolved_reference_samples,
+            "unresolved_reference_samples_complete": counts["unresolved_references"] <= 50,
+            "external_document_references": [
+                {"source_id":_attribute(element,"id"),
+                 "document_qpid":next(((child.text or "").strip() for child in element if _local_name(child.tag)=="QPId"), "")}
+                for element in root.iter() if _local_name(element.tag)=="ExternalQIFDocument"
+            ][:50],
             "unmapped_semantic_elements": unresolved_containers,
         },
     }

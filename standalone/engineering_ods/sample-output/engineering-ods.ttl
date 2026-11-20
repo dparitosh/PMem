@@ -1,0 +1,959 @@
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix eng: <https://example.org/nexus/engineering-ods/vocabulary/v1/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ceim:Characteristic a owl:Class .
+
+ceim:Datum a owl:Class .
+
+ceim:DatumReferenceFrame a owl:Class .
+
+ceim:Feature a owl:Class .
+
+ceim:Product a owl:Class .
+
+ceim:consumes a owl:ObjectProperty .
+
+ceim:derivedFrom a owl:ObjectProperty .
+
+ceim:externalId a owl:DatatypeProperty .
+
+ceim:hasCharacteristic a owl:ObjectProperty .
+
+ceim:hasFeature a owl:ObjectProperty .
+
+ceim:hasGeometry a owl:ObjectProperty .
+
+ceim:hasPart a owl:ObjectProperty .
+
+ceim:impacts a owl:ObjectProperty .
+
+ceim:produces a owl:ObjectProperty .
+
+ceim:realizes a owl:ObjectProperty .
+
+ceim:satisfies a owl:ObjectProperty .
+
+ceim:traceTo a owl:ObjectProperty .
+
+ceim:usesDatum a owl:ObjectProperty .
+
+ceim:usesReferenceFrame a owl:ObjectProperty .
+
+ceim:validatedBy a owl:ObjectProperty .
+
+ceim:verifiedBy a owl:ObjectProperty .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/3caaec2b-acb0-55d4-9589-0195546ed974> a owl:NamedIndividual,
+        ceim:Configuration ;
+    rdfs:label "Active bearing investigation context"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:CTX-INV-031"^^xsd:string ;
+    eng:asOf "2026-11-17"^^xsd:string ;
+    eng:contains <https://example.org/nexus/engineering-ods/customer-evaluation/v1/0081b143-7d0d-5c24-853c-f8b9b7bb5af8>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/ab466213-f878-57d6-8b4a-a56cd8e99698> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:memoryType "Contextual selection"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string ;
+    eng:selectedLot "24-117"^^xsd:string ;
+    eng:selectedProduct "IM-1500"^^xsd:string ;
+    eng:storageStatus "Dataset context record; not a saved Companion session"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/8cf1f1d7-533c-5a70-bf5b-7be4a1422ec7> a owl:NamedIndividual,
+        ceim:Resource ;
+    rdfs:label "Bearing support operating context"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:MBSE-BEARING-SUPPORT-B"^^xsd:string ;
+    eng:allocatedTo <https://example.org/nexus/engineering-ods/customer-evaluation/v1/dfb2902a-1c09-5891-bc76-4ac0b756682c> ;
+    eng:ambientTemperature 40.0 ;
+    eng:ambientTemperature_unit "degC"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:dutyCycle "Continuous"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:hasRequirement <https://example.org/nexus/engineering-ods/customer-evaluation/v1/1083ed81-db39-5a7c-8ebc-161bcae7ee11>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/94941d85-0537-5dd5-8d3c-b563eaeb74a3>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/b24f130e-11fb-5783-ba2c-6162fdf4d50d>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/c09ced5c-a3c2-5dce-a41e-a81b9adedba9> ;
+    eng:modelType "SysML block"^^xsd:string ;
+    eng:radialLoad 1800.0 ;
+    eng:radialLoad_unit "N"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1500 ;
+    eng:speed_unit "rpm"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/8f81d9fe-a1f5-52ee-b97a-34e9ebb7a9a2> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Pending bearing investigation lesson"^^xsd:string ;
+    ceim:derivedFrom <https://example.org/nexus/engineering-ods/customer-evaluation/v1/5e3092eb-508a-50b9-a6a0-334494a9be41> ;
+    ceim:externalId "BEARING-EVALUATION-001:LESSON-2026-031"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Lesson proposal"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:memoryType "Proposed long-term memory"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:status "Awaiting reviewed decision and measured post-release outcome"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/9cda6b3a-0ffd-5ba2-909f-1d1a19b4c73f> a owl:NamedIndividual,
+        ceim:Process ;
+    rdfs:label "Assemble bearing and record clearance"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:OP-030-B"^^xsd:string ;
+    ceim:produces <https://example.org/nexus/engineering-ods/customer-evaluation/v1/dfb2902a-1c09-5891-bc76-4ac0b756682c> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:operationNumber "OP-030"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/fe2694b2-b5f9-54fd-9ef7-89d300a184c3> a owl:NamedIndividual,
+        ceim:Change ;
+    rdfs:label "Bearing corrective-action package"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:CHG-INV-031"^^xsd:string ;
+    ceim:impacts <https://example.org/nexus/engineering-ods/customer-evaluation/v1/61320b6d-ace3-5f0a-91bb-132bb9aae295>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/fd250a71-6963-5a5f-8861-62a720a817cf> ;
+    ceim:traceTo <https://example.org/nexus/engineering-ods/customer-evaluation/v1/5e3092eb-508a-50b9-a6a0-334494a9be41> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:implementationStatus "Not implemented"^^xsd:string ;
+    eng:proposedScope "Seat machining, clearance specification and lot inspection"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:status "Prepared evidence only; no application CR/CO created"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/ontology> a owl:Ontology ;
+    rdfs:label "Engineering ODS - historical decision context" ;
+    rdfs:comment "Authored Engineering ODS scenario; historical decisions are not customer incidents or engineering approvals." .
+
+eng:allocatedTo a owl:ObjectProperty .
+
+eng:ambientTemperature a owl:DatatypeProperty .
+
+eng:ambientTemperature_unit a owl:DatatypeProperty .
+
+eng:applicability a owl:DatatypeProperty .
+
+eng:appliesRule a owl:ObjectProperty .
+
+eng:asOf a owl:DatatypeProperty .
+
+eng:assessmentDate a owl:DatatypeProperty .
+
+eng:basedOn a owl:ObjectProperty .
+
+eng:belongsToLot a owl:ObjectProperty .
+
+eng:clearanceClass a owl:DatatypeProperty .
+
+eng:comparedWith a owl:ObjectProperty .
+
+eng:considersAlternative a owl:ObjectProperty .
+
+eng:containment a owl:DatatypeProperty .
+
+eng:contains a owl:ObjectProperty .
+
+eng:cost_unit a owl:DatatypeProperty .
+
+eng:dataOrigin a owl:DatatypeProperty .
+
+eng:datum a owl:DatatypeProperty .
+
+eng:description a owl:DatatypeProperty .
+
+eng:diameter a owl:DatatypeProperty .
+
+eng:diameter_unit a owl:DatatypeProperty .
+
+eng:documentType a owl:DatatypeProperty .
+
+eng:dutyCycle a owl:DatatypeProperty .
+
+eng:effectiveFrom a owl:DatatypeProperty .
+
+eng:effectiveTo a owl:DatatypeProperty .
+
+eng:engineeringApproved a owl:DatatypeProperty .
+
+eng:estimatedIncrementalCost a owl:DatatypeProperty .
+
+eng:evidenceOrigin a owl:DatatypeProperty .
+
+eng:finding a owl:DatatypeProperty .
+
+eng:geometryStatus a owl:DatatypeProperty .
+
+eng:geometryType a owl:DatatypeProperty .
+
+eng:hasBOMLine a owl:ObjectProperty .
+
+eng:hasDocument a owl:ObjectProperty .
+
+eng:hasEvidence a owl:ObjectProperty .
+
+eng:hasMeasurement a owl:ObjectProperty .
+
+eng:hasPMI a owl:ObjectProperty .
+
+eng:hasRequirement a owl:ObjectProperty .
+
+eng:hasTestResult a owl:ObjectProperty .
+
+eng:implementationStatus a owl:DatatypeProperty .
+
+eng:leadTime a owl:DatatypeProperty .
+
+eng:leadTime_unit a owl:DatatypeProperty .
+
+eng:lesson a owl:DatatypeProperty .
+
+eng:limit a owl:DatatypeProperty .
+
+eng:lowerLimit a owl:DatatypeProperty .
+
+eng:manufacturedBy a owl:ObjectProperty .
+
+eng:material a owl:DatatypeProperty .
+
+eng:measuredAt a owl:DatatypeProperty .
+
+eng:measuredValue a owl:DatatypeProperty .
+
+eng:measuresCharacteristic a owl:ObjectProperty .
+
+eng:memoryType a owl:DatatypeProperty .
+
+eng:modelType a owl:DatatypeProperty .
+
+eng:nominalDiameter a owl:DatatypeProperty .
+
+eng:nominalValue a owl:DatatypeProperty .
+
+eng:objective a owl:DatatypeProperty .
+
+eng:observation a owl:DatatypeProperty .
+
+eng:operationNumber a owl:DatatypeProperty .
+
+eng:operator a owl:DatatypeProperty .
+
+eng:outerDiameter a owl:DatatypeProperty .
+
+eng:outerDiameter_unit a owl:DatatypeProperty .
+
+eng:partNumber a owl:DatatypeProperty .
+
+eng:proposedPart a owl:ObjectProperty .
+
+eng:proposedScope a owl:DatatypeProperty .
+
+eng:quantity a owl:DatatypeProperty .
+
+eng:radialLoad a owl:DatatypeProperty .
+
+eng:radialLoad_unit a owl:DatatypeProperty .
+
+eng:rationale a owl:DatatypeProperty .
+
+eng:recallsInvestigation a owl:ObjectProperty .
+
+eng:recommendation a owl:DatatypeProperty .
+
+eng:recommendsAlternative a owl:ObjectProperty .
+
+eng:recordFormat a owl:DatatypeProperty .
+
+eng:recordKind a owl:DatatypeProperty .
+
+eng:recordedAt a owl:DatatypeProperty .
+
+eng:resourceType a owl:DatatypeProperty .
+
+eng:result a owl:DatatypeProperty .
+
+eng:revision a owl:DatatypeProperty .
+
+eng:rootCauseStatus a owl:DatatypeProperty .
+
+eng:rule a owl:DatatypeProperty .
+
+eng:selectedLot a owl:DatatypeProperty .
+
+eng:selectedProduct a owl:DatatypeProperty .
+
+eng:speed a owl:DatatypeProperty .
+
+eng:speed_unit a owl:DatatypeProperty .
+
+eng:station a owl:DatatypeProperty .
+
+eng:status a owl:DatatypeProperty .
+
+eng:storageStatus a owl:DatatypeProperty .
+
+eng:temperature a owl:DatatypeProperty .
+
+eng:temperature_unit a owl:DatatypeProperty .
+
+eng:testTime a owl:DatatypeProperty .
+
+eng:toleranceBasis a owl:DatatypeProperty .
+
+eng:unit a owl:DatatypeProperty .
+
+eng:upperLimit a owl:DatatypeProperty .
+
+eng:vibration a owl:DatatypeProperty .
+
+eng:vibration_unit a owl:DatatypeProperty .
+
+eng:width a owl:DatatypeProperty .
+
+ceim:Assembly a owl:Class .
+
+ceim:Change a owl:Class .
+
+ceim:GeometryBody a owl:Class .
+
+ceim:PMIAnnotation a owl:Class .
+
+ceim:ProductRevision a owl:Class .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/0081b143-7d0d-5c24-853c-f8b9b7bb5af8> a owl:NamedIndividual,
+        ceim:Configuration ;
+    rdfs:label "IM-1500 revision B investigation baseline"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:CFG-IM1500-B"^^xsd:string ;
+    eng:assessmentDate "2026-11-17"^^xsd:string ;
+    eng:contains <https://example.org/nexus/engineering-ods/customer-evaluation/v1/cde70ff2-4768-5825-882f-08f4703b4128> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:effectiveFrom "2026-11-01"^^xsd:string ;
+    eng:effectiveTo "2026-12-31"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/10b2a053-4f6b-5ac0-ad36-53be41628cea> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Option D — Use higher-temperature grease only"^^xsd:string ;
+    ceim:derivedFrom <https://example.org/nexus/engineering-ods/customer-evaluation/v1/4af69d62-2a3d-504a-ae61-fe0068d1750e> ;
+    ceim:externalId "BEARING-EVALUATION-001:OPT-D"^^xsd:string ;
+    ceim:verifiedBy <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e7e56bcb-cc3e-5f74-a522-9f1b27fd40e3> ;
+    eng:cost_unit "USD/unit"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Decision alternative"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:estimatedIncrementalCost 4.0 ;
+    eng:leadTime 3 ;
+    eng:leadTime_unit "day"^^xsd:string ;
+    eng:proposedPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/23030ff8-df17-594f-b4de-ba8f38ac5fc4> a owl:NamedIndividual,
+        ceim:Test ;
+    rdfs:label "Comparison lot operating test"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:TEST-118-THERMAL"^^xsd:string ;
+    eng:belongsToLot <https://example.org/nexus/engineering-ods/customer-evaluation/v1/588117b0-1632-56db-880a-e53fba98a4f4> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1500 ;
+    eng:speed_unit "rpm"^^xsd:string ;
+    eng:temperature 74.0 ;
+    eng:temperature_unit "degC"^^xsd:string ;
+    eng:vibration 2.0 ;
+    eng:vibration_unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/3c4e6d03-3ced-5dc0-880f-47ccf915007e> a owl:NamedIndividual,
+        ceim:Resource ;
+    rdfs:label "Rotor assembly manufacturing BOM line 2"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:MBOM-LINE-2"^^xsd:string ;
+    ceim:hasPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:quantity 1 ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:resourceType "BOM occurrence"^^xsd:string ;
+    eng:revision "B"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/435770ec-29d0-571b-adf5-ba61dbc20f96> a owl:NamedIndividual,
+        ceim:Test ;
+    rdfs:label "Option A controlled scenario test"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:VALIDATE-A"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored scenario test values; no solver execution"^^xsd:string ;
+    eng:outerDiameter 72.0 ;
+    eng:outerDiameter_unit "mm"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1500 ;
+    eng:speed_unit "rpm"^^xsd:string ;
+    eng:temperature 85.0 ;
+    eng:temperature_unit "degC"^^xsd:string ;
+    eng:vibration 3.2 ;
+    eng:vibration_unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/460c9b86-9f53-53fa-848d-eff0f57548b8> a owl:NamedIndividual,
+        ceim:GeometryBody ;
+    rdfs:label "Cylindrical shaft bearing seat"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:GEO-SEAT-B"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:geometryType "Cylinder"^^xsd:string ;
+    eng:nominalDiameter 30.0 ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:unit "mm"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/52c104ef-c4a8-534d-848d-44a2d0988527> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Previous bearing-seat investigation"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:8D-2024-017"^^xsd:string ;
+    eng:applicability "Same bearing support family; verify revision and operating envelope"^^xsd:string ;
+    eng:considersAlternative <https://example.org/nexus/engineering-ods/customer-evaluation/v1/326491ef-3c4f-5014-96ba-d705a2c2f8cf>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/4af69d62-2a3d-504a-ae61-fe0068d1750e>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/d1af7b19-7d94-5a2e-95c6-2487c28c2328>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/f11ebdb6-f7fd-5dd2-8079-a809ee784ff3> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Reviewed scenario investigation"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored historical Engineering ODS case prepared for memory-retrieval demonstration"^^xsd:string ;
+    eng:lesson "Seat correction plus clearance review resolved the earlier scenario case"^^xsd:string ;
+    eng:memoryType "Long-term episodic evidence"^^xsd:string ;
+    eng:recordKind "historical"^^xsd:string ;
+    eng:recordedAt "2024-10-17"^^xsd:date .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/5644b539-c6db-59a9-8aee-28e064c91941> a owl:NamedIndividual,
+        ceim:QualityMeasurement ;
+    rdfs:label "QIF-118-001 shaft-seat inspection"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:QIF-118-001"^^xsd:string ;
+    ceim:traceTo <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> ;
+    eng:belongsToLot <https://example.org/nexus/engineering-ods/customer-evaluation/v1/588117b0-1632-56db-880a-e53fba98a4f4> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:lowerLimit 30.010 ;
+    eng:measuredAt "2026-11-15T10:00:00Z"^^xsd:string ;
+    eng:measuredValue 30.015 ;
+    eng:measuresCharacteristic <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> ;
+    eng:nominalValue 30.0 ;
+    eng:recordFormat "QIF-aligned ODS measurement; not an original QIF file"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:result "Conforming"^^xsd:string ;
+    eng:unit "mm"^^xsd:string ;
+    eng:upperLimit 30.020 .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/62b84afd-8a7e-5ead-bd1c-9cfa8330d719> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Rotor shaft CAD and PMI reference"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:CAD-SHAFT-B"^^xsd:string ;
+    ceim:traceTo <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "AP242 design reference"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:geometryStatus "Reference record; no 3D mesh supplied"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/6c857137-ead6-5878-bba6-91e89cb10f2d> a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "6306 larger bearing candidate"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:BRG-6306-CN-A"^^xsd:string ;
+    eng:clearanceClass "CN"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:diameter 30.0 ;
+    eng:diameter_unit "mm"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:outerDiameter 72.0 ;
+    eng:partNumber "BRG-6306-CN"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "A"^^xsd:string ;
+    eng:width 19.0 .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/72abc922-d77a-5443-9a97-0eb316f957d3> a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "6206 bearing C3 clearance revision B"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:BRG-6206-C3-B"^^xsd:string ;
+    eng:clearanceClass "C3"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:diameter 30.0 ;
+    eng:diameter_unit "mm"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:material "Bearing steel"^^xsd:string ;
+    eng:outerDiameter 62.0 ;
+    eng:partNumber "BRG-6206-C3"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string ;
+    eng:width 16.0 .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/753b321f-bcba-578b-8da6-f6c13f336b6f> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Option C — Reduce operating speed for containment"^^xsd:string ;
+    ceim:derivedFrom <https://example.org/nexus/engineering-ods/customer-evaluation/v1/326491ef-3c4f-5014-96ba-d705a2c2f8cf> ;
+    ceim:externalId "BEARING-EVALUATION-001:OPT-C"^^xsd:string ;
+    ceim:verifiedBy <https://example.org/nexus/engineering-ods/customer-evaluation/v1/7a678ea6-d4cf-589e-aced-9351fe50fdf3> ;
+    eng:cost_unit "USD/unit"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Decision alternative"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:estimatedIncrementalCost 2.0 ;
+    eng:leadTime 1 ;
+    eng:leadTime_unit "day"^^xsd:string ;
+    eng:proposedPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/7a678ea6-d4cf-589e-aced-9351fe50fdf3> a owl:NamedIndividual,
+        ceim:Test ;
+    rdfs:label "Option C controlled scenario test"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:VALIDATE-C"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored scenario test values; no solver execution"^^xsd:string ;
+    eng:outerDiameter 62.0 ;
+    eng:outerDiameter_unit "mm"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1300 ;
+    eng:speed_unit "rpm"^^xsd:string ;
+    eng:temperature 78.0 ;
+    eng:temperature_unit "degC"^^xsd:string ;
+    eng:vibration 2.5 ;
+    eng:vibration_unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/9af89887-482c-56ec-b7cc-8e8633748a8b> a owl:NamedIndividual,
+        ceim:Test ;
+    rdfs:label "Option B controlled scenario test"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:VALIDATE-B"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored scenario test values; no solver execution"^^xsd:string ;
+    eng:outerDiameter 62.0 ;
+    eng:outerDiameter_unit "mm"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1500 ;
+    eng:speed_unit "rpm"^^xsd:string ;
+    eng:temperature 76.0 ;
+    eng:temperature_unit "degC"^^xsd:string ;
+    eng:vibration 2.1 ;
+    eng:vibration_unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/cde70ff2-4768-5825-882f-08f4703b4128> a owl:NamedIndividual,
+        ceim:ProductRevision ;
+    rdfs:label "IM-1500 induction motor revision B"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:MTR-IM-1500-B"^^xsd:string ;
+    ceim:hasPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/dfb2902a-1c09-5891-bc76-4ac0b756682c> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:effectiveFrom "2026-11-01"^^xsd:string ;
+    eng:effectiveTo "2026-12-31"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:partNumber "IM-1500"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/e72964f8-cde0-5424-b11d-3ef6a678cec6> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Bearing-seat and clearance review rule"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:RULE-FIT-001"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Design review rule"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:memoryType "Procedural evidence"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:rule "An out-of-tolerance seat must be corrected before considering a bearing substitution"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/e7e56bcb-cc3e-5f74-a522-9f1b27fd40e3> a owl:NamedIndividual,
+        ceim:Test ;
+    rdfs:label "Option D controlled scenario test"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:VALIDATE-D"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored scenario test values; no solver execution"^^xsd:string ;
+    eng:outerDiameter 62.0 ;
+    eng:outerDiameter_unit "mm"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1500 ;
+    eng:speed_unit "rpm"^^xsd:string ;
+    eng:temperature 86.0 ;
+    eng:temperature_unit "degC"^^xsd:string ;
+    eng:vibration 3.4 ;
+    eng:vibration_unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/e9376c06-398c-5fd9-b9fd-84415367efa6> a owl:NamedIndividual,
+        ceim:Resource ;
+    rdfs:label "Rotor assembly manufacturing BOM line 1"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:MBOM-LINE-1"^^xsd:string ;
+    ceim:hasPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/fd250a71-6963-5a5f-8861-62a720a817cf> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:quantity 1 ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:resourceType "BOM occurrence"^^xsd:string ;
+    eng:revision "B"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/f197a271-cc02-551b-a9f8-7602d3794145> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Option A — Upsize bearing"^^xsd:string ;
+    ceim:derivedFrom <https://example.org/nexus/engineering-ods/customer-evaluation/v1/d1af7b19-7d94-5a2e-95c6-2487c28c2328> ;
+    ceim:externalId "BEARING-EVALUATION-001:OPT-A"^^xsd:string ;
+    ceim:verifiedBy <https://example.org/nexus/engineering-ods/customer-evaluation/v1/435770ec-29d0-571b-adf5-ba61dbc20f96> ;
+    eng:cost_unit "USD/unit"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Decision alternative"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:estimatedIncrementalCost 18.0 ;
+    eng:leadTime 28 ;
+    eng:leadTime_unit "day"^^xsd:string ;
+    eng:proposedPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/6c857137-ead6-5878-bba6-91e89cb10f2d> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/fcd9ffbe-2441-5743-87d1-bbd96264ddd1> a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "Bearing housing revision B"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:HOUS-1500-B"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string .
+
+ceim:Configuration a owl:Class .
+
+ceim:Process a owl:Class .
+
+ceim:QualityMeasurement a owl:Class .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/1083ed81-db39-5a7c-8ebc-161bcae7ee11> a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "Bearing temperature shall not exceed 80 degC"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:REQ-TEMP-001"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:limit 80.0 ;
+    eng:operator "<="^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:unit "degC"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/326491ef-3c4f-5014-96ba-d705a2c2f8cf> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Past option C - Reduce operating speed"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:8D-2024-017-OPT-C"^^xsd:string ;
+    eng:applicability "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:description "Reduce operating speed"^^xsd:string ;
+    eng:documentType "Historical corrective-action option"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored historical Engineering ODS scenario; not a customer incident record"^^xsd:string ;
+    eng:memoryType "Long-term option evidence"^^xsd:string ;
+    eng:recordKind "historical"^^xsd:string ;
+    eng:recordedAt "2024-10-17"^^xsd:date ;
+    eng:status "Temporary containment in the historical scenario; not rated-duty resolution"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/3306bdb5-b730-5f8a-8048-9f328adf824f> a owl:NamedIndividual,
+        ceim:Test ;
+    rdfs:label "Lot 24-117 overheating and vibration"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:TEST-117-THERMAL"^^xsd:string ;
+    eng:belongsToLot <https://example.org/nexus/engineering-ods/customer-evaluation/v1/c73faef3-fb78-549c-bf27-93a8e23ad634> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:observation "Overheating and elevated vibration"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:speed 1500 ;
+    eng:speed_unit "rpm"^^xsd:string ;
+    eng:temperature 94.0 ;
+    eng:temperature_unit "degC"^^xsd:string ;
+    eng:testTime "2026-11-16T12:00:00Z"^^xsd:string ;
+    eng:vibration 4.6 ;
+    eng:vibration_unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/4af69d62-2a3d-504a-ae61-fe0068d1750e> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Past option D - Use higher-temperature grease"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:8D-2024-017-OPT-D"^^xsd:string ;
+    eng:applicability "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:description "Use higher-temperature grease"^^xsd:string ;
+    eng:documentType "Historical corrective-action option"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored historical Engineering ODS scenario; not a customer incident record"^^xsd:string ;
+    eng:memoryType "Long-term option evidence"^^xsd:string ;
+    eng:recordKind "historical"^^xsd:string ;
+    eng:recordedAt "2024-10-17"^^xsd:date ;
+    eng:status "Deferred in the historical scenario; seat-fit cause remained"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/588117b0-1632-56db-880a-e53fba98a4f4> a owl:NamedIndividual,
+        ceim:Resource ;
+    rdfs:label "Comparison lot 24-118"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:LOT-24-118"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:quantity 24 ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:resourceType "Production lot"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/5e3092eb-508a-50b9-a6a0-334494a9be41> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Recommend seat correction and reviewed C3 clearance"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:DEC-2026-031"^^xsd:string ;
+    eng:basedOn <https://example.org/nexus/engineering-ods/customer-evaluation/v1/ab466213-f878-57d6-8b4a-a56cd8e99698> ;
+    eng:containment "C reduces speed below the requirement and is not a permanent solution"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Decision recommendation"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:objective "Minimize incremental cost among alternatives satisfying every recorded constraint"^^xsd:string ;
+    eng:rationale "Only B meets temperature, vibration, speed, envelope and lead-time constraints"^^xsd:string ;
+    eng:recommendation "B"^^xsd:string ;
+    eng:recommendsAlternative <https://example.org/nexus/engineering-ods/customer-evaluation/v1/d8893bb6-1106-5ac6-8ea0-aa47ae83046e> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:status "Recommended; not approved"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/61320b6d-ace3-5f0a-91bb-132bb9aae295> a owl:NamedIndividual,
+        ceim:Process ;
+    rdfs:label "Finish grind bearing seat"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:OP-020-B"^^xsd:string ;
+    ceim:produces <https://example.org/nexus/engineering-ods/customer-evaluation/v1/fd250a71-6963-5a5f-8861-62a720a817cf> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:operationNumber "OP-020"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string ;
+    eng:station "S-07"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/94941d85-0537-5dd5-8d3c-b563eaeb74a3> a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "Vibration shall not exceed 2.8 mm/s RMS"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:REQ-VIB-001"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:limit 2.8 ;
+    eng:operator "<="^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:unit "mm/s RMS"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/ab466213-f878-57d6-8b4a-a56cd8e99698> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Bearing overheating investigation"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:INV-2026-031"^^xsd:string ;
+    eng:appliesRule <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e72964f8-cde0-5424-b11d-3ef6a678cec6> ;
+    eng:comparedWith <https://example.org/nexus/engineering-ods/customer-evaluation/v1/23030ff8-df17-594f-b4de-ba8f38ac5fc4> ;
+    eng:considersAlternative <https://example.org/nexus/engineering-ods/customer-evaluation/v1/10b2a053-4f6b-5ac0-ad36-53be41628cea>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/753b321f-bcba-578b-8da6-f6c13f336b6f>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/d8893bb6-1106-5ac6-8ea0-aa47ae83046e>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/f197a271-cc02-551b-a9f8-7602d3794145> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Investigation"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:finding "Oversize seat and reduced clearance are a supported causal hypothesis; confirm by controlled testing"^^xsd:string ;
+    eng:hasEvidence <https://example.org/nexus/engineering-ods/customer-evaluation/v1/3306bdb5-b730-5f8a-8048-9f328adf824f>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/bf1630f2-e947-5d7e-a106-93065a4dce36> ;
+    eng:recallsInvestigation <https://example.org/nexus/engineering-ods/customer-evaluation/v1/52c104ef-c4a8-534d-848d-44a2d0988527> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:rootCauseStatus "Hypothesis supported by scenario evidence; not independently validated"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/b24f130e-11fb-5783-ba2c-6162fdf4d50d> a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "Bearing envelope shall fit 62 mm housing"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:REQ-ENVELOPE-001"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:limit 62.0 ;
+    eng:operator "<="^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:unit "mm"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/bf1630f2-e947-5d7e-a106-93065a4dce36> a owl:NamedIndividual,
+        ceim:QualityMeasurement ;
+    rdfs:label "QIF-117-001 shaft-seat inspection"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:QIF-117-001"^^xsd:string ;
+    ceim:traceTo <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> ;
+    eng:belongsToLot <https://example.org/nexus/engineering-ods/customer-evaluation/v1/c73faef3-fb78-549c-bf27-93a8e23ad634> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:lowerLimit 30.010 ;
+    eng:measuredAt "2026-11-15T10:00:00Z"^^xsd:string ;
+    eng:measuredValue 30.032 ;
+    eng:measuresCharacteristic <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> ;
+    eng:nominalValue 30.0 ;
+    eng:recordFormat "QIF-aligned ODS measurement; not an original QIF file"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:result "Out of tolerance"^^xsd:string ;
+    eng:unit "mm"^^xsd:string ;
+    eng:upperLimit 30.020 .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/c09ced5c-a3c2-5dce-a41e-a81b9adedba9> a owl:NamedIndividual,
+        ceim:Requirement ;
+    rdfs:label "Continuous operating speed shall reach 1500 rpm"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:REQ-SPEED-001"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:limit 1500.0 ;
+    eng:operator ">="^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:unit "rpm"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/c73faef3-fb78-549c-bf27-93a8e23ad634> a owl:NamedIndividual,
+        ceim:Resource ;
+    rdfs:label "Bearing assembly lot 24-117"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:LOT-24-117"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:quantity 24 ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:resourceType "Production lot"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/d1af7b19-7d94-5a2e-95c6-2487c28c2328> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Past option A - Upsize bearing"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:8D-2024-017-OPT-A"^^xsd:string ;
+    eng:applicability "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:description "Upsize bearing"^^xsd:string ;
+    eng:documentType "Historical corrective-action option"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored historical Engineering ODS scenario; not a customer incident record"^^xsd:string ;
+    eng:memoryType "Long-term option evidence"^^xsd:string ;
+    eng:recordKind "historical"^^xsd:string ;
+    eng:recordedAt "2024-10-17"^^xsd:date ;
+    eng:status "Not selected in the historical scenario: package change required"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/d8893bb6-1106-5ac6-8ea0-aa47ae83046e> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Option B — Correct seat and use reviewed C3 clearance"^^xsd:string ;
+    ceim:derivedFrom <https://example.org/nexus/engineering-ods/customer-evaluation/v1/f11ebdb6-f7fd-5dd2-8079-a809ee784ff3> ;
+    ceim:externalId "BEARING-EVALUATION-001:OPT-B"^^xsd:string ;
+    ceim:verifiedBy <https://example.org/nexus/engineering-ods/customer-evaluation/v1/9af89887-482c-56ec-b7cc-8e8633748a8b> ;
+    eng:cost_unit "USD/unit"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:documentType "Decision alternative"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:estimatedIncrementalCost 8.0 ;
+    eng:leadTime 5 ;
+    eng:leadTime_unit "day"^^xsd:string ;
+    eng:proposedPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/72abc922-d77a-5443-9a97-0eb316f957d3> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/f11ebdb6-f7fd-5dd2-8079-a809ee784ff3> a owl:NamedIndividual,
+        ceim:Document ;
+    rdfs:label "Past option B - Correct seat and review clearance"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:8D-2024-017-OPT-B"^^xsd:string ;
+    eng:applicability "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:description "Correct seat and review clearance"^^xsd:string ;
+    eng:documentType "Historical corrective-action option"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:evidenceOrigin "Authored historical Engineering ODS scenario; not a customer incident record"^^xsd:string ;
+    eng:memoryType "Long-term option evidence"^^xsd:string ;
+    eng:recordKind "historical"^^xsd:string ;
+    eng:recordedAt "2024-10-17"^^xsd:date ;
+    eng:status "Selected in the historical scenario; applicability must be rechecked"^^xsd:string .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/dfb2902a-1c09-5891-bc76-4ac0b756682c> a owl:NamedIndividual,
+        ceim:Assembly ;
+    rdfs:label "Rotor bearing assembly revision B"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:ASM-ROT-1500-B"^^xsd:string ;
+    ceim:hasPart <https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/fcd9ffbe-2441-5743-87d1-bbd96264ddd1>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/fd250a71-6963-5a5f-8861-62a720a817cf> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:hasBOMLine <https://example.org/nexus/engineering-ods/customer-evaluation/v1/3c4e6d03-3ced-5dc0-880f-47ccf915007e>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e9376c06-398c-5fd9-b9fd-84415367efa6> ;
+    eng:hasRequirement <https://example.org/nexus/engineering-ods/customer-evaluation/v1/1083ed81-db39-5a7c-8ebc-161bcae7ee11>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/94941d85-0537-5dd5-8d3c-b563eaeb74a3>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/b24f130e-11fb-5783-ba2c-6162fdf4d50d>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/c09ced5c-a3c2-5dce-a41e-a81b9adedba9> ;
+    eng:hasTestResult <https://example.org/nexus/engineering-ods/customer-evaluation/v1/3306bdb5-b730-5f8a-8048-9f328adf824f> ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string .
+
+ceim:Requirement a owl:Class .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/fd250a71-6963-5a5f-8861-62a720a817cf> a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "Rotor shaft bearing seat revision B"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:SHAFT-1500-B"^^xsd:string ;
+    ceim:hasGeometry <https://example.org/nexus/engineering-ods/customer-evaluation/v1/460c9b86-9f53-53fa-848d-eff0f57548b8> ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:diameter 30.0 ;
+    eng:diameter_unit "mm"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:hasDocument <https://example.org/nexus/engineering-ods/customer-evaluation/v1/62b84afd-8a7e-5ead-bd1c-9cfa8330d719> ;
+    eng:hasMeasurement <https://example.org/nexus/engineering-ods/customer-evaluation/v1/5644b539-c6db-59a9-8aee-28e064c91941>,
+        <https://example.org/nexus/engineering-ods/customer-evaluation/v1/bf1630f2-e947-5d7e-a106-93065a4dce36> ;
+    eng:hasPMI <https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> ;
+    eng:manufacturedBy <https://example.org/nexus/engineering-ods/customer-evaluation/v1/61320b6d-ace3-5f0a-91bb-132bb9aae295> ;
+    eng:material "Steel"^^xsd:string ;
+    eng:partNumber "SHAFT-1500"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "B"^^xsd:string .
+
+ceim:Part a owl:Class .
+
+ceim:Resource a owl:Class .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/cc4a9c47-2655-5840-b240-1f43748e4207> a owl:NamedIndividual,
+        ceim:Part ;
+    rdfs:label "6206 bearing CN clearance revision A"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:BRG-6206-CN-A"^^xsd:string ;
+    eng:clearanceClass "CN"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:diameter 30.0 ;
+    eng:diameter_unit "mm"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:material "Bearing steel"^^xsd:string ;
+    eng:outerDiameter 62.0 ;
+    eng:partNumber "BRG-6206-CN"^^xsd:string ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:revision "A"^^xsd:string ;
+    eng:width 16.0 .
+
+ceim:Test a owl:Class .
+
+<https://example.org/nexus/engineering-ods/customer-evaluation/v1/e0dbc2b5-ecb3-55ca-aac6-5396f1492eca> a owl:NamedIndividual,
+        ceim:PMIAnnotation ;
+    rdfs:label "Bearing seat dimensional requirement"^^xsd:string ;
+    ceim:externalId "BEARING-EVALUATION-001:PMI-SEAT-B"^^xsd:string ;
+    eng:dataOrigin "Engineering ODS scenario"^^xsd:string ;
+    eng:datum "A"^^xsd:string ;
+    eng:engineeringApproved false ;
+    eng:lowerLimit 30.010 ;
+    eng:nominalValue 30.0 ;
+    eng:recordKind "current"^^xsd:string ;
+    eng:recordedAt "2026-11-17"^^xsd:date ;
+    eng:toleranceBasis "Scenario explicit limits; no ISO fit-class assertion"^^xsd:string ;
+    eng:unit "mm"^^xsd:string ;
+    eng:upperLimit 30.020 .
+
+ceim:Document a owl:Class .

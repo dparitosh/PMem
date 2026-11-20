@@ -239,6 +239,8 @@ export const isRelationshipCarrierNode = (node) => {
 
 const normalizeNode = (node) => ({
   ...(node.properties || {}),
+  name: node.properties?.name || node.name || node.properties?.label || node.label || undefined,
+  type: node.type || node.properties?.type,
   elementId: node.elementId,
   labels: node.labels || ['Node'],
   label: node.labels?.[0] || 'Node',

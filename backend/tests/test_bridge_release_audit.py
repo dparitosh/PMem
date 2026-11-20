@@ -86,9 +86,9 @@ class PublicationTests(unittest.TestCase):
             jobs = BridgeJobs(InMemoryRegistry(),Source(),graph)
             preview = jobs.preview('ontology','import','reader')
             ids = [preview['candidates'][0]['candidate_id']]
-            with self.assertRaises(TimeoutError): jobs.publish(preview['job_id'],ids,'approver')
+            with self.assertRaises(TimeoutError): jobs._publish_locked(preview['job_id'],ids,'approver')
             graph.receipts[preview['publication_job_id']].update(changes)
-            with self.assertRaises(BridgeConflict): jobs.publish(preview['job_id'],ids,'approver')
+            with self.assertRaises(BridgeConflict): jobs._publish_locked(preview['job_id'],ids,'approver')
             self.assertNotEqual(jobs.get(preview['publication_job_id'])['status'],'published')
             self.assertEqual(len(graph.calls),1)
 

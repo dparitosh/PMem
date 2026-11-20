@@ -38,6 +38,7 @@ def discovery(request: Request):
     payload = {"uri": root, "type": "oslc:ServiceProvider", "read_only": True,
             "queryCapabilities": [{"queryBase": f"{root}/{kind}",
                                    "resourceShape": f"{root}/shapes/{kind}"} for kind in KINDS],
+            "releaseConfigurationPattern":OSLCService.config().base_url+'/oslc/change-control/configurations/{identifier}',
             "changeControlEvidence": OSLCService.config().base_url + '/oslc/change-control/records'}
     return represent(payload, request)
 

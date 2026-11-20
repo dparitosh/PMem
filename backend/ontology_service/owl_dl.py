@@ -58,8 +58,14 @@ def inspect_graph(graph, *, artifact_sha256, include_foundation=True, target_iri
     result['foundation']['modules'] = meta.get('modules', [])
     result['alignment'] = alignment_coverage(graph,base)
     kinds = [set(graph.subjects(RDF.type,kind)) for kind in (OWL.ObjectProperty,OWL.DatatypeProperty,OWL.AnnotationProperty)]
-    if any(kinds[i] & kinds[j] for i in range(3) for j in range(i+1,3)):
-        return {**result,'status':'unsupported','reason':'ambiguous_property_declarations'}
+    ambiguous = sorted(set().union(*(kinds[i] & kinds[j] for i in range(3) for j in range(i+1,3))), key=str)
+    if ambiguous:
+        return {**result,'status':'unsupported','reason':'ambiguous_property_declarations',
+                'ambiguous_property_count':len(ambiguous),
+                'ambiguous_properties':[{'iri':str(iri),'declared_types':sorted(str(kind) for kind in
+                    (OWL.ObjectProperty,OWL.DatatypeProperty,OWL.AnnotationProperty) if (iri,RDF.type,kind) in graph)}
+                    for iri in ambiguous[:20]],
+                'ambiguous_properties_complete':len(ambiguous)<=20}
     allowed_imports = {meta['ontology_iri'],meta['version_iri'],'urn:depo:business-core','urn:depo:business-core:1.0.0'}
     allowed_imports.update(iri for module in meta.get('modules', [])
                            for iri in (module['ontology_iri'], module['version_iri']))
@@ -100,7 +106,7 @@ def inspect_graph(graph, *, artifact_sha256, include_foundation=True, target_iri
             except subprocess.TimeoutExpired: return {**result,'reason':'reasoner_timeout'}
             if completed.returncode or not output.is_file(): return {**result,'reason':'reasoner_process_failed','worker_exit_code':completed.returncode}
             if output.stat().st_size > 1024*1024: return {**result,'reason':'reasoner_output_budget_exceeded'}
-            evidence = json.loads(output.read_text())
+            evidence = json.loads(output.read_text(encoding='utf-8'))
         if not isinstance(evidence,dict) or evidence.get('engine') != 'HermiT' or evidence.get('engine_version') != '1.4.5.519' or evidence.get('status') not in {'consistent','inconsistent','unknown','unsupported'}:
             return {**result,'reason':'invalid_reasoner_contract'}
         executed = evidence.get('reasoner_executed') is True

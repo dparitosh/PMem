@@ -5,6 +5,7 @@ import uuid
 import random
 import threading
 from backend.mesh_store import PostgresRegistry
+from backend.depo_platform.release_chain import ReleaseDependencyPending
 from backend.depo_platform.network import publication_job_timeout_seconds, bounded_timeout_seconds
 
 
@@ -17,7 +18,7 @@ def describe_status(result, job):
     if not job:
         return result
     metadata = {key: job[key] for key in ('job_id', 'deadline_at', 'next_attempt_at', 'attempt', 'recovery_action', 'reconciliation_required') if job.get(key) is not None}
-    result = {**result, **metadata, 'job_status': job['status']}
+    result = {**result, **metadata, 'job_status': job['status'], 'managed_change':bool(job.get('change_request'))}
     if job['status'] in {'timed_out', 'cancelled', 'failed'} and result.get('status') not in {'published', 'publishing'}:
         result = {**result, 'graph_status': result.get('status'), 'status': job['status']}
     return result
@@ -45,6 +46,8 @@ class PublicationJobs:
             if not acquired:
                 raise ValueError('Publication worker is active; refresh its status')
             previous = self.registry.get(ontology_id)
+            if previous and previous.get('change_request'):
+                raise ValueError('Use the retained Change Control request; direct publication cannot replace its authorization')
             if previous and (previous['status'] in {'queued', 'running', 'reconciliation_required'} or previous.get('reconciliation_required')):
                 if previous['artifact_sha256'] != artifact_sha256:
                     raise ValueError('An earlier artifact publication must be reconciled first')
@@ -75,18 +78,30 @@ class PublicationJobs:
             if published or idle:
                 result = {**job, 'status':'published' if published else 'failed', 'reconciliation_required':False, 'updated_at':now()}
                 if published: result['result'] = receipt
-                self.registry.put(ontology_id, result)
+                self._save_worker_state(ontology_id, result)
 
     def cancel(self, ontology_id, job_id):
         with self.registry.advisory_lock(ontology_id) as acquired:
             if not acquired:
                 raise ValueError('Publication already executing; completed writes cannot be cancelled')
             job = self.get(ontology_id)
+            if job and job.get('change_request'):
+                raise ValueError('Use the reviewed change request to cancel before queueing')
             if not job or job['job_id'] != job_id or job['status'] != 'queued':
                 raise ValueError('Only the selected queued publication can be cancelled')
             result = {**job, 'status': 'cancelled', 'updated_at': now()}
             self.registry.put(ontology_id, result)
             return result
+
+    def _save_worker_state(self,identity,job):
+        from .publication_change import worker_state
+        return self.save_managed(identity,worker_state(job))
+
+    def save_managed(self,identity,job):
+        if job.get('change_request') and isinstance(self.registry,PostgresRegistry):
+            from backend.oslc_service.notifications import retain_native_change
+            return retain_native_change(self.registry,identity,job,'publications',identity)
+        return self.registry.put(identity,job)
 
     def run_once(self, execute, verify):
         # A session advisory lock survives long jobs, and is released by process
@@ -105,7 +120,7 @@ class PublicationJobs:
                     if not job.get('deadline_at'):
                         job = {**job, 'deadline_at': (datetime.fromisoformat(job['created_at'])
                             + timedelta(seconds=publication_job_timeout_seconds())).isoformat()}
-                        self.registry.put(identity, job)
+                        self._save_worker_state(identity, job)
                     current = self.clock()
                     expired = current >= datetime.fromisoformat(job['deadline_at'])
                     if state == 'queued' and not job.get('attempt') and job.get('queue_deadline_at'):
@@ -121,7 +136,7 @@ class PublicationJobs:
                                   'reconciliation_required': bool(job.get('attempt')) and not published,
                                   'recovery_action': 'none' if published else 'verify_graph_receipt' if job.get('attempt') else 'review_and_submit_again'}
                         if published: result['result'] = receipt
-                        self.registry.put(identity, {**result, 'updated_at': now()})
+                        self._save_worker_state(identity, {**result, 'updated_at': now()})
                         continue
                     if job.get('next_attempt_at') and current < datetime.fromisoformat(job['next_attempt_at']):
                         continue
@@ -134,7 +149,7 @@ class PublicationJobs:
                                 result = {**job, 'status': 'published', 'result': receipt}
                             elif (receipt.get('status') in {'not_published', 'not_verified'}
                                   and receipt.get('resumable') is True and receipt.get('publication_idle') is True
-                                  and job.get('attempt', 0) < 3):
+                                  and job.get('attempt', 0) < 3 and not job.get('change_request')):
                                 # Only confirmed-idle, unpublished staging is safe
                                 # to resume. Never replay an uncertain atomic write.
                                 delay = random.uniform(.8, 1.2) * min(60, 5 * 2 ** job.get('attempt', 0))
@@ -149,20 +164,26 @@ class PublicationJobs:
                             else:
                                 continue
                         else:
+                            if job.get('change_request'):
+                                from .publication_change import worker_guard
+                                worker_guard(job)
                             job = {**job, 'status': 'running', 'attempt': job.get('attempt', 0) + 1, 'updated_at': now()}
-                            self.registry.put(identity, job)
+                            self._save_worker_state(identity, job)
                             receipt = execute(job)
+                            if job.get('change_request'): receipt = verify(identity)
                             if (receipt.get('status') != 'published'
                                     or receipt.get('publication_id') != job['artifact_sha256']
                                     or receipt.get('ontology_id') != identity):
                                 raise RuntimeError('Publication receipt was not verified')
                             result = {**job, 'status': 'published', 'result': receipt}
+                    except ReleaseDependencyPending:
+                        result={**job,'status':'queued','recovery_action':'await_release_dependency','next_attempt_at':(self.clock()+timedelta(seconds=5)).isoformat()}
                     except Exception as exc:
                         logging.getLogger(__name__).error('Publication job failed job_id=%s error_type=%s', job['job_id'], type(exc).__name__)
                         result = {**job, 'status': 'reconciliation_required', 'error_type': type(exc).__name__,
                                   'recovery_action': 'verify_graph_receipt',
                                   'next_attempt_at': (self.clock() + timedelta(seconds=5)).isoformat()}
-                    self.registry.put(identity, {**result, 'updated_at': now()})
+                    self._save_worker_state(identity, {**result, 'updated_at': now()})
 
 
 publication_jobs = PublicationJobs()

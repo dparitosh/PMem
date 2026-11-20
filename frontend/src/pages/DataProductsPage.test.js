@@ -87,7 +87,7 @@ it.each(['available', 'pending'])('shows an existing analytics load when evidenc
   render(<DataProductsPage />);
   expect(await screen.findByText('analytics_parts')).toBeVisible();
   expect(screen.getByText('42')).toBeVisible();
-  expect(screen.getByText('Prepare a separate analytics load').closest('details')).not.toHaveAttribute('open');
+  expect(screen.queryByText('Prepare a separate analytics load')).not.toBeInTheDocument();
 });
 
 it('resolves older run artifacts using retained input roles and dependency paths', async () => {
@@ -95,9 +95,9 @@ it('resolves older run artifacts using retained input roles and dependency paths
   readProductCollection.mockResolvedValue({rows:[],total:0,warning:''});
   dataPipelineAPI.getRun.mockResolvedValue({data:{run_id:'legacy',status:'completed',analytics_inputs:{schema_artifact_id:'schema-old',xml_artifact_id:'xml-old',schema_dependencies:{'types.xsd':'dependency-old'}},output_manifest:{partition_artifacts:{accepted:'receipt-old'}}}});
   render(<DataProductsPage />);
-  await waitFor(()=>expect(screen.getByLabelText('Retained XSD artifact ID')).toHaveValue('schema-old'));
-  expect(screen.getByLabelText('Retained XML artifact ID')).toHaveValue('xml-old');
-  expect(screen.getByLabelText('Schema dependencies (relative path → artifact ID, JSON)')).toHaveValue('{"types.xsd":"dependency-old"}');
+  await waitFor(()=>expect(screen.getByTestId('retained-draft')).toHaveTextContent('receipt-old'));
+  expect(screen.queryByLabelText('Retained XSD artifact ID')).not.toBeInTheDocument();
+  expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('legacy',expect.objectContaining({timeout:15000}));
 });
 
 it('visible evidence actions expand the relevant product workflow',async()=>{

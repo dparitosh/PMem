@@ -171,3 +171,26 @@ def model_context(ontology_id, source_id):
             'properties': rows[0]['properties'], 'truncated': len(neighbors) > 100,
             'nodes': [{'id': row['id'], 'properties': row['properties'], 'labels': row['labels']} for row in neighbors[:100]],
             'links': [{'id': row['relationship_id'], 'type': row['relationship'], 'source': row['source'], 'target': row['target']} for row in neighbors[:100]]}
+
+
+def selected_model_context(ontology_id, node_id):
+    """Bind a published graph identity to its exact retained XMI member."""
+    manifest = retained_diagrams(ontology_id)
+    rows = _context_query("""
+        MATCH (n) WHERE elementId(n)=$node_id AND n.ontology_id=$ontology_id
+        AND NOT n:StagedOntologyResource AND NOT n:RetainedOntologyIdentity
+        AND NOT n:OntologyPublication
+        RETURN properties(n) AS properties LIMIT 2
+    """, {'node_id': node_id, 'ontology_id': ontology_id})
+    if len(rows) != 1:
+        raise LookupError('Selected model element is unavailable in this scope')
+    props = rows[0]['properties']
+    source_id, iri = props.get('source_xmi_id'), str(props.get('iri') or '')
+    matches = [node for node in manifest['nodes'] if
+               (source_id and node['id'] == source_id) or
+               (not source_id and iri.endswith('/' + node['id']))]
+    if len(matches) != 1:
+        raise LookupError('Selected graph record has no unique retained model member')
+    return {'status': 'resolved', 'ontology_id': ontology_id, 'node_id': node_id,
+            'source_id': matches[0]['id'], 'source_artifact_id': manifest['source_artifact_id'],
+            'model_element': matches[0]}

@@ -50,3 +50,64 @@ class ConvertedNamespaceTests(unittest.TestCase):
    graph=Graph().parse(out,format='turtle')
    self.assertIn((URIRef('urn:b#Child'),RDFS.subClassOf,URIRef('urn:a#Parent')),graph)
 if __name__=='__main__':unittest.main()
+
+
+class GoldenIdentityRegressionTests(unittest.TestCase):
+ def test_normalization_preserves_identifiers_but_normalizes_measurements(self):
+  from backend.ceim.normalization import normalize_record
+  record, _ = normalize_record({'source_id':'000001', 'attributes':{
+      'part_number':'000886', 'productId':'000886', 'serialNumber':'0012',
+      'revision':'01', 'operationNumber':'0010', 'quantity':'0002.00'}})
+  self.assertEqual(record['source_id'], '000001')
+  for field,value in {'part_number':'000886','productId':'000886','serialNumber':'0012','revision':'01','operationNumber':'0010'}.items():
+   self.assertEqual(record['attributes'][field], value)
+  self.assertEqual(record['attributes']['quantity'], '2')
+
+ def test_plmxml_product_number_and_revision_master_are_distinct(self):
+  from backend.Services.plmxml_parser import parse_plmxml_file
+  with tempfile.TemporaryDirectory() as folder:
+   path=Path(folder)/'parts.xml'
+   path.write_text('<PLMXML><Product id="master" productId="000886" name="Shaft"/><ProductRevision id="revision" masterRef="#master" revision="A" name="Shaft"/></PLMXML>')
+   doc=parse_plmxml_file(path)
+   self.assertEqual(doc.parts['master'].part_number, '000886')
+   self.assertEqual(doc.parts['revision'].master_ref, '#master')
+   self.assertEqual(doc.parts['revision'].revision, 'A')
+
+ def test_duplicate_plmxml_ids_and_ambiguous_uid_are_rejected(self):
+  from backend.Services.plmxml_parser import parse_plmxml_file
+  for content in ('<PLMXML><Product id="x"/><Product id="x"/></PLMXML>',
+                  '<PLMXML><Product id="x" uid="same"/><Product id="y" uid="same"/></PLMXML>'):
+   with tempfile.TemporaryDirectory() as folder:
+    path=Path(folder)/'invalid.xml';path.write_text(content)
+    with self.assertRaises(ValueError):parse_plmxml_file(path)
+
+ def test_canonical_scoping_rejects_duplicate_identity(self):
+  from backend.ceim.identity import scope_batch
+  with self.assertRaisesRegex(ValueError,'Duplicate'):
+   scope_batch([{'id':'plmxml:1'},{'id':'plmxml:1'}],[],source_system='PLM')
+
+ def test_oslc_iri_survives_database_node_recreation(self):
+  from backend.oslc_service.identity import resource_uri
+  properties={'iri':'urn:part:000886','ontology_id':'baseline-A'}
+  self.assertEqual(resource_uri('https://nexus',properties,'old'),resource_uri('https://nexus',properties,'new'))
+  self.assertIn('ontology_id=baseline-A',resource_uri('https://nexus',properties,'new'))
+
+
+class RealMotorGoldenIdentityTests(unittest.TestCase):
+ def test_motor_product_number_and_master_reference_match_source(self):
+  from backend.Services.plmxml_parser import parse_plmxml_file
+  source=Path('D:/GenAI_Projects/SPLM_Folder/plmxml_individual/000740_A_2-mBOM_INDUTION_MOTOR_ASSEMBLY 1.xml')
+  if not source.is_file():self.skipTest('SPLM acceptance fixture not installed')
+  doc=parse_plmxml_file(source)
+  self.assertEqual(doc.parts['id1224'].part_number, '000886')
+  self.assertEqual(doc.parts['id1222'].master_ref, '#id1224')
+  self.assertEqual(doc.parts['id1222'].revision, 'A')
+
+
+class ExternalIdentityReferenceTests(unittest.TestCase):
+ def test_external_document_reference_is_not_rewritten_to_local_object(self):
+  from backend.Services.plmxml_parser import _normalize_ref, _is_external_locator_ref
+  self.assertEqual(_normalize_ref('#id123'), 'id123')
+  self.assertEqual(_normalize_ref('other/id123.plmxml'), 'other/id123.plmxml')
+  self.assertTrue(_is_external_locator_ref('locationRef', '000684_B.prt'))
+  self.assertTrue(_is_external_locator_ref('locationRef', 'qafmetadata.qaf'))

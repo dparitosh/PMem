@@ -1,0 +1,2375 @@
+{
+  "schema_version": 1,
+  "description": "Editable authored Engineering ODS scenario. Not customer incident facts.",
+  "history_date": "2024-10-17",
+  "assessment_date": "2026-11-17",
+  "records": [
+    {
+      "id": "8D-2024-017",
+      "label": "Previous bearing-seat investigation",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "historical",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/applicability": {
+          "value": "Same bearing support family; verify revision and operating envelope",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Reviewed scenario investigation",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored historical Engineering ODS case prepared for memory-retrieval demonstration",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/lesson": {
+          "value": "Seat correction plus clearance review resolved the earlier scenario case",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Long-term episodic evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "8D-2024-017-OPT-A",
+      "label": "Past option A - Upsize bearing",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "historical",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/applicability": {
+          "value": "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/description": {
+          "value": "Upsize bearing",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Historical corrective-action option",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored historical Engineering ODS scenario; not a customer incident record",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Long-term option evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Not selected in the historical scenario: package change required",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "8D-2024-017-OPT-B",
+      "label": "Past option B - Correct seat and review clearance",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "historical",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/applicability": {
+          "value": "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/description": {
+          "value": "Correct seat and review clearance",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Historical corrective-action option",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored historical Engineering ODS scenario; not a customer incident record",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Long-term option evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Selected in the historical scenario; applicability must be rechecked",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "8D-2024-017-OPT-C",
+      "label": "Past option C - Reduce operating speed",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "historical",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/applicability": {
+          "value": "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/description": {
+          "value": "Reduce operating speed",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Historical corrective-action option",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored historical Engineering ODS scenario; not a customer incident record",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Long-term option evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Temporary containment in the historical scenario; not rated-duty resolution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "8D-2024-017-OPT-D",
+      "label": "Past option D - Use higher-temperature grease",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "historical",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/applicability": {
+          "value": "Bearing support family; check current motor revision, operating duty, dimensions and evaluation evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/description": {
+          "value": "Use higher-temperature grease",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Historical corrective-action option",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored historical Engineering ODS scenario; not a customer incident record",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Long-term option evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Deferred in the historical scenario; seat-fit cause remained",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "ASM-ROT-1500-B",
+      "label": "Rotor bearing assembly revision B",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Assembly"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "BRG-6206-C3-B",
+      "label": "6206 bearing C3 clearance revision B",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Part"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/clearanceClass": {
+          "value": "C3",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/material": {
+          "value": "Bearing steel",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "62.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/partNumber": {
+          "value": "BRG-6206-C3",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/width": {
+          "value": "16.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "BRG-6206-CN-A",
+      "label": "6206 bearing CN clearance revision A",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Part"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/clearanceClass": {
+          "value": "CN",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/material": {
+          "value": "Bearing steel",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "62.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/partNumber": {
+          "value": "BRG-6206-CN",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "A",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/width": {
+          "value": "16.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "BRG-6306-CN-A",
+      "label": "6306 larger bearing candidate",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Part"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/clearanceClass": {
+          "value": "CN",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "72.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/partNumber": {
+          "value": "BRG-6306-CN",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "A",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/width": {
+          "value": "19.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "CAD-SHAFT-B",
+      "label": "Rotor shaft CAD and PMI reference",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "AP242 design reference",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/geometryStatus": {
+          "value": "Reference record; no 3D mesh supplied",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "CFG-IM1500-B",
+      "label": "IM-1500 revision B investigation baseline",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Configuration"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/assessmentDate": {
+          "value": "2026-11-17",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/effectiveFrom": {
+          "value": "2026-11-01",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/effectiveTo": {
+          "value": "2026-12-31",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "CHG-INV-031",
+      "label": "Bearing corrective-action package",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Change"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/implementationStatus": {
+          "value": "Not implemented",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/proposedScope": {
+          "value": "Seat machining, clearance specification and lot inspection",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Prepared evidence only; no application CR/CO created",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "CTX-INV-031",
+      "label": "Active bearing investigation context",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Configuration"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/asOf": {
+          "value": "2026-11-17",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Contextual selection",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/selectedLot": {
+          "value": "24-117",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/selectedProduct": {
+          "value": "IM-1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/storageStatus": {
+          "value": "Dataset context record; not a saved Companion session",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "DEC-2026-031",
+      "label": "Recommend seat correction and reviewed C3 clearance",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/containment": {
+          "value": "C reduces speed below the requirement and is not a permanent solution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Decision recommendation",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/objective": {
+          "value": "Minimize incremental cost among alternatives satisfying every recorded constraint",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/rationale": {
+          "value": "Only B meets temperature, vibration, speed, envelope and lead-time constraints",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/recommendation": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Recommended; not approved",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "GEO-SEAT-B",
+      "label": "Cylindrical shaft bearing seat",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/GeometryBody"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/geometryType": {
+          "value": "Cylinder",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/nominalDiameter": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "HOUS-1500-B",
+      "label": "Bearing housing revision B",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Part"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "INV-2026-031",
+      "label": "Bearing overheating investigation",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Investigation",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/finding": {
+          "value": "Oversize seat and reduced clearance are a supported causal hypothesis; confirm by controlled testing",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/rootCauseStatus": {
+          "value": "Hypothesis supported by scenario evidence; not independently validated",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "LESSON-2026-031",
+      "label": "Pending bearing investigation lesson",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Lesson proposal",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Proposed long-term memory",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/status": {
+          "value": "Awaiting reviewed decision and measured post-release outcome",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "LOT-24-117",
+      "label": "Bearing assembly lot 24-117",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Resource"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/quantity": {
+          "value": "24",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/resourceType": {
+          "value": "Production lot",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "LOT-24-118",
+      "label": "Comparison lot 24-118",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Resource"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/quantity": {
+          "value": "24",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/resourceType": {
+          "value": "Production lot",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "MBOM-LINE-1",
+      "label": "Rotor assembly manufacturing BOM line 1",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Resource"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/quantity": {
+          "value": "1",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/resourceType": {
+          "value": "BOM occurrence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "MBOM-LINE-2",
+      "label": "Rotor assembly manufacturing BOM line 2",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Resource"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/quantity": {
+          "value": "1",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/resourceType": {
+          "value": "BOM occurrence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "MBSE-BEARING-SUPPORT-B",
+      "label": "Bearing support operating context",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Resource"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/ambientTemperature": {
+          "value": "40.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/ambientTemperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dutyCycle": {
+          "value": "Continuous",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/modelType": {
+          "value": "SysML block",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/radialLoad": {
+          "value": "1800.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/radialLoad_unit": {
+          "value": "N",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "MTR-IM-1500-B",
+      "label": "IM-1500 induction motor revision B",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/ProductRevision"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/effectiveFrom": {
+          "value": "2026-11-01",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/effectiveTo": {
+          "value": "2026-12-31",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/partNumber": {
+          "value": "IM-1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "OP-020-B",
+      "label": "Finish grind bearing seat",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Process"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/operationNumber": {
+          "value": "OP-020",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/station": {
+          "value": "S-07",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "OP-030-B",
+      "label": "Assemble bearing and record clearance",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Process"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/operationNumber": {
+          "value": "OP-030",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "OPT-A",
+      "label": "Option A — Upsize bearing",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/cost_unit": {
+          "value": "USD/unit",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Decision alternative",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/estimatedIncrementalCost": {
+          "value": "18.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime": {
+          "value": "28",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime_unit": {
+          "value": "day",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "OPT-B",
+      "label": "Option B — Correct seat and use reviewed C3 clearance",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/cost_unit": {
+          "value": "USD/unit",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Decision alternative",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/estimatedIncrementalCost": {
+          "value": "8.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime": {
+          "value": "5",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime_unit": {
+          "value": "day",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "OPT-C",
+      "label": "Option C — Reduce operating speed for containment",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/cost_unit": {
+          "value": "USD/unit",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Decision alternative",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/estimatedIncrementalCost": {
+          "value": "2.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime": {
+          "value": "1",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime_unit": {
+          "value": "day",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "OPT-D",
+      "label": "Option D — Use higher-temperature grease only",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/cost_unit": {
+          "value": "USD/unit",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Decision alternative",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/estimatedIncrementalCost": {
+          "value": "4.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime": {
+          "value": "3",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/leadTime_unit": {
+          "value": "day",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "PMI-SEAT-B",
+      "label": "Bearing seat dimensional requirement",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/PMIAnnotation"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/datum": {
+          "value": "A",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/lowerLimit": {
+          "value": "30.010",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/nominalValue": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/toleranceBasis": {
+          "value": "Scenario explicit limits; no ISO fit-class assertion",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/upperLimit": {
+          "value": "30.020",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "QIF-117-001",
+      "label": "QIF-117-001 shaft-seat inspection",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/QualityMeasurement"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/lowerLimit": {
+          "value": "30.010",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/measuredAt": {
+          "value": "2026-11-15T10:00:00Z",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/measuredValue": {
+          "value": "30.032",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/nominalValue": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/recordFormat": {
+          "value": "QIF-aligned ODS measurement; not an original QIF file",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/result": {
+          "value": "Out of tolerance",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/upperLimit": {
+          "value": "30.020",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "QIF-118-001",
+      "label": "QIF-118-001 shaft-seat inspection",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/QualityMeasurement"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/lowerLimit": {
+          "value": "30.010",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/measuredAt": {
+          "value": "2026-11-15T10:00:00Z",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/measuredValue": {
+          "value": "30.015",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/nominalValue": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/recordFormat": {
+          "value": "QIF-aligned ODS measurement; not an original QIF file",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/result": {
+          "value": "Conforming",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/upperLimit": {
+          "value": "30.020",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "REQ-ENVELOPE-001",
+      "label": "Bearing envelope shall fit 62 mm housing",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Requirement"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/limit": {
+          "value": "62.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/operator": {
+          "value": "<=",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "REQ-SPEED-001",
+      "label": "Continuous operating speed shall reach 1500 rpm",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Requirement"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/limit": {
+          "value": "1500.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/operator": {
+          "value": ">=",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "REQ-TEMP-001",
+      "label": "Bearing temperature shall not exceed 80 degC",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Requirement"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/limit": {
+          "value": "80.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/operator": {
+          "value": "<=",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "REQ-VIB-001",
+      "label": "Vibration shall not exceed 2.8 mm/s RMS",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Requirement"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/limit": {
+          "value": "2.8",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/operator": {
+          "value": "<=",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "RULE-FIT-001",
+      "label": "Bearing-seat and clearance review rule",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Document"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/documentType": {
+          "value": "Design review rule",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/memoryType": {
+          "value": "Procedural evidence",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/rule": {
+          "value": "An out-of-tolerance seat must be corrected before considering a bearing substitution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "SHAFT-1500-B",
+      "label": "Rotor shaft bearing seat revision B",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Part"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter": {
+          "value": "30.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/diameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/material": {
+          "value": "Steel",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/partNumber": {
+          "value": "SHAFT-1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/revision": {
+          "value": "B",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "TEST-117-THERMAL",
+      "label": "Lot 24-117 overheating and vibration",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Test"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/observation": {
+          "value": "Overheating and elevated vibration",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature": {
+          "value": "94.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/testTime": {
+          "value": "2026-11-16T12:00:00Z",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration": {
+          "value": "4.6",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration_unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "TEST-118-THERMAL",
+      "label": "Comparison lot operating test",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Test"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature": {
+          "value": "74.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration": {
+          "value": "2.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration_unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "VALIDATE-A",
+      "label": "Option A controlled scenario test",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Test"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored scenario test values; no solver execution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "72.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature": {
+          "value": "85.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration": {
+          "value": "3.2",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration_unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "VALIDATE-B",
+      "label": "Option B controlled scenario test",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Test"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored scenario test values; no solver execution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "62.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature": {
+          "value": "76.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration": {
+          "value": "2.1",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration_unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "VALIDATE-C",
+      "label": "Option C controlled scenario test",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Test"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored scenario test values; no solver execution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "62.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1300",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature": {
+          "value": "78.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration": {
+          "value": "2.5",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration_unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    },
+    {
+      "id": "VALIDATE-D",
+      "label": "Option D controlled scenario test",
+      "classes": [
+        "https://depo.example.org/ceim/0.1/Test"
+      ],
+      "record_kind": "current",
+      "properties": {
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/dataOrigin": {
+          "value": "Engineering ODS scenario",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/engineeringApproved": {
+          "value": "false",
+          "datatype": "http://www.w3.org/2001/XMLSchema#boolean",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/evidenceOrigin": {
+          "value": "Authored scenario test values; no solver execution",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter": {
+          "value": "62.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/outerDiameter_unit": {
+          "value": "mm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed": {
+          "value": "1500",
+          "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/speed_unit": {
+          "value": "rpm",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature": {
+          "value": "86.0",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/temperature_unit": {
+          "value": "degC",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration": {
+          "value": "3.4",
+          "datatype": "http://www.w3.org/2001/XMLSchema#decimal",
+          "language": ""
+        },
+        "https://example.org/nexus/engineering-ods/vocabulary/v1/vibration_unit": {
+          "value": "mm/s RMS",
+          "datatype": "http://www.w3.org/2001/XMLSchema#string",
+          "language": ""
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "from": "8D-2024-017",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "8D-2024-017-OPT-A"
+    },
+    {
+      "from": "8D-2024-017",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "8D-2024-017-OPT-B"
+    },
+    {
+      "from": "8D-2024-017",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "8D-2024-017-OPT-C"
+    },
+    {
+      "from": "8D-2024-017",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "8D-2024-017-OPT-D"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://depo.example.org/ceim/0.1/hasPart",
+      "to": "BRG-6206-CN-A"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://depo.example.org/ceim/0.1/hasPart",
+      "to": "HOUS-1500-B"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://depo.example.org/ceim/0.1/hasPart",
+      "to": "SHAFT-1500-B"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasBOMLine",
+      "to": "MBOM-LINE-1"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasBOMLine",
+      "to": "MBOM-LINE-2"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-ENVELOPE-001"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-SPEED-001"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-TEMP-001"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-VIB-001"
+    },
+    {
+      "from": "ASM-ROT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasTestResult",
+      "to": "TEST-117-THERMAL"
+    },
+    {
+      "from": "CAD-SHAFT-B",
+      "predicate": "https://depo.example.org/ceim/0.1/traceTo",
+      "to": "PMI-SEAT-B"
+    },
+    {
+      "from": "CFG-IM1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/contains",
+      "to": "MTR-IM-1500-B"
+    },
+    {
+      "from": "CHG-INV-031",
+      "predicate": "https://depo.example.org/ceim/0.1/impacts",
+      "to": "BRG-6206-CN-A"
+    },
+    {
+      "from": "CHG-INV-031",
+      "predicate": "https://depo.example.org/ceim/0.1/impacts",
+      "to": "OP-020-B"
+    },
+    {
+      "from": "CHG-INV-031",
+      "predicate": "https://depo.example.org/ceim/0.1/impacts",
+      "to": "SHAFT-1500-B"
+    },
+    {
+      "from": "CHG-INV-031",
+      "predicate": "https://depo.example.org/ceim/0.1/traceTo",
+      "to": "DEC-2026-031"
+    },
+    {
+      "from": "CTX-INV-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/contains",
+      "to": "CFG-IM1500-B"
+    },
+    {
+      "from": "CTX-INV-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/contains",
+      "to": "INV-2026-031"
+    },
+    {
+      "from": "DEC-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/basedOn",
+      "to": "INV-2026-031"
+    },
+    {
+      "from": "DEC-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/recommendsAlternative",
+      "to": "OPT-B"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/appliesRule",
+      "to": "RULE-FIT-001"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/comparedWith",
+      "to": "TEST-118-THERMAL"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "OPT-A"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "OPT-B"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "OPT-C"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/considersAlternative",
+      "to": "OPT-D"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasEvidence",
+      "to": "QIF-117-001"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasEvidence",
+      "to": "TEST-117-THERMAL"
+    },
+    {
+      "from": "INV-2026-031",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/recallsInvestigation",
+      "to": "8D-2024-017"
+    },
+    {
+      "from": "LESSON-2026-031",
+      "predicate": "https://depo.example.org/ceim/0.1/derivedFrom",
+      "to": "DEC-2026-031"
+    },
+    {
+      "from": "MBOM-LINE-1",
+      "predicate": "https://depo.example.org/ceim/0.1/hasPart",
+      "to": "SHAFT-1500-B"
+    },
+    {
+      "from": "MBOM-LINE-2",
+      "predicate": "https://depo.example.org/ceim/0.1/hasPart",
+      "to": "BRG-6206-CN-A"
+    },
+    {
+      "from": "MBSE-BEARING-SUPPORT-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/allocatedTo",
+      "to": "ASM-ROT-1500-B"
+    },
+    {
+      "from": "MBSE-BEARING-SUPPORT-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-ENVELOPE-001"
+    },
+    {
+      "from": "MBSE-BEARING-SUPPORT-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-SPEED-001"
+    },
+    {
+      "from": "MBSE-BEARING-SUPPORT-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-TEMP-001"
+    },
+    {
+      "from": "MBSE-BEARING-SUPPORT-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasRequirement",
+      "to": "REQ-VIB-001"
+    },
+    {
+      "from": "MTR-IM-1500-B",
+      "predicate": "https://depo.example.org/ceim/0.1/hasPart",
+      "to": "ASM-ROT-1500-B"
+    },
+    {
+      "from": "OP-020-B",
+      "predicate": "https://depo.example.org/ceim/0.1/produces",
+      "to": "SHAFT-1500-B"
+    },
+    {
+      "from": "OP-030-B",
+      "predicate": "https://depo.example.org/ceim/0.1/produces",
+      "to": "ASM-ROT-1500-B"
+    },
+    {
+      "from": "OPT-A",
+      "predicate": "https://depo.example.org/ceim/0.1/derivedFrom",
+      "to": "8D-2024-017-OPT-A"
+    },
+    {
+      "from": "OPT-A",
+      "predicate": "https://depo.example.org/ceim/0.1/verifiedBy",
+      "to": "VALIDATE-A"
+    },
+    {
+      "from": "OPT-A",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/proposedPart",
+      "to": "BRG-6306-CN-A"
+    },
+    {
+      "from": "OPT-B",
+      "predicate": "https://depo.example.org/ceim/0.1/derivedFrom",
+      "to": "8D-2024-017-OPT-B"
+    },
+    {
+      "from": "OPT-B",
+      "predicate": "https://depo.example.org/ceim/0.1/verifiedBy",
+      "to": "VALIDATE-B"
+    },
+    {
+      "from": "OPT-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/proposedPart",
+      "to": "BRG-6206-C3-B"
+    },
+    {
+      "from": "OPT-C",
+      "predicate": "https://depo.example.org/ceim/0.1/derivedFrom",
+      "to": "8D-2024-017-OPT-C"
+    },
+    {
+      "from": "OPT-C",
+      "predicate": "https://depo.example.org/ceim/0.1/verifiedBy",
+      "to": "VALIDATE-C"
+    },
+    {
+      "from": "OPT-C",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/proposedPart",
+      "to": "BRG-6206-CN-A"
+    },
+    {
+      "from": "OPT-D",
+      "predicate": "https://depo.example.org/ceim/0.1/derivedFrom",
+      "to": "8D-2024-017-OPT-D"
+    },
+    {
+      "from": "OPT-D",
+      "predicate": "https://depo.example.org/ceim/0.1/verifiedBy",
+      "to": "VALIDATE-D"
+    },
+    {
+      "from": "OPT-D",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/proposedPart",
+      "to": "BRG-6206-CN-A"
+    },
+    {
+      "from": "QIF-117-001",
+      "predicate": "https://depo.example.org/ceim/0.1/traceTo",
+      "to": "PMI-SEAT-B"
+    },
+    {
+      "from": "QIF-117-001",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/belongsToLot",
+      "to": "LOT-24-117"
+    },
+    {
+      "from": "QIF-117-001",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/measuresCharacteristic",
+      "to": "PMI-SEAT-B"
+    },
+    {
+      "from": "QIF-118-001",
+      "predicate": "https://depo.example.org/ceim/0.1/traceTo",
+      "to": "PMI-SEAT-B"
+    },
+    {
+      "from": "QIF-118-001",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/belongsToLot",
+      "to": "LOT-24-118"
+    },
+    {
+      "from": "QIF-118-001",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/measuresCharacteristic",
+      "to": "PMI-SEAT-B"
+    },
+    {
+      "from": "SHAFT-1500-B",
+      "predicate": "https://depo.example.org/ceim/0.1/hasGeometry",
+      "to": "GEO-SEAT-B"
+    },
+    {
+      "from": "SHAFT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasDocument",
+      "to": "CAD-SHAFT-B"
+    },
+    {
+      "from": "SHAFT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasMeasurement",
+      "to": "QIF-117-001"
+    },
+    {
+      "from": "SHAFT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasMeasurement",
+      "to": "QIF-118-001"
+    },
+    {
+      "from": "SHAFT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/hasPMI",
+      "to": "PMI-SEAT-B"
+    },
+    {
+      "from": "SHAFT-1500-B",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/manufacturedBy",
+      "to": "OP-020-B"
+    },
+    {
+      "from": "TEST-117-THERMAL",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/belongsToLot",
+      "to": "LOT-24-117"
+    },
+    {
+      "from": "TEST-118-THERMAL",
+      "predicate": "https://example.org/nexus/engineering-ods/vocabulary/v1/belongsToLot",
+      "to": "LOT-24-118"
+    }
+  ]
+}

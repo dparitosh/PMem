@@ -2,6 +2,8 @@
 
 Use this with [customer installation](../../INSTALLATION.md). The existing `.env.local` is authoritative; preserve it during upgrades. Never replace customer secrets with a template or use `configure-depo.ps1 -Force` as an upgrade step.
 
+Optional evaluation data is separate from infrastructure configuration. The [Engineering ODS toolkit](../../standalone/engineering_ods/README.md) takes service URLs and token **environment-variable names** in its own JSON file. Never copy customer token values, `.env.local` or registration receipts into the toolkit archive. PostgreSQL/Neo4j passwords are not required by the API loader.
+
 ## Choose the deployment path first
 
 | Scenario | Routing mode | Gateway URL / subscription key |

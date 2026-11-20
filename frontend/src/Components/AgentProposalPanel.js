@@ -29,11 +29,16 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
   const request = useRef(null);
   const reset = () => { request.current?.abort(); setProposal(null); setReviewed(false); setMessage(''); setBusy(false); setExecution(null); };
   const contextKey = JSON.stringify([agentIds || null, context]);
+  const allowedAgentKey = JSON.stringify(agentIds ? [...agentIds].sort() : null);
+  useEffect(() => {
+    if (agentIds) { setAgents(current => current.filter(item => agentIds.includes(item.id))); setAgent(current => agentIds.includes(current) ? current : ''); }
+  }, [allowedAgentKey]);
   useEffect(() => { reset(); setAttachment(null); if (context || agentIds) setSavedId(''); }, [contextKey]);
   useEffect(() => {
-    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
-    events.forEach(event => window.addEventListener(event, reset));
-    return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, reset)); };
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-replaced', 'depo:session-expired'];
+    const invalidate = () => { reset(); setActor(''); setAgents([]); setAgent(''); setSavedId(''); setTask(''); setAttachment(null); };
+    events.forEach(event => window.addEventListener(event, invalidate));
+    return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, invalidate)); };
   }, []);
   const operate = async action => {
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
@@ -48,6 +53,7 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
         const available = agentIds ? response.data.agents.filter(item => agentIds.includes(item.id)) : response.data.agents;
         if (!controller.signal.aborted) { setAgents(available); setAgent(available[0]?.id || ''); }
       } else if (action === 'suggest') {
+        if (!agent || (agentIds && !agentIds.includes(agent))) throw new Error('Select an available agent for this workspace.');
         setProposal(null); setReviewed(false);
         let file = null;
         if (attachment) {
@@ -75,11 +81,19 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
       } else {
         if (!proposal || proposal.status === 'failed' || !reviewed) throw new Error('Review the proposal first.');
         const token = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
-        if (needsApprover && !actor.trim()) throw new Error('Enter the approver required for this execution.');
-        if (proposal.requires_approval && (!actor.trim() || !token)) throw new Error('Enter the steward and connect governed access in Admin.');
+        let verifiedActor;
+        if (needsApprover) {
+          if (!token) throw new Error('Connect governed access in Admin before execution.');
+          const identity = await agenticClient.get(buildSemanticServiceUrl('agentic', '/auth/credential-check'), {...options, params:{profile:'AGENTIC_APPROVAL_TOKEN'}, headers:{Authorization:`Bearer ${token}`}});
+          verifiedActor = identity.data?.actor;
+          if (typeof verifiedActor !== 'string' || !verifiedActor.trim() || verifiedActor.length > 256) throw new Error('Approval identity could not be verified. No action was submitted.');
+          if (controller.signal.aborted) return;
+          setActor(verifiedActor);
+        }
         const command = proposal.command;
+        if (agentIds && !agentIds.includes(command.agent_id)) throw new Error('This agent is not available in the current workspace. Request a new recommendation.');
         setProposal(null); setReviewed(false);
-        response = await agenticClient.post(url('runs'), { ...command, page_context: pageTaskContext(context || {}), approved_by: actor.trim(), approval_token: token, wait_for_completion: true }, options);
+        response = await agenticClient.post(url('runs'), { ...command, page_context: pageTaskContext(context || {}), approved_by: verifiedActor, approval_token: token, wait_for_completion: true }, options);
         if (!controller.signal.aborted) {
           const status = response.data.status;
           if (!['queued', 'running', 'dispatching', 'paused', 'completed', 'failed', 'timed_out', 'cancelled', 'interrupted', 'reconciliation_required'].includes(status) || typeof response.data.run_id !== 'string') throw new Error('Invalid execution response. Inspect telemetry before retrying.');
@@ -129,11 +143,11 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
     <button disabled={busy || !savedId.trim()} onClick={() => { setProposal(null); setReviewed(false); operate('reload'); }}>Load saved recommendation</button>
     </details>
     {agents.find(item => item.id === agent)?.approval_required !== true && <ReadGoalPanel key={taskBookmarkKey(agent, pageTaskContext(context || {}), task)} agent={agent} task={task} context={context} />}
-    {proposal && <div>{proposal.status === 'failed' ? <p role="alert">Recommendation failed ({proposal.failure_status}). Review the retained prompt below; no action can be executed.</p> : <><strong>Proposed tool: {proposal.command.tool_id}</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({ ...proposal.command.inputs, ...(proposal.command.inputs?.file ? { file: { filename: proposal.command.inputs.file.filename, content_type: proposal.command.inputs.file.content_type, content: 'User-supplied attachment; binary content hidden' } } : {}) }, null, 2)}</pre></>}
+    {proposal && <div>{proposal.status !== 'failed' && <section aria-label="Proposed business action"><h4>{typeof proposal.action_summary?.title === 'string' ? proposal.action_summary.title : 'Review proposed action'}</h4>{typeof proposal.action_summary?.description === 'string' && <p>{proposal.action_summary.description}</p>}<p>{task || proposal.prompt_details?.user_request || 'Review this proposal for the selected source and version.'}</p><p>{proposal.action_summary?.mutates === true ? 'This action can change records and requires the applicable authorization.' : proposal.action_summary?.mutates === false ? 'This action reads evidence; it does not authorize publication.' : 'Review the exact scope before authorizing execution.'}</p></section>}<details><summary>Technical review details</summary>{proposal.status === 'failed' ? <p role="alert">Recommendation failed ({proposal.failure_status}). Review the retained prompt below; no action can be executed.</p> : <><strong>Proposed tool: {proposal.command.tool_id}</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({ ...proposal.command.inputs, ...(proposal.command.inputs?.file ? { file: { filename: proposal.command.inputs.file.filename, content_type: proposal.command.inputs.file.content_type, content: 'User-supplied attachment; binary content hidden' } } : {}) }, null, 2)}</pre></>}
       <details><summary>Prompt details</summary>{proposal.prompt_details ? <><p>Model: {proposal.prompt_details.model} · Prompt version: {proposal.prompt_details.prompt_version}</p><h4>User request</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.user_request}</pre><h4>System instructions</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.system_prompt}</pre><details><summary>Full model user prompt and tool context</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{proposal.prompt_details.user_prompt}</pre></details></> : <p>This older recommendation has no retained prompt snapshot.</p>}</details>
-      {proposal.status !== 'failed' && <>{needsApprover && <p>An approver is required for this execution. Connect the required service access in Admin.</p>}<label>Approver <input aria-label="Recommendation steward" value={actor} disabled={busy} required={!!needsApprover} onChange={event => { setActor(event.target.value); setReviewed(false); }} /></label>
+      </details>{proposal.status !== 'failed' && <>{needsApprover && <p>An approver is required for this execution. Connect the required service access in Admin.</p>}<p>Approval identity: <output aria-label="Recommendation approval identity">{actor || 'Verified from your connection when execution is requested'}</output></p>
       <label><input type="checkbox" checked={reviewed} disabled={busy} onChange={event => setReviewed(event.target.checked)} />I reviewed the proposed action and inputs</label>
-      <button disabled={busy || !reviewed || (needsApprover && !actor.trim())} onClick={() => operate('execute')}>Execute reviewed recommendation</button></>}
+      <button disabled={busy || !reviewed} onClick={() => operate('execute')}>Execute reviewed recommendation</button></>}
     </div>}
     {busy && <><button onClick={reset}>Stop waiting</button><p>Stopping the wait does not undo an execution. Inspect agent telemetry before retrying a write.</p></>}
     {message && <p role="status">{message}</p>}

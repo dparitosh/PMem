@@ -7,4 +7,4 @@
 .learning-review table{width:100%;border-collapse:collapse;table-layout:fixed}
 .learning-review th,.learning-review td{text-align:left;vertical-align:top;padding:.6rem;border-bottom:1px solid var(--ui-border,#c9d7e4);overflow-wrap:anywhere}
 .learning-review th{background:var(--theme-color-2,#eef2f6)}
-@media(max-width:640px){.learning-review table{table-layout:auto;font-size:.9rem}.learning-review th,.learning-review td{padding:.35rem}}
+@media(max-width:640px){.learning-review table{table-layout:auto;font-size:max(12px, .9rem)}.learning-review th,.learning-review td{padding:.35rem}}

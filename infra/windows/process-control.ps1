@@ -151,3 +151,30 @@ function Get-DepoTrackedProcessState($Process, [string[]]$AllowedRuntimes, [stri
   }
   return 'owned'
 }
+
+# Inspect every tracked service before any stop request is written. A late
+# hidden/reused PID must not leave an upgrade with only half its services stopped.
+function Assert-DepoTrackedServiceIdentities {
+  param([Parameter(Mandatory=$true)][string]$Root, [object[]]$Snapshot)
+  $stateDir = Join-Path $Root 'logs/windows-services'
+  if (-not (Test-Path -LiteralPath $stateDir -PathType Container)) { return }
+  $manifest = Get-Content -LiteralPath (Join-Path $Root 'infra/deployment/services.json') -Raw | ConvertFrom-Json
+  $entries = @($manifest.workers) + @($manifest.services)
+  $tracked = @($entries | Where-Object { Test-Path -LiteralPath (Join-Path $stateDir ($_.id + '.pid')) -PathType Leaf })
+  if (-not $tracked.Count) { return }
+  if (-not $PSBoundParameters.ContainsKey('Snapshot')) {
+    try { $Snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop) }
+    catch { throw 'Cannot inspect tracked services before shutdown. No stop requests were sent. Run as the service owner or an authorized administrator and verify Windows CIM/WMI access.' }
+  }
+  foreach ($entry in $tracked) {
+    $trackedId = 0
+    $pidFile = Join-Path $stateDir ($entry.id + '.pid')
+    if (-not [int]::TryParse(([string](Get-Content -LiteralPath $pidFile -Raw)).Trim(), [ref]$trackedId) -or $trackedId -le 0) {
+      throw "Invalid tracked PID for $($entry.id). No stop requests were sent; tracking is retained."
+    }
+    $process = $Snapshot | Where-Object { $_.ProcessId -eq $trackedId } | Select-Object -First 1
+    $allowed = @((Get-DepoServicePython -Root $Root -ServiceId $entry.id -Mode shared), (Get-DepoServicePython -Root $Root -ServiceId $entry.id -Mode isolated))
+    try { $null = Get-DepoTrackedProcessState $process $allowed ([string]$entry.module) }
+    catch { throw "Cannot verify tracked service '$($entry.id)' before shutdown. No stop requests were sent. Tracking is retained; run as the service owner or an authorized administrator and verify process inspection permissions." }
+  }
+}

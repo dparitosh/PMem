@@ -23,23 +23,62 @@ MAX_BYTES = 2 * 1024 * 1024
 FETCH_TIMEOUT_SECONDS = 20
 
 
-def endpoint_url(value):
+def endpoint_url(value, *, enforce_policy=True):
     parts = urlsplit(value)
     if parts.scheme not in {'http', 'https'} or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
         raise ValueError('Use an HTTP(S) endpoint without credentials, query string or fragment')
     if parts.port not in (None, 443 if parts.scheme == 'https' else 80):
         raise ValueError('REST sources use the standard HTTP or HTTPS port')
     hosts = {host.strip().lower() for host in os.getenv('DEPO_REST_ALLOWED_HOSTS', '').split(',') if host.strip()}
-    if parts.hostname.lower() not in hosts:
+    if enforce_policy and parts.hostname.lower() not in hosts:
         raise ValueError('Endpoint host is not in server DEPO_REST_ALLOWED_HOSTS')
     return value
 
 
+def _openapi_registration(payload, endpoint):
+    document=payload.get('openapi_document')
+    path=payload.get('openapi_path')
+    if document is None and path is None:
+        return None
+    if not isinstance(document,dict) or not re.match(r'^3\.[01]\.',str(document.get('openapi',''))) or not isinstance(path,str):
+        raise ValueError('OpenAPI registration requires a 3.0/3.1 document and selected GET path')
+    paths=document.get('paths')
+    item=paths.get(path) if isinstance(paths,dict) else None
+    operation=item.get('get') if isinstance(item,dict) else None
+    if not path.startswith('/') or path.startswith('//') or '{' in path or '}' in path or not isinstance(operation,dict):
+        raise ValueError('Choose a resolved GET operation from the OpenAPI document')
+    servers=operation.get('servers',item.get('servers',document.get('servers',[])))
+    def identity(value):
+        parts=urlsplit(value)
+        if parts.scheme not in {'http','https'} or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
+            raise ValueError('OpenAPI servers must use absolute HTTP(S) URLs without credentials')
+        return parts.scheme,parts.hostname.lower(),parts.port or (443 if parts.scheme=='https' else 80),parts.path or '/'
+    expected=identity(endpoint)
+    matches=False
+    if isinstance(servers,list):
+        for server in servers:
+            url=server.get('url') if isinstance(server,dict) else None
+            if not isinstance(url,str) or '{' in url or '}' in url:
+                continue
+            try:
+                identity(url)
+                matches=matches or identity(url.rstrip('/')+path)==expected
+            except ValueError:
+                continue
+    if not matches:
+        raise ValueError('Source endpoint does not match the selected OpenAPI server and operation')
+    content=json.dumps(document,ensure_ascii=False,allow_nan=False,separators=(',',':')).encode('utf-8')
+    if len(content)>5*1024*1024:
+        raise ValueError('OpenAPI JSON must be at most 5 MiB')
+    return content,{'version':document['openapi'],'title':str((document.get('info') if isinstance(document.get('info'),dict) else {}).get('title') or '')[:500],
+                    'path':path,'method':'GET','operation_id':str(operation.get('operationId') or '')[:500]}
+
+
 def register(payload, actor):
-    allowed = {'source_id', 'name', 'endpoint', 'credential_ref', 'auth_header', 'records_path', 'target_model', 'approval_token', 'approved_by'}
+    allowed = {'source_id', 'name', 'endpoint', 'credential_ref', 'auth_header', 'records_path', 'target_model', 'approval_token', 'approved_by', 'openapi_document', 'openapi_path'}
     if set(payload) - allowed:
         raise ValueError('Unsupported REST source fields')
-    if any(not isinstance(value, str) for value in payload.values()):
+    if any(not isinstance(value, str) for key,value in payload.items() if key != "openapi_document"):
         raise ValueError('REST source fields must be strings')
     source_id = str(payload.get('source_id', ''))
     if not re.fullmatch(r'[a-z][a-z0-9-]{2,62}', source_id):
@@ -47,7 +86,7 @@ def register(payload, actor):
     record = {key: str(payload.get(key) or '').strip() for key in ('name', 'endpoint', 'credential_ref', 'records_path', 'target_model')}
     if not record['name'] or any(len(value) > 500 for value in record.values()):
         raise ValueError('A source name is required; fields must be at most 500 characters')
-    endpoint_url(record['endpoint'])
+    endpoint_url(record['endpoint'], enforce_policy=False)
     if record['credential_ref'] and not re.fullmatch(r'DEPO_REST_SECRET_[A-Z0-9_]{1,64}', record['credential_ref']):
         raise ValueError('Use a dedicated DEPO_REST_SECRET_ environment reference')
     record['auth_header'] = payload.get('auth_header') or 'Authorization'
@@ -55,7 +94,17 @@ def register(payload, actor):
         raise ValueError('Choose Authorization, X-API-Key or api-key authentication header')
     if record['records_path'] and not re.fullmatch(r'[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*', record['records_path']):
         raise ValueError('Records path must be dot-separated object keys, for example data.items')
+    imported=_openapi_registration(payload,record['endpoint'])
+    if imported:
+        content,metadata=imported
+        artifact=ArtifactStore().ingest_bytes(content,filename='openapi.json',kind='rest-source-openapi',media_type='application/json',
+            provenance={'source_id':source_id,'operation_path':metadata['path'],'registered_by':actor})
+        record['openapi']={**metadata,'artifact_id':artifact['artifact_id'],'sha256':artifact['sha256']}
     from .job_definitions import now
+    if isinstance(store, PostgresRegistry):
+        from backend.depo_platform.resource_identity import identify
+        identity=identify('DS','rest',source_id,name=record['name'])
+        record.update(source_uuid=identity['object_id'],source_number=identity['number'])
     return store.create(source_id, {**record, 'source_id': source_id, 'created_by': actor, 'created_at': now(), 'kind': 'rest'})
 
 

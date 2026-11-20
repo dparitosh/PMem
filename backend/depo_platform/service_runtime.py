@@ -263,14 +263,14 @@ def create_service_app(
     @app.get('/auth/credential-check', summary='Validate a workflow credential without executing a write')
     def credential_check(request: Request, profile: str) -> dict[str, str]:
         from fastapi import HTTPException
-        from .authorization import service_write_identity
+        from .authorization import approval_identity
         if profile not in {'DATA_JOB_EXECUTION_TOKEN', 'SPEED_PATH_APPROVAL_TOKEN', 'ADMIN_API_KEY', 'GRAPH_PUBLICATION_TOKEN', 'DATA_PRODUCT_APPROVAL_TOKEN', 'CEIM_RESOLUTION_APPROVAL_TOKEN', 'CATALOG_SERVICE_TOKEN', 'DATA_JOB_APPROVAL_TOKEN', 'ARTIFACT_RETENTION_APPROVAL_TOKEN', 'CEIM_PUBLISH_APPROVAL_TOKEN', 'INGESTION_WRITE_TOKEN', 'AGENTIC_APPROVAL_TOKEN', 'ONTOLOGY_APPROVAL_TOKEN', 'SPEED_EVENT_TOKEN', 'SPARQL_FEDERATION_APPROVAL_TOKEN', 'VOCABULARY_APPROVAL_TOKEN'}:
             raise HTTPException(422, 'Unsupported credential profile')
         if profile == 'ADMIN_API_KEY':
             # Async admin validation is provided by the dedicated endpoint below.
             raise HTTPException(422, 'Use /auth/admin-access for ADMIN_API_KEY')
-        service_write_identity(request, token_env=profile, default_actor='credential-check')
-        return {'status': 'authorized', 'profile': profile}
+        actor = approval_identity(request, {}, token_env=profile)
+        return {'status': 'authorized', 'profile': profile, 'actor': actor}
 
     @app.get('/auth/admin-access')
     async def admin_access(request: Request):

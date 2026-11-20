@@ -15,10 +15,12 @@ def test_customer_package_includes_verified_generated_worker_and_foundation(tmp_
     names={'INSTALLATION.md','install-depo.ps1','infra/deployment/services.json',
         'ontology/bill_of_characteristics.ttl','ontology/qif_ap242_boc_alignment.ttl',
         'backend/ontology_service/owl_dl.py','backend/ontology_service/foundation.py',
+        'backend/ontology_service/offline_imports.py',
         'infra/reasoner/THIRD_PARTY.md','infra/reasoner/pom.xml','infra/reasoner/build.ps1',
         'infra/reasoner/src/main/java/org/depo/reasoner/Main.java',
         'backend/ontology_service/resources/reasoner/manifest.json'}
     names.update(p.relative_to(ROOT).as_posix() for p in (ROOT/'backend/ontology_service/resources/foundation').iterdir() if p.is_file())
+    names.update(p.relative_to(ROOT).as_posix() for p in (ROOT/'backend/ontology_service/resources/imports').iterdir() if p.is_file())
     jar='backend/ontology_service/resources/reasoner/depo-owl-dl.jar'
     for name in names | {jar}:
         destination=tmp_path/name; destination.parent.mkdir(parents=True,exist_ok=True)
@@ -30,5 +32,7 @@ def test_customer_package_includes_verified_generated_worker_and_foundation(tmp_
         with zipfile.ZipFile(tmp_path/'customer.zip') as package:
             assert package.getinfo(jar).file_size > 1000000
             assert 'backend/ontology_service/resources/foundation/NOTICE.md' in package.namelist()
+            assert 'backend/ontology_service/offline_imports.py' in package.namelist()
+            assert 'backend/ontology_service/resources/imports/manifest.json' in package.namelist()
         (tmp_path/jar).write_bytes(b'tampered-worker')
         with pytest.raises(ValueError,match='verified OWL-DL worker'): module.package(tmp_path)

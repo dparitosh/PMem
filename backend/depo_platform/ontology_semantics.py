@@ -1,5 +1,5 @@
-"""Read-only semantic inventory shared by catalog and graph projections.
-Derived classifications never add assertions to the submitted RDF graph.
+"""Semantic inventory and explicit declarations for generator-owned metadata.
+Inventory classification is read-only; generation helpers affect new graphs only.
 """
 from rdflib import BNode, URIRef
 from rdflib.namespace import RDF, RDFS, OWL, XSD
@@ -41,3 +41,28 @@ def inventory(graph):
         'inverse_axioms': len(list(graph.triples((None, OWL.inverseOf, None)))),
         'axiom_annotations': len(declared(OWL.Axiom)),
         'swrl_rules': len(declared(URIRef('http://www.w3.org/2003/11/swrl#Imp')))}
+
+
+def declare_generated_metadata(graph, custom_annotations=()):
+    """Declare only metadata predicates whose role is fixed by our generators.
+
+    No arbitrary source predicate is retyped and no source assertion is removed.
+    This is declaration completeness, not OWL-DL certification.
+    """
+    from rdflib import Literal, Namespace
+    from rdflib.namespace import DC, DCTERMS, SKOS
+    annotations = [ns[name] for ns in (DC, DCTERMS) for name in
+                   ('creator','source','identifier','format','title','description','license','subject','created','modified','conformsTo') if name in ns]
+    annotations += [SKOS[name] for name in ('prefLabel','altLabel','hiddenLabel','definition','note','scopeNote','editorialNote','changeNote','historyNote','example','notation')]
+    annotations += list(custom_annotations)
+    for predicate in annotations:
+        if not any(graph.triples((None,predicate,None))): continue
+        types = set(graph.objects(predicate,RDF.type))
+        if types & {OWL.ObjectProperty,OWL.DatatypeProperty}: continue
+        graph.add((predicate,RDF.type,OWL.AnnotationProperty))
+        if not any(graph.objects(predicate,RDFS.label)):
+            graph.add((predicate,RDFS.label,Literal(str(predicate).rsplit('#',1)[-1].rstrip('/').rsplit('/',1)[-1])))
+    prov = Namespace('http://www.w3.org/ns/prov#')
+    if any(graph.subjects(RDF.type,prov.Entity)):
+        graph.add((prov.Entity,RDF.type,OWL.Class))
+        graph.add((prov.Entity,RDFS.label,Literal('Provenance entity')))

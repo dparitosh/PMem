@@ -44,3 +44,27 @@ def test_missing_pending_events_cannot_advance_watermark():
     from types import SimpleNamespace
     with pytest.raises(ValueError,match='pending events'):
         consumer._events_step('feed',{'trs_after':2},{},SimpleNamespace(changes=lambda after:{'events':[],'head_order':3}),0)
+
+
+def test_provider_reset_rebuild_preserves_active_reporting_generation(monkeypatch):
+    from backend.data_pipeline_service import reporting_trs as consumer
+    from types import SimpleNamespace
+    state={'phase':'events','trs_after':50,'active_generation':'approved-report'}
+    monkeypatch.setattr(store,'commit',lambda identifier,expected,updated,changes:updated)
+    result=consumer._events_step('feed',state,{},SimpleNamespace(changes=lambda after:{'events':[],'head_order':0,'rebase_required':True}),0)
+    assert result['phase']=='base' and result['active_generation']=='approved-report'
+    assert result['freshness']=='refreshing'
+
+
+def test_deletion_consumption_does_not_fetch_the_removed_resource(monkeypatch):
+    from backend.data_pipeline_service import reporting_trs as consumer
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    state={'phase':'events','trs_after':1,'active_generation':'approved-report'}
+    uri='https://provider/oslc/resources/part?ontology_id=v1';resource=Mock(side_effect=AssertionError('Deleted resource must not be fetched'))
+    provider=SimpleNamespace(resource=resource,changes=lambda after:{'events':[{'order':2,'event_type':'Deletion','resource_uri':uri}],'head_order':2})
+    calls=[]
+    monkeypatch.setattr(store,'commit',lambda identifier,expected,updated,changes:calls.append(changes) or updated)
+    result=consumer._events_step('feed',state,{'ontology_ids':['v1']},provider,float('inf'))
+    assert result['trs_after']==2 and calls==[[(uri,None)]]
+    resource.assert_not_called()

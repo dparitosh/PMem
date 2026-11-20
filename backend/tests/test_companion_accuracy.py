@@ -60,6 +60,9 @@ def test_cut_down_evidence_reports_limits_and_does_not_claim_semantic_verificati
     real=httpx.AsyncClient
     monkeypatch.setattr(module.httpx,'AsyncClient',lambda **kw:real(transport=httpx.MockTransport(lambda req:httpx.Response(200,json={'nodes':nodes,'relationships':[]})),**kw))
     result=asyncio.run(module.KnowledgeCompanion().ask('product',headers={}))
+    assert len(result['retrieval']['grounding']['resources']) == 8
+    assert result['retrieval']['grounding']['memory_use'] == 'historical_evidence_requires_current_graph_read'
+    assert 'description' in result['retrieval']['grounding']['resources'][0]['property_names']
     assert result['retrieval']['selected_resources']==8
     assert result['retrieval']['selection_truncated'] is True
     assert result['retrieval']['semantic_entailment_verified'] is False
@@ -67,3 +70,21 @@ def test_cut_down_evidence_reports_limits_and_does_not_claim_semantic_verificati
     assert result['retrieval']['retrieved_at']
     assert 'does not establish whole-graph counts' in result['response']
     assert 'Reviewed description' in result['response']
+
+
+def test_engineering_decision_values_reach_safe_evidence_and_display():
+    import json
+    from backend.graph_service.search_evidence import search_properties
+    from backend.agentic_service.companion import descriptive_properties
+    from backend.agentic_service.business_answers import instance_details
+    values={'temperature':'76','temperature_unit':'degC','leadTime':'5',
+            'estimatedIncrementalCost':'8','finding':'Seat exceeds upper dimensional limit',
+            'engineeringApproved':False,'password':'must not appear'}
+    raw={'rdf_properties':json.dumps({'https://example.org/engineering#'+key:[{'value':value}] for key,value in values.items()})}
+    projected=search_properties(raw)
+    props=descriptive_properties(raw)
+    assert props['temperature']=='76' and props['temperature_unit']=='degC'
+    assert props['engineeringApproved']=='False'
+    assert 'password' not in projected and 'password' not in props
+    details=instance_details(props)
+    assert 'Temperature: 76' in details and 'Estimated incremental cost: 8' in details

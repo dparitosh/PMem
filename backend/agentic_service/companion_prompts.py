@@ -1,6 +1,11 @@
 """Read-only examples; prompts request evidence rather than assert data exists."""
-HOME_PROMPTS = ['Show AP242 product and CAD part details: part number, revision, description, shape and geometry, with source references.', 'Which parts have recorded PMI dimensions, tolerances and datums? Show the part-to-PMI links and values.', 'Show requirement specifications, their descriptions and recorded links to parts and MBSE elements.', 'Show MBSE blocks, functions, interfaces and their recorded requirement relationships.', 'Show the manufacturing BOM: parent assemblies, child parts, recorded quantities and manufacturing process links.', 'Show the selected CAD part’s recorded links to design files, assemblies, simulation datasets and requirements.']
+HOME_PROMPTS = ['Show AP242 product and CAD part details: part number, revision, description, shape and geometry, with source references.', 'Which parts have recorded PMI dimensions, tolerances and datums? Show the part-to-PMI links and values.', 'Show requirement specifications, their descriptions and recorded links to parts and MBSE elements.', 'Show MBSE blocks, functions, interfaces and their recorded requirement relationships.', 'Show the manufacturing BOM: parent assembly, child parts, recorded quantities and manufacturing process links.', 'Show the selected CAD part’s recorded links to design files, assemblies, simulation datasets, requirements and QIF quality evidence, with source lineage.']
 PAGE_PROMPTS = {
+    'graph-analytics': [
+        'Explain the recorded graph-analysis result, its selected source and the evidence behind the ranking.',
+        'Which recorded dependency paths connect the selected engineering records?',
+        'What limits or missing evidence affect this graph-analysis result?',
+    ],
     'recommendations': [
         'Compare the selected part with alternatives using recorded dimensions, materials and units; identify conflicts and missing evidence.',
         'Trace the selected changed item to affected assemblies, requirements and processes; cite recorded paths and configuration limitations.',

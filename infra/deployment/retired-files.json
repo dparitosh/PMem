@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "frontend/src/Components/PageTaskWorkspace.css",
+      "sha256": [
+        "2f6a7ea4e4cd388ae3b2ae86ed0419a0779f363efb9f9879f34fcbeb54d9f61e",
+        "c559c2a81503930cf0c3b9f2af6e252b906f54225248c8b5424ddd57116c1c31"
+      ]
+    },
+    {
+      "path": "frontend/src/Components/PageTaskWorkspace.js",
+      "sha256": [
+        "94343f03fc74f0f5a3f89e4c0fa15119319bd150d7af8ca79525c139c76aa15b",
+        "978677f9ae6178cc2aecb74a83cad9119a27e30e4513c81a9b10167bf3be4a14"
+      ]
+    },
+    {
+      "path": "frontend/src/Components/PageTaskWorkspace.test.js",
+      "sha256": [
+        "9a2d1ed7fddab824ea833b25ea4371d85843ab7178ea2de8a07353f0dbd721dd",
+        "bfaee0c7523a860d93321a3a1411895d67b7e4420c02ad12cd5a49af875d3aee"
+      ]
+    },
+    {
+      "path": "frontend/src/pages/SysmlRepositoryImport.js",
+      "sha256": [
+        "bae467208e1ccd6fdd94ac3c9c6d9ddb8f9b58d8fa410c3872b8b7ad9812bee2",
+        "bc067bab5e85331c43f6e742beeed0f091e54250ae5fa05f576fea859deca3ab"
+      ]
+    },
+    {
+      "path": "frontend/src/pages/SysmlRepositoryImport.test.js",
+      "sha256": [
+        "d5dd0e6d0dbe152a445d4e264d872ee768a55cca372a1cbac34bbde26e56b2c6",
+        "de1106a6e00353ed6598396ec5184be1d644e6d13bd4fa47c09bc89ae5b81f7d"
+      ]
+    },
+    {
+      "path": "infra/windows/repair-depo-xsd-release.ps1",
+      "sha256": [
+        "5ae47fb350c797977472eab5eb1b1d0db4fb25679ef761810fe7435b0e21a082",
+        "620ae94236a8de837098f7406144af08d056d7c0bfd5abc524d61682ea778336"
+      ]
+    },
+    {
+      "path": "infra/windows/start-zeppelin.ps1",
+      "sha256": [
+        "9652a137b731a6b5bae1700bdaf9881169111215c7206ddc88cddd3e0f7f8c89",
+        "f20b072e40b11587e9e21ee36c7712fb9eb67e2f55db8126c3b5d7a9223b2b6d"
+      ]
+    },
+    {
+      "path": "backend/tests/integration_test.py",
+      "sha256": [
+        "3e7f1fbc2a1ced596d4f2ba1db3415ce90c6b3282178b1b5194f90c7420e2551",
+        "5ae944c6a97c9926fe2a6dc72f2c83e84caf8cd0c1a7430e4005f4f4a13c2ac5"
+      ]
+    },
+    {
+      "path": "backend/tests/test_ontology_corrected.py",
+      "sha256": [
+        "726f1b0f8257cb3839ac09def2a0ade8126d53877ec35dc8b4f9c36c15bcf489",
+        "c3263385a098940864044d5eb2afac7b8975e300d393b1e2c28c44e6b1148396"
+      ]
+    },
+    {
+      "path": "backend/tests/test_ontology_creation.py",
+      "sha256": [
+        "16e767ac8a5546d22ccfd01f08b630eef3bdb2c6ac9cb51511bac4f6aa42a0b5",
+        "66f610b27654dd5c2ef1ac0cdc74ff784b0e4f4a21dbdb9bcbfade623ee6797d"
+      ]
+    },
+    {
+      "path": "backend/tests/test_ontology_e2e.py",
+      "sha256": [
+        "0def00efc081936ae528471526db3c38f6446c8d5c9ff330312d1e9c1fd3967e",
+        "346e698a9aa77bf66139800a9829d6b02e99aaaad091d07b8ec4b5873741783e"
+      ]
+    },
+    {
+      "path": "backend/tests/test_end_to_end_integration.py",
+      "sha256": [
+        "714175043c576dfdf4782f4459ee9401d2c74719e9725fc2da10d51e79b7d1ce",
+        "7e8b33c9787550dd19d494f2c697240be5b56cb69e466971b86b8486d0d7ccb9"
+      ]
+    }
+  ]
+}

@@ -108,3 +108,24 @@ def persist_task(path, task, build_snapshot):
                 task[key] = snapshot[key]
         task.pop('_persistence_error', None)
         return snapshot
+
+
+def retained_rows(task,snapshot):
+    """Read exact task-owned rows and verify content-addressed sidecars."""
+    import re
+    rows=task.get('parsed_rows')
+    if rows is None:
+        snapshot=Path(snapshot)
+        name=task.get('_parsed_rows_file') or snapshot.name+'.parsed_rows.json'
+        if not isinstance(name,str) or Path(name).name!=name or not re.fullmatch(re.escape(snapshot.name)+r'\.parsed_rows(?:\.[0-9a-f]{64})?\.json',name):
+            raise ValueError('The selected import task has invalid parsed row data')
+        path=snapshot.parent/name
+        if path.resolve().parent!=snapshot.parent.resolve():raise ValueError('The selected import task has invalid parsed row data')
+        try:content=path.read_bytes()
+        except OSError as exc:raise ValueError('The selected import task retained parsed rows are unavailable') from exc
+        if name!=snapshot.name+'.parsed_rows.json' and hashlib.sha256(content).hexdigest()!=name.rsplit('.',2)[1]:
+            raise ValueError('The selected import task has invalid parsed row data')
+        try:rows=json.loads(content)
+        except (ValueError,UnicodeError) as exc:raise ValueError('The selected import task has invalid parsed row data') from exc
+    if not isinstance(rows,list):raise ValueError('The selected import task has invalid parsed row data')
+    return rows

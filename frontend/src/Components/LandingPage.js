@@ -1,12 +1,11 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
-import { IxBadge, IxButton, IxCard, IxCardContent, IxCardTitle, IxCol, IxLayoutGrid } from '@siemens/ix-react';
 import { graphApi } from '../services/graphApi';
 import ErrorBoundary from './ErrorBoundary';
-import { UI_COLORS } from '../styles/uiTokens';
 import './LandingPage.css';
 import { useOntologies } from '../contexts/OntologyContext';
 import { BRAND } from '../brand';
-import EmbeddedFoundationEntry from './ontology/EmbeddedFoundationEntry';
+import { UI_COLORS } from '../styles/uiTokens';
+import HomeKnowledgeOverview from './HomeKnowledgeOverview';
 
 const Chatbot = lazy(() => import('./Chatbot'));
 
@@ -32,7 +31,7 @@ export function GraphProfileMetrics({ metrics }) {
     return <>
       {metrics.existing_ontology?.resources > 0 && <ExistingOntologyMetrics metrics={metrics.existing_ontology} />}
       <p role="status" className="ix-landing-page__projection-note">No published RDF resources were found for this scope.</p>
-      {!(metrics.existing_ontology?.resources > 0) && <p className="ix-landing-page__projection-note">Registry registration and graph publication are separate. Review the publication status in Models & Vocabularies; if it is published, refresh data and check the selected version.</p>}
+      {!(metrics.existing_ontology?.resources > 0) && <p className="ix-landing-page__projection-note">Registry registration and graph publication are separate. Review the publication status in Ontology & Vocabularies; if it is published, refresh data and check the selected version.</p>}
     </>;
   }
   return <>
@@ -71,7 +70,7 @@ export function OntologyList({ ontologies = [], loading }) {
   if (loading && !ontologies.length) return <p role="status">Loading ontologies…</p>;
   if (!ontologies.length) return <p>No ontologies registered yet. <a href="#/import">Import an ontology</a></p>;
   return <section className="ix-landing-page__ontology-list" aria-label="Ontology registry">
-    <p className="ix-landing-page__registry-help">{ontologies.length} registered {ontologies.length === 1 ? 'ontology' : 'ontologies'}. Open one to inspect its vocabulary and publication.</p>
+    <p className="ix-landing-page__registry-help">{ontologies.length} registered {ontologies.length === 1 ? 'ontology' : 'ontologies'}.</p>
     {loading && <p role="status">Refreshing registry…</p>}
     <ul aria-label="Registered ontologies">
       {visible.map((o, i) => {
@@ -90,7 +89,7 @@ export function OntologyList({ ontologies = [], loading }) {
             <dt>Source version</dt><dd>{o.version || o.ontology_version || 'Not supplied'}</dd>
             <dt>Registered</dt><dd>{validDate ? date.toLocaleDateString() : 'Not supplied'}</dd>
             <dt>Identity</dt><dd>{id || 'Not supplied'}</dd>
-          </dl><p>Registration does not establish graph publication or approval. Check the selected version in Models & Vocabularies.</p></details>
+          </dl><p>Registration does not establish graph publication or approval. Check the selected version in Ontology & Vocabularies.</p></details>
         </li>;
       })}
     </ul>
@@ -160,10 +159,15 @@ const responsePayload = (response) => {
 };
 
 export default function LandingPage({ setChatResults, onNavigate }) {
-  const [selectedOntology, setSelectedOntology] = useState('');
+  const readScope=()=>new URLSearchParams(window.location.hash.split('?')[1]||'').get('ontology_id')||'';
+  const [selectedOntology, setSelectedOntology] = useState(readScope);
+  const [refreshRevision,setRefreshRevision]=useState(0);
+  const [selectedNode,setSelectedNode]=useState(null);
+  const selectScope=useCallback(value=>{const params=new URLSearchParams(window.location.hash.split('?')[1]||'');if(value)params.set('ontology_id',value);else params.delete('ontology_id');const query=params.toString();window.history.pushState(null,'',`#/home${query?'?'+query:''}`);setSelectedOntology(value);setSelectedNode(null);},[]);
+  useEffect(()=>{const restore=()=>{setSelectedOntology(readScope());setSelectedNode(null);};window.addEventListener('hashchange',restore);window.addEventListener('popstate',restore);return()=>{window.removeEventListener('hashchange',restore);window.removeEventListener('popstate',restore);};},[]);
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
-  const { ontologies, loading: ontologiesLoading, error: ontologiesError, warning: ontologiesWarning, fetchOntologies: loadOntologies } = useOntologies();
+  const { ontologies, loading: ontologiesLoading, error: ontologiesError, fetchOntologies: loadOntologies } = useOntologies();
   const [metricsError, setMetricsError] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const metricsRequest = useRef(null);
@@ -172,13 +176,14 @@ export default function LandingPage({ setChatResults, onNavigate }) {
 
   useEffect(() => {
     if (!ontologiesLoading && !ontologiesError && selectedOntology && !selectedRow) {
-      setSelectedOntology('');
+      selectScope('');
     }
-  }, [ontologiesLoading, ontologiesError, selectedOntology, selectedRow]);
+  }, [ontologiesLoading, ontologiesError, selectedOntology, selectedRow,selectScope]);
 
   const loadMetrics = useCallback(async () => {
     metricsRequest.current?.abort();
     const controller = new AbortController(); metricsRequest.current = controller;
+    setMetrics(null);
     setMetricsLoading(true);
     setMetricsError('');
     try {
@@ -204,83 +209,44 @@ export default function LandingPage({ setChatResults, onNavigate }) {
 
   useEffect(() => {
     loadMetrics();
-    const refresh = () => loadMetrics();
-    window.addEventListener('depo:credentials-changed', refresh);
-    window.addEventListener('depo:credentials-cleared', refresh);
+    const refresh = () => {loadMetrics();setRefreshRevision(value=>value+1);};
+    const reset=()=>{setMetrics(null);setSelectedNode(null);setLastRefreshed(null);loadMetrics();};
+    const sessionEvents=['depo:credentials-changed','depo:credentials-cleared','depo:session-replaced','depo:session-expired'];
+    sessionEvents.forEach(name=>window.addEventListener(name,reset));
+
     window.addEventListener('depo:ontologies-changed', refresh);
     window.addEventListener('focus', refresh);
     return () => {
       metricsRequest.current?.abort();
-      window.removeEventListener('depo:credentials-changed', refresh);
-      window.removeEventListener('depo:credentials-cleared', refresh);
+      sessionEvents.forEach(name=>window.removeEventListener(name,reset));
       window.removeEventListener('depo:ontologies-changed', refresh);
       window.removeEventListener('focus', refresh);
     };
   }, [loadMetrics]);
 
-  return (
-    <div className="ix-landing-page">
-      <section className="ix-landing-page__intro" aria-label="Platform overview">
-        <div>
-          <IxBadge type="label" variant="info" label="Digital thread workspace" />
-          <h1>Engineering knowledge, connected. Decisions, grounded.</h1>
-          <p>Govern ontology assets and trace product knowledge across PLM, MBSE and manufacturing.</p>
-          <p className="ix-landing-page__foundation-brand"><strong>{BRAND.name}</strong> is grounded in PCA IDO and DIN EN 61360.</p>
-          <nav aria-label="Start a task" className="ix-landing-page__tasks">
-            <ul>
-              <li><a href="#/import">Import engineering data</a><span>Load PLM, CAD and requirement sources.</span></li>
-              <li><a href="#/graph">Explore the graph</a><span>Find parts, assemblies and their links.</span></li>
-              <li><a href="#/recommendations">Assess a change</a><span>Review impact and reuse evidence before deciding.</span></li>
-            </ul>
-          </nav>
-        </div>
-        <div className="ix-landing-page__intro-actions">
-          {lastRefreshed && <span>Updated {lastRefreshed.toLocaleTimeString()}</span>}
-          <IxButton type="button" variant="secondary" icon="refresh" onClick={() => { loadMetrics(); loadOntologies(); }}>Refresh data</IxButton>
-        </div>
-      </section>
-
-      <IxLayoutGrid className="ix-landing-page__workspace" columns={12} gap="16" noMargin>
-        <IxCol size={4} sizeMd={12}>
-          <div className="ix-landing-page__insights">
-          <section className="ix-landing-page__card ix-landing-page__registry" aria-label="Ontology library">
-            <h2>Ontology registry</h2>
-              <details className="ix-landing-page__foundation-summary"><summary>Embedded foundation · ISO 23726-1 / IDO</summary><EmbeddedFoundationEntry /></details>
-              <h3>Registered ontologies</h3>
-              {ontologiesWarning && <div role="alert" className="ix-landing-page__alert">{ontologiesWarning}<IxButton type="button" variant="tertiary" onClick={() => loadOntologies(true)}>Retry registries</IxButton></div>}
-              {ontologiesError ? <div role="alert" className="ix-landing-page__alert">{ontologiesError}<IxButton type="button" variant="tertiary" onClick={loadOntologies}>Retry</IxButton></div> : <OntologyList ontologies={ontologies} loading={ontologiesLoading} />}
-          </section>
-          <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__profile">
-            <IxCardTitle>Graph profile</IxCardTitle>
-            <IxCardContent>
-              <div className="ix-landing-page__profile-scroll" role="region" aria-label="Graph profile metrics" tabIndex={0}>
-              <label className="ix-landing-page__scope">Ontology scope
-                <select value={selectedOntology} onChange={event => setSelectedOntology(event.target.value)}>
-                  <option value="">All ontologies</option>
-                  {ontologies.map(o => { const id = o.ontology_id || o.id; return id ? <option key={id} value={id}>{o.label || o.ontology_name || o.name || id}</option> : null; })}
-                </select>
-              </label>
-              {metricsError ? <div role="alert" className="ix-landing-page__alert">{metricsError}<IxButton type="button" variant="tertiary" onClick={loadMetrics}>Retry</IxButton></div> : metricsLoading && !metrics ? <div className="ix-landing-page__empty">Loading graph metrics…</div> : <>
-                <GraphProfileMetrics metrics={metrics} />
-              </>}
-              </div>
-            </IxCardContent>
-          </IxCard>
-          </div>
-        </IxCol>
-        <IxCol size={8} sizeMd={12}>
-          <section className="ix-landing-page__chat" aria-label="Knowledge companion">
-          <h2 className="ix-landing-page__chat-title">Knowledge companion</h2>
-          <div className="ix-landing-page__chat-body">
-            <ErrorBoundary>
-              <Suspense fallback={<div className="depo-muted">Loading Knowledge Companion…</div>}>
-                <Chatbot pageId="home" setChatResults={setChatResults} ontologyId={selectedOntology} ontologyPrefix={selectedPrefix} />
-              </Suspense>
-            </ErrorBoundary>
-          </div>
-          </section>
-        </IxCol>
-      </IxLayoutGrid>
+  return <div className="ix-landing-page home-workspace">
+    <section className="home-welcome" aria-label="Platform overview">
+      <div className="home-welcome-heading"><div><h1>Explore engineering knowledge and make informed decisions.</h1></div><button type="button" className="home-refresh" onClick={()=>{loadMetrics();loadOntologies();setRefreshRevision(value=>value+1);}}>Refresh data</button></div>
+      <section className="home-question" aria-label="Knowledge companion"><ErrorBoundary><Suspense fallback={<p role="status">Loading Knowledge Companion…</p>}><Chatbot presentation="landing" pageId="home" setChatResults={setChatResults} ontologyId={selectedNode?.properties?.ontology_id||selectedNode?.properties?.source_ontology||selectedOntology} ontologyPrefix={selectedNode?.properties?.ontology_prefix||selectedNode?.properties?.prefix||selectedPrefix} nodeId={selectedNode?.elementId||''} contextLabel={selectedNode?.name||selectedNode?.properties?.name||selectedNode?.label||''}/></Suspense></ErrorBoundary></section>
+    </section>
+    <nav aria-label="Start a task" className="home-task-cards">
+      <a href="#/ontology"><span className="home-task-icon" aria-hidden="true">◇</span><h2>Manage ontologies</h2><p>Vocabulary and validation</p><strong>Open Ontology Junction →</strong></a>
+      <a href="#/import"><span className="home-task-icon" aria-hidden="true">↥</span><h2>Bring in engineering records</h2><p>PLM, CAD, requirements and manufacturing</p><strong>Import and link data →</strong></a>
+      <a href={selectedNode?`#/recommendations?service=change-impact&node_id=${encodeURIComponent(selectedNode.elementId)}&name=${encodeURIComponent(selectedNode.name||selectedNode.properties?.name||selectedNode.label||'')}&ontology_id=${encodeURIComponent(selectedNode.properties?.ontology_id||selectedOntology)}&ontology_prefix=${encodeURIComponent(selectedNode.properties?.ontology_prefix||selectedPrefix)}`:'#/recommendations'}><span className="home-task-icon" aria-hidden="true">✓</span><h2>Review a decision</h2><p>Change impact, similar parts and dependencies</p><strong>Open Decision intelligence →</strong></a>
+    </nav>
+    <HomeKnowledgeOverview ontologyId={selectedOntology} revision={refreshRevision} onSelectNode={setSelectedNode}/>
+    <section aria-labelledby="home-attention-title"><h2 id="home-attention-title">Your knowledge at a glance</h2><div className="home-attention-cards">
+      <a href="#/ontology"><strong>{ontologiesError?'Unavailable':ontologiesLoading&&!ontologies.length?'…':ontologies.length}</strong><span>Registered ontologies</span><small>Review vocabulary and publication</small></a>
+      <a href={selectedOntology?`#/graph?ontology_id=${encodeURIComponent(selectedOntology)}`:'#/graph'}><strong>{metricsError?'Unavailable':metricsLoading&&!metrics?'…':fmt(metrics?.business_instances)}</strong><span>Business instance records</span><small>Published scope · not a count of distinct physical parts</small></a>
+      <a href="#/change-control"><strong>Review</strong><span>Changes and approvals</span><small>Inspect retained proposals and delivery</small></a>
+      <a href="#/reports?view=memory"><strong>Recall</strong><span>Conversation and context</span><small>Find your retained questions and evidence</small></a>
+    </div></section>
+    <div className="home-reference-grid">
+      <section className="home-panel home-profile" aria-label="Graph profile"><div className="home-panel-heading"><h2>Graph profile</h2>{lastRefreshed&&<small>Updated {lastRefreshed.toLocaleTimeString()}</small>}</div><div role="region" aria-label="Graph profile metrics" tabIndex={0}>
+        <label className="ix-landing-page__scope">Ontology scope<select value={selectedOntology} onChange={event=>selectScope(event.target.value)}><option value="">All ontologies</option>{ontologies.map(o=>{const id=o.ontology_id||o.id;return id?<option key={id} value={id}>{o.label||o.ontology_name||o.name||id}</option>:null;})}</select></label>
+        {metricsError?<p role="alert">{metricsError}<button type="button" onClick={loadMetrics}>Retry graph metrics</button></p>:metricsLoading&&!metrics?<p role="status">Loading graph metrics…</p>:<GraphProfileMetrics metrics={metrics}/>}
+      </div></section>
     </div>
-  );
+    <p className="home-foundation-note">{BRAND.name} · PCA IDO / ISO 23726-1 · DIN EN 61360</p>
+  </div>;
 }

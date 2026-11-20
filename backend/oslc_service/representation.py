@@ -9,14 +9,15 @@ from .media import negotiate
 OSLC = 'http://open-services.net/ns/core#'
 EXT = 'urn:depo:oslc:extension:'
 PREFIXES = {'oslc': OSLC, 'rdf': str(RDF), 'rdfs': str(RDFS), 'dcterms': str(DCTERMS),
-            'trs': 'http://open-services.net/ns/core/trs#',
+            'oslc_auto':'http://open-services.net/ns/auto#',
+            'trs': 'http://open-services.net/ns/core/trs#','oslc_config':'http://open-services.net/ns/config#',
             **{'oslc_' + domain: 'http://open-services.net/ns/' + domain + '#' for domain in ('rm', 'am', 'cm', 'qm')}}
 CORE_FIELDS = {'resourceShape', 'propertyDefinition', 'describes', 'valueType', 'occurs',
-               'readOnly', 'queryBase', 'nextPage', 'name', 'domain'}
+               'readOnly', 'creation', 'queryBase', 'nextPage', 'name', 'domain'}
 FIELD_ALIASES = {'services': 'service', 'queryCapabilities': 'queryCapability',
-                 'resourceShapes': 'resourceShape', 'serviceProviders': 'serviceProvider',
+                 'resourceShapes': 'resourceShape', 'creationFactories':'creationFactory', 'serviceProviders': 'serviceProvider',
                  'resourceTypeUri': 'resourceType'}
-LINK_FIELDS = {'uri', 'resourceShape', 'queryBase', 'propertyDefinition', 'serviceProvider',
+LINK_FIELDS = {'creation','result','oslc_auto:state','oslc_auto:verdict','oslc_auto:executesAutomationPlan','oslc_auto:reportsOnAutomationPlan','oslc_auto:producedByAutomationRequest','oslc_config:selects','oslc_config:configuration','dcterms:isVersionOf','uri', 'resourceShape', 'queryBase', 'propertyDefinition', 'serviceProvider',
                'nextPage', 'base', 'changeLog', 'describes', 'valueType', 'occurs', 'targetUri', 'domain', 'oslc:domain', 'resourceShapes', 'resourceTypeUri'}
 
 

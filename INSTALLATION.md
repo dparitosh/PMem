@@ -8,14 +8,13 @@ For remote access through Azure API Management, complete the separate [API gatew
 
 Use the concise [configuration guide](docs/installation/CONFIGURATION.md) for listener, routing, authentication and secret ownership. Installation/update scripts do not provision Azure gateway resources or issue subscription keys. The longer operator reference is supplementary; follow this runbook for the installation sequence.
 
-
-Lineage/projection updates include `backend/depo_platform/product_lineage.py` and `artifact_references.py`. Deploy them with the owning catalog/product/graph code through the normal `update-depo.ps1` workflow and restart services; release preflight verifies their presence. No new PostgreSQL table, credential rotation or automatic data deletion is required. Product source references now resolve through configured `ONTOLOGY_SERVICE_URL` and `DATA_PIPELINE_SERVICE_URL`. Retention refuses referenced/provenanced artifacts; do not bypass that protection by deleting files manually. See [lineage and projection qualification](docs/audits/lineage-projection-fixes-2026-10-29.md).
-
-For ontology upgrades, follow [Ontology release versions](docs/ONTOLOGY_RELEASES.md): register a replacement, declare its family/version/predecessor, validate and review, then approve/publish separately. `update-depo.ps1` installs the code; it does not invent versions or migrate mappings automatically. Release records use the existing PostgreSQL registry table. Preserve that table, ontology files and graph receipts together in backups; see [local recovery qualification and remaining gates](docs/audits/recovery-qualification-2026-10-29.md).
-
-For a destructive test-environment reset, use [Reset to vanilla state](docs/VANILLA_RESET.md). This separately confirmed Admin operation clears application records, agent/workflow history and retained uploads while preserving credentials and the embedded foundation. Installation and update never perform this reset automatically.
-
 Follow this runbook in order. Commands use `E:\App\PMem` as the example release root; replace that directory with your installation location. Use **Setup-DEPO.cmd** for Windows installation, update, repair, Start, Stop and Restart. Linux, gateways, remote databases and optional components have separate procedures in the [operator reference](docs/installation/OPERATOR_REFERENCE.md).
+
+## Optional historical Engineering ODS evaluation data
+
+The independent [Engineering ODS toolkit](standalone/engineering_ods/README.md) generates historical case/options, current evaluation records and their contextual links. Run it outside application startup; it uses existing ontology and central CR/CO APIs. Setup and upgrade do not seed historical decisions, fabricate agent memory or publish evaluation data automatically. The package includes no previous environment registration state or credentials. Use the customer's configured ontology and OSLC endpoints and authorized stage identities.
+
+Upgrade preflight reviews `infra/deployment/retired-files.json`. Only exact retired vendor hashes are eligible for cleanup after tracked services stop; customized/unknown versions are preserved for operator review. Configuration, credentials, databases, uploads and active regression tests are not cleanup targets. Git source retains regression suites; the customer runtime ZIP excludes backend/frontend development test files.
 
 ## 1. Prepare the machine
 
@@ -34,6 +33,8 @@ Extract a complete matching release. For an existing deployment, complete sectio
 | `infra\postgres\migrations\` | Versioned PostgreSQL migration `.sql` files. |
 
 The two files named `install-depo.ps1` have different purposes. Run the customer launcher once; do not run both scripts manually.
+
+**Customer ZIP versus GitHub source:** the customer release builder includes the checksum-verified OWL-DL worker JAR and exact Java source. A GitHub source ZIP/clone does not contain the ignored generated JAR. Release maintainers must run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\reasoner\build.ps1` with approved JDK/Maven dependencies, review its updated manifest, and build the customer ZIP using `python .\infra\deployment\build-release-package.py --output <new-archive.zip>`. Do not mix an older worker with newer source. Offline release preflight rejects mismatches before shutdown/migration. Customer ZIP recipients do not need Maven just to use the bundled worker; the configured Java runtime is still required for OWL-DL execution.
 
 ### 1.2 Install and start prerequisites
 
@@ -294,38 +295,4 @@ Bounded semantic-source validation can run with `DEPO_SPARK_ENABLED=false`; Spar
 
 Root update and diagnostic commands retain audit logs under `logs/installation/runs`, use process-scoped execution-policy handling and preserve their selected environment/Python arguments. When using a custom `-EnvFile`, early audit messages redact secrets from that file as well as the default server file. These logs are operational evidence; maintenance does not automatically erase them.
 
-## Advanced operations and release-specific checks
-
-Use the [detailed operator reference](docs/installation/OPERATOR_REFERENCE.md#release-specific-upgrade-and-verification-notes) for dependency maintenance, connector setup and feature-specific upgrade checks. This release includes additive migration `017_speed_event_pagination.sql`; deploy the complete backend, workers and rebuilt frontend through the existing updater. Never drop the schema to install it.
-
-See [semantic event recovery](docs/SEMANTIC-EVENT-WORKFLOW.md), [memory configuration](docs/AGENT_MEMORY_AUGMENTATION.md) and [live memory demo readiness](docs/demo-narratives/memory/DEMO.md). Optional graph memory remains off unless explicitly configured. Do not interpret stored conversations, approved hints or completed workflows as proof of current business correctness.
-
-See [release verification notes](docs/installation/OPERATOR_REFERENCE.md#local-acceptance-fixes-2026-11-02) for the November fixes, demo steps and upgrade acceptance checks.
-
-If Windows hides a tracked process identity, Setup requests elevation before shutdown. Run the same launcher as administrator if elevation is unavailable. ExecutionPolicy Bypass does not grant process privileges; keep PID files and credentials.
-
-For optional model and local demo settings, see the [OpenAI demonstration profile](docs/installation/OPERATOR_REFERENCE.md#low-cost-openai-demonstration-profile).
-# Embedded property vocabulary update
-
-The foundation bundle includes PCA IDO, the NEXUS business module and the pinned DIN EN 61360 property pattern 2.0.4. Deploy the complete foundation directory, including `manifest.json`, `dinen61360-2.0.4.ttl`, `DINEN61360-LICENSE.txt` and `NOTICE.md`, through the normal update process. Runtime checks verify module and license hashes and use local imports only. No additional database migration or dependency is needed for this vocabulary addition. Existing customer data and mappings are preserved; previous reasoning evidence must be checked again against the new bundle. See [embedded foundation operation](docs/EMBEDDED_SEMANTIC_FOUNDATION.md).
-
-
-### Pinned offline vocabulary imports
-
-OWL consistency checks resolve the bundled SKOS, SHACL, Dublin Core Terms and OSLC Core vocabulary snapshots locally. The import catalog and every vocabulary are checksum verified; unknown imports remain unresolved and corrupt resources fail closed. No ontology import URL is fetched during reasoning. Deploy the complete release resources and restart the ontology service; no PostgreSQL migration or new Python dependency is required for this change. Reasoning evidence is invalidated when the catalog changes. Resolving imports does not establish that the combined ontology satisfies the OWL 2 DL profile or is logically consistent.
-
-### OSLC functional fixes (12 November 2026)
-
-Deploy the complete OSLC service, ontology service and existing data-product-outbox worker together, then restart with the repository lifecycle script. Native ontology publication commits its PostgreSQL receipt and OSLC notification intent together; the existing worker retries idempotent delivery. No new worker, dependency or PostgreSQL table migration is required: state uses the existing registry namespaces. Notification coverage for other graph mutations still needs qualification.
-
-PostgreSQL TRS Base uses streamed graph results and 1,000-member retained pages. `OSLC_TRS_MAX_SNAPSHOT_RESOURCES` bounds the complete snapshot (default 1,000,000; range 1–2,000,000). The older `OSLC_TRS_MAX_BASE_RESOURCES` remains a file-mode development limit. Snapshot metadata is published only after page persistence, expires after 15 minutes, and missing pages require a rebase rather than a partial success. Readiness alone does not certify independent TRS-client conformance. Remote snapshots now retain provider URL, authenticated requester and content digest; old snapshots without these fields remain legacy evidence and must not be represented as newly verified provenance.
-
-
-Remote OSLC query discovery now follows advertised query capabilities under the configured provider origin and path prefix. Set `OSLC_REMOTE_CATALOG_PATH` to a relative catalog path if it differs from `oslc/catalog`. `OSLC_REMOTE_QUERY_MODE=legacy` retains the former fixed-path convention for providers that deliberately use it; the default is capability discovery. Provider-returned continuation cursors are bounded and remain confined to that provider. No remote provider is enabled by this upgrade.
-
-Admin → Data sources includes retained OSLC snapshot selection and an approved preparation-workflow selector. The optional **Create preparation workflow draft** action creates an `oslc-snapshot-ingest` definition only; an authorized owner must review, approve and enable it through Data Flow. Preparation uses the existing pipeline worker and produces retained `connector-records` evidence for the existing `connector-ceim-normalize` mapping workflow. It does not publish the graph. Configure explicit `syncs` lifecycle grants for the intended read and execution identities; the upgrade does not broaden grants. Incomplete or legacy snapshots lacking provider/requester/content-digest provenance must be acquired again. Retained submission references reconcile retries rather than enqueueing duplicate work.
-
-
-Reporting replication: migration 018 is applied by the normal PostgreSQL upgrade. See [OSLC reporting replication](docs/architecture/OSLC_LIFECYCLE_RELEASE.md#reporting-replication) for approved feed selection, worker execution, scheduler opt-in, freshness limits and snapshot product review. Existing data does not require a reset.
-
-Compatibility chat consolidation (2026-11-12): the aggregate host's root chat entry points share the canonical /api/v1/chat handlers. Clients must use current authenticated Companion sessions and honor the returned polling URL. Old completed chat-job records remain readable through the legacy lookup; interrupted legacy work is never replayed automatically. No database reset or new package is required. See backend/legacy/README.md for the contract boundary.
+For release-specific qualification, see [advanced operations](docs/installation/OPERATOR_REFERENCE.md#advanced-operations-and-release-specific-checks).

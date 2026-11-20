@@ -34,3 +34,35 @@ def test_workflow_lookup_helpers_are_consistent():
     assert workflow is not None
     assert workflow["id"] == "ontology.validate"
     assert workflow_map["ontology.validate"]["label"] == workflow["label"]
+
+
+def test_runtime_options_expose_canonical_capabilities_for_every_workflow():
+    for option in get_workflow_options():
+        canonical = get_workflow_by_id(option['id'])
+        for field in ('inputs', 'outputs', 'writes_to_neo4j', 'retains_artifacts'):
+            assert option[field] == canonical[field]
+
+
+def test_frontend_fallback_covers_canonical_workflow_ids():
+    import re
+    from pathlib import Path
+    source = Path('frontend/src/workflows/workflowEngine.js').read_text(encoding='utf-8')
+    catalog = source.split('export const workflowCatalog = [', 1)[1].split('export const executableWorkflowIds', 1)[0]
+    ids = re.findall(r"id: '([^']+)'", catalog)
+    assert len(ids) == len(set(ids))
+    assert set(ids) == set(get_workflow_map())
+
+
+def test_three_ingestion_families_preserve_adapter_and_activity_identity():
+    families = {'instance.import','ontology.create','document.unstructured'}
+    options = get_workflow_options()
+    assert {row['family'] for row in options} == families
+    roots = {row['id'] for row in options if row['activity']=='ingestion' and row['adapter'] is None}
+    assert roots == families
+    archimate = get_workflow_by_id('architecture.archimate')
+    assert archimate['family']=='instance.import' and archimate['adapter']=='archimate'
+    assert archimate['execution_surface']=='upload'
+    assert get_workflow_by_id('instance.link')['activity']=='alignment'
+    assert get_workflow_by_id('ontology.merge')['activity']=='merge'
+    for row in options:
+        assert row['family']==get_workflow_by_id(row['id'])['family']

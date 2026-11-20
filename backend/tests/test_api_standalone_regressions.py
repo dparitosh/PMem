@@ -28,8 +28,11 @@ def test_backend_package_import_exposes_unique_openapi_operations() -> None:
     assert ONTOLOGY_DIR == Path(__file__).resolve().parents[2] / "frontend" / "public" / "Ontology"
 
 
-def test_standalone_ontology_service_contract() -> None:
-    client = TestClient(standalone_app)
+def test_standalone_ontology_service_contract(monkeypatch) -> None:
+    monkeypatch.setenv('AUTH_MODE', 'token')
+    monkeypatch.setenv('DEPO_CREDENTIAL_STORE', 'environment')
+    monkeypatch.setenv('GRAPH_READ_TOKEN', 'standalone-contract-read')
+    client = TestClient(standalone_app, headers={'Authorization':'Bearer standalone-contract-read'})
 
     health = client.get("/api/v1/ontologies/health")
     capabilities = client.get("/api/v1/ontologies/capabilities")

@@ -13,7 +13,9 @@ def test_followup_keeps_resolved_subject_across_three_turns():
               'resolved_query': 'Show requirements for Housing And its properties?',
               'answerable': True, 'graph_context': scope}]
     result = retrieval_query('What about its PMI?', turns, scope)
-    assert 'Housing' in result
+    # Selected identity is authoritative; prior requirements must not pollute PMI.
+    assert result == 'Show PMI for it'
+    assert 'requirements' not in result.lower()
     assert retrieval_query('What about its PMI?', turns, {**scope, 'node_id': 'shaft'}) == 'What about its PMI?'
 
 

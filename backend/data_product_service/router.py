@@ -257,38 +257,45 @@ async def publish(payload: ProductPublicationBody, request: Request) -> dict:
     key = _key(payload)
     async with _product_lock(key) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
-        existing = await _product_io(store.get, key)
-        idempotency_key = str(payload.get("idempotency_key") or "")
-        if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
-            if existing.get('publication_digest') != await _product_io(publication_digest, payload, artifacts):
-                raise HTTPException(409, 'Idempotency key was already used with different or unverified content')
-            try:
-                storage = existing.get('package_storage', {})
-                await _product_io(verify_package, Path(storage.get('package_dir', '')), Path(storage.get('zip_path', '')), existing.get('manifest'))
-            except ValueError as exc:
-                raise HTTPException(409, 'Retained product package failed integrity verification; restore it before retrying') from exc
-            return _public_product(existing)
-        if existing:
-            raise HTTPException(409, "A product version is immutable; retry catalog delivery or publish a new version")
+        from .product_change import guarded_publish
+        return await guarded_publish(payload,approver,artifacts)
+
+
+async def _publish_locked(payload,approver,artifacts):
+    """Native immutable packaging operation; caller holds the product version lock."""
+    key=_key(payload)
+    existing = await _product_io(store.get, key)
+    idempotency_key = str(payload.get("idempotency_key") or "")
+    if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
+        if existing.get('publication_digest') != await _product_io(publication_digest, payload, artifacts):
+            raise HTTPException(409, 'Idempotency key was already used with different or unverified content')
         try:
-            lineage = await resolve_lineage(payload, artifacts)
-            semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
+            storage = existing.get('package_storage', {})
+            await _product_io(verify_package, Path(storage.get('package_dir', '')), Path(storage.get('zip_path', '')), existing.get('manifest'))
         except ValueError as exc:
-            raise HTTPException(422, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(503, detail=str(exc)) from exc
-        try:
-            package = await _product_io(build_package, output_root=root, payload=payload, artifacts=artifacts)
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
-        safe_payload['approved_by'] = approver
-        record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
-        record['publication_digest'] = package['manifest']['publication_digest']
-        record['lineage_verification'] = lineage
-        await _product_io(store.put_with_related, key, record, related_namespace=approval_store.namespace,
-            related_key=f"{key}:{record['published_at']}", related_value={"product": key, "approved_by": approver, "approved_at": _now()})
-        return _public_product(await _product_io(store.put, key, await _register_catalog(record)))
+            raise HTTPException(409, 'Retained product package failed integrity verification; restore it before retrying') from exc
+        return _public_product(existing)
+    if existing:
+        raise HTTPException(409, "A product version is immutable; retry catalog delivery or publish a new version")
+    try:
+        lineage = await resolve_lineage(payload, artifacts)
+        semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, detail=str(exc)) from exc
+    try:
+        package = await _product_io(build_package, output_root=root, payload=payload, artifacts=artifacts)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
+    safe_payload['approved_by'] = approver
+    record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
+    record['publication_digest'] = package['manifest']['publication_digest']
+    record['lineage_verification'] = lineage
+    await _product_io(store.put_with_related, key, record, related_namespace=approval_store.namespace,
+        related_key=f"{key}:{record['published_at']}", related_value={"product": key, "approved_by": approver, "approved_at": _now()})
+    return _public_product(await _product_io(store.put, key, await _register_catalog(record)))
 
 
 @router.post("/{product_version}/retry-catalog")
@@ -381,3 +388,26 @@ def get_product(product_version: str, request: Request = None) -> dict:
     ids = list(dict.fromkeys(key for key in references if isinstance(key, str) and key))[:2]
     return {**_public_product(record), 'semantic_support': [read_support(key, dict(request.headers) if request else {}) for key in ids],
             'semantic_support_scope': 'Up to two current referenced models; does not revalidate immutable product contents or replace approved semantic releases'}
+
+
+from backend.depo_platform.request_bodies import ProductChangeSubmission,ProductChangeCommand
+
+def _release_change_actor(request: Request):
+    return approval_identity(request,{},token_env='DATA_PRODUCT_APPROVAL_TOKEN')
+
+@router.post('/change-requests/submit')
+@ontology_writer
+async def submit_release_change(payload: ProductChangeSubmission,actor: str=Depends(_release_change_actor)):
+    from .product_change import submit
+    return await submit(payload.publication,payload.reason,actor)
+
+@router.get('/change-requests/{product_version}',dependencies=[Depends(graph_read_identity)])
+async def release_change_status(product_version: str):
+    from .product_change import view
+    return await view(product_version)
+
+@router.post('/change-requests/{product_version}')
+@ontology_writer
+async def release_change_command(product_version: str,payload: ProductChangeCommand,actor: str=Depends(_release_change_actor)):
+    from .product_change import command
+    return await command(product_version,payload.action,actor,payload.expected_revision,payload.expected_plan_digest,payload.reason)

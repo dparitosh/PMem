@@ -23,7 +23,13 @@ def submission_status(submission_id: str, request: Request):
 def sources(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
     try:
         total, rows = rest_sources.store.page(limit=limit, offset=offset)
-        return {'sources': rows, 'total': total, 'limit': limit, 'offset': offset,
+        def ready(row):
+            try:
+                rest_sources.endpoint_url(row.get('endpoint',''))
+                return True
+            except ValueError:
+                return False
+        return {'sources': [{**row,'connection_ready':ready(row)} for row in rows], 'total': total, 'limit': limit, 'offset': offset,
                 'next_offset': offset + limit if offset + limit < total else None}
     except RuntimeError:
         raise HTTPException(503, 'Source registry unavailable') from None

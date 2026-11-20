@@ -2564,7 +2564,7 @@ class UnifiedDataImportService:
                 logger.warning("Skipping unreadable import task snapshot %s: %s", path, exc)
 
         fields = (
-            'task_id', 'filename', 'file_type', 'current_stage', 'progress',
+            'task_id', 'file_uuid', 'file_number', 'filename', 'file_type', 'current_stage', 'progress',
             'message', 'status', 'committing', 'error', 'stats', 'result',
             'commit_phase', 'batch_progress', 'commit_metrics',
             'workflow_id', 'artifact_manifest', 'started_at', 'completed_at',
@@ -2624,8 +2624,13 @@ class UnifiedDataImportService:
             seeded_stats['ontology_prefix'] = normalized_mapping
             seeded_stats['ontology_name'] = normalized_mapping
 
+        from backend.depo_platform.resource_identity import identify
+        import hashlib
+        from starlette.concurrency import run_in_threadpool
+        file_identity=await run_in_threadpool(identify,'FILE','imports',task_id,name=filename,links={'content_sha256':hashlib.sha256(file_content).hexdigest()})
         task_info = {
             'task_id': task_id,
+            'file_uuid':file_identity['object_id'], 'file_number':file_identity['number'],
             'filename': filename,
             'file_type': file_type.value,
             'current_stage': ImportStage.UPLOAD.value,
@@ -2891,6 +2896,7 @@ class UnifiedDataImportService:
         return {
             'task_id': task['task_id'],
             'filename': task['filename'],
+            'file_uuid':task.get('file_uuid'), 'file_number':task.get('file_number'),
             'file_type': task['file_type'],
             'current_stage': task['current_stage'],
             'progress': task['progress'],
@@ -3359,6 +3365,7 @@ class UnifiedDataImportService:
                     skipped_rows = max(0, len(step_ref_rows) - matched_rows)
                     result['relationships_created'] += matched_rows
                     result['relationships_skipped'] += skipped_rows
+                    if skipped_rows:result.setdefault('incomplete_relationships', []).append('STEP references')
                     logger.info(f"Task {task_id}: STEP — wrote {matched_rows} row-key REFERENCES edges")
                 else:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}"); result.setdefault('incomplete_relationships', []).append('STEP references')
@@ -3403,6 +3410,7 @@ class UnifiedDataImportService:
                     skipped_rows = max(0, len(ref_rows) - matched_rows)
                     result['relationships_created'] += matched_rows
                     result['relationships_skipped'] += skipped_rows
+                    if skipped_rows:result.setdefault('incomplete_relationships', []).append('STEP references')
                     logger.info(f"Task {task_id}: STEP — wrote {matched_rows} REFERENCES edges")
                 else:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}"); result.setdefault('incomplete_relationships', []).append('STEP references')
@@ -3449,6 +3457,7 @@ class UnifiedDataImportService:
                     skipped_rows = max(0, len(parent_rows) - matched_rows)
                     result['relationships_created'] += matched_rows
                     result['relationships_skipped'] += skipped_rows
+                    if skipped_rows:result.setdefault('incomplete_relationships', []).append('STPX parent hierarchy')
                     logger.info(f"Task {task_id}: STPX — wrote {matched_rows} PARENT_OF edges")
                 else:
                     logger.warning(f"Task {task_id}: STPX hierarchy write errors: {parent_result['errors'][:3]}"); result.setdefault('incomplete_relationships', []).append('STPX parent hierarchy')
@@ -3626,35 +3635,13 @@ class UnifiedDataImportService:
         ):
             raise ValueError(f"Task not in processing state: {task['status']}")
 
-        if not task.get('parsed_rows'):
-            # Attempt fallback: load parsed_rows from the separate parsed_rows file
-            try:
-                path = cls._task_snapshot_path(task_id)
-                parsed_name = task.get('_parsed_rows_file') or (path.name + '.parsed_rows.json')
-                parsed_path = path.parent / parsed_name
-                if parsed_path.exists():
-                    try:
-                        parsed_text = parsed_path.read_text(encoding='utf-8')
-                        parsed_data = json.loads(parsed_text)
-                        task['parsed_rows'] = parsed_data
-                        logger.info(f"Task {task_id}: loaded parsed_rows from {parsed_path.name} ({len(parsed_data)} rows)")
-                        cls._persist_task(task_id)
-                    except Exception as pexc:
-                        logger.warning(f"Task {task_id}: failed to load parsed_rows from disk fallback: {pexc}")
-                else:
-                    raise ValueError(
-                        f"Task not ready for commit: current_stage={task.get('current_stage')}"
-                    )
-            except ValueError:
-                # propagate explicit 'not ready' error
-                raise
-            except Exception as exc:
-                logger.exception(f"Task {task_id}: unexpected error during parsed_rows fallback: {exc}")
-                raise ValueError(
-                    f"Task not ready for commit: current_stage={task.get('current_stage')}"
-                )
+        from .import_task_persistence import retained_rows
+        task['parsed_rows']=retained_rows(task,cls._task_snapshot_path(task_id))
+        if not task['parsed_rows']:raise ValueError('Import has no retained rows to load')
 
         schema = config or task.get('auto_schema', {})
+        from backend.ingestion_service.import_change import require_dispatch
+        require_dispatch(task_id, task, schema)
         before_queue = dict(task)
         task['current_stage'] = ImportStage.INGEST.value
         task['progress'] = 80
@@ -3675,6 +3662,7 @@ class UnifiedDataImportService:
                 from .import_commit_integrity import commit_operation
                 def run_owned_commit():
                     with commit_operation(task_id):
+                        require_dispatch(task_id, task, schema)
                         return cls._commit_sync(task_id, task, schema)
                 result = await asyncio.to_thread(run_owned_commit)
                 # Fire OWL generation in background — does NOT block the HTTP response.

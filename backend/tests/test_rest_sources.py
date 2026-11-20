@@ -183,3 +183,64 @@ def test_rest_acquisition_is_queued_without_fetching_in_api(registered,monkeypat
     assert response.status_code==200 and response.json()['status']=='queued'
     assert queue.call_args.args[1]['source_id']=='parts-api'
     fetch.assert_not_called()
+
+
+def test_ten_rest_sources_are_independent_and_listed_together(monkeypatch):
+    from backend.data_pipeline_service import rest_router
+    monkeypatch.setenv('DEPO_REST_ALLOWED_HOSTS', 'api.example.com')
+    monkeypatch.setattr(sources, 'store', InMemoryRegistry())
+    for index in range(10):
+        sources.register({'source_id': f'business-api-{index}', 'name': f'Business API {index}',
+            'endpoint': f'https://api.example.com/source-{index}',
+            'credential_ref': 'DEPO_REST_SECRET_TEST'}, 'operator')
+    page = rest_router.sources(limit=50, offset=0)
+    assert page['total'] == 10 and page['next_offset'] is None
+    assert len({row['source_id'] for row in page['sources']}) == 10
+    assert all(row['created_by'] == 'operator' for row in page['sources'])
+    assert all(row['credential_ref'] == 'DEPO_REST_SECRET_TEST' for row in page['sources'])
+
+
+def test_openapi_source_retains_contract_and_selected_get_operation(registered,monkeypatch,tmp_path):
+    from backend.artifact_store import ArtifactStore
+    artifacts=ArtifactStore(tmp_path/'contracts');monkeypatch.setattr(sources,'ArtifactStore',lambda:artifacts)
+    document={'openapi':'3.0.3','info':{'title':'Engineering API'},'servers':[{'url':'https://api.example.com/v1'}],'paths':{'/parts':{'get':{'operationId':'getParts'}}}}
+    row=sources.register({'source_id':'openapi-parts','name':'Released parts','endpoint':'https://api.example.com/v1/parts','openapi_document':document,'openapi_path':'/parts'},'reviewer')
+    assert sources.store.get('openapi-parts')['openapi']==row['openapi']
+    metadata,path=artifacts.resolve(row['openapi']['artifact_id'])
+    assert json.loads(path.read_text(encoding='utf-8'))==document
+    assert row['openapi']['operation_id']=='getParts' and row['openapi']['method']=='GET'
+    assert metadata['kind']=='rest-source-openapi'
+    assert 'openapi_document' not in row
+
+
+@pytest.mark.parametrize('change',[{'endpoint':'https://api.example.com/other'},{'openapi_path':'/missing'},{'openapi_document':{'openapi':'2.0','paths':{}}}])
+def test_openapi_registration_cannot_invent_an_operation_or_endpoint(registered,change):
+    document={'openapi':'3.0.3','servers':[{'url':'https://api.example.com'}],'paths':{'/parts':{'get':{}}}}
+    with pytest.raises(ValueError):sources.register({'source_id':'imported-api','name':'Parts','endpoint':'https://api.example.com/parts','openapi_document':document,'openapi_path':'/parts',**change},'reviewer')
+    assert sources.store.get('imported-api') is None
+
+
+def test_source_metadata_registration_does_not_grant_outbound_access(monkeypatch):
+    from backend.data_pipeline_service import rest_router
+    monkeypatch.delenv('DEPO_REST_ALLOWED_HOSTS',raising=False)
+    monkeypatch.setattr(sources,'store',InMemoryRegistry())
+    row=sources.register({'source_id':'awaiting-setup','name':'Parts API','endpoint':'https://api.example.com/parts'},'operator')
+    assert row['source_id']=='awaiting-setup'
+    assert rest_router.sources(limit=50,offset=0)['sources'][0]['connection_ready'] is False
+    with pytest.raises(ValueError,match='Endpoint host'):sources.endpoint_url(row['endpoint'])
+
+
+def test_openapi_source_can_be_saved_through_authenticated_http_contract(monkeypatch,tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.artifact_store import ArtifactStore
+    from backend.data_pipeline_service.rest_router import router
+    monkeypatch.setenv('AUTH_MODE','token');monkeypatch.setenv('DEPO_CREDENTIAL_STORE','environment');monkeypatch.setenv('DATA_JOB_APPROVAL_TOKEN','management-token')
+    monkeypatch.delenv('DEPO_REST_ALLOWED_HOSTS',raising=False)
+    monkeypatch.setattr(sources,'store',InMemoryRegistry());monkeypatch.setattr(sources,'ArtifactStore',lambda:ArtifactStore(tmp_path/'openapi'))
+    app=FastAPI();app.include_router(router)
+    document={'openapi':'3.0.3','info':{'title':'Engineering'},'servers':[{'url':'https://api.example.com'}],'paths':{'/parts':{'get':{}}}}
+    response=TestClient(app).post('/pipeline/rest-sources',headers={'Authorization':'Bearer management-token'},json={'source_id':'imported-parts','name':'Engineering parts','endpoint':'https://api.example.com/parts','openapi_document':document,'openapi_path':'/parts'})
+    assert response.status_code==201,response.text
+    assert response.json()['openapi']['artifact_id'].startswith('sha256:')
+    assert sources.store.get('imported-parts')['openapi']['path']=='/parts'

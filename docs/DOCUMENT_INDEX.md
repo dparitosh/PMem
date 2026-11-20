@@ -6,6 +6,7 @@ Start with [current audit status](audits/README.md), [installation](../INSTALLAT
 
 | File | Title | Purpose |
 | --- | --- | --- |
+| [standalone/engineering_ods/README.md](../standalone/engineering_ods/README.md) | Independent Engineering ODS toolkit | Offline historical/current data generation, governed API loading, existing TRS/configuration and analytics/data-product acceptance |
 | [docs/DATA_PRODUCT_INGESTION.md](DATA_PRODUCT_INGESTION.md) | Ingestion and data-product lifecycle | Current ingestion coverage, ODS/graph boundaries and product lifecycle |
 | [docs/audits/admin-session-handling-review-2026-10-09.md](audits/admin-session-handling-review-2026-10-09.md) | Admin key/session handling review | Remaining findings and verified authorization boundaries |
 | [docs/audits/admin-maintenance-session-2026-10-09.md](audits/admin-maintenance-session-2026-10-09.md) | Admin maintenance session correction | Root cause, correction and upgrade procedure |

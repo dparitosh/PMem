@@ -31,6 +31,19 @@ test('a late assessment cannot attach to a different selected plan',async()=>{
 
 test('a retained validation hold gives an actionable explanation instead of asking to create the plan again',()=>{
  render(<MergeStewardReview enabled={false} previewId="held" reviewKey="held" reviewer="reviewer" onReview={vi.fn()}/>);
- expect(screen.getByText(/A saved plan exists, but validation has not cleared it/)).toBeVisible();
+ expect(screen.getByText(/Validation evidence is unverified/)).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Run Steward assessment'})).toBeNull();
+});
+
+
+test.each([
+ [{background_validation:true,job_status:'validating'},'Validation running.'],
+ [{job_status:'failed'},'Validation failed. Open the report.'],
+ [{job_status:'completed',publish_recommended:false,owl_dl_evidence:{status:'unsupported',reason:'unparsed_rdf_statements'}},'Assessment blocked: logical validation cannot process all ontology statements.'],
+ [{job_status:'completed',publish_recommended:false},'Assessment blocked by validation findings. Open the report.']
+])('reports the retained validation state instead of blanket pending %#',(preview,message)=>{
+ render(<MergeStewardReview enabled={false} previewId="plan" preview={preview} onReview={vi.fn()}/>);
+ expect(screen.getByText(message)).toBeVisible();
+ expect(screen.queryByText('Validation pending.')).toBeNull();
  expect(screen.queryByRole('button',{name:'Run Steward assessment'})).toBeNull();
 });

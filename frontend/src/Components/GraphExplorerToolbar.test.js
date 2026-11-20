@@ -52,3 +52,9 @@ test('submits the controlled search value and clears active search', () => {
   expect(onSearchInputChange).toHaveBeenCalledWith('');
   expect(onSearchSubmit).toHaveBeenCalledWith('');
 });
+
+test('a requested draft scope remains visible instead of displaying a different selection',()=>{
+ renderToolbar({selectedOntology:'draft-qif',ontologyOptions:[{value:'draft-qif',label:'QIF draft',approval_status:'draft'},{value:'approved-plm',label:'PLM',approval_status:'approved'}]});
+ expect(screen.getByRole('combobox',{name:/select an ontology/i})).toHaveValue('draft-qif');
+ expect(screen.getByRole('option',{name:/QIF draft/})).toBeInTheDocument();
+});

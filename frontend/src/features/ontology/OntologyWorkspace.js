@@ -68,7 +68,6 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [semanticDetailsLoading, setSemanticDetailsLoading] = useState(false);
   const [taxonomyOffset, setTaxonomyOffset] = useState(0);
-  const [taxonomyQuery, setTaxonomyQuery] = useState('');
   const [taxonomyKind, setTaxonomyKind] = useState('all');
   const [semanticDetailsError, setSemanticDetailsError] = useState(null);
   const [semanticRevision, setSemanticRevision] = useState(0);
@@ -116,6 +115,16 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
   useEffect(() => { setBridgeApproved(false); setBridgeComment(''); setMapMessage(null); },
     [selectedImportTaskId, selectedOntologyApi, bridgeSourceTerm, bridgeTargetTerm, bridgeSourceKind, bridgeTargetKind]);
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_source') || '');
+  useEffect(() => {
+    const syncAlignmentRoute = () => {
+      const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      setBridgeMode(params.get('mode') === 'merge' ? 'merge' : 'instance');
+      if (params.has('merge_source')) setMergeSourceOntologyId(params.get('merge_source') || '');
+    };
+    window.addEventListener('hashchange', syncAlignmentRoute);
+    window.addEventListener('popstate', syncAlignmentRoute);
+    return () => {window.removeEventListener('hashchange',syncAlignmentRoute);window.removeEventListener('popstate',syncAlignmentRoute);};
+  }, []);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeDlCheck, setMergeDlCheck] = useState(true);
   const mergeGeneration = useRef(0);
@@ -601,15 +610,8 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
     setSemanticDetailsError(null);
     setSemanticDetailsLoading(Boolean(selectedOntologyApi));
     setTaxonomyOffset(0);
-    setTaxonomyQuery('');
     setTaxonomyKind('all');
   }, [selectedOntologyApi]);
-
-  useEffect(() => {
-    if (activeView !== 'taxonomy') return;
-    const timer = setTimeout(() => { setTaxonomyOffset(0); setTaxonomyQuery(filter.slice(0,200)); }, 350);
-    return () => clearTimeout(timer);
-  }, [filter, activeView]);
 
   useEffect(() => {
     if (!selectedOntologyApi || !['taxonomy', 'alignment', 'inference'].includes(activeView)) return;
@@ -625,7 +627,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
         const keys = [];
         keys.push('taxonomy');
         requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, {...options, timeout:120000,
-          params: {limit:500, offset: activeView === 'taxonomy' ? taxonomyOffset : 0, query: activeView === 'taxonomy' ? taxonomyQuery : '', kind: activeView === 'taxonomy' ? taxonomyKind : 'all'}
+          params: {limit:500, offset: activeView === 'taxonomy' ? taxonomyOffset : 0, query: '', kind: activeView === 'taxonomy' ? taxonomyKind : 'all'}
         }).then(response => {
           if (!cancelled && Array.isArray(response?.data?.nodes)) setTaxonomy(response.data);
           return response;
@@ -663,7 +665,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       cancelled = true;
       controller.abort();
     };
-  }, [activeView, selectedOntologyApi, semanticRevision, taxonomyOffset, taxonomyQuery, taxonomyKind]);
+  }, [activeView, selectedOntologyApi, semanticRevision, taxonomyOffset, taxonomyKind]);
 
   useEffect(() => {
     setStats((prev) => {
@@ -718,13 +720,15 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
   const resumeMergeReview = async () => {
     const generation = ++mergeGeneration.current;
     try {
-      const key = sessionStorage.getItem(mergeResumeKey);
+      const key = new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_preview') || sessionStorage.getItem(mergeResumeKey);
       if (!key) throw new Error('No retained review for these sources and mapping selections. Generate a new preview.');
       const { data } = await API_METHODS.ontology.governedMergeStatus(key);
       if (generation !== mergeGeneration.current) return;
+      if (!Array.isArray(data.source_ontology_ids) || data.source_ontology_ids.length !== 2 || !data.source_ontology_ids.includes(mergeSourceOntologyId) || !data.source_ontology_ids.includes(selectedMapping)) throw new Error('Saved merge belongs to different source or target ontologies.');
       const recovered = await recoverMergeResult(data, id => API_METHODS.ontology.registeredPublication(id));
       if (generation !== mergeGeneration.current) return;
       setMergeSuggestions(data.entity_suggestions || []);
+      if (Array.isArray(data.changes?.entity_mappings)) setMergeEntityMappings(data.changes.entity_mappings);
       setMergePollGeneration(current => current + 1);
       setMergeResult({ kind: data.job_status === 'failed' ? 'error' : 'success',
         text: recovered ? 'Retained merge and current publication verified. No write was replayed.' : data.job_error || `Retained merge review: ${data.job_status}. Review mappings and validation before approval.`,
@@ -733,6 +737,13 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       if (generation === mergeGeneration.current) setMergeResult({kind:'error', text:apiErrorMessage(error)});
     }
   };
+  const resumedRoute = useRef('');
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.hash.split('?')[1] || '').get('merge_preview');
+    if (bridgeMode !== 'merge' || !id || !mergeSourceOntologyId || !selectedMapping || resumedRoute.current === id || !mappingOptions.some(option=>option.value===mergeSourceOntologyId) || !mappingOptions.some(option=>option.value===selectedMapping)) return;
+    resumedRoute.current = id;
+    resumeMergeReview();
+  }, [bridgeMode, mergeSourceOntologyId, selectedMapping, mappingOptions]);
   const retainedMergePending = mergeResult?.governedPreview?.background_validation &&
     ['queued', 'preparing', 'validating'].includes(mergeResult.governedPreview.job_status);
   useEffect(() => {
@@ -751,9 +762,9 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
           text: plan.job_status === 'failed' ? plan.job_error : plan.job_status === 'completed'
             ? plan.publish_recommended
               ? 'Semantic validation passed. Review mappings and changes before approval.'
-              : 'Semantic validation completed with blocking findings. Review the validation evidence; approval remains blocked.'
+              : plan.owl_dl_evidence?.status === 'unknown' ? 'Logical consistency unverified. Approval blocked.' : 'Validation blocked. Review findings.'
             : plan.job_status === 'validating'
-              ? 'Mappings are ready for review. SHACL and OWL-RL validation is running; approval remains blocked.'
+              ? 'Mapping proposals ready. Validation pending.'
               : 'Preparing the retained merge review. You can leave this page; the server continues working.' }));
         if (['queued', 'preparing', 'validating'].includes(plan.job_status)) timer = setTimeout(poll, 5000);
       } catch (error) {
@@ -802,52 +813,6 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       if (generation !== mergeGeneration.current) return;
       setMergeResult({ kind: 'error', text: apiErrorMessage(e, 'Merge plan preview failed.') });
     } finally {
-      if (generation === mergeGeneration.current) setMergeBusy(false);
-    }
-  };
-
-  const handleCommitOntologyMerge = async () => {
-    if (!mergeSourceOntologyId || !selectedMapping) {
-      setMergeResult({ kind: 'error', text: 'Select both source and active target ontology before merging.' });
-      return;
-    }
-    if (mergeSourceOntologyId === selectedMapping) {
-      setMergeResult({ kind: 'error', text: 'Choose two different ontologies for merge.' });
-      return;
-    }
-    if (!mergePlanReady) {
-      setMergeResult({ kind: 'error', text: 'Create a current conflict-free merge plan before committing.' });
-      return;
-    }
-    const generation = ++mergeGeneration.current;
-    setMergeBusy(true);
-    setMergeResult(previous => ({...previous, text:'Publishing the reviewed merge; waiting for its receipt.'}));
-    if (!mergeApprover.trim()) {
-      setMergeBusy(false);
-      setMergeResult({ kind: 'error', text: 'Enter the approving steward identity before committing the governed merge.' });
-      return;
-    }
-    if (!mergeResult?.governedPreview?.preview_id) {
-      setMergeBusy(false);
-      setMergeResult({ kind: 'error', text: 'Create a governed merge preview before committing.' });
-      return;
-    }
-    try {
-      const res = await ontologyMergeAgent.apply(mergeResult.governedPreview.preview_id, mergeApprover);
-      if (generation !== mergeGeneration.current) return;
-      setMergeResult({
-        kind: 'success',
-        text: res.result.publication_status === 'published' ? 'Reviewed merge approved and published to knowledge graph.' : 'Reviewed merge retained. knowledge graph publication is queued; follow its status below.',
-        agentRunId: res.runId,
-        report: { ...(mergeResult.report || {}), governed: res.result },
-        governedPreview: mergeResult.governedPreview,
-        artifact_manifest: null,
-      });
-    } catch (e) {
-      if (generation !== mergeGeneration.current) return;
-      setMergeResult(previous => ({ ...previous, kind: 'error', text: apiErrorMessage(e, 'Merge publication failed. Retry the same reviewed preview to reconcile its publication.') }));
-    } finally {
-
       if (generation === mergeGeneration.current) setMergeBusy(false);
     }
   };
@@ -1144,8 +1109,8 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       <IxTabsBar ariaLabel="Models and vocabularies views" tabs={VIEWS} active={activeView} onChange={setActiveView} />
       {exportError && <p role="alert">{exportError}</p>}
       {vocabularyWarning && <p role="status">{vocabularyWarning}</p>}
-      <p aria-live="polite">{activeView === 'taxonomy' ? 'Inspect declared classes, properties and hierarchy for the selected ontology version.' : activeView === 'vocabulary' ? 'Inspect recorded vocabulary relations. A mapping relation is not automatically OWL identity or equivalence.' : activeView === 'alignment' ? 'Ask the governed agents for saved proposals, inspect their evidence, then review publication separately.' : 'Preview structural rules and their supporting declarations. This view does not execute arbitrary SWRL or publish conclusions.'}</p>
-      <details className="depo-bridge-metadata"><summary>Ontology lifecycle and knowledge graph publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>
+      {!['alignment','taxonomy'].includes(activeView) && <p aria-live="polite">{activeView === 'taxonomy' ? 'Inspect declared classes, properties and hierarchy for the selected ontology version.' : activeView === 'vocabulary' ? 'Inspect recorded vocabulary relations. A mapping relation is not automatically OWL identity or equivalence.' : activeView === 'alignment' ? 'Prepare mappings and inspect evidence. Review and release changes in Change Control.' : 'Preview structural rules and their supporting declarations. This view does not execute arbitrary SWRL or publish conclusions.'}</p>}
+      {!['alignment','taxonomy'].includes(activeView) && <details className="depo-bridge-metadata"><summary>Ontology lifecycle and knowledge graph publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>}
 
       {activeView === 'alignment' && error && <div role="alert" style={{ padding: 12 }}>Vocabulary loading failed: {error} Semantic Bridge tasks remain available. Merge previews use retained RDF; instance mapping results are shown in the governed job review below.</div>}
       {loading && activeView === 'vocabulary' ? (
@@ -1164,7 +1129,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
       ) : (
         <>
           {/* Sub-tab selector + search bar */}
-          <div style={{ display: activeView === 'alignment' && bridgeMode === 'merge' ? 'none' : 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+          {!['alignment','taxonomy'].includes(activeView) && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
 
             {/* Search / filter */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '0 1 260px', minWidth: '180px', maxWidth: '260px', background: C.surface, border: `1px solid ${C.borderDark}`, borderRadius: '5px', padding: '5px 8px' }}>
@@ -1181,7 +1146,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                 }}
               />
               <input
-                type="text" value={filter}
+                type="text" aria-label="Find ontology terms" value={filter}
                 placeholder={activeView === 'taxonomy' ? 'Find taxonomy term' : activeView === 'inference' ? 'Filter inferred statements' : activeView === 'vocabulary' ? 'Filter mappings' : 'Filter terms'}
                 onChange={e => setFilter(e.target.value)}
                 style={{ border: 'none', outline: 'none', fontSize: '13px', lineHeight: '1.4', flex: 1, background: 'transparent', color: C.textPrimary, minHeight: '20px' }}
@@ -1192,9 +1157,9 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                 </button>
               )}
             </div>
-          </div>
+          </div>}
 
-          <details className="ontology-workspace-guide"><summary>Workflow guidance and ontology details</summary>
+          {!['alignment','taxonomy'].includes(activeView) && <details className="ontology-workspace-guide"><summary>Workflow guidance and ontology details</summary>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(180px, 1fr))', gap: '6px', marginBottom: '10px' }}>
             {['vocabulary', 'alignment', 'inference'].map((id, index) => {
               const guide = WORKBENCH_GUIDE[id];
@@ -1244,7 +1209,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
             )}
           </div>
 
-          </details>
+          </details>}
 
           {activeView !== 'alignment' && dictionarySourceMode === 'taxonomy-fallback' && (
             <div style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: '#FFF8E1', color: C.textPrimary, fontSize: '12px', lineHeight: 1.45 }}>
@@ -1256,7 +1221,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
           {activeView === 'taxonomy' && selectedOntologyApi && (
             <>
               {taxonomy?.page && <nav aria-label="Taxonomy pages" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:12}}>
-                <span>{taxonomy.page.matching_terms} matching terms · showing {taxonomy.nodes.length} in this slice. Hierarchy and relationships cover the displayed terms.</span>
+                <span>{taxonomy.summary?.total_terms ?? '—'} terms · {taxonomy.nodes.length} displayed</span>
                 <button type="button" disabled={semanticDetailsLoading || taxonomy.page.offset === 0} onClick={()=>setTaxonomyOffset(Math.max(0,taxonomy.page.offset-500))}>Previous terms</button>
                 <button type="button" disabled={semanticDetailsLoading || taxonomy.page.next_offset == null} onClick={()=>setTaxonomyOffset(taxonomy.page.next_offset)}>Next terms</button>
               </nav>}
@@ -1269,7 +1234,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
               {taxonomy && (taxonomy.view_mode === 'classic' ? (
                 <TaxonomyView nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
               ) : (
-                <ProtegeOntologyBrowser key={selectedOntologyApi} nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={taxonomy?.page ? '' : filter} taxonomy={taxonomy} reasoning={reasoning} onTableModeChange={mode=>{setTaxonomyOffset(0);setTaxonomyKind(mode === 'classes' ? 'class' : mode === 'properties' ? 'property' : 'all');}} />
+                <ProtegeOntologyBrowser key={selectedOntologyApi} nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter="" taxonomy={taxonomy} reasoning={reasoning} onTableModeChange={mode=>{setTaxonomyOffset(0);setTaxonomyKind(mode === 'classes' ? 'class' : mode === 'properties' ? 'property' : 'all');}} />
               ))}
             </>
           )}
@@ -1307,53 +1272,16 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '16px', minHeight: '400px' }}>
 
               {/* ── Link Instance to Ontology ─────────────────────────────── */}
-              <IxTabsBar ariaLabel="Semantic Bridge task" active={bridgeMode} onChange={setBridgeMode} tabs={[
+              <IxTabsBar ariaLabel="Semantic Bridge task" active={bridgeMode} onChange={value => {setBridgeMode(value); const params = new URLSearchParams(window.location.hash.split('?')[1] || ''); params.set('mode',value); window.history.replaceState(null,'','#/ontology?'+params.toString());}} tabs={[
                 {id:'instance',label:'Map instance to ontology'},
                 {id:'merge',label:'Merge two ontologies'},
               ]} />
-              <p>{bridgeMode === 'instance' ? 'Select imported data and run the mapping workflow. View published mappings and held exceptions.' : 'Select two ontology sources to create a new merged draft. Entity consolidation is an optional advanced operation.'}</p>
+
               {bridgeMode === 'instance' && <>
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Instance-to-ontology bridge</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px', lineHeight: 1.45 }}>
-                  Select an instance and target ontology, then review mapping recommendations before publishing.
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(140px, 1fr))', gap: '8px', marginBottom: '12px' }}>
-                  {[
-                    { title: '1. Instance', text: selectedImportTaskInfo?.filename || 'Choose imported instance' },
-                    { title: '2. Active ontology', text: selectedOntologyOption?.label || 'Choose active ontology' },
-                    { title: '3. Run automation', text: 'Propose, validate, then publish' },
-                  ].map((item) => (
-                    <div key={item.title} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, padding: '8px 10px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.title}</div>
-                      <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 600, marginTop: '4px' }}>{item.text}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '10px',
-                  flexWrap: 'wrap',
-                  padding: '8px 10px',
-                  borderRadius: '8px',
-                  border: `1px solid ${C.border}`,
-                  background: C.surface,
-                  marginBottom: '12px',
-                }}>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Auto-map</span>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: C.primaryDark, background: C.primaryLight, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
-                      {bridgeCandidates.length} candidates
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
-                      {visibleMappingEdges.length} mappings
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
 
-                  </div>
                 </div>
                 <div className="depo-bridge-selection" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
                   <div>
@@ -1571,7 +1499,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
               <details open className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
                 <summary>Merge two ontologies</summary>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
-                  Create a new ontology from two retained versions. The target supplies the identities used for any consolidations; both original ontologies remain unchanged.
+
                 </div>
                 <div className="depo-merge-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                   <div>
@@ -1592,17 +1520,16 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                   </div>
                 </div>
                 <label><input type="checkbox" checked={mergeDlCheck} disabled={mergeBusy} onChange={event => {setMergeDlCheck(event.target.checked); setMergeResult(null); setMergeStewardReview(null);}}/> Check the proposed union for logical contradictions (OWL-DL; may require offline imports)</label>
-                <SemanticSupport report={mergeResult?.governedPreview?.semantic_support}/>
-                <MergeWorkflowControls availableCount={mappingOptions.length} sourceId={mergeSourceOntologyId} targetId={selectedMapping}
+                <MergeWorkflowControls showStatus={false} availableCount={mappingOptions.length} sourceId={mergeSourceOntologyId} targetId={selectedMapping}
                   reviewer={mergeApprover} onReviewerChange={setMergeApprover}
                   connected={Boolean(getCredentialProfile('AGENTIC_APPROVAL_TOKEN'))}
                   busy={mergeBusy} preview={mergeResult?.governedPreview} dirty={mergePlanDirty}
                   ready={mergePlanReady} stewardStatus={mergeStewardReview?.key === mergeReviewKey ? mergeStewardReview.status : undefined} error={mergeResult?.kind === 'error' ? mergeResult.text : ''} publication={mergeResult?.report?.governed?.publication_status}
                   selectionCount={mergeEntityMappings.length} onGenerate={handlePreviewOntologyMerge}
-                  onResume={resumeMergeReview} onPublish={handleCommitOntologyMerge}>
-                <MergeStewardReview reviewKey={mergeReviewKey} previewId={mergeResult?.governedPreview?.preview_id}
-                  enabled={mergeValidationReady} reviewer={mergeApprover} onReview={setMergeStewardReview} />
-                <MergeMappingReview sourceId={mergeSourceOntologyId} targetId={selectedMapping}
+                  onResume={resumeMergeReview}>
+                <details><summary>View assessment report</summary><MergeStewardReview reviewKey={mergeReviewKey} previewId={mergeResult?.governedPreview?.preview_id}
+                  preview={mergeResult?.governedPreview} dirty={mergePlanDirty} enabled={mergeValidationReady} reviewer={mergeApprover} onReview={setMergeStewardReview} /></details>
+                <MergeMappingReview compact sourceId={mergeSourceOntologyId} targetId={selectedMapping}
                   sourceLabel={mappingOptions.find(option => option.value === mergeSourceOntologyId)?.label}
                   targetLabel={selectedOntologyOption?.label} suggestions={mergeSuggestions}
                   selectedMappings={mergeEntityMappings}
@@ -1616,9 +1543,8 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                   error={mergeResult?.kind === 'error' ? mergeResult.text : ''} />
                 </MergeWorkflowControls>
                 {mergeResult && (
-                  <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
+                  <details><summary>View report</summary><SemanticSupport report={mergeResult?.governedPreview?.semantic_support}/><div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergePlanDirty ? 'Mapping selections changed. Validate selected mappings before approving this merge.' : mergeResult.text}</div>
-                    {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
                     {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">Merged ontology: {mergeResult.report.governed.ontology.ontology_id}. Publication: {mergeResult.report.governed.publication_status || "not requested"}.</p>}
                     {mergeResult.report?.governed?.publication?.job_id && <OntologyPublicationPanel ontologyId={mergeResult.report.governed.ontology.ontology_id} fromWorkflow onPublished={() => {
                       setMergeResult(current => ({...current, text:'Reviewed merge published to knowledge graph.', report:{...current.report, governed:{...current.report.governed, publication_status:'published'}}}));
@@ -1631,7 +1557,6 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                       {['added', 'removed', 'unchanged'].map(kind => <details key={kind}><summary>{kind} statements (first 200)</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{(mergeResult.governedPreview.changes[`${kind}_sample`] || []).join('\n') || 'None'}</pre></details>)}
                     </details>}
 
-                    {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements and checks SHACL with OWL-RL inference. Full OWL-DL consistency is not established; entity equivalence still requires review. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
                     {mergeResult.governedPreview?.semantic_checks && <details><summary>Semantic validation evidence</summary><p>SHACL: {mergeResult.governedPreview.semantic_checks.shacl_conforms == null ? 'Pending' : mergeResult.governedPreview.semantic_checks.shacl_conforms ? 'Conforms' : 'Does not conform'}. Shapes: {mergeResult.governedPreview.semantic_checks.shape_sources?.join(', ')}</p>
                       {Number.isInteger(mergeResult.governedPreview.semantic_checks.report_summary?.total_results) && <p>
                         Findings: {mergeResult.governedPreview.semantic_checks.report_summary.total_results}.
@@ -1666,7 +1591,7 @@ export default function OntologyWorkspace({onCompanionContextChange} = {}) {
                         ))}
                       </div>
                     )}
-                  </div>
+                  </div></details>
                 )}
               </details>
 

@@ -5,12 +5,43 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
+  'backend/ontology_service/resources/reasoner/depo-owl-dl.jar',
+  'backend/agentic_service/decision_comparison.py',
+  'backend/data_pipeline_service/event_jobs.py',
+  'backend/graph_service/source_revision.py',
+  'backend/depo_platform/run_labels.py',
+  'infra/deployment/retired-files.json',
+  'infra/windows/remove-retired-release-files.ps1',
+  'standalone/engineering_ods/nexus_ods.py',
+  'standalone/engineering_ods/config.example.json',
+  'standalone/engineering_ods/scenario.json',
+  'standalone/engineering_ods/assets/schema.ttl',
+  'standalone/engineering_ods/assets/shapes.ttl',
+  'standalone/engineering_ods/requirements.txt',
+  'standalone/engineering_ods/README.md',
   'backend/data_pipeline_service/analytics_models.py', 'backend/data_pipeline_service/business_mart.py',
   'backend/data_pipeline_service/business_analytics.py',
+  'backend/ingestion_service/import_change.py', 'backend/data_pipeline_service/definition_changes.py',
+  'backend/depo_platform/approval_matrix.py', 'frontend/src/Components/ApprovalMatrix.js',
+  'frontend/src/Components/PipelinePublicationRequest.js', 'frontend/src/Components/WorkflowDefinitionActions.js',
+  'frontend/src/Components/AutomationEvidence.js',
+  'backend/oslc_service/automation.py',
+  'backend/depo_platform/resource_identity.py', 'backend/scripts/backfill_change_labels.py',
+  'frontend/src/Components/NumberingSchemes.js',
+  'backend/graph_service/computation.py', 'backend/graph_service/gds_computation.py',
+  'integrations/iif/AgentsRegistry/CodedTools/nexus_graph.py',
+  'integrations/iif/AgentsRegistry/AgentTools/nexus_graph_tools.py',
+  'integrations/iif/AgentsRegistry/Agents/nexus_graph_analyst.yaml',
+  'integrations/iif/AgentsRegistry/MCPTools/nexus_graph_mcp.py',
+  'backend/depo_platform/release_chain.py', 'backend/oslc_service/release_changes.py', 'frontend/src/Components/ReleaseChangePanel.js',
+  'backend/depo_platform/change_requests.py', 'backend/agentic_service/bridge_change.py', 'backend/data_product_service/product_change.py', 'backend/data_pipeline_service/publication_change.py', 'backend/ontology_service/publication_change.py',
+  'backend/oslc_service/change_commands.py', 'backend/oslc_service/change_dossier.py',
+  'frontend/src/Components/NativeChangeActions.js', 'frontend/src/Components/ChangeDossier.js',
   'backend/depo_platform/vocabulary_labels.py',
   'backend/ontology_service/resources/foundation/dinen61360-2.0.4.ttl',
   'backend/ontology_service/resources/foundation/DINEN61360-LICENSE.txt',
   'frontend/checkDependencies.mjs', 'frontend/src/app/performanceProbe.js',
+  'frontend/src/utils/acquisitionReceipt.js', 'frontend/src/Components/DataSources.css', 'frontend/src/Components/OslcSourcesPanel.js',
   'backend/depo_platform/service_log_stream.py', 'frontend/src/app/useRouteView.js',
   'infra/postgres/migrations/017_speed_event_pagination.sql', 'backend/data_pipeline_service/connector_semantics.py', 'frontend/src/Components/EventReviewPanel.js',
   'Setup-DEPO.cmd', 'infra/windows/setup-depo.ps1', 'infra/windows/install-checkpoints.ps1',
@@ -52,6 +83,20 @@ $requiredFiles = @(
 )
 foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
+}
+
+# Customer ZIPs contain the verified worker. Source checkouts must build it first.
+$reasonerRoot = Join-Path $root 'backend/ontology_service/resources/reasoner'
+$reasoner = Get-Content -LiteralPath (Join-Path $reasonerRoot 'manifest.json') -Raw | ConvertFrom-Json
+function Get-DepoPackageHash([string]$Path) {
+  $algorithm = [Security.Cryptography.SHA256]::Create()
+  $stream = [IO.File]::OpenRead($Path)
+  try { return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-','').ToLowerInvariant() }
+  finally { $stream.Dispose(); $algorithm.Dispose() }
+}
+if ((Get-DepoPackageHash (Join-Path $reasonerRoot 'depo-owl-dl.jar')) -ne $reasoner.sha256 -or
+    (Get-DepoPackageHash (Join-Path $root 'infra/reasoner/src/main/java/org/depo/reasoner/Main.java')) -ne $reasoner.source_sha256) {
+  throw 'OWL-DL worker or source digest mismatch. Restore the complete matching customer ZIP, or build infra/reasoner/build.ps1 before packaging. No application shutdown or migration is allowed for a mixed release.'
 }
 
 $ap242Pack = Get-Content -LiteralPath (Join-Path $root 'data/ceim/mapping-packs/ap242.json') -Raw | ConvertFrom-Json

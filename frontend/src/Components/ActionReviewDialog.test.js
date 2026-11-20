@@ -25,5 +25,9 @@ test('pending submission blocks duplicates and accepted result retains original 
  expect(submit).toHaveBeenCalledOnce();expect(screen.getByRole('button',{name:'Submitting…'})).toBeDisabled();
  finish({label:'Request accepted',message:'Inspect retained state',runId:'result-run'});
  await waitFor(()=>expect(screen.getByText('Request accepted')).toBeVisible());
- expect(screen.getByText('original-run')).toBeVisible();expect(screen.getByText('result-run')).toBeVisible();
+ expect(screen.getByText('original-run')).toBeVisible();expect(screen.getByText('result-run')).not.toBeVisible();fireEvent.click(screen.getByText('Technical reference'));expect(screen.getByText('result-run')).toBeVisible();
+});
+
+test('opening an accepted run closes its review',async()=>{
+ const close=vi.fn(),submit=vi.fn().mockResolvedValue({href:'#/data-flow?view=runs&run_id=new-run'});render(<ActionReviewDialog action={action} onClose={close} onConfirm={submit}/>);fireEvent.click(screen.getByRole('button',{name:'Confirm cancel workflow'}));const link=await screen.findByRole('link',{name:'Open resulting run'});expect(link).toHaveAttribute('href','#/data-flow?view=runs&run_id=new-run');fireEvent.click(link);expect(close).toHaveBeenCalledOnce();expect(submit).toHaveBeenCalledOnce();
 });

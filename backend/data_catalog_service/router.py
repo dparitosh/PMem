@@ -67,6 +67,14 @@ def product(product_id: str) -> dict:
     return {"product_id": product_id, "latest_version": latest, "versions": [public_record(value) for value in sorted(versions, key=lambda value: (str(value.get('updated_at') or ''), str(value.get('version') or '')), reverse=True)]}
 
 
+@router.get('/products/{product_id}/versions/{version}',dependencies=[Depends(graph_read_identity)],summary='Read one exact governed catalog version')
+def product_version(product_id: str,version: str) -> dict:
+    value=store.get(f'{product_id}:{version}')
+    if not value or value.get('product_id')!=product_id or value.get('version')!=version:
+        raise HTTPException(404,'Governed product version was not found')
+    return public_record(value)
+
+
 @router.put("/products/{product_id}/versions/{version}")
 @ontology_writer
 def register(product_id: str, version: str, payload: ProductMetadataBody, request: Request = None, x_depo_service_token: str | None = Header(default=None)) -> dict:

@@ -145,6 +145,18 @@ async def post_cloud_chat(client, provider, body):
     budget = operation.timeout(ollama_timeout()) if operation else ollama_timeout()
     async with asyncio.timeout(budget), request_slot(endpoint), client.stream('POST', endpoint,
             headers={'Authorization': 'Bearer ' + settings.api_key}, json=payload) as response:
+        if response.is_error:
+            from backend.agentic_service.response_limits import read_bounded_response
+            import logging
+            from backend.agentic_service.prompt_security import protect
+            raw = await read_bounded_response(response)
+            try:
+                failure = json.loads(raw).get('error', {})
+                logging.getLogger(__name__).warning('Model request rejected: status=%s code=%s param=%s message=%s',
+                    response.status_code, protect(str(failure.get('code', '')))[:120],
+                    protect(str(failure.get('param', '')))[:120], protect(str(failure.get('message', '')))[:600])
+            except (ValueError, AttributeError):
+                logging.getLogger(__name__).warning('Model request rejected: status=%s', response.status_code)
         response.raise_for_status()
         from backend.agentic_service.response_limits import read_bounded_response
         result = json.loads(await read_bounded_response(response))

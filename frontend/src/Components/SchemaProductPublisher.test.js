@@ -11,102 +11,68 @@ vi.mock('../services/analyticsProductDraft', () => ({ publicationFromDraft: () =
 vi.mock('@siemens/ix-react', () => ({ IxButton: ({ children, ...props }) => <button {...props}>{children}</button> }));
 beforeEach(() => { sessionStorage.clear(); recovery.scope = 'deployment-a'; });
 
-test('session expiry preserves an uncertain publication until reconnection', async () => {
-  apiClient.post.mockReset();
-  apiClient.post.mockImplementation(async url => {
-    if (url.endsWith('/preview')) return { data: { valid: true } };
-    throw new Error('Lost response');
-  });
-  render(<SchemaProductPublisher draft={{ name: 'Pending' }} />);
-  fireEvent.click(screen.getByText('Validate publication contract'));
-  await waitFor(() => expect(screen.getByText('Approve and publish evidence')).toBeEnabled());
-  fireEvent.click(screen.getByText('Approve and publish evidence'));
-  await screen.findByText('Lost response');
-  const original = apiClient.post.mock.calls.find(([url]) => url.endsWith('/publish'))[1];
-  fireEvent(window, new Event('depo:session-expired'));
-  expect(sessionStorage.length).toBe(1);
-  fireEvent.click(screen.getByText('Retry same publication'));
-  await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
-  expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1]).toEqual(original);
-});
 
-test('successful publication releases fields and allows the next draft', async () => {
-  apiClient.post.mockReset();
-  apiClient.post.mockImplementation(async url => ({ data: url.endsWith('/preview') ? { valid: true } : { product_id: 'a', version: '1.0.0', status: 'published' } }));
-  const view = render(<SchemaProductPublisher draft={{ name: 'First' }} />);
-  fireEvent.click(screen.getByText('Validate publication contract'));
-  await waitFor(() => expect(screen.getByText('Approve and publish evidence')).toBeEnabled());
-  fireEvent.click(screen.getByText('Approve and publish evidence'));
-  await screen.findByText(/a@1.0.0: published/);
-  view.rerender(<SchemaProductPublisher draft={{ name: 'Second' }} />);
-  await waitFor(() => expect(screen.getByLabelText('Product name')).toHaveValue('Second'));
-  expect(screen.getByLabelText('Product name')).toBeEnabled();
-});
-
-test('uncertain publication survives unmount with the same payload', async () => {
-  apiClient.post.mockReset();
-  apiClient.post.mockImplementation(async url => {
-    if (url.endsWith('/preview')) return { data: { valid: true } };
-    throw new Error('Network interruption');
-  });
-  const draft = { name: 'Recoverable draft' };
-  const view = render(<SchemaProductPublisher draft={draft} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Validate publication contract' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Approve and publish evidence' })).toBeEnabled());
-  fireEvent.click(screen.getByRole('button', { name: 'Approve and publish evidence' }));
-  await screen.findByText('Network interruption');
-  const original = apiClient.post.mock.calls.find(([url]) => url.endsWith('/publish'))[1];
-  view.unmount();
-  render(<SchemaProductPublisher draft={draft} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Retry same publication' }));
-  await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
-  expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1]).toEqual(original);
-});
-
-test('a different deployment cannot recover an old publication', () => {
-  const draft = { name: 'Shared draft' };
-  sessionStorage.setItem(`depo:pending-publication:${JSON.stringify(['deployment-a', draft])}`,
-    JSON.stringify({ scope: 'deployment-a', payload: { product_id: 'a' }, draft, fields: { name: 'Old publication' } }));
-  recovery.scope = 'deployment-b';
-  render(<SchemaProductPublisher draft={draft} />);
-  expect(screen.queryByRole('button', { name: 'Retry same publication' })).toBeNull();
-  expect(screen.getByLabelText('Product name')).toHaveValue('Shared draft');
-});
-
-for (const change of ['root', 'dependencies', 'paths']) {
-  test(`changing ${change} prevents publication of the previously inspected draft`, async () => {
-    apiClient.post.mockImplementation(async url => ({ data: url.endsWith('/inspect') ? { data_product_draft: { name: 'A', analytics_readiness: 'review' } } : { valid: true } }));
-    render(<SchemaProductPublisher draft={{ name: 'Existing' }} />);
-    fireEvent.click(screen.getByText('Inspect an XSD with dependency files'));
-    fireEvent.change(screen.getByLabelText('Root XSD'), { target: { files: [new File(['a'], 'a.xsd')] } });
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect schema set' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Validate publication contract' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Validate publication contract' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Approve and publish evidence' })).toBeEnabled());
-    if (change === 'root') fireEvent.change(screen.getByLabelText('Root XSD'), { target: { files: [new File(['b'], 'b.xsd')] } });
-    if (change === 'dependencies') fireEvent.change(screen.getByLabelText('Dependency XSD files'), { target: { files: [new File(['b'], 'b.xsd')] } });
-    if (change === 'paths') fireEvent.change(screen.getByLabelText(/Relative paths/), { target: { value: 'types/b.xsd' } });
-    expect(screen.queryByRole('button', { name: 'Approve and publish evidence' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Inspect the schema set again/)).toBeVisible();
-  });
+const draft={name:'Retained evidence'};
+function retainPending(value=draft){
+ const payload={product_id:'a',version:'1.0.0',idempotency_key:'retained-original'};
+ sessionStorage.setItem(`depo:pending-publication:${JSON.stringify(['deployment-a',value])}`,JSON.stringify({scope:'deployment-a',payload,draft:value,fields:{name:value.name}}));
+ return payload;
 }
-
-test('an uncertain publication retains its original payload across draft refreshes', async () => {
-  apiClient.post.mockReset();
-  apiClient.post.mockImplementation(async url => {
-    if (url.endsWith('/preview')) return {data:{valid:true}};
-    throw Object.assign(new Error('Network interruption'), {code:'ERR_NETWORK'});
-  });
-  const view = render(<SchemaProductPublisher draft={{name:'Original draft'}} />);
-  fireEvent.click(screen.getByRole('button', {name:'Validate publication contract'}));
-  await waitFor(() => expect(screen.getByRole('button', {name:'Approve and publish evidence'})).toBeEnabled());
-  fireEvent.click(screen.getByRole('button', {name:'Approve and publish evidence'}));
-  await screen.findByText(/Publication outcome may be uncertain/);
-  const original = apiClient.post.mock.calls.find(([url]) => url.endsWith('/publish'))[1];
-  view.rerender(<SchemaProductPublisher draft={{name:'Refreshed draft'}} />);
-  fireEvent.click(screen.getByRole('button', {name:'Retry same publication'}));
-  await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
-  const retry = apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1];
-  expect(retry).toBe(original);
-  expect(screen.getByLabelText('Product name')).toHaveValue('Original draft');
+test('new publication has one CR/CO submission route and no manual approver',async()=>{
+ apiClient.post.mockResolvedValue({data:{valid:true}});render(<SchemaProductPublisher draft={draft}/>);
+ expect(screen.queryByLabelText('Approver')).not.toBeInTheDocument();
+ expect(screen.queryByText('Approve and publish evidence')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByText('Validate publication contract'));
+ await screen.findByText('Contract valid. Steward approval is still required.');
+ expect(screen.queryByText('Retry same publication')).not.toBeInTheDocument();
+ expect(apiClient.post.mock.calls.every(([url])=>!url.endsWith('/publish'))).toBe(true);
+});
+for(const lost of [false,true])test(`central release submission retains scope, lost response: ${lost}`,async()=>{
+ apiClient.post.mockReset();apiClient.post.mockImplementation(async url=>{
+  if(url.endsWith('/preview'))return {data:{valid:true}};
+  if(lost)throw new Error('Connection interrupted');
+  return {data:{product_version:'a:undefined'}};
+ });
+ const published=vi.fn();render(<SchemaProductPublisher draft={draft} onPublished={published}/>);
+ fireEvent.click(screen.getByText('Validate publication contract'));await screen.findByText('Contract valid. Steward approval is still required.');
+ fireEvent.change(screen.getByLabelText('Business reason for release review'),{target:{value:'Reviewed retained artifacts'}});
+ fireEvent.click(screen.getByText('Submit release for review'));
+ await screen.findByRole('link',{name:'Inspect release request in Change Control'});
+ expect(apiClient.post.mock.calls.some(([url])=>url.endsWith('/change-requests/submit'))).toBe(true);
+ expect(apiClient.post.mock.calls.some(([url])=>url.endsWith('/publish'))).toBe(false);
+ expect(published).not.toHaveBeenCalled();expect(screen.getByLabelText('Product name')).toBeDisabled();
+});
+for(const refresh of ['session','unmount','draft'])test(`legacy uncertain outcome preserves exact payload across ${refresh}`,async()=>{
+ const payload=retainPending();apiClient.post.mockReset();apiClient.post.mockRejectedValue(new Error('Lost response'));
+ let view=render(<SchemaProductPublisher draft={draft}/>);
+ fireEvent.click(await screen.findByText('Retry same publication'));await screen.findByText('Lost response');
+ if(refresh==='session')fireEvent(window,new Event('depo:session-expired'));
+ if(refresh==='unmount'){view.unmount();view=render(<SchemaProductPublisher draft={draft}/>);}
+ if(refresh==='draft')view.rerender(<SchemaProductPublisher draft={{name:'Changed draft'}}/>);
+ fireEvent.click(await screen.findByText('Retry same publication'));
+ await waitFor(()=>expect(apiClient.post).toHaveBeenCalledTimes(2));
+ expect(apiClient.post.mock.calls.map(call=>call[1])).toEqual([payload,payload]);
+ expect(screen.getByLabelText('Product name')).toHaveValue(draft.name);
+});
+test('successful legacy reconciliation clears its receipt and never enables a new direct publication',async()=>{
+ retainPending();apiClient.post.mockReset();apiClient.post.mockResolvedValue({data:{product_id:'a',version:'1.0.0',status:'published'}});
+ const view=render(<SchemaProductPublisher draft={draft}/>);fireEvent.click(await screen.findByText('Retry same publication'));
+ await screen.findByText(/a@1.0.0: published/);expect(sessionStorage.length).toBe(0);
+ view.rerender(<SchemaProductPublisher draft={{name:'Next'}}/>);
+ expect(screen.getByLabelText('Product name')).toHaveValue('Next');expect(screen.queryByText('Retry same publication')).not.toBeInTheDocument();
+});
+test('another deployment cannot recover a retained publication',()=>{
+ retainPending();recovery.scope='deployment-b';render(<SchemaProductPublisher draft={draft}/>);
+ expect(screen.queryByText('Retry same publication')).not.toBeInTheDocument();
+});
+for(const change of ['root','dependencies','paths'])test(`changing ${change} invalidates previously inspected evidence`,async()=>{
+ apiClient.post.mockReset();apiClient.post.mockImplementation(async url=>({data:url.endsWith('/inspect')?{data_product_draft:{name:'A'}}:{valid:true}}));
+ render(<SchemaProductPublisher draft={draft}/>);fireEvent.click(screen.getByText('Inspect an XSD with dependency files'));
+ fireEvent.change(screen.getByLabelText('Root XSD'),{target:{files:[new File(['a'],'a.xsd')]}});
+ fireEvent.click(screen.getByText('Inspect schema set'));await screen.findByLabelText('Product name');
+ fireEvent.click(screen.getByText('Validate publication contract'));await screen.findByText('Contract valid. Steward approval is still required.');
+ if(change==='root')fireEvent.change(screen.getByLabelText('Root XSD'),{target:{files:[new File(['b'],'b.xsd')]}});
+ if(change==='dependencies')fireEvent.change(screen.getByLabelText('Dependency XSD files'),{target:{files:[new File(['b'],'b.xsd')]}});
+ if(change==='paths')fireEvent.change(screen.getByLabelText(/Relative paths/),{target:{value:'types/b.xsd'}});
+ expect(screen.queryByText('Validate publication contract')).not.toBeInTheDocument();expect(screen.getByText(/Inspect the schema set again/)).toBeVisible();
 });

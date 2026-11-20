@@ -93,3 +93,53 @@ def test_connector_submission_uses_separate_registry_and_recovers_same_run(setup
  assert queue.call_count==1
  with pytest.raises(HTTPException) as failure:submissions.retained('connector-one','another',receipt_store=receipts)
  assert failure.value.status_code==409
+
+@pytest.mark.parametrize('field,value', [
+    ('run_id', 'another-run'), ('executed_by', 'another-user'),
+    ('source_system', 'another-source'), ('job_id', 'another-job'),
+    ('job_version', '2.0.0'), ('status', None),
+])
+def test_status_and_retry_reject_inconsistent_retained_run(setup, field, value):
+    definition, runs, queue = setup
+    first = send(definition)
+    run_id = first['run']['run_id']
+    runs[run_id][field] = value
+    for operation in (lambda: submissions.retained('one', 'tester'), lambda: send(definition)):
+        with pytest.raises(HTTPException) as failure:
+            operation()
+        assert failure.value.status_code == 409
+        assert 'does not match' in failure.value.detail
+    assert queue.call_count == 1
+
+
+@pytest.mark.parametrize('receipt', [{}, {'run_id':'saved'}, {'intent':None,'run_id':'saved'},
+    {'intent':{'actor':'tester','source_id':'parts','job_id':'fetch','version':'1.0.0'}}])
+def test_malformed_receipt_fails_without_enqueue(setup, receipt):
+    import hashlib
+    definition, runs, queue = setup
+    submissions.store.put('request:' + hashlib.sha256(b'one').hexdigest(), receipt)
+    for operation in (lambda: submissions.retained('one', 'tester'), lambda: send(definition)):
+        with pytest.raises(HTTPException) as failure:
+            operation()
+        assert failure.value.status_code == 409
+    assert queue.call_count == 0
+
+
+def test_missing_run_receipt_remains_read_only_pending(setup):
+    definition, runs, queue = setup
+    first = send(definition)
+    runs.pop(first['run']['run_id'])
+    assert submissions.retained('one','tester') == {'status':'pending_enqueue','submission_id':'one'}
+    assert queue.call_count == 1
+
+@pytest.mark.parametrize('bad_run', [{}, {'run_id':'foreign','status':'completed'}])
+def test_inconsistent_shared_intent_cannot_allocate_another_request(setup, bad_run):
+    import hashlib
+    definition, runs, queue = setup
+    first = send(definition)
+    runs[first['run']['run_id']] = bad_run
+    with pytest.raises(HTTPException) as failure:
+        send(definition, 'another-tab')
+    assert failure.value.status_code == 409
+    assert submissions.store.get('request:' + hashlib.sha256(b'another-tab').hexdigest()) is None
+    assert queue.call_count == 1

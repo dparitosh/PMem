@@ -16,9 +16,7 @@ import { withApiRequestId } from "../../utils/apiErrorMessage";
 import { combineXsdFiles } from "../../Components/xsdFolderBundle";
 import XsdDependencies, { appendXsdDependencies } from "../../Components/XsdDependencies";
 import { fileSha256 } from "../../utils/fileDigest";
-import SemanticBridgeJobs from "../../Components/ontology/SemanticBridgeJobs";
 import { API_METHODS, apiClient, dataPipelineAPI, getClientSessionId, setClientSessionId } from "../../services/apiClient";
-import { downloadArtifact } from "../../services/artifactDownload";
 import { serviceAuthHeaders, getCredentialProfile } from "../../services/serviceAuth";
 import { useOntologies } from "../../contexts/OntologyContext";
 import { API, buildUrl, buildSemanticServiceUrl, replaceParams } from "../../config";
@@ -34,35 +32,22 @@ import {
   resolveWorkflow,
   supportedFormats,
   workflowCatalog,
+  ingestionFamilyIds,
+  workflowFamilyId,
+  activityWorkspaceLink,
 } from "../../workflows/workflowEngine";
 import { requireRunManifest, governedRunStatus, pipelineRunLink } from "../../workflows/runTracking";
 import useMountedRef from "../../hooks/useMountedRef";
 import useImportTaskTracking from "./hooks/useImportTaskTracking";
 import ImportLoadReview from "./ImportLoadReview";
-import { importJobState, getFileExtensionFromName, getWorkflowNote, isOntologySourceFile, isResumablePersistedJob, isTerminalPipelineStatus, requiresOntologyMetadataCapture, serializeFileForPersistence } from "../../workflows/importPresentation";
+import { selectSourceWorkflow, governedSourceProfile, importJobState, getFileExtensionFromName, getWorkflowNote, isOntologySourceFile, isResumablePersistedJob, isTerminalPipelineStatus, requiresOntologyMetadataCapture, serializeFileForPersistence } from "../../workflows/importPresentation";
 import { UI_COLORS as C } from "../../styles/uiTokens";
 
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
-const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'architecture.archimate', 'document.unstructured', 'instance.link']);
+const PRIMARY_WORKFLOW_IDS = new Set(ingestionFamilyIds);
 
-function governedSourceProfile(filename) {
-  const extension = getFileExtensionFromName(filename).toLowerCase();
-  const profiles = {
-    '.stp': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
-    '.step': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
-    '.stpx': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
-    '.reqif': { profile: 'reqif', sourceSystem: 'Requirements management' },
-    '.reqifz': { profile: 'reqif', sourceSystem: 'Requirements management' },
-    '.xmi': { profile: 'sysml-v1', sourceSystem: 'MBSE' },
-    '.mdxml': { profile: 'sysml-v1', sourceSystem: 'MBSE' },
-    '.qif': { profile: 'qif', sourceSystem: 'Quality management' },
-    '.plmxml': { profile: 'plmxml', sourceSystem: 'PLM' },
-  };
-  return profiles[extension] || null;
-}
-
-export default function ImportWorkspace() {
+export default function ImportWorkspace({initialWorkflow=null}) {
   const [files, setFiles] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState({});
   const [error, setError] = useState(null);
@@ -79,17 +64,15 @@ export default function ImportWorkspace() {
   const [xsdDependencies, setXsdDependencies] = useState([]);
   const [xsdDependencyPaths, setXsdDependencyPaths] = useState('');
   const [dependencyTarget, setDependencyTarget] = useState(null);
-  const [commitApprover, setCommitApprover] = useState('');
   const fileInputRef = useRef(null);
-  const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
-  const [showAdvancedWorkflows, setShowAdvancedWorkflows] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(initialWorkflow||'instance.import');
+  const [ontologySourceFormat,setOntologySourceFormat]=useState('auto');
+  const [instanceSourceProfile,setInstanceSourceProfile]=useState('auto');
+  const isOntologyInput=name=>isOntologySourceFile(name)||(selectedWorkflow==='ontology.create'&&ontologySourceFormat==='xmi'&&name.toLowerCase().endsWith('.xml'));
+  useEffect(()=>{if(initialWorkflow)setSelectedWorkflow(initialWorkflow);},[initialWorkflow]);
   const [ontologyUploadLimits, setOntologyUploadLimits] = useState({ max_file_bytes: 25 * 1024 * 1024, max_schema_set_bytes: 25 * 1024 * 1024 });
   const [workflowOptions, setWorkflowOptions] = useState(workflowCatalog);
-  const [workflowOntologyId, setWorkflowOntologyId] = useState('');
-  const [workflowTargetOntologyId, setWorkflowTargetOntologyId] = useState('');
-  const [workflowSourceFileId, setWorkflowSourceFileId] = useState('');
-  const [workflowRun, setWorkflowRun] = useState(null);
-  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const workflowLoading = false;
 
   function normalizeOntologyOptions(ontologyList = []) {
     const allOntologies = ontologyList.map(ont => ({
@@ -142,7 +125,6 @@ export default function ImportWorkspace() {
   const xsdFolderBundlesRef = useRef(new WeakMap());
   const fileDigestsRef = useRef(new WeakMap());
   const fileSelectionGeneration = useRef(0);
-  const artifactWorkflowRequest = useRef(null);
   const isMountedRef = useMountedRef();
   const { pollPipelineProgress, clearPoller } = useImportTaskTracking({ isMountedRef, setPipelineStatus, setPreviewsByTask });
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
@@ -256,10 +238,8 @@ export default function ImportWorkspace() {
       fileSelectionGeneration.current+=1;
       ontologyLoadAbortRef.current?.abort();
       importRequestControllersRef.current.forEach(controller=>controller.abort());
-      artifactWorkflowRequest.current=null;
-      setWorkflowRun(null); setWorkflowLoading(false); setAvailableOntologies([]);
-      setWorkflowOntologyId(''); setWorkflowTargetOntologyId(''); setWorkflowSourceFileId('');
-      setPreviewsByTask({}); setConfirmingImport(null); setCommitApprover('');
+      setAvailableOntologies([]);
+      setPreviewsByTask({}); setConfirmingImport(null);
       window.localStorage.removeItem(IMPORT_ONTOLOGIES_CACHE_KEY);
       setOntologyCatalogState({loading:false,stale:true,source:'none',message:'Reconnect access to refresh ontology choices.',lastLoadedAt:null});
     };
@@ -337,7 +317,6 @@ export default function ImportWorkspace() {
       setFiles([]);
       setPipelineStatus({});
       setStartedFiles(new Set());
-      setWorkflowRun(null);
       loadOntologyOptions({ forceLive: true });
     };
     window.addEventListener('dt-schema-cleaned', resetProjection);
@@ -359,28 +338,9 @@ export default function ImportWorkspace() {
   }, [files, startedFiles, pendingFileForMetadata]);
 
   useEffect(() => {
-    if (selectedWorkflow !== 'ontology.merge' && workflowTargetOntologyId) {
-      setWorkflowTargetOntologyId('');
-      return;
-    }
-    if (selectedWorkflow === 'ontology.merge' && workflowTargetOntologyId && workflowTargetOntologyId === workflowOntologyId) {
-      setWorkflowTargetOntologyId('');
-    }
-  }, [selectedWorkflow, workflowOntologyId, workflowTargetOntologyId]);
-
-  useEffect(() => {
-    if (selectedWorkflow !== 'instance.link' && workflowSourceFileId) {
-      setWorkflowSourceFileId('');
-    }
-  }, [selectedWorkflow, workflowSourceFileId]);
-
-  useEffect(() => {
     fileSelectionGeneration.current += 1;
-    artifactWorkflowRequest.current?.abort();
-    setWorkflowRun(null);
-    setWorkflowLoading(false);
     return () => { fileSelectionGeneration.current += 1; };
-  }, [selectedWorkflow, workflowOntologyId, workflowTargetOntologyId, workflowSourceFileId]);
+  }, [selectedWorkflow]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -398,7 +358,7 @@ export default function ImportWorkspace() {
     const selected = Array.from(e.target.files || []);
     e.target.value = '';
     if (!selected.length) return;
-    const oversized = selected.find(file => isOntologySourceFile(file.name) && file.size > ontologyUploadLimits.max_file_bytes);
+    const oversized = selected.find(file => isOntologyInput(file.name) && file.size > ontologyUploadLimits.max_file_bytes);
     if (oversized) { setError(`Ontology file exceeds ${ontologyUploadLimits.max_file_bytes} bytes: ${oversized.name}`); return; }
     if (selected.every(file => file.name.toLowerCase().endsWith('.xsd')) && selected.reduce((total, file) => total + file.size, 0) > ontologyUploadLimits.max_schema_set_bytes) {
       setError(`Schema set exceeds ${ontologyUploadLimits.max_schema_set_bytes} bytes`); return;
@@ -419,6 +379,7 @@ export default function ImportWorkspace() {
       sourceDigest: fileDigestsRef.current.get(file),
       schemaSetSources: (xsdFolderBundlesRef.current.get(file)?.sources || []).map(source => source.name),
       workflowId: 'ontology.create',
+      sourceFormat:ontologySourceFormat==='xmi'&&file.name.toLowerCase().endsWith('.xml')?'xmi':undefined,
       createdAt: new Date().toLocaleTimeString(),
       pendingMetadata: true,
       description: '',
@@ -457,6 +418,7 @@ export default function ImportWorkspace() {
       fileObj: file,
       sourceDigest: fileDigestsRef.current.get(file),
       workflowId,
+      sourceProfile: instanceSourceProfile,
       createdAt: new Date().toLocaleTimeString()
     }));
 
@@ -495,13 +457,13 @@ export default function ImportWorkspace() {
     }
 
     const MAX_SIZE = 500 * 1024 * 1024;
-    const oversized = newFiles.filter(f => f.size > (isOntologySourceFile(f.name) ? ontologyUploadLimits.max_file_bytes : MAX_SIZE));
+    const oversized = newFiles.filter(f => f.size > (isOntologyInput(f.name) ? ontologyUploadLimits.max_file_bytes : MAX_SIZE));
     if (oversized.length > 0) {
       setError(`File exceeds the supported upload limit: ${oversized.map(f => f.name).join(', ')}`);
       return;
     }
 
-    const ontologyFiles = newFiles.filter((file) => isOntologySourceFile(file.name));
+    const ontologyFiles = newFiles.filter((file) => isOntologyInput(file.name));
     const documentFiles = newFiles.filter((file) => inferFileTypeFromExtension(file.name) === 'document');
     const isArchimateWorkflowFile = (file) => (
       inferFileTypeFromExtension(file.name) === 'archimate'
@@ -509,7 +471,7 @@ export default function ImportWorkspace() {
     );
     const archimateFiles = newFiles.filter(isArchimateWorkflowFile);
     const instanceFiles = newFiles.filter((file) => (
-      !isOntologySourceFile(file.name)
+      !isOntologyInput(file.name)
       && !isArchimateWorkflowFile(file)
       && inferFileTypeFromExtension(file.name) !== 'document'
     ));
@@ -563,7 +525,7 @@ export default function ImportWorkspace() {
 
     if (effectiveWorkflow === 'document.unstructured') {
       if (ontologyFiles.length > 0 || instanceFiles.length > 0 || archimateFiles.length > 0) {
-        setError(`Unstructured document pipeline only accepts PDF, Word, PowerPoint, Text, Markdown, or HTML files. Remove: ${[...ontologyFiles, ...instanceFiles, ...archimateFiles].map((file) => file.name).join(', ')}`);
+        setError(`Document processing workflow only accepts PDF, Word, PowerPoint, Text, Markdown, or HTML files. Remove: ${[...ontologyFiles, ...instanceFiles, ...archimateFiles].map((file) => file.name).join(', ')}`);
         return;
       }
       if (documentFiles.length === 0) {
@@ -980,7 +942,7 @@ export default function ImportWorkspace() {
     }
 
     const fileId = file.fileId;
-    const governedProfile = workflow?.id === 'instance.import' ? governedSourceProfile(file.name) : null;
+    const governedProfile = workflow?.id === 'instance.import' ? governedSourceProfile(file.name, file.sourceProfile) : null;
     const uploadToken = (governedProfile ? executionToken : ingestionWriteToken).trim() || getCredentialProfile(governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN');
     if (!uploadToken) {
       setError(`Enter ${governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN'} in Admin / Service credentials before starting.`);
@@ -996,6 +958,10 @@ export default function ImportWorkspace() {
       // durable run id for Data Flow. Schema/unprofiled files continue through
       // the existing tracked workflow, where an explicit profile is required.
       if (governedProfile) {
+        const standard=governedProfile.profile==='ap242-step-mbd'?'ap242':governedProfile.profile;
+        const definitions=await dataPipelineAPI.definitions({timeout:15000});
+        const approved=selectSourceWorkflow(definitions.data?.definitions,standard);
+        formData.append('job_id',approved.job_id);formData.append('job_version',approved.version);
         formData.append('profile', governedProfile.profile);
         formData.append('source_system', governedProfile.sourceSystem);
         setStartedFiles(prev => new Set([...prev, fileId]));
@@ -1208,234 +1174,15 @@ export default function ImportWorkspace() {
     }
   };
 
-  const runSelectedWorkflow = async () => {
-    if (isImportWorkflow(selectedWorkflow)) {
-      startAllImports();
-      return;
-    }
-    if (workflowBlockReason) {
-      setError(workflowBlockReason);
-      return;
-    }
-
-    const selectedImportManifest = selectedImportArtifactEntry?.artifactManifest || null;
-    const payload = {
-      ontology_id: workflowOntologyId,
-      source_ontology_id: workflowOntologyId,
-      import_artifact_manifest: selectedImportManifest,
-      import_source_file_id: selectedImportArtifactEntry?.fileId || null,
-      apply_links: false,
-    };
-    if (selectedWorkflow === 'ontology.merge') {
-      payload.target_ontology_id = workflowTargetOntologyId;
-    }
-
-    const controller = new AbortController();
-    artifactWorkflowRequest.current?.abort();
-    artifactWorkflowRequest.current = controller;
-    importRequestControllersRef.current.add(controller);
-    setWorkflowLoading(true);
-    setWorkflowRun(null);
-    setError(null);
+  const commitImport = async taskId => {
+    const token=getCredentialProfile('INGESTION_WRITE_TOKEN');
+    if(!token){setError('Connect import approval access in Admin.');return;}
     try {
-      const response = await API_METHODS.workflow.execute(selectedWorkflow, payload, { signal: controller.signal });
-      if (controller.signal.aborted || !isMountedRef.current) return;
-      setWorkflowRun(response.data || response);
-    } catch (err) {
-      if (controller.signal.aborted || !isMountedRef.current) return;
-      const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
-    } finally {
-      importRequestControllersRef.current.delete(controller);
-      if (artifactWorkflowRequest.current === controller && !controller.signal.aborted && isMountedRef.current) setWorkflowLoading(false);
-    }
-  };
-
-  const runNeo4jOntologyMerge = async () => {
-    if (!workflowOntologyId || !workflowTargetOntologyId || workflowOntologyId === workflowTargetOntologyId) {
-      setError('Select two different ontologies before reviewing a merge.');
-      return;
-    }
-    window.location.hash = `/ontology?target=${encodeURIComponent(workflowTargetOntologyId)}&merge_source=${encodeURIComponent(workflowOntologyId)}&view=alignment&mode=merge`;
-  };
-  const commitImport = async (taskId) => {
-    if (getCredentialProfile('INGESTION_WRITE_TOKEN') && !commitApprover.trim()) {
-      setError('Enter an approver before loading to knowledge graph.');
-      return;
-    }
-    // ── Pre-commit check ────────────────────────────────────────────────────
-    // Show a quick checking state in the modal before closing it
-    try {
-      const checkRes = await apiClient.get(
-        buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })),
-        { timeout: 300000 }
-      );
-      const check = checkRes.data || {};
-      if (!check.ready) {
-        // Don't close the modal - show the blocking reason
-        const reason = check.reason || 'Pre-commit check failed.';
-        const neo4jOk = check.checks?.neo4j?.ok;
-        const taskOk  = check.checks?.task?.ok;
-        let msg = `Cannot commit: ${reason}`;
-        if (!neo4jOk) msg += '\n\nThe knowledge graph is unreachable - check the service connection.';
-        if (!taskOk)  msg += `\n\nTask state: ${check.checks?.task?.status}`;
-        setError(msg);
-        return; // abort - modal stays open
-      }
-      // All checks passed - show row count in a brief toast before proceeding
-      const rowCount = check.checks?.task?.rows;
-      if (rowCount) setError(null); // clear any prior errors
-    } catch (checkErr) {
-      // If the pre-check itself fails, block the commit so we do not load blindly.
-      console.warn('[pre-commit] check failed:', checkErr.message);
-      setPreCheck({
-        loading: false,
-        ready: false,
-        checks: { neo4j: { ok: false }, task: { ok: false } },
-        reason: checkErr.message || 'Pre-commit check failed.',
-      });
-      return;
-    }
-
-    // Close the review modal immediately - don't make the user wait 2-3 min
-    const approvalToken = getCredentialProfile('INGESTION_WRITE_TOKEN');
-    const approvedBy = commitApprover.trim();
-    setConfirmingImport(null);
-
-    // Mark as "loading to knowledge graph" in the file card right away
-    setPipelineStatus(prev => {
-      const updated = { ...prev };
-      for (const [fid, status] of Object.entries(updated)) {
-        if (status.taskId === taskId) {
-          updated[fid] = {
-            ...status,
-            committing: true,
-            progress: 80,
-            commitPhase: 'queued',
-            message: 'Queued for knowledge graph commit. You can stay on this page while batches continue.',
-            lastUpdatedAt: new Date().toISOString(),
-          };
-        }
-      }
-      return updated;
-    });
-
-    // Run the actual commit in background - UI stays responsive
-    const commitUrl = buildUrl(replaceParams(API.import.commit, { task_id: taskId }));
-    const commitTimeoutMs = getImportTimeoutMs();
-    const fileId = Object.entries(pipelineStatus).find(([, status]) => status.taskId === taskId)?.[0] || taskId;
-    const activeSessionId = getClientSessionId();
-    const commitController = new AbortController();
-    const commitTimeout = window.setTimeout(() => commitController.abort(), commitTimeoutMs);
-    importRequestControllersRef.current.add(commitController);
-    fetch(commitUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...serviceAuthHeaders(),
-        ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
-        ...(approvalToken ? { Authorization: `Bearer ${approvalToken}` } : {}),
-      },
-      body: JSON.stringify({
-        ...(approvalToken ? { approved_by: approvedBy, approval_token: approvalToken } : {}),
-      }),
-      signal: commitController.signal,
-    })
-      .then(async commitRes => {
-        const returnedSessionId = commitRes.headers.get('x-session-id');
-        if (returnedSessionId) setClientSessionId(returnedSessionId);
-        if (!commitRes.ok) {
-          const errBody = await commitRes.json().catch(() => ({}));
-          const detail = errBody?.detail || errBody?.message || errBody?.error || commitRes.statusText;
-          throw new Error(detail);
-        }
-        const commitData = await commitRes.json().catch(() => ({}));
-        const commitResult = commitData.result || {};
-        if (commitData.queued) {
-          setPipelineStatus(prev => {
-            const updated = { ...prev };
-            for (const [fid, status] of Object.entries(updated)) {
-              if (status.taskId === taskId) {
-                updated[fid] = {
-                  ...status,
-                  committing: true,
-                  stage: 'load',
-                  backendStage: 'ingest',
-                  progress: Math.max(status.progress || 80, 80),
-                  commitPhase: 'queued',
-                  message: commitData.message || 'knowledge graph commit queued in background. The loader will keep polling until the write finishes.',
-                  lastUpdatedAt: new Date().toISOString(),
-                };
-              }
-            }
-            return updated;
-          });
-          await pollPipelineProgress(taskId, fileId);
-          return;
-        }
-        // Mark complete
-        setPipelineStatus(prev => {
-          const updated = { ...prev };
-          for (const [fid, status] of Object.entries(updated)) {
-            if (status.taskId === taskId) {
-              const entityCount =
-                commitResult.nodes_created ??
-                status.stats?.row_count ??
-                status.stats?.entities_found;
-              const relationshipCount =
-                commitResult.relationships_created ??
-                status.stats?.relationships_found;
-              updated[fid] = {
-                ...status,
-                stage: 'load',
-                backendStage: 'ingest',
-                progress: 100,
-                status: 'completed',
-                message: 'Import completed successfully',
-                committed: true,
-                committing: false,
-                commitPhase: 'complete',
-                completedAt: new Date().toLocaleTimeString(),
-                completedAtIso: new Date().toISOString(),
-                lastUpdatedAt: new Date().toISOString(),
-                stats: {
-                  ...status.stats,
-                  entities_found: entityCount,
-                  relationships_found: relationshipCount,
-                  instance_links_created: commitResult.instance_links_created,
-                  ontology_classes_matched: commitResult.ontology_classes_matched,
-                },
-              };
-            }
-          }
-          return updated;
-        });
-        setError(null);
-      })
-      .catch(err => {
-        if (commitController.signal.aborted || err?.name === 'AbortError') return;
-        // Mark as error in the file card
-        setPipelineStatus(prev => {
-          const updated = { ...prev };
-          for (const [fid, status] of Object.entries(updated)) {
-            if (status.taskId === taskId) {
-              updated[fid] = {
-                ...status,
-                committing: false,
-                commitPhase: 'error',
-                commitError: err.message,
-                lastUpdatedAt: new Date().toISOString(),
-              };
-            }
-          }
-          return updated;
-        });
-        setError(`Commit failed: ${err.message}`);
-      })
-      .finally(() => {
-        window.clearTimeout(commitTimeout);
-        importRequestControllersRef.current.delete(commitController);
-      });
+      const {data}=await apiClient.post(buildSemanticServiceUrl('ingestion',`/api/v1/import/${encodeURIComponent(taskId)}/change/submit`),{}, {headers:{Authorization:`Bearer ${token}`}});
+      if(data?.preview_id!==taskId||data.task_id!==taskId)throw new Error('Import request outcome is unverified. Inspect Change Control.');
+      setConfirmingImport(null);
+      window.location.hash=`#/change-control?source=import_changes&view=requests&record_source=import_changes&record=${encodeURIComponent(taskId)}`;
+    } catch(error) {setError(withApiRequestId('Import request was not confirmed. Retry to retrieve the same retained request.',error));}
   };
 
   const removeFile = (fileId) => {
@@ -1588,21 +1335,8 @@ export default function ImportWorkspace() {
     () => workflowOptions.find(w => w.id === selectedWorkflow) || workflowOptions[0] || resolveWorkflow(selectedWorkflow),
     [workflowOptions, selectedWorkflow]
   );
-  const groupedWorkflows = useMemo(() => {
-    const groups = new Map();
-    workflowOptions.forEach((workflow) => {
-      const groupName = workflow.category || 'Other';
-      if (!groups.has(groupName)) groups.set(groupName, []);
-      groups.get(groupName).push(workflow);
-    });
-    return Array.from(groups.entries()).map(([category, items]) => ({ category, items }));
-  }, [workflowOptions]);
   const primaryWorkflows = useMemo(
     () => workflowOptions.filter((workflow) => PRIMARY_WORKFLOW_IDS.has(workflow.id)),
-    [workflowOptions]
-  );
-  const advancedWorkflows = useMemo(
-    () => workflowOptions.filter((workflow) => !PRIMARY_WORKFLOW_IDS.has(workflow.id)),
     [workflowOptions]
   );
   const fallbackWorkflow = useMemo(
@@ -1620,7 +1354,7 @@ export default function ImportWorkspace() {
   const activePipelineStages = useMemo(
     () => buildWorkflowStages(fallbackWorkflow).map((stage, index) =>
       selectedWorkflow === 'instance.import' && index === 2
-        ? { ...stage, title: 'Review and approve load', label: 'Review and approve load', description: 'Review the parsed graph and supply an approver before loading to knowledge graph.' } : stage),
+        ? { ...stage, title: 'Review load', label: 'Review load', description: 'Review the retained load in Change Control.' } : stage),
     [fallbackWorkflow, selectedWorkflow]
   );
   const fileStatusIndex = useMemo(() => {
@@ -1655,81 +1389,23 @@ export default function ImportWorkspace() {
     () => files.filter(isRunnableUpload).length,
     [files, isRunnableUpload]
   );
-  const workflowRequiresOntology = !isImportWorkflow(selectedWorkflow);
-  const workflowRequiresTargetOntology = selectedWorkflow === 'ontology.merge';
-  const workflowRequiresImportArtifact = selectedWorkflow === 'instance.link';
-  const importArtifactCandidates = useMemo(
-    () => files
-      .map((file) => {
-        const status = fileStatusIndex.get(file.fileId) || {};
-        const artifactManifest = file.artifact_manifest || file.artifactManifest || file.manifest || status.artifact_manifest || null;
-        const isImportedInstance = (file.workflowId || selectedWorkflow) === 'instance.import';
-        const isCompletedArtifact = importJobState(status) === 'completed';
-        if (!artifactManifest || !isImportedInstance || !isCompletedArtifact) return null;
-        return {
-          fileId: file.fileId,
-          name: file.name,
-          label: `${file.name} (${status.completedAt || file.createdAt || 'available'})`,
-          artifactManifest,
-          status,
-        };
-      })
-      .filter(Boolean),
-    [fileStatusIndex, files, selectedWorkflow]
-  );
-  const selectedImportArtifactEntry = useMemo(
-    () => importArtifactCandidates.find((entry) => entry.fileId === workflowSourceFileId) || importArtifactCandidates[0] || null,
-    [importArtifactCandidates, workflowSourceFileId]
-  );
-  const workflowActionLabel = selectedWorkflow === 'ontology.merge'
-    ? 'Review merge plan'
-    : selectedWorkflow === 'instance.link'
-      ? 'Preview bridge'
-      : selectedWorkflow === 'ontology.create'
-        ? 'Register ontology'
-        : 'Run workflow';
   const workflowBlockReason = (() => {
     if (!canRunSelectedWorkflow) {
       return `${fallbackWorkflow.title} is not connected to backend services yet.`;
     }
     if (isImportWorkflow(selectedWorkflow)) {
       if (pendingFileCount === 0) {
-        const uncertain = files.find(file => pipelineStatus[file.fileId]?.outcomeUnknown);
+        const scopedFiles=files.filter(file=>(file.workflowId||'instance.import')===selectedWorkflow);
+        const uncertain = scopedFiles.find(file => pipelineStatus[file.fileId]?.outcomeUnknown);
         if (uncertain) return 'An earlier submission has an unverified outcome. Check its server status before retrying.';
-        const restored = files.find(file => file.persisted && !file.fileObj && !pipelineStatus[file.fileId]?.registered && ['pending', 'failed', undefined].includes(pipelineStatus[file.fileId]?.status));
+        const restored = scopedFiles.find(file => file.persisted && !file.fileObj && !pipelineStatus[file.fileId]?.registered && ['pending', 'failed', undefined].includes(pipelineStatus[file.fileId]?.status));
         if (restored) return 'Re-attach the original source file using its upload row. Refresh preserves history, not browser file attachments.';
-        const otherWorkflow = files.find(file => file.workflowId && file.workflowId !== selectedWorkflow && !pipelineStatus[file.fileId]?.registered);
-        if (otherWorkflow) return `This file belongs to ${getWorkflowDisplayName(otherWorkflow.workflowId)}. Switch to that workflow using the upload row.`;
         return 'Add at least one new file to start this workflow.';
       }
       return '';
     }
-    if (workflowRequiresImportArtifact && !selectedImportArtifactEntry) {
-      return 'Select one completed instance import artifact before running the bridge workflow.';
-    }
-    if (workflowRequiresOntology && !workflowOntologyId) {
-      return selectedWorkflow === 'ontology.merge' ? 'Select a source ontology.' : 'Select an ontology.';
-    }
-    if (workflowRequiresTargetOntology && !workflowTargetOntologyId) {
-      return 'Select a target ontology.';
-    }
-    if (workflowRequiresTargetOntology && workflowTargetOntologyId === workflowOntologyId) {
-      return 'Choose two different ontologies for merge.';
-    }
     return '';
   })();
-  useEffect(() => {
-    if (selectedWorkflow !== 'instance.link') return;
-    if (importArtifactCandidates.length === 0) {
-      if (workflowSourceFileId) setWorkflowSourceFileId('');
-      return;
-    }
-    const stillValid = importArtifactCandidates.some((entry) => entry.fileId === workflowSourceFileId);
-    if (!workflowSourceFileId || !stillValid) {
-      setWorkflowSourceFileId(importArtifactCandidates[0].fileId);
-    }
-  }, [importArtifactCandidates, selectedWorkflow, workflowSourceFileId]);
-
   const jobSummary = useMemo(() => files.reduce((summary, file) => {
     const state = importJobState(fileStatusIndex.get(file.fileId) || {}, startedFiles.has(file.fileId));
     summary[state] += 1;
@@ -1777,15 +1453,10 @@ export default function ImportWorkspace() {
     }
   }, [activePipelineStageIds, activePipelineStages, selectedStage]);
 
-  useEffect(() => {
-    if (!PRIMARY_WORKFLOW_IDS.has(selectedWorkflow)) {
-      setShowAdvancedWorkflows(true);
-    }
-  }, [selectedWorkflow]);
 
   return (
     <div className={selectedWorkflow === 'instance.link' ? 'import-link-page' : undefined} style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
-      {selectedWorkflow !== 'instance.link' && <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
+      {selectedWorkflow === 'ontology.create' && <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
         <legend>Workflow access</legend>
         <p>Manage and validate keys in <a href="#/admin">Admin / Service credentials</a> before starting uploads or jobs.</p>
         <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register XSD/XMI or OWL/RDF/TTL and request knowledge graph publication after review and approval</label>
@@ -1795,6 +1466,7 @@ export default function ImportWorkspace() {
       {showMetadataForm && (
         <OntologyMetadataForm
           publicationMode={publishOntology}
+          sourceFormat={files.find(file=>file.fileId===pendingMetadataFileId)?.sourceFormat}
           selectedFile={pendingFileForMetadata}
           onSubmit={handleMetadataSubmit}
           onCancel={() => {
@@ -1853,11 +1525,13 @@ export default function ImportWorkspace() {
           </span>
           {primaryWorkflows.map((workflow) => {
             const Icon = workflow.icon;
-            const isActive = workflow.id === selectedWorkflow;
-            const isRecommended = workflow.id === recommendedWorkflowId;
+            const isActive = isImportWorkflow(selectedWorkflow) && workflow.id === workflowFamilyId(activeWorkflow);
+            const isRecommended = workflow.id === workflowFamilyId(recommendedWorkflowId);
             return (
               <button
                 key={workflow.id}
+                aria-label={workflow.title}
+                aria-pressed={isActive}
                 type="button"
                 onClick={() => setSelectedWorkflow(workflow.id)}
                 style={{
@@ -1894,473 +1568,23 @@ export default function ImportWorkspace() {
               </button>
             );
           })}
-          {advancedWorkflows.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowAdvancedWorkflows((open) => !open)}
-              style={{
-                background: 'transparent',
-                border: `1px solid ${C.border}`,
-                borderRadius: '4px',
-                padding: '5px 8px',
-                fontSize: '12px',
-                fontWeight: '800',
-                color: C.textPrimary,
-                cursor: 'pointer',
-                minHeight: '30px',
-              }}
-            >
-              {showAdvancedWorkflows ? 'Hide advanced' : `Advanced (${advancedWorkflows.length})`}
-            </button>
-          )}
-        </div>
-        {showAdvancedWorkflows && (
-          <>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          flexWrap: 'wrap',
-        }}>
-          <label htmlFor="import-workflow-select" style={{
-            fontSize: '12px',
-            fontWeight: '700',
-            color: C.textPrimary,
-            whiteSpace: 'nowrap',
-          }}>
-            Advanced workflow
-          </label>
-          <select
-            id="import-workflow-select"
-            value={selectedWorkflow}
-            onChange={(e) => setSelectedWorkflow(e.target.value)}
-            style={{
-              minWidth: '220px',
-              flex: '1 1 260px',
-              maxWidth: '460px',
-              padding: '5px 8px',
-              fontSize: '12px',
-              border: `1px solid ${C.borderDark}`,
-              borderRadius: '4px',
-              background: C.bg,
-              color: C.textPrimary,
-            }}
-          >
-            {groupedWorkflows.map(group => (
-              <optgroup key={group.category} label={group.category}>
-                {group.items.map(option => (
-                  <option key={option.id} value={option.id}>
-                    {option.title}{option.id === recommendedWorkflowId ? ' - recommended' : ''}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          {(() => {
-            const Icon = fallbackWorkflow.icon;
-            return (
-              <div style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '6px',
-                background: C.primaryLight,
-                color: C.primaryText,
-                display: 'grid',
-                placeItems: 'center',
-                flex: '0 0 auto',
-              }}>
-                <Icon size={13} strokeWidth={2.4} />
-              </div>
-            );
-          })()}
-          <div style={{
-            fontSize: '12px',
-            color: C.textSec,
-            flex: '2 1 260px',
-            minWidth: '220px',
-            lineHeight: 1.35,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}>
-            {fallbackWorkflow.description} Prerequisite: {fallbackWorkflow.prerequisite}.
-          </div>
-          <span style={{
-            fontSize: '12px',
-            color: canRunSelectedWorkflow ? C.green : C.orange,
-            fontWeight: '700',
-            background: canRunSelectedWorkflow ? '#E8F5E9' : '#FFF8E1',
-            border: `1px solid ${canRunSelectedWorkflow ? '#B7E2BF' : '#FFE082'}`,
-            borderRadius: '4px',
-            padding: '4px 8px',
-            whiteSpace: 'nowrap',
-          }}>
-            {fallbackWorkflow.execution || (canRunSelectedWorkflow ? 'API connected' : 'Design queued')}
-          </span>
-          {selectedWorkflow === recommendedWorkflowId && (
-            <span style={{
-              fontSize: '12px',
-              fontWeight: '700',
-              color: C.primaryText,
-              background: '#FFFFFF',
-              border: `1px solid ${C.primaryLight}`,
-              borderRadius: '4px',
-              padding: '4px 8px',
-              whiteSpace: 'nowrap',
-            }}>
-              Recommended
-            </span>
-          )}
-        </div>
 
-        <div style={{
-          marginTop: '6px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '6px',
-          alignItems: 'center',
-        }}>
-          <span style={{
-            fontSize: '12px',
-            fontWeight: '700',
-            color: C.textPrimary,
-            background: C.bg,
-            border: `1px solid ${C.border}`,
-            borderRadius: '999px',
-            padding: '3px 8px',
-          }}>
-            {workflowOptions.length} workflows
-          </span>
-          <span style={{
-            fontSize: '12px',
-            color: C.textSec,
-          }}>
-            {groupedWorkflows.map(group => `${group.category} ${group.items.length}`).join('  /  ')}
-          </span>
         </div>
-          </>
-        )}
-
-        {selectedWorkflow !== 'instance.link' && (<>
-        <div style={{
-          marginTop: '6px',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(220px, 1.3fr) minmax(180px, 0.7fr)',
-          gap: '6px',
-        }}>
-          <div style={{
-            border: `1px solid ${C.border}`,
-            borderRadius: '4px',
-            padding: '6px',
-            background: C.bg,
-          }}>
-            <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
-              Stages
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {fallbackWorkflow.stages.map((stage, idx) => (
-                <span
-                  key={`${fallbackWorkflow.id}-${stage}`}
-                  style={{
-                    fontSize: '12px',
-                    color: C.textPrimary,
-                    background: C.surface,
-                    border: `1px solid ${C.borderDark}`,
-                    borderRadius: '4px',
-                    padding: '3px 5px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {idx + 1}. {stage}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div style={{
-            border: `1px solid ${C.border}`,
-            borderRadius: '4px',
-            padding: '6px',
-            background: C.bg,
-          }}>
-            <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
-              Outputs
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-              {fallbackWorkflow.outputs.map(output => (
-                <span
-                  key={`${fallbackWorkflow.id}-${output}`}
-                  style={{
-                    fontSize: '12px',
-                    color: C.textSec,
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: '4px',
-                    padding: '3px 5px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {output}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        </>)}
-
-        {!isImportWorkflow(selectedWorkflow) && (
-          <div className={selectedWorkflow === 'instance.link' ? 'import-bridge-workspace' : undefined} style={{
-            marginTop: '8px',
-            border: `1px solid ${C.border}`,
-            borderRadius: '4px',
-            padding: '8px',
-            background: C.surface,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            flexWrap: 'wrap',
-          }}>
-            {selectedWorkflow === 'instance.link' && (
-              <>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
-                  Source instance
-                </label>
-                <select
-                  aria-label="Source instance"
-                  value={workflowSourceFileId || selectedImportArtifactEntry?.fileId || ''}
-                  onChange={(e) => setWorkflowSourceFileId(e.target.value)}
-                  style={{
-                    minWidth: '220px',
-                    padding: '4px 8px',
-                    fontSize: '12px',
-                    border: `1px solid ${C.borderDark}`,
-                    borderRadius: '3px',
-                  }}
-                >
-                  <option value="">{importArtifactCandidates.length > 0 ? 'Select imported instance' : 'No completed import artifacts available'}</option>
-                  {importArtifactCandidates.map((entry) => (
-                    <option key={entry.fileId} value={entry.fileId}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            <label style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
-              {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology:'}
-            </label>
-            <select
-              aria-label={selectedWorkflow === 'ontology.merge' ? 'Source ontology' : 'Workflow ontology'}
-              value={workflowOntologyId}
-              onChange={(e) => setWorkflowOntologyId(e.target.value)}
-              style={{
-                minWidth: '180px',
-                padding: '4px 8px',
-                fontSize: '12px',
-                border: `1px solid ${C.borderDark}`,
-                borderRadius: '3px',
-              }}
-            >
-              <option value="">{availableOntologies.length > 0 ? 'Select ontology' : (ontologyCatalogState.loading ? 'Loading ontology catalog...' : 'Ontology catalog unavailable')}</option>
-              {availableOntologies.map(o => (
-                <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
-                  {o.name || o.id || o.optionValue}
-                </option>
-              ))}
+        {selectedWorkflow==='ontology.create'&&<label>Source format<select aria-label="Ontology source format" value={ontologySourceFormat} onChange={e=>setOntologySourceFormat(e.target.value)}><option value="auto">Detect schema or ontology format</option><option value="xmi">SysML XML / XMI</option></select></label>}
+        {['instance.import', 'architecture.archimate'].includes(selectedWorkflow) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <label htmlFor="instance-source-adapter">Source format</label>
+            <select id="instance-source-adapter" value={selectedWorkflow==='architecture.archimate'?selectedWorkflow:instanceSourceProfile} onChange={event => {const value=event.target.value;setInstanceSourceProfile(value==='instance.import'?'auto':value);setSelectedWorkflow(value==='architecture.archimate'?value:'instance.import');}}>
+              <option value="auto">Detect from source file</option>
+              <option value="plmxml">PLMXML (.xml)</option>
+              <option value="sysml-v1">SysML XML instances</option>
+              <option value="qif">QIF XML instances</option>
+              <option value="architecture.archimate">ArchiMate Model Exchange XML</option>
             </select>
-            <button
-              type="button"
-              onClick={() => loadOntologyOptions({ forceLive: true })}
-              disabled={ontologyCatalogState.loading}
-              title={ontologyCatalogState.loading ? 'Refreshing ontology catalog...' : 'Refresh ontology catalog from live registry'}
-              style={{
-                padding: '4px 8px',
-                background: '#fff',
-                color: C.primaryText,
-                border: `1px solid ${C.borderDark}`,
-                borderRadius: '3px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: ontologyCatalogState.loading ? 'not-allowed' : 'pointer',
-                opacity: ontologyCatalogState.loading ? 0.6 : 1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              <RefreshCw size={12} /> Refresh
-            </button>
-            {selectedWorkflow === 'ontology.merge' && (
-              <>
-                <label style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
-                  Target ontology
-                </label>
-                <select
-                  value={workflowTargetOntologyId}
-                  onChange={(e) => setWorkflowTargetOntologyId(e.target.value)}
-                  style={{
-                    minWidth: '180px',
-                    padding: '4px 8px',
-                    fontSize: '12px',
-                    border: `1px solid ${C.borderDark}`,
-                    borderRadius: '3px',
-                  }}
-                >
-                  <option value="">{availableOntologies.length > 0 ? 'Select target' : (ontologyCatalogState.loading ? 'Loading ontology catalog...' : 'Ontology catalog unavailable')}</option>
-                  {availableOntologies
-                    .filter(o => (o.optionValue || o.id || o.prefix) !== workflowOntologyId)
-                    .map(o => (
-                      <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
-                        {o.name || o.id || o.optionValue}
-                      </option>
-                    ))}
-                </select>
-              </>
-            )}
-            {selectedWorkflow === 'instance.link' && (
-              <SemanticBridgeJobs ontologyId={workflowOntologyId} importTaskId={selectedImportArtifactEntry?.artifactManifest?.task_id || ''} />
-            )}
-            {selectedWorkflow === 'instance.link' && (
-              <div style={{
-                flexBasis: '100%',
-                border: `1px solid ${C.border}`,
-                borderRadius: '4px',
-                background: C.bg,
-                padding: '6px 8px',
-                color: C.textSec,
-                fontSize: '12px',
-                lineHeight: 1.45,
-              }}>
-                <strong style={{ color: C.textPrimary }}>Bridge steps:</strong> pick the completed import, choose the target ontology, preview the mapping, review candidates, then publish approved mappings. For CAD STEP/STP/STPX, use <strong style={{ color: C.primaryText }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>.
-                {!ap242OntologyOption && (
-                  <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
-                    AP242 ontology is not registered yet. Upload AP242 MBD/3D ontology in Create ontology before applying STEP links.
-                  </span>
-                )}
-              </div>
-            )}
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              <button
-                onClick={runSelectedWorkflow}
-                disabled={workflowLoading || !!workflowBlockReason}
-                title={workflowBlockReason || workflowActionLabel}
-                style={{
-                  padding: '5px 10px',
-                  background: (workflowLoading || workflowBlockReason) ? C.textMuted : C.primary,
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '3px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: (workflowLoading || workflowBlockReason) ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {workflowLoading ? 'Running...' : workflowActionLabel}
-              </button>
-              {selectedWorkflow === 'ontology.merge' && (
-                <button
-                  onClick={runNeo4jOntologyMerge}
-                  disabled={workflowLoading}
-                  style={{
-                    padding: '5px 10px',
-                    background: workflowLoading ? C.textMuted : C.accent,
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '3px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: workflowLoading ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {workflowLoading ? 'Running...' : 'Review governed merge'}
-                </button>
-              )}
-            </div>
-            {workflowRun?.artifact_manifest && (
-              <div style={{ flexBasis: '100%', fontSize: '12px', color: C.textSec, lineHeight: 1.45 }}>
-                <div>
-                  Generated {workflowRun.artifact_manifest.artifacts?.length || 0} retained artifact(s) in task {workflowRun.task_id}.
-                </div>
-                {workflowRun?.result?.summary && (
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: '6px',
-                    marginTop: '6px',
-                  }}>
-                    {Object.entries(workflowRun.result.summary).map(([key, value]) => (
-                      <span
-                        key={key}
-                        style={{
-                          background: C.primaryLight,
-                          color: C.primaryDark,
-                          border: `1px solid ${C.border}`,
-                          borderRadius: '999px',
-                          padding: '2px 8px',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                        }}
-                      >
-                        {key.replace(/_/g, ' ')}: {value == null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {selectedWorkflow === 'instance.link' && workflowRun?.result?.summary && (
-                  <div style={{ marginTop: '6px', color: C.textPrimary }}>
-                    Preview report. Use the Bridge job above to review and publish candidate IDs.
-                  </div>
-                )}
-                {selectedWorkflow === 'ontology.merge' && (
-                  <div style={{ marginTop: '6px', color: C.textPrimary, lineHeight: 1.45 }}>
-                    Use <strong>Review merge plan</strong> to inspect ontology gaps, overlaps, and conflicts first.
-                    Use <strong>Merge into knowledge graph</strong> when you want to commit the selected source ontology into the chosen target ontology.
-                  </div>
-                )}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
-                  {(workflowRun.artifact_manifest.artifacts || []).slice(0, 6).map(artifact => (
-                    <a
-                      key={artifact.path}
-                      href="#"
-                      onClick={(event) => { event.preventDefault(); downloadArtifact(API_METHODS.workflow.artifactUrl(workflowRun.task_id, artifact.path), artifact.path.split('/').pop()).catch(() => {}); }}
-                      title={artifact.absolute_path || artifact.path}
-                      style={{
-                        background: C.bg,
-                        border: `1px solid ${C.border}`,
-                        borderRadius: '3px',
-                        color: C.textPrimary,
-                        padding: '2px 5px',
-                        fontSize: '12px',
-                        maxWidth: '240px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        textDecoration: 'none',
-                      }}
-                    >
-                      {artifact.path}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-            {selectedWorkflow === 'ontology.merge' && workflowRun?.result && !workflowRun?.artifact_manifest && (
-              <div style={{ flexBasis: '100%', fontSize: '12px', color: C.textSec, lineHeight: 1.45 }}>
-                <div style={{ color: C.textPrimary }}>
-                  {workflowRun.result.message || 'Ontology merge completed.'}
-                </div>
-                <div style={{ marginTop: '4px' }}>
-                  Candidate nodes: {workflowRun.result.candidate_nodes ?? 0} | Updated nodes: {workflowRun.result.nodes_updated ?? 0}
-                </div>
-                {workflowRun.result.index_audit && (
-                  <div style={{ marginTop: '4px' }}>
-                    Index preflight: {workflowRun.result.index_audit.ensured ? 'ensured' : 'skipped'}
-                    {workflowRun.result.index_audit.warning ? ` (${workflowRun.result.index_audit.warning})` : ''}
-                  </div>
-                )}
-              </div>
-            )}
+
           </div>
         )}
+
       </div>
 
       <div style={{
@@ -2399,7 +1623,7 @@ export default function ImportWorkspace() {
           ))}
         </div>
 
-        {jobSummary.awaitingReview > 0 && <p role="status">{jobSummary.awaitingReview} parsed imports are waiting for your review, not processing. Open Import instance graph, review each preview with Load to knowledge graph, and enter an approver to start loading. No automatic load is performed.</p>}
+        {jobSummary.awaitingReview > 0 && <p role="status">{jobSummary.awaitingReview} parsed imports are waiting for your review.</p>}
         {activeJobs.length > 0 && (
           <div style={{
             display: 'grid',
@@ -2811,7 +2035,7 @@ export default function ImportWorkspace() {
         </button>
         <button
           type="button"
-          onClick={runSelectedWorkflow}
+          onClick={startAllImports}
           hidden={!!dependencyTarget}
           disabled={!!workflowBlockReason || workflowLoading}
           style={{
@@ -2834,7 +2058,7 @@ export default function ImportWorkspace() {
 
       {/* Structural import kickoff */}
       {selectedWorkflow === 'instance.import' && (
-      <div style={{
+      <details style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: '4px',
@@ -2845,6 +2069,7 @@ export default function ImportWorkspace() {
         gap: '8px',
         flexWrap: 'wrap',
       }}>
+        <summary>Instance preparation guidance</summary>
         <div style={{ minWidth: 0, flex: '1 1 420px' }}>
           <div style={{ fontSize: '12px', fontWeight: '700', color: C.textPrimary }}>
             Structural import only
@@ -2864,7 +2089,7 @@ export default function ImportWorkspace() {
               fontSize: '12px',
               lineHeight: 1.45,
             }}>
-              <strong>STEP/AP242 guidance:</strong> 1. Run validation. 2. Open the retained run in Data Flow and review publication. 3. After a publication receipt is retained, open <strong>Link instances to ontology</strong>. 4. Select the published source and <strong>{ap242OntologyOption?.name || 'AP242 Domain Model'}</strong>. 5. Review and publish approved mappings.
+              <strong>STEP/AP242 guidance:</strong> 1. Run validation. 2. Review the run in Data Flow, then open its Change Control link. 3. After a publication receipt is retained, open <strong>Link instances to ontology</strong>. 4. Select the published source and <strong>{ap242OntologyOption?.name || 'AP242 Domain Model'}</strong>. 5. Review and publish approved mappings.
               {!ap242OntologyOption && (
                 <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
                   AP242 ontology is not visible in the catalog yet. Upload/register it before semantic linking.
@@ -2888,7 +2113,7 @@ export default function ImportWorkspace() {
           )}
         </div>
         <button
-          onClick={runSelectedWorkflow}
+          onClick={startAllImports}
           disabled={!!workflowBlockReason || workflowLoading}
           style={{
             marginLeft: 'auto',
@@ -2906,10 +2131,10 @@ export default function ImportWorkspace() {
         >
           {workflowLoading ? 'Running...' : 'Start workflow'}
         </button>
-      </div>
+      </details>
       )}
 
-      <div style={{
+      <details style={{
         background: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: '4px',
@@ -2919,18 +2144,19 @@ export default function ImportWorkspace() {
         color: C.textSec,
         lineHeight: 1.45,
       }}>
-        <strong style={{ color: C.textPrimary }}>Note:</strong>{' '}
+        <summary>Workflow guidance</summary>
         {getWorkflowNote({
           canRunSelectedWorkflow,
           fallbackWorkflow,
           mappingFileTypeContext,
           selectedWorkflow,
-          selectedImportArtifactEntry,
+          selectedImportArtifactEntry: null,
         })}
+
+      </details>
         {workflowBlockReason && !workflowLoading && (
           <span style={{ color: C.orange, fontWeight: '700' }}> {' '}Action needed: {workflowBlockReason}</span>
         )}
-      </div>
 
       {/* Data table */}
       <div role="region" aria-label="Import job history" tabIndex={0}
@@ -3001,7 +2227,7 @@ export default function ImportWorkspace() {
         ) : (
           <>
             {/* Table rows */}
-            {files.map(file => {
+            {workflowFiles.map(file => {
               const fileId = file.fileId;
               const status = fileStatusIndex.get(fileId) || { stage: 'upload', progress: 0 };
               const isStarted = startedFiles.has(fileId);
@@ -3036,6 +2262,7 @@ export default function ImportWorkspace() {
                       }}>
                         {file.name}
                       </div>
+                      {status.fileNumber && <small>{status.fileNumber}</small>}
                       {file.schemaSetSources?.length > 1 && <details style={{fontSize:'12px',marginTop:4}}>
                         <summary>{file.schemaSetSources.length} XSD sources · one ontology</summary>
                         <ul>{file.schemaSetSources.map((name,index) => <li key={`${index}:${name}`}>{name}</li>)}</ul>
@@ -3199,7 +2426,7 @@ export default function ImportWorkspace() {
                     gap: '6px',
                     justifyContent: 'flex-end',
                   }}>
-                    {file.workflowId && file.workflowId !== selectedWorkflow && <button type="button" onClick={() => setSelectedWorkflow(file.workflowId)}>Open {getWorkflowDisplayName(file.workflowId)}</button>}
+                    {file.workflowId && file.workflowId !== selectedWorkflow && <button type="button" onClick={() => { if(isImportWorkflow(file.workflowId))setSelectedWorkflow(file.workflowId);else {const link=activityWorkspaceLink(file.workflowId);if(link)window.location.hash=link;} }}>Open {getWorkflowDisplayName(file.workflowId)}</button>}
                     {!file.fileObj && file.persisted && !status.registered && !status.outcomeUnknown && ['pending', 'failed', undefined].includes(status.status) && <label>Re-attach source<input type="file" accept={getFileExtensionFromName(file.name)} onChange={async event => {
                       const generation = fileSelectionGeneration.current;
                       const source = event.target.files?.[0];
@@ -3214,7 +2441,7 @@ export default function ImportWorkspace() {
                       setFiles(previous => previous.map(item => item.fileId === fileId ? {...item, fileObj: source, persisted: false} : item));
                       setStartedFiles(previous => { const next = new Set(previous); next.delete(fileId); return next; });
                       setPipelineStatus(previous => ({...previous, [fileId]: {...previous[fileId], status:'pending', stage:'upload', progress:0, error:false, message:'Source re-attached. Review details before starting.'}}));
-                      if (file.workflowId) setSelectedWorkflow(file.workflowId);
+                      if (file.workflowId && isImportWorkflow(file.workflowId)) setSelectedWorkflow(file.workflowId);
                     }} /></label>}
                     {!isStarted && (status.stage === 'upload' || status.error) && (
                       <button
@@ -3351,10 +2578,10 @@ export default function ImportWorkspace() {
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title={status.commitError || status.commitPhase === 'error' ? 'Retry commit to knowledge graph' : 'Load to knowledge graph'}
+                        title="Review graph load in Change Control"
                       >
                         {status.commitError || status.commitPhase === 'error' ? <RotateCcw size={12} /> : <Upload size={12} />}
-                        {status.commitError || status.commitPhase === 'error' ? 'Retry commit' : 'Load to knowledge graph'}
+                        Review graph load
                       </button>
                     )}
                     {isCommitInFlight(status) && (
@@ -3467,7 +2694,7 @@ export default function ImportWorkspace() {
             })}
 
             {/* Bulk actions footer */}
-            {files.length > 0 && (
+            {workflowFiles.length > 0 && (
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -3478,10 +2705,10 @@ export default function ImportWorkspace() {
                 fontSize: '12px',
               }}>
                 <div style={{ color: C.textMuted }}>
-                  {files.length} file{files.length !== 1 ? 's' : ''}  /  {activeProcessingCount} processing
+                  {workflowFiles.length} file{workflowFiles.length !== 1 ? 's' : ''} in this workflow
                 </div>
                 <button type="button" onClick={() => {
-                  const removable = files.filter(file => {
+                  const removable = workflowFiles.filter(file => {
                     const status = pipelineStatus[file.fileId] || {};
                     return !status.outcomeUnknown && (['completed', 'failed', 'cancelled', 'canceled'].includes(status.status) || status.stage === 'error');
                   });
@@ -3513,7 +2740,7 @@ export default function ImportWorkspace() {
       </div>
       )}
 
-      <ImportLoadReview confirmingImport={confirmingImport} previewData={previewData} setConfirmingImport={setConfirmingImport} preCheck={preCheck} commitApprover={commitApprover} setCommitApprover={setCommitApprover} commitImport={commitImport} />
+      <ImportLoadReview confirmingImport={confirmingImport} previewData={previewData} setConfirmingImport={setConfirmingImport} preCheck={preCheck} commitImport={commitImport} />
     </div>
   );
 }

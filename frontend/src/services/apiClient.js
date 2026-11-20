@@ -490,6 +490,7 @@ export const dataPipelineAPI = {
   analyticsData: (runId, relation, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/analytics/${encodeURIComponent(runId)}/data`), {...options, params:{relation, limit:25}}),
   restSources: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources'), options),
   ingestorCapabilities: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/rest-sources/capabilities'), options),
+  prepareEventJob: (id,payload,token,options={}) => apiClient.post(buildUrl(`/api/v1/pipeline/speed/reconciliations/${encodeURIComponent(id)}/jobs`),payload,{...options,headers:{Authorization:`Bearer ${token}`}}),
   speedReviews: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/speed/reconciliations'), options),
   speedReview: (id,options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/speed/reconciliations/${encodeURIComponent(id)}`),options),
   connectorProfiles: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/connector-sources/profiles'), options),
@@ -499,6 +500,7 @@ export const dataPipelineAPI = {
   restSubmission: (submissionId, token) => apiClient.get(buildUrl(`/api/v1/pipeline/rest-sources/submissions/${encodeURIComponent(submissionId)}`), { headers: { Authorization: `Bearer ${token}` } }),
   registerRestSource: (source, token) => apiClient.post(buildUrl('/api/v1/pipeline/rest-sources'), source, { headers: { Authorization: `Bearer ${token}` } }),
   previewRestSource: (sourceId, token) => apiClient.post(buildUrl(`/api/v1/pipeline/rest-sources/${encodeURIComponent(sourceId)}/preview`), {}, { headers: { Authorization: `Bearer ${token}` } }),
+  createDefinitionChange: (payload, token) => apiClient.post(buildUrl('/api/v1/pipeline/jobs/definition-changes'), payload, {headers:{Authorization:`Bearer ${token}`}}),
   createDefinition: (definition, token) => apiClient.post(buildUrl('/api/v1/pipeline/jobs/definitions'), definition, { headers: { Authorization: `Bearer ${token}` } }),
   health: (options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/health'), options),
   telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
@@ -538,6 +540,11 @@ export const dataPipelineAPI = {
   reconcileAnalytics: (runId, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/reconcile-analytics`), approval,
     approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  submitPublicationReview: (runId, publication, reason, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/change/submit`),
+    { publication, reason },
+    approval.approval_token ? {headers:{Authorization:`Bearer ${approval.approval_token}`}} : undefined,
   ),
   publishRun: (runId, payload = {}, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/publish`),

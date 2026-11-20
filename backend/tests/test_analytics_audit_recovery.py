@@ -88,6 +88,18 @@ class AnalyticsAuditFixes(unittest.TestCase):
         self.assertTrue(result['run_manifest']['output_manifest']['result_artifact_id'].startswith('sha256:'))
         load.assert_not_called();self.assertEqual(authorize.call_args.kwargs['token_env'],'DATA_JOB_EXECUTION_TOKEN')
 
+    def test_terminal_worker_evidence_reconciliation_uses_original_cas_baseline(self):
+        from backend.data_pipeline_service import router
+        pending = self.pending()
+        retained = {**pending, 'worker_id': 'completed-worker', 'lease': {'attempt': 1}}
+        self.registry.put(pending['run_id'], retained)
+        with patch.object(router, 'approval_identity', return_value='verified-recoverer'):
+            result = router.reconcile_analytics_evidence(pending['run_id'], SimpleNamespace(), {})
+        updated = result['run_manifest']
+        self.assertEqual(updated['output_manifest']['evidence_status'], 'available')
+        self.assertIsNone(updated['worker_id'])
+        self.assertEqual(updated['evidence_reconciled_by'], 'verified-recoverer')
+
     def test_reconciliation_during_artifact_outage_stays_pending(self):
         from backend.data_pipeline_service import router
         pending=self.pending()

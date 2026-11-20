@@ -11,6 +11,7 @@ APPROVAL_TOKENS = {
     'bridge.mapping.publish_automatic': 'AGENTIC_APPROVAL_TOKEN',
     'ontology.register': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.transition': 'ONTOLOGY_APPROVAL_TOKEN',
+    'ontology.merge.change.submit': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply_automatic': 'ONTOLOGY_APPROVAL_TOKEN',
     'data.product.publish': 'DATA_PRODUCT_APPROVAL_TOKEN',
@@ -82,6 +83,12 @@ def downstream_inputs(tool: dict, inputs: dict, actor: str | None) -> dict:
     key = APPROVAL_TOKENS.get(tool['id'])
     if tool.get('mutates') and not key:
         raise HTTPException(503, f"Mutating tool {tool['id']} has no downstream approval contract")
+    if tool['id'] == 'ontology.merge.change.submit':
+        if not actor:
+            raise HTTPException(403, 'Approval is required before submitting a review request')
+        # Header-authenticated native endpoint: never inject identity or a lifecycle action.
+        from backend.depo_platform.request_bodies import MergeChangeSubmission
+        return MergeChangeSubmission(**{name: value for name, value in result.items() if name != 'preview_id'}).model_dump()
     if key:
         if not actor:
             raise HTTPException(403, 'Approval is required before dispatch')

@@ -238,3 +238,13 @@ test('dictionary view follows the URL and back/forward events',async()=>{
  fireEvent(window,new PopStateEvent('popstate'));
  expect(screen.getByRole('tab',{name:'Registry assets'})).toHaveAttribute('aria-selected','true');
 });
+
+
+test('dictionary review link loads the exact ontology instead of an arbitrary source', async () => {
+  window.history.replaceState(null,'','#/registry?view=dictionary&ontology_id=onto-1');
+  API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
+  API_METHODS.ontology.getDataDictionary.mockResolvedValue({data:{entities:{Part:{definition:'Part definition'}},properties:{},relationships:{}}});
+  render(<MetadataRegistryPage/>);
+  await waitFor(()=>expect(API_METHODS.ontology.getDataDictionary).toHaveBeenCalledWith('onto-1',expect.objectContaining({signal:expect.anything()})));
+  expect(await screen.findByText('Part definition')).toBeVisible();
+});

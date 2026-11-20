@@ -35,6 +35,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Graph traversal", "/api/v1/graph/traversal/{iri}", description="Retrieve a bounded RDF-resource neighborhood"),
         ServiceCapability("Contextual subgraph", "/api/v1/graph/contextual-subgraph", description="Search a bounded contextual engineering subgraph"),
         ServiceCapability("Publish ontology", "/api/v1/graph/ontologies/publish", "POST", "Publish a Turtle ontology to the graph"),
+        ServiceCapability("Graph computation", "/api/v1/graph/computation", "POST", "Read scoped algorithm evidence with retained publication and parameters"),
         ServiceCapability("Ontology analytics", "/api/v1/graph/ontologies/{ontology_id}/analytics", description="Analyze a live ontology graph"),
         ServiceCapability("Ontology neighborhood", "/api/v1/graph/ontologies/{ontology_id}/neighborhood", description="Retrieve bounded ontology neighbors"),
         ServiceCapability("Change impact", "/recommendations/change-impact", "POST", "Trace bounded semantic impact from the graph"),

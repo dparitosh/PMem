@@ -12,7 +12,7 @@ Set-Content -LiteralPath (Join-Path $fixture 'backend/.dt_venv/Scripts/python.ex
 Set-Content -LiteralPath (Join-Path $fixture '.env.local') -Value 'retained customer configuration'
 Set-Content -LiteralPath (Join-Path $fixture 'infra/deployment/services.json') -Value '{"services":[{"id":"ontology"}],"workers":[]}'
 Set-Content -LiteralPath (Join-Path $fixture 'infra/windows/runtime-config.ps1') -Value 'function Read-DepoEnvironment { @{ DEPO_SERVICE_RUNTIME_MODE = "shared" } }'
-$stages = @('infra/deployment/test-installation-package.ps1','infra/deployment/test-depo-deployment.ps1',
+$stages = @('infra/windows/remove-retired-release-files.ps1','infra/deployment/test-installation-package.ps1','infra/deployment/test-depo-deployment.ps1',
   'infra/deployment/test-depo-frontend-config.ps1','infra/windows/install-depo.ps1',
   'infra/windows/initialize-depo-schema.ps1','infra/windows/test-depo-neo4j.ps1',
   'infra/windows/update-depo-runtime-timeouts.ps1','infra/windows/stop-depo-frontend.ps1',

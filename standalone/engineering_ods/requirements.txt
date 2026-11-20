@@ -1,0 +1,4 @@
+# Standalone toolkit dependencies; tested versions from the current Nexus environment.
+rdflib==7.6.0
+pyshacl==0.40.1
+httpx==0.28.1

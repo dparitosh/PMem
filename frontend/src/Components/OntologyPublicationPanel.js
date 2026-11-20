@@ -3,6 +3,7 @@ import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import NativeChangeActions from './NativeChangeActions';
 import OntologyReleasePanel from './ontology/OntologyReleasePanel';
 
 export default function OntologyPublicationPanel({ ontologyId, onPublished, fromWorkflow = false }) {
@@ -10,6 +11,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
   const [actor, setActor] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [releaseOpen, setReleaseOpen] = useState(false);
+  const [changeOpen,setChangeOpen]=useState(false);
   const [visible, setVisible] = useState(() => !document.hidden);
   useEffect(() => {
     const changed = () => setVisible(!document.hidden);
@@ -50,7 +52,7 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
   }, [ontologyId]);
   const root = path => buildSemanticServiceUrl('ontology', `/api/v1/ontologies${path}`);
   useEffect(() => {
-    setMetadata(null); setPublication(null); setError(''); setBusy(false); setActiveAction(''); setMissing(false);
+    setChangeOpen(false); setMetadata(null); setPublication(null); setError(''); setBusy(false); setActiveAction(''); setMissing(false);
   }, [ontologyId]);
   useEffect(() => {
     const controller = new AbortController(); setError(''); setMissing(false);
@@ -112,13 +114,15 @@ export default function OntologyPublicationPanel({ ontologyId, onPublished, from
       {error && <p role="alert">{error}</p>}
       {verifying && <p role="status">Checking current publication status...</p>}
       {Number.isSafeInteger(publication?.progress?.resource_offset) && Number.isSafeInteger(publication?.progress?.resources_expected) && <p role="status">Staged resources: {publication.progress.resource_offset} / {publication.progress.resources_expected}. Staged data becomes visible only after validation and activation.</p>}
-      {publication?.resumable && <p>Incomplete batches are retained. Publish again to resume the same approved artifact from its checkpoint.</p>}
+      {!publication?.managed_change && publication?.resumable && <p>Incomplete batches are retained. Publish again to resume the same approved artifact from its checkpoint.</p>}
+      {metadata?.lifecycle_status==='approved'&&publication?.status!=='published'&&<details onToggle={event=>setChangeOpen(event.currentTarget.open)}><summary>Review graph publication request</summary>{changeOpen&&<NativeChangeActions key={ontologyId} previewId={ontologyId} kind="publications" onChanged={()=>setRevision(value=>value+1)}/>}</details>}
+      {publication?.managed_change&&<p><a href={`#/change-control?record_source=publications&record=${encodeURIComponent(ontologyId)}`}>Inspect publication request in Change Control</a></p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
         {missing && <button disabled={busy || verifying || !!publication?.job_id} onClick={() => act('prepare')}>Prepare retained source for review</button>}
         {metadata?.lifecycle_status === 'draft' && <button disabled={busy || verifying || !!error || !actor.trim()} onClick={() => act('in_review')}>Submit for review</button>}
         {metadata?.lifecycle_status === 'in_review' && <button disabled={busy || verifying || !!error || !actor.trim()} onClick={() => act('approved')}>Approve ontology</button>}
-        {metadata?.lifecycle_status === 'approved' && publication?.status !== 'published' && <button disabled={busy || verifying || !!error || !actor.trim() || !( ['not_published', 'not_verified'].includes(publication?.status) || (['failed', 'timed_out', 'cancelled'].includes(publication?.status) && !publication.reconciliation_required && ['not_published', 'not_verified'].includes(publication.graph_status)))} onClick={() => act('publish')}>Publish to knowledge graph</button>}
-        {publication?.phase === 'queued' && publication?.job_id && <button disabled={busy || verifying || !!error || !actor.trim()} onClick={() => act('cancel')}>Cancel queued publication</button>}
+        {metadata?.lifecycle_status === 'approved' && !publication?.managed_change && publication?.status !== 'published' && <button disabled={busy || verifying || !!error || !actor.trim() || !( ['not_published', 'not_verified'].includes(publication?.status) || (['failed', 'timed_out', 'cancelled'].includes(publication?.status) && !publication.reconciliation_required && ['not_published', 'not_verified'].includes(publication.graph_status)))} onClick={() => act('publish')}>Publish to knowledge graph</button>}
+        {!publication?.managed_change && publication?.phase === 'queued' && publication?.job_id && <button disabled={busy || verifying || !!error || !actor.trim()} onClick={() => act('cancel')}>Cancel queued publication</button>}
         <button disabled={busy || verifying} onClick={() => setRevision(value => value + 1)}>Verify publication</button>
       </div>
       {publication && <p role="status">Graph status: {busy && activeAction === 'publish' ? 'publishing (request in progress)' : publication.status}. {publication.receipt ? `${publication.receipt.resources} published ontology resources; ${publication.receipt.relationships} published ontology relationships. Counts exclude publication receipts and temporary staging data.` : 'No verified graph receipt is available.'}</p>}

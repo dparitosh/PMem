@@ -100,3 +100,13 @@ async def test_unavailable_business_service_never_falls_back_to_word_matches(mon
     assert result['evidence'] == []
     assert 'could not verify' in result['response']
     summary.assert_not_awaited()
+
+
+def test_requirement_attributes_use_property_evidence_not_association_inventory():
+    for question in (
+        'What requirement value is recorded for the selected Bearing Life element? Cite its source.',
+        'Show requirement text for Bearing Life.',
+        'What is the requirement number for the selected record?',
+    ):
+        assert intent(question) == ''
+    assert intent('What requirements are associated with the bearing?') == 'associated_requirements'

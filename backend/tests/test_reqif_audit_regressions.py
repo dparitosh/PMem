@@ -87,3 +87,12 @@ class ReqIFRegressions(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ReqIFGlobalIdentityTests(unittest.TestCase):
+    def test_relation_and_hierarchy_identifiers_cannot_reuse_entity_identity(self):
+        from backend.ceim.reqif_adapter import reqif_to_ceim_batch
+        for tag in ('SPEC-RELATION', 'SPEC-HIERARCHY', 'DATATYPE-DEFINITION-STRING'):
+            content = ('<REQ-IF><SPEC-OBJECT IDENTIFIER="golden"/><'+tag+' IDENTIFIER="golden"/></REQ-IF>').encode()
+            with self.assertRaisesRegex(ValueError, 'duplicate IDENTIFIER'):
+                reqif_to_ceim_batch(content)

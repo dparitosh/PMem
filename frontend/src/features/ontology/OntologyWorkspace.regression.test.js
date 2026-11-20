@@ -121,3 +121,29 @@ test('OJ-02 regression: unknown XSD/OWL ontology uses all-source vocabulary brow
  fireEvent.click(screen.getByRole('tab',{name:'Mapping Vocabulary'}));
  await waitFor(()=>expect(state.mappings).toHaveBeenCalledWith('qif-id','all',expect.anything()));
 });
+
+test('Semantic Bridge omits duplicated lifecycle, term filter and guidance controls',async()=>{
+ window.location.hash='#/ontology?view=alignment&target=target-id';state.rows=[{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[]}});state.dictionary.mockResolvedValue({data:{entities:{},properties:{},relationships:{}}});state.mappings.mockResolvedValue({data:{mappings:[]}});
+ render(<OntologyMapper/>);
+ await screen.findByText('Prepare mappings');
+ expect(screen.queryByText('Ontology lifecycle and knowledge graph publication')).not.toBeInTheDocument();
+ expect(screen.queryByText('Workflow guidance and ontology details')).not.toBeInTheDocument();
+ expect(screen.queryByPlaceholderText('Filter terms')).not.toBeInTheDocument();
+});
+
+test('same-workspace history navigation changes alignment mode and source selection',async()=>{
+ window.location.hash='#/ontology?view=alignment&mode=instance&target=target-id';
+ state.rows=[{ontology_id:'source-id',prefix:'source',label:'Source'},{ontology_id:'target-id',prefix:'target',label:'Target'}];
+ state.taxonomy.mockResolvedValue({data:{nodes:[],edges:[]}});state.dictionary.mockResolvedValue({data:{entities:{},relationships:{},properties:{}}});
+ render(<OntologyMapper/>);await screen.findByText('Prepare mappings');
+ fireEvent(window,new HashChangeEvent('hashchange'));
+ window.history.replaceState(null,'','#/ontology?view=alignment&mode=merge&merge_source=source-id&target=target-id');
+ fireEvent(window,new HashChangeEvent('hashchange'));
+ expect(await screen.findByRole('combobox',{name:'Source ontology'})).toHaveValue('source-id');
+ expect(screen.queryByText('Prepare mappings')).toBeNull();
+ window.history.replaceState(null,'','#/ontology?view=alignment&mode=instance&target=target-id');
+ fireEvent(window,new PopStateEvent('popstate'));
+ expect(await screen.findByText('Prepare mappings')).toBeVisible();
+ expect(screen.queryByRole('combobox',{name:'Source ontology'})).toBeNull();
+});

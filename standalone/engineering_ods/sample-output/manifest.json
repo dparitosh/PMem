@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "Engineering ODS - historical decision context",
+  "prefix": "engineering_memory_ods",
+  "version": "1.0.0",
+  "artifact_sha256": "05687ef17c362e0e36a60ca846a3bda58edfe16c3a27367ba9b59d4baa04dc3a",
+  "scenario_sha256": "4b09d5a92030f80942c5b6bb7536b9a62b540f29f451ceb476c23fe2359d0f3b",
+  "schema_sha256": "c9da64d680260fb78c1ba276ed3300e3586d66428fc8bc59f77133c42e33fddf",
+  "shapes_sha256": "56b59428e19b71706a2e1cdb94a9b05d09cc92e734bbd9e751cbe6e60cbd0939",
+  "triples": 782,
+  "cases": 1,
+  "records": 45,
+  "historical_records": 5,
+  "relationships": 70,
+  "shacl_conforms": true,
+  "customer_approved": false,
+  "database_written": false
+}

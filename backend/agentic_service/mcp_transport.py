@@ -41,7 +41,7 @@ async def _invoke(server, method, params=None, *, timeout_seconds=None, session=
     command = server['command']
     if command == 'python':
         command = sys.executable
-    env = {key: os.environ[key] for key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', *server.get('environment', []))
+    env = {key: os.environ[key] for key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', *server.get('environment', []))
            if key in os.environ}
     limit = int(os.getenv('AGENTIC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)))
     from backend.depo_platform.network import bounded_timeout_seconds

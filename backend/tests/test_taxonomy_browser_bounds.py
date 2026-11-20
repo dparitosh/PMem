@@ -48,3 +48,15 @@ class BrowserBoundsTests(unittest.TestCase):
     assert result['summary']['total_terms']==3 and result['summary']['truncated']
     assert len(result['edges'])==1 and len(payload['nodes'])==3 and len(payload['edges'])==2
     assert 'truncated' not in payload['summary']
+
+ def test_inventory_counts_do_not_depend_on_table_page_or_search(self):
+    tree=ast.parse(Path('backend/ingestion_service/api/ontology_browser.py').read_text())
+    fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='bounded_taxonomy')
+    scope={};exec(compile(ast.Module(body=[fn],type_ignores=[]),'<bounds>','exec'),scope)
+    payload={'nodes':[{'term_id':'a','kind':'class'},{'term_id':'b','kind':'class'},{'term_id':'p','kind':'property'}], 'edges':[{'source_term':'a','target_term':'b'}]}
+    for options in ({},{'kind':'class'},{'kind':'property'},{'offset':2},{'query':'absent'}):
+        summary=scope['bounded_taxonomy'](payload,1,**options)['summary']
+        assert (summary['total_classes'],summary['total_properties'],summary['total_terms'],summary['total_taxonomy_links'])==(2,1,3,1)
+    assert scope['bounded_taxonomy']({'nodes':[],'edges':[]},1)['summary']['total_classes']==0
+    payload['summary']={'truncated':True}
+    assert scope['bounded_taxonomy'](payload,1)['summary']['total_classes'] is None
