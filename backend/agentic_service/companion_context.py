@@ -46,7 +46,7 @@ PAGE_READS={
 
 async def business_context(node_id, *, headers, ontology_id='', ontology_prefix=''):
     body, endpoint=await _read_json('GRAPH_SERVICE_URL','http://127.0.0.1:8013','/graph/business-context',
-        {'node_id':node_id,'ontology_id':ontology_id,'ontology_prefix':ontology_prefix,'depth':1,'limit':20},headers)
+        {'node_id':node_id,'ontology_id':ontology_id,'ontology_prefix':ontology_prefix,'depth':1,'limit':60},headers)
     nodes,edges=body.get('nodes'),body.get('relationships')
     if not isinstance(nodes,list) or not isinstance(edges,list) or len(nodes)>100 or len(edges)>400:
         raise ValueError('Invalid business context evidence')

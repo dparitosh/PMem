@@ -17,7 +17,27 @@ def input_schema(document, tool):
     media = 'multipart/form-data' if tool.get('input_kind') == 'multipart' else 'application/x-www-form-urlencoded' if tool.get('input_kind') == 'form' else 'application/json'
     body = resolve(operation.get('requestBody', {}), document)
     schema = expand(body.get('content', {}).get(media, {}).get('schema', {'type': 'object'}), document)
-    if schema.get('type', 'object') != 'object': raise ValueError('Tool proposal requires an object input contract')
+    # FastAPI represents optional request bodies as object | null. Agent inputs
+    # are always an object containing path/query fields, so expose the object
+    # branch rather than an invalid nullable function-parameter root. Dispatch
+    # still validates against the original live OpenAPI contract.
+    # OpenAPI 3.0 deployments wrap the same optional body in a single allOf
+    # reference plus nullable=true. Only unwrap this annotation-only wrapper;
+    # never flatten arbitrary intersecting contracts or overwrite constraints.
+    conjunction = schema.get('allOf')
+    wrapper_keys = {'allOf','type','nullable','title','description','default','deprecated'}
+    if (isinstance(conjunction,list) and len(conjunction)==1
+            and conjunction[0].get('type')=='object' and set(schema)<=wrapper_keys):
+        schema = {**{key:value for key,value in schema.items() if key not in {'allOf','nullable'}}, **conjunction[0]}
+    branches = schema.get('anyOf')
+    if isinstance(branches, list) and len(branches) == 2:
+        objects = [branch for branch in branches if branch.get('type') == 'object']
+        nulls = [branch for branch in branches if branch.get('type') == 'null']
+        if len(objects) == len(nulls) == 1:
+            schema = {**{key:value for key,value in schema.items() if key != 'anyOf'}, **objects[0]}
+    if schema.get('type', 'object') != 'object' or any(key in schema for key in ('anyOf','oneOf','allOf')):
+        raise ValueError('Tool proposal requires an unambiguous object input contract')
+    schema.setdefault('type', 'object')
     properties = dict(schema.get('properties', {}))
     required = list(schema.get('required', []))
     for key in ('approved_by', 'approval_token', 'authorization', 'api_key'):

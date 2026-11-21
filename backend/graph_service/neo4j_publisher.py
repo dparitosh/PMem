@@ -80,6 +80,7 @@ class Neo4jPublisher:
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
         SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind, node.rdf_types = row.rdf_types,
+            node.inferred_rdf_types = row.inferred_rdf_types, node.type_inference_basis = row.type_inference_basis,
             node.search_label = toLower(coalesce(row.label,'')), node.search_iri = toLower(row.iri),
             node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
             node.source = row.source, node.description = row.description,

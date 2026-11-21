@@ -1,0 +1,16 @@
+NEXUS — Engineering experience, recalled in context
+Separate executive voiceover for the live memory demonstration
+
+Engineering teams often revisit problems that someone has solved before. The challenge is finding the earlier decision, understanding why an option was selected, and checking whether that experience applies to the current product.
+
+Here, the engineering graph retains a previous bearing-seat investigation and four corrective-action options. This is long-term knowledge: the earlier case, its alternatives, dispositions and applicability remain linked records that can be retrieved and inspected.
+
+The Knowledge Companion recalls those options from the selected investigation. Expanding Evidence shows the past investigation and the historical option records behind the answer. Source identity connects the response to the published engineering knowledge.
+
+Next, a short follow-up asks which option was selected and where it applies. Short-term conversation memory carries forward the subject of the earlier question, so the engineer does not need to repeat the complete investigation description.
+
+Contextual memory keeps the conversation associated with the selected engineering record and ontology scope. Memory insights retains the question, resolved question, answer and business identity. The storage explanation distinguishes saved conversation records in PostgreSQL from published engineering knowledge in Neo4j.
+
+The practical benefit is less repeated searching and a clearer path from earlier experience to the evidence needed for today's decision. Historical selection supplies a candidate; current requirements and evaluation records determine whether it remains suitable.
+
+Producer note: This is an authored Engineering ODS scenario, not a customer incident or proof of automatic learning, model training or an implemented engineering approval. Preserve the scenario provenance in supporting material.

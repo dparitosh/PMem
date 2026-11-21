@@ -802,3 +802,16 @@ def ontology_publication_change_command(ontology_id: str,payload: MergeChangeCom
     actor=approval_identity(request,{},token_env='ONTOLOGY_APPROVAL_TOKEN')
     from .publication_change import transition
     return transition(ontology_id,payload.action,actor,payload.expected_revision,payload.expected_plan_digest,payload.reason)
+
+
+@router.get('/{ontology_id}/inspection-rules/assessment', dependencies=[Depends(graph_read_identity)],
+            summary='Assess approved retained ontology inspection rules against their own instances')
+def retained_inspection_rule_assessment(ontology_id: str, limit: int = Query(50,ge=1,le=200)):
+    from .rule_assessment import assess
+    try:
+        return assess(catalog,ontology_id,limit)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    except (RuntimeError,OSError) as exc:
+        logging.getLogger(__name__).exception('Retained inspection rule assessment unavailable')
+        raise HTTPException(503,'Rule assessment is unavailable; no conclusion was established') from exc

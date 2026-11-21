@@ -81,7 +81,7 @@ LLM_MODEL_NAME=llama3:latest
       throw "Blank model must fail before network requests: $modelSetting"
     }
   }
-  Set-Content -LiteralPath $fixture.FullName -Value 'OLLAMA_BASE_URL=http://gateway.example/ollama', 'OLLAMA_API_KEY=fixture-secret-never-print'
+  Set-Content -LiteralPath $fixture.FullName -Value 'OLLAMA_BASE_URL=http://gateway.example/ollama', 'OLLAMA_API_KEY=fixture-secret-never-print', 'OLLAMA_REQUIRE_HTTPS=true'
   $fixtureState.calls.Clear(); $failed = $false
   try { & $diagnostic -EnvFile $fixture.FullName 6>&1 | Out-Null } catch { $failed = $true }
   if (-not $failed -or $fixtureState.calls.Count) { throw 'Remote plaintext credentials must be rejected before transport' }

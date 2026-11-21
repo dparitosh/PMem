@@ -27,7 +27,7 @@ def test_registered_inference_tools_match_live_openapi_and_are_read_only():
     agent, tools = inference_tools()
     assert not agent['approval_required']
     assert {tool['id'] for tool in tools} == {'ontology.inference.preview', 'ontology.reasoning.inspect',
-        'ontology.foundation.inspect', 'ontology.semantic.evidence', 'ontology.consistency.check'}
+        'ontology.foundation.inspect', 'ontology.semantic.evidence', 'ontology.consistency.check', 'ontology.inspection_rules.assess'}
     preview = next(tool for tool in tools if tool['id'] == 'ontology.inference.preview')
     values = {'ontology_id':'selected', 'rules':{'transitive_subclass':True}, 'limit':25}
     validate(values, preview['input_schema'], preview['input_schema'])
@@ -38,3 +38,33 @@ def test_registered_inference_tools_match_live_openapi_and_are_read_only():
     assert validate_action(record, {'tool_id':preview['id'], 'inputs':values}, tools)[1] == values
     with pytest.raises(ValueError, match='scope|outside'):
         validate_action(record, {'tool_id':preview['id'], 'inputs':{**values, 'ontology_id':'another'}}, tools)
+
+
+def test_nullable_preview_body_becomes_object_tool_contract_without_losing_fields():
+    _,tools=inference_tools()
+    schema=next(t['input_schema'] for t in tools if t['id']=='ontology.inference.preview')
+    assert schema['type']=='object' and 'anyOf' not in schema
+    assert {'rules','limit','ontology_id'} <= set(schema['properties'])
+    assert 'ontology_id' in schema['required']
+    with pytest.raises(ValueError):
+        validate({'ontology_id':'selected','limit':0},schema,schema)
+
+
+def test_retained_rule_observation_cannot_change_selected_ontology():
+    from backend.agentic_service.goal_runner import verify_read_identity
+    with pytest.raises(ValueError,match='identity'):
+        verify_read_identity('ontology.inspection_rules.assess',{'ontology_id':'selected'},{'ontology_id':'other'})
+
+
+def test_openapi30_optional_body_wrapper_preserves_original_constraints():
+    document={'paths':{'/api/v1/preview':{'post':{'requestBody':{'content':{'application/json':{'schema':{
+        'type':'object','nullable':True,'allOf':[{'type':'object','additionalProperties':False,
+        'properties':{'limit':{'type':'integer','minimum':25,'maximum':1000}}}]}}}},
+        'parameters':[{'in':'path','name':'ontology_id','required':True,'schema':{'type':'string'}}]}}}}
+    original=copy.deepcopy(document)
+    schema=input_schema(document,{'id':'preview','path':'/preview','method':'POST'})
+    assert schema['type']=='object' and 'allOf' not in schema
+    assert document==original
+    validate({'ontology_id':'selected','limit':25},schema,schema)
+    with pytest.raises(ValueError):validate({'ontology_id':'selected','limit':0},schema,schema)
+    with pytest.raises(ValueError):validate({'ontology_id':'selected','invented':True},schema,schema)

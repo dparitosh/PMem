@@ -617,3 +617,26 @@ def test_traversal_slice_falls_back_to_schema_neighbors_when_instance_projection
     assert sorted(node["elementId"] for node in graph["nodes"]) == ["4:test:schema-root", "schema-parent"]
     assert graph["view"]["fallback"] == "schema"
     assert graph["root"]["elementId"] == "4:test:schema-root"
+
+
+def test_bounded_business_read_retains_direct_and_carrier_edges_without_long_paths(monkeypatch):
+    captured = {}
+    def read(cls, query, params=None):
+        captured['query'] = query
+        return []
+    monkeypatch.setattr(GraphViewService, '_run', classmethod(read))
+    GraphViewService.get_traversal_slice(node_id='business-root', limit=20, include_reference_paths=False)
+    query = captured['query']
+    assert '(seed)-[direct_rel]-(adjacent)' in query
+    assert '(seed)--(bridge)--(adjacent)' in query
+    assert '[*2..4]' not in query
+
+
+def test_explorer_keeps_explicit_reference_expansion_by_default(monkeypatch):
+    captured = {}
+    def read(cls, query, params=None):
+        captured['query'] = query
+        return []
+    monkeypatch.setattr(GraphViewService, '_run', classmethod(read))
+    GraphViewService.get_traversal_slice(node_id='business-root', limit=20)
+    assert '[*2..4]' in captured['query']

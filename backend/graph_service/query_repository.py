@@ -77,7 +77,7 @@ LEGACY_TRAVERSAL_NODES = (
 
 ONTOLOGY_PROJECTION_NODES = (
     "MATCH (n:OntologyResource {ontology_id: $ontology_id}) "
-    "RETURN n.iri AS id, elementId(n) AS graph_id, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types LIMIT $limit"
+    "RETURN n.iri AS id, elementId(n) AS graph_id, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.inferred_rdf_types AS inferred_rdf_types LIMIT $limit"
 )
 ONTOLOGY_PROJECTION_EDGES = (
     "MATCH (a:OntologyResource {ontology_id: $ontology_id})-[r]->(b:OntologyResource {ontology_id: $ontology_id}) "
@@ -90,7 +90,7 @@ ONTOLOGY_TRAVERSAL_NODES = (
     "WITH root, neighbor ORDER BY neighbor.iri "
     "WITH root, collect(DISTINCT neighbor) AS neighbors "
     "UNWIND [root] + [n IN neighbors WHERE n <> root][..($limit - 1)] AS node "
-    "RETURN DISTINCT elementId(node) AS id, node.iri AS iri, node.label AS label, node.kind AS type, node.rdf_types AS rdf_types, node.ontology_id AS ontology_id"
+    "RETURN DISTINCT elementId(node) AS id, node.iri AS iri, node.label AS label, node.kind AS type, node.rdf_types AS rdf_types, node.inferred_rdf_types AS inferred_rdf_types, node.ontology_id AS ontology_id"
 )
 ONTOLOGY_TRAVERSAL_EDGES = (
     "MATCH (a:OntologyResource)-[r]->(b:OntologyResource) "
@@ -109,7 +109,7 @@ ONTOLOGY_SEARCH_NODES = (
     "WHEN n.search_label = term OR n.search_iri ENDS WITH '/' + term OR n.search_iri ENDS WITH '#' + term THEN 5 "
     "WHEN n.search_label CONTAINS term OR n.search_iri CONTAINS term THEN 1 ELSE 0 END) AS score "
     "WHERE score > 0 "
-    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.ontology_id AS ontology_id, " + BUSINESS_PROPERTY_PROJECTION + "left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
+    "RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.rdf_types AS rdf_types, n.inferred_rdf_types AS inferred_rdf_types, n.ontology_id AS ontology_id, " + BUSINESS_PROPERTY_PROJECTION + "left(n.description,1000) AS description, left(n.rdf_properties,16384) AS rdf_properties, n.prefix AS prefix, n.updated_at AS updated_at, n.publication_revision AS publication_revision, score "
     "ORDER BY score DESC, label, id LIMIT $limit"
 )
 ONTOLOGY_BUSINESS_SEARCH = ONTOLOGY_SEARCH_NODES.replace('RETURN n LIMIT $candidate_limit', 'AND ('+business_instance_filter('n')+') RETURN n LIMIT $candidate_limit')

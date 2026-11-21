@@ -99,19 +99,12 @@ def validate_semantics(graph,payload, *, frozen=False):
     if 'sha256:'+hashlib.sha256(content).hexdigest()!=identifier:raise ValueError('SHACL artifact changed after retention')
     shapes=Graph().parse(data=content,format='turtle')
     if len(shapes)>10000:raise ValueError('SHACL rule graph exceeds 10000 triples')
-    sh='http://www.w3.org/ns/shacl#'
-    forbidden={'sparql','js','rule','select','ask','construct','function','sparqlconstraint','sparqlfunction','jsconstraint','jsfunction'}
-    if any(isinstance(term,URIRef) and ((str(term).startswith(sh) and str(term)[len(sh):].lower() in forbidden) or term==OWL.imports) for triple in shapes for term in triple):
-        raise ValueError('Only registered SHACL core constraints are allowed; executable rules/imports are blocked')
-    if not any(shapes.subjects(RDF.type,URIRef(sh+'NodeShape'))):raise ValueError('Selected rules contain no SHACL node shapes')
-    try:
-        from semantica.ontology import OntologyEngine
-    except ImportError as exc:
-        raise ValueError('Selected SHACL rules require the Semantica capability in this worker runtime; no conformance was established') from exc
-    report=OntologyEngine().validate_graph(graph,shacl=shapes.serialize(format='turtle'),explain=False)
-    if not report.conforms:raise ValueError('Registered Semantica SHACL checks failed; review the source and rules before preparing data')
-    return {'status':'conforms','provider':'Semantica','shape_artifact_id':identifier,
-            'scope':'Selected SHACL core shapes only; target coverage and full OWL-DL consistency are not established'}
+    from backend.depo_platform.shacl_core import check_shacl_core
+    report=check_shacl_core(graph,shapes)
+    if report['status'] not in {'conforms'}:
+        raise ValueError('Registered SHACL checks failed or selected no data targets; review the source and rules before preparing data')
+    return {**report,'shape_artifact_id':identifier}
+
 
 
 def materialize(payload,correlation_id):

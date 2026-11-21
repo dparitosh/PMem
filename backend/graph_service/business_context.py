@@ -28,7 +28,8 @@ def retrieve(publisher, *, node_id, ontology_id='', ontology_prefix='', depth=1,
     root = rows[0]
     if not GraphViewService._is_individual_node(root) or GraphViewService._is_metadata_like_node(root):
         raise ValueError('Select a business instance; ontology terms use the ontology browser')
-    graph = GraphViewService.get_traversal_slice(node_id=node_id, depth=max(1,min(2,int(depth))), limit=max(20,min(100,int(limit))))
+    graph = GraphViewService.get_traversal_slice(node_id=node_id, depth=max(1,min(2,int(depth))),
+        limit=max(20,min(100,int(limit))), include_reference_paths=int(depth) >= 2)
     graph = GraphViewService._filter_graph_nodes(graph, only_individual_nodes=True)
     nodes = [n for n in graph['nodes'] if
              (not ontology_id or (n.get('properties') or {}).get('ontology_id') == ontology_id or (n.get('properties') or {}).get('source_ontology') == ontology_id)
@@ -57,4 +58,5 @@ def retrieve(publisher, *, node_id, ontology_id='', ontology_prefix='', depth=1,
                     'depth':max(1,min(2,int(depth))),'limit':max(20,min(100,int(limit))),
                     'truncated':len(graph['nodes']) >= max(20,min(100,int(limit))),
                     'whole_graph_complete':False,'semantic_entailment_verified':False,
+                    'reference_path_expansion':int(depth) >= 2,
                     'limitation':'Recorded connections are evidence to investigate, not proof of impact, equivalence or causation.'}}

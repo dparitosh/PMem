@@ -12,7 +12,7 @@ def business_instance_filter(alias):
             f"AND NOT ({alias}:StagedOntologyResource OR {alias}:RetainedOntologyIdentity OR {alias}:OntologyPublication OR {alias}:GraphChunk OR {alias}:DatasheetChunk)")
 def canonical_business_filter(alias):
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*',alias):raise ValueError('Invalid Cypher variable')
-    return f'({alias}:OntologyResource AND any(rdf_type IN coalesce({alias}.rdf_types,[]) WHERE rdf_type IN {json.dumps(CEIM_IRIS)}))'
+    return f'({alias}:OntologyResource AND any(rdf_type IN (coalesce({alias}.rdf_types,[]) + coalesce({alias}.inferred_rdf_types,[])) WHERE rdf_type IN {json.dumps(CEIM_IRIS)}))'
 def include_canonical_business_types(query):
     pattern=r'any\(label IN labels\(([A-Za-z_][A-Za-z0-9_]*)\) WHERE label IN \$instance_node_labels\)'
     return re.sub(pattern,lambda m:'('+m.group(0)+' OR '+canonical_business_filter(m.group(1))+')',query)
@@ -22,4 +22,5 @@ def is_canonical_business_instance(node):
     if labels & {'StagedOntologyResource','RetainedOntologyIdentity','OntologyPublication'}:return False
     properties=node.get('properties') or {}
     types=properties.get('rdf_types') or []
-    return isinstance(types,list) and bool(set(types).intersection(CEIM_IRIS))
+    inferred=properties.get('inferred_rdf_types') or []
+    return isinstance(types,list) and isinstance(inferred,list) and bool(set(types + inferred).intersection(CEIM_IRIS))

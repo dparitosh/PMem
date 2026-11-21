@@ -31,6 +31,24 @@ def descriptive_properties(properties):
     return result
 
 
+def select_context_evidence(nodes, root_id, query, limit):
+    """Keep the pinned root, then rank allowed evidence by the current question.
+
+    Storage allocation order must not select batch names instead of requested
+    findings or alternatives. Ranking does not change scope or infer relevance.
+    """
+    terms = {word for word in re.findall(r"[a-z0-9]+", query.lower()) if len(word) >= 3}
+    def rank(node):
+        properties = node.get('properties') or {}
+        label = str(properties.get('label') or properties.get('name') or '')
+        allowed = descriptive_properties(properties)
+        label_terms = set(re.findall(r"[a-z0-9]+", label.lower()))
+        detail_terms = set(re.findall(r"[a-z0-9]+", json.dumps(allowed, sort_keys=True).lower()))
+        score = 3 * len(terms & label_terms) + len(terms & detail_terms)
+        return (node.get('elementId') != root_id, -score, label.casefold(), str(node.get('elementId') or ''))
+    return sorted((node for node in nodes if is_business_result(node)), key=rank)[:limit]
+
+
 def is_business_result(node):
     """Reject vocabulary and infrastructure rows, including schema-typed resources."""
     props = node.get('properties') or {}
@@ -259,7 +277,7 @@ class KnowledgeCompanion:
                     else:
                         connected,context_endpoint=await business_context(roots[0]['elementId'],headers=headers,ontology_id=ontology_id,ontology_prefix=ontology_prefix)
                     root_id=roots[0]['elementId']
-                    selected=sorted(connected['nodes'],key=lambda n:(n['elementId']!=root_id,n['elementId']))[:max(1,min(6,self.max_evidence//2))]
+                    selected=select_context_evidence(connected['nodes'], root_id, query, max(1,min(6,self.max_evidence//2)))
                     relationships=connected['relationships']
                     inclusion=connected.get('inclusion') or {}
                     context_coverage={'nodes_examined':len(connected['nodes']),'relationships_examined':len(relationships),

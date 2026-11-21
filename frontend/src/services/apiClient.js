@@ -350,6 +350,7 @@ export const ontologyAPI = {
   traverseSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosTraverse), payload),
   skosStoragePlan: (payload) => apiClient.post(buildUrl(API.ontology.skosStoragePlan), payload),
   validateRule: (payload, options = {}) => apiClient.post(buildUrl(API.ontology.ruleValidate), payload, options),
+  assessRetainedRules: (ontology, options = {}) => apiClient.get(buildUrl(replaceParams(API.ontology.retainedRuleAssessment, {ontology})), options),
   executeRulePreview: (payload) => apiClient.post(buildUrl(API.ontology.ruleExecutePreview), payload),
   ruleMaterializationPlan: (payload) => apiClient.post(buildUrl(API.ontology.ruleMaterializationPlan), payload),
   getMappings: (ontologyId, mappingType, options = {}) =>

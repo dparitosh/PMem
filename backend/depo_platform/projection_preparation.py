@@ -2,7 +2,7 @@
 from typing import Any
 import json
 from rdflib import Literal, URIRef, BNode
-from .ontology_semantics import CLASS_TYPES, PROPERTY_TYPES, META_TYPES
+from .ontology_semantics import CLASS_TYPES, PROPERTY_TYPES, META_TYPES, subclass_type_resolver
 from rdflib.namespace import OWL, RDF, RDFS, XSD
 
 
@@ -45,12 +45,15 @@ def build_projection(rdf_graph):
         if OWL.NamedIndividual in values or any(t not in META_TYPES and t in declared_classes for t in values): return 'individual'
         if any(str(t).startswith('http://www.w3.org/2003/11/swrl#') for t in values): return 'rule'
         return 'expression' if isinstance(subject, BNode) else 'resource'
+    resolve_types = subclass_type_resolver(rdf_graph)
     resources = [
         {"iri": iri, "label": labels[iri][2] if iri in labels else iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1],
          "requirement": URIRef('https://depo.example.org/ceim/0.1/Requirement') in types.get(terms_by_id[iri], set()),
          "source": sources.get(iri), "description": comments.get(iri),
          "kind": indexed_kind(terms_by_id[iri]),
          "rdf_types": sorted(str(t) for t in types.get(terms_by_id[iri], set())),
+         "inferred_rdf_types": sorted(str(t) for t in resolve_types(types.get(terms_by_id[iri], set()))),
+         "type_inference_basis": "retained-rdfs-subclass-v1",
          "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
         for iri in sorted(terms_by_id)
     ]

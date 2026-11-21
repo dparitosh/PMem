@@ -2206,6 +2206,7 @@ RETURN count(res) AS count
         node_id: str,
         limit: int = 120,
         depth: int = 1,
+        include_reference_paths: bool = True,
     ) -> Dict[str, Any]:
         row_limit = max(20, min(int(limit or 120), 300))
         traversal_depth = 2 if int(depth or 1) >= 2 else 1
@@ -2340,10 +2341,67 @@ RETURN count(res) AS count
                   end: elementId(adjacent)
                 } AS rel,
                 adjacent AS target_node
+__REFERENCE_PATH_BRANCH__
+            }
+            RETURN
+              {
+                elementId: elementId(source_node),
+                labels: labels(source_node),
+                properties: properties(source_node),
+                can_traverse: EXISTS {
+                  MATCH (source_node)-[]-(candidate)
+                  WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
+                    AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                    AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                    AND (
+                      any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                      OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
+                      OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
+                    )
+                }
+              } AS n,
+              rel AS r,
+              CASE WHEN target_node IS NOT NULL THEN {
+                elementId: elementId(target_node),
+                labels: labels(target_node),
+                properties: properties(target_node),
+                can_traverse: CASE
+                  WHEN any(label IN labels(target_node) WHERE label IN $instance_node_labels)
+                    OR coalesce(properties(target_node)['is_cad_business_object'], false) = true
+                    OR coalesce(target_node.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
+                    MATCH (target_node)-[]-(candidate)
+                    WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
+                      AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                      AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                      AND (
+                        any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                        OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
+                        OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
+                      )
+                  }
+                  ELSE false
+                END
+              } ELSE NULL END AS m
+            LIMIT $direct_limit
+            """
+        # A one-hop Companion read must not enumerate arbitrary four-hop paths
+        # through high-degree ontology classes. Direct edges and explicit two-hop
+        # relationship carriers remain in the base query. Explorer callers keep
+        # the existing reference-path behavior unless they opt out explicitly.
+        reference_path_branch = """
               UNION
               MATCH (seed)
               WHERE elementId(seed) = $node_id
                 AND NOT (seed:DatasheetChunk OR seed:GraphChunk OR seed:StagedOntologyResource OR seed:OntologyPublication)
+              WITH seed
+              WHERE EXISTS {
+                MATCH (carrier)
+                WHERE coalesce(carrier.ontology_id, carrier.import_id, carrier.ontology_prefix, carrier.prefix, '')
+                    = coalesce(seed.ontology_id, seed.import_id, seed.ontology_prefix, seed.prefix, '')
+                  AND NOT (carrier:StagedOntologyResource OR carrier:RetainedOntologyIdentity OR carrier:OntologyPublication)
+                  AND (any(label IN labels(carrier) WHERE label IN $relationship_node_labels)
+                    OR coalesce(carrier.name, carrier.title, carrier.label, carrier.id, '') =~ '(?i)^id\\d+$')
+              }
               MATCH path = (seed)-[*2..4]-(adjacent)
               WHERE NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk OR adjacent:StagedOntologyResource OR adjacent:OntologyPublication)
                 AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
@@ -2394,48 +2452,8 @@ RETURN count(res) AS count
                   end: elementId(adjacent)
                 } AS rel,
                 adjacent AS target_node
-            }
-            RETURN
-              {
-                elementId: elementId(source_node),
-                labels: labels(source_node),
-                properties: properties(source_node),
-                can_traverse: EXISTS {
-                  MATCH (source_node)-[]-(candidate)
-                  WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
-                    AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
-                    AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
-                    AND (
-                      any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                      OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
-                      OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
-                    )
-                }
-              } AS n,
-              rel AS r,
-              CASE WHEN target_node IS NOT NULL THEN {
-                elementId: elementId(target_node),
-                labels: labels(target_node),
-                properties: properties(target_node),
-                can_traverse: CASE
-                  WHEN any(label IN labels(target_node) WHERE label IN $instance_node_labels)
-                    OR coalesce(properties(target_node)['is_cad_business_object'], false) = true
-                    OR coalesce(target_node.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
-                    MATCH (target_node)-[]-(candidate)
-                    WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk OR candidate:StagedOntologyResource OR candidate:OntologyPublication)
-                      AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
-                      AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
-                      AND (
-                        any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                        OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
-                        OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
-                      )
-                  }
-                  ELSE false
-                END
-              } ELSE NULL END AS m
-            LIMIT $direct_limit
-            """
+        """
+        query = query.replace("__REFERENCE_PATH_BRANCH__", reference_path_branch if include_reference_paths else "")
         rows = cls._run(
             query,
             {

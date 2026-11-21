@@ -83,7 +83,7 @@ class AgentContracts(unittest.TestCase):
 
     def test_structured_and_native_proposals_remain_validated_review_data(self):
         tree = ast.parse(Path('backend/agentic_service/local_llm.py').read_text())
-        nodes = [item for item in tree.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in {'suggest_tool', '_content', '_tool_endpoint'}]
+        nodes = [item for item in tree.body if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name in {'suggest_tool', '_content', '_tool_endpoint', 'proposal_prompt_tools'}]
         @asynccontextmanager
         async def client(**kwargs): yield object()
         post = AsyncMock()

@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { agenticClient } from '../../services/agenticApi';
 vi.mock('../../services/agenticApi', () => ({agenticClient:{post:vi.fn(),get:vi.fn()}}));
+vi.mock('../../services/apiClient',()=>({API_METHODS:{ontology:{assessRetainedRules:vi.fn()}}}));
 vi.mock('./OntologyFoundationPanel', () => ({default:()=>null}));
 import OntologyInferenceWorkbench from './OntologyInferenceWorkbench';
 

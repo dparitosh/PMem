@@ -19,18 +19,19 @@ class AuditRegressions(unittest.TestCase):
                 verify_constraints(changed)
 
     def test_label_choice_is_independent_of_iteration_order(self):
-        class Label(str):
-            def __new__(cls,text,language=None):
-                obj = str.__new__(cls,text); obj.language=language; return obj
-        tree=ast.parse(Path('backend/depo_platform/projection_preparation.py').read_text())
-        fn=next(node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name=='build_projection')
-        start=next(i for i,node in enumerate(fn.body) if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='label_rows' for t in node.targets))
-        code=compile(ast.Module(body=fn.body[start:start+3],type_ignores=[]),'<labels>','exec')
-        rows=[('urn:a',Label('Zulu','en')),('urn:a',Label('Alpha','en')),('urn:a',Label('Other')),('urn:a',Label('Autre','fr'))]
-        for ordered in [rows,list(reversed(rows))]:
-            scope={'rdf_graph':SimpleNamespace(subject_objects=lambda _:ordered),'RDFS':SimpleNamespace(label='label')}
-            exec(code,scope)
-            self.assertEqual(scope['labels'],{'urn:a':'Alpha'})
+        from rdflib import Graph, URIRef, Literal
+        from rdflib.namespace import RDFS
+        from backend.depo_platform.projection_preparation import build_projection
+        subject=URIRef('urn:a')
+        triples=[(subject,RDFS.label,Literal('Zulu',lang='en')),
+                 (subject,RDFS.label,Literal('Alpha',lang='en')),
+                 (subject,RDFS.label,Literal('Other')),
+                 (subject,RDFS.label,Literal('Autre',lang='fr'))]
+        for ordered in (triples,list(reversed(triples))):
+            graph=Graph()
+            for triple in ordered: graph.add(triple)
+            rows,_,_=build_projection(graph)
+            self.assertEqual(next(row['label'] for row in rows if row['iri']=='urn:a'),'Alpha')
 
     def test_verifier_cannot_overwrite_newer_publication(self):
         tree=ast.parse(Path('backend/ontology_service/router.py').read_text())

@@ -66,3 +66,36 @@ def declare_generated_metadata(graph, custom_annotations=()):
     if any(graph.subjects(RDF.type,prov.Entity)):
         graph.add((prov.Entity,RDF.type,OWL.Class))
         graph.add((prov.Entity,RDFS.label,Literal('Provenance entity')))
+
+
+def subclass_type_resolver(graph, *, max_steps=200000, max_ancestors=4096):
+    """Resolve named RDFS superclass types without altering asserted statements.
+
+    Uses only declarations in this retained graph, not labels, remote imports,
+    class-expression guesses or full OWL-DL reasoning. Cycles terminate. A budget
+    exhaustion fails preparation instead of silently publishing partial types.
+    """
+    parents = {}
+    for child, parent in graph.subject_objects(RDFS.subClassOf):
+        if isinstance(child, URIRef) and isinstance(parent, URIRef):
+            parents.setdefault(child, set()).add(parent)
+    cache, work = {}, 0
+    def resolve(declared):
+        nonlocal work
+        result = set()
+        for kind in declared:
+            if kind not in cache:
+                visited, pending = set(), list(parents.get(kind, ()))
+                while pending:
+                    current = pending.pop()
+                    if current in visited or current == kind:
+                        continue
+                    work += 1
+                    if work > max_steps or len(visited) >= max_ancestors:
+                        raise ValueError('Declared superclass closure exceeds its budget; partition the ontology')
+                    visited.add(current)
+                    pending.extend(parents.get(current, ()))
+                cache[kind] = frozenset(visited)
+            result.update(cache[kind])
+        return result - set(declared)
+    return resolve

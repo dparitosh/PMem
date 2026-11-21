@@ -54,6 +54,11 @@ function Assert-OllamaTransport([string]$Endpoint) {
   # Preserve the scheme supplied by the REST contract, including HTTP APIM
   # servers. Match Python URL validation instead of imposing an HTTPS override.
   $null = Resolve-OllamaRoot $Endpoint
+  $requireHttps = if ($values.ContainsKey('OLLAMA_REQUIRE_HTTPS')) { $values['OLLAMA_REQUIRE_HTTPS'].Trim().ToLowerInvariant() } else { 'false' }
+  if ($requireHttps -notin @('true', 'false')) { throw 'OLLAMA_REQUIRE_HTTPS must be true or false.' }
+  if ($requireHttps -eq 'true' -and ([Uri]$Endpoint).Scheme -ne 'https') {
+    throw 'OLLAMA_REQUIRE_HTTPS requires a verified HTTPS endpoint.'
+  }
 }
 
 $configured = if ($values['OLLAMA_API_URL']) { [string]$values['OLLAMA_API_URL'] }

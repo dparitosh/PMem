@@ -137,7 +137,7 @@ def kind(record):
     props = record.get('properties') or {}
     def declared_values(value):
         return value if isinstance(value, (list, tuple, set)) else [value] if isinstance(value, str) else []
-    types = [*declared_values(record.get('labels')), *declared_values(props.get('rdf_types')), *declared_values(record.get('mapped_types')),
+    types = [*declared_values(record.get('labels')), *declared_values(props.get('rdf_types')), *declared_values(props.get('inferred_rdf_types')), *declared_values(record.get('mapped_types')),
              props.get('element_type', ''), props.get('semantic_role', '')]
     names = {local(value).removesuffix('type') for value in types}
     groups = [('resource', {'resource'}),

@@ -55,7 +55,7 @@ def selected_scope(context):
 
 def verify_read_identity(tool_id, inputs, result, scope=None):
     """Reject a successful HTTP read that returned a different selected record."""
-    field = {'pipeline.reconciliation.evidence':'reconciliation_id', 'pipeline.run.evidence': 'run_id', 'data.catalog.product': 'product_id', 'learning.lessons':'ontology_id'}.get(tool_id)
+    field = {'ontology.inspection_rules.assess':'ontology_id', 'pipeline.reconciliation.evidence':'reconciliation_id', 'pipeline.run.evidence': 'run_id', 'data.catalog.product': 'product_id', 'learning.lessons':'ontology_id'}.get(tool_id)
     if field and (not isinstance(result, dict) or result.get(field) != inputs.get(field)):
         raise ValueError('Owning-service response changed selected record identity')
     if tool_id == 'learning.lessons' and (result.get('import_task_id') != inputs.get('import_task_id') or result.get('advisory_only') is not True):

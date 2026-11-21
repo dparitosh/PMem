@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ReadGoalPanel from '../ReadGoalPanel';
 import { ResultProvenance } from '../../features/recommendations/ResultProvenance';
 import OntologyFoundationPanel from './OntologyFoundationPanel';
+import RetainedRuleAssessment from './RetainedRuleAssessment';
 import { UI_COLORS as C } from '../../styles/uiTokens';
 
 const INFERENCE_RULES = [
@@ -53,6 +54,8 @@ export default function OntologyInferenceWorkbench(props) {
           {inferenceBusy ? 'Previewing' : 'Run preview'}
         </button>
       </div>
+
+      <RetainedRuleAssessment ontologyId={selectedOntologyApi} />
 
       <section aria-label="Inference agent" style={{ padding: 12, marginBottom: 12, border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <h3>Ontology Inference Advisor</h3>

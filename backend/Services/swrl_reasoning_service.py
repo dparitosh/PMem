@@ -10,8 +10,9 @@ from __future__ import annotations
 import re
 import hashlib
 import json
-import math
 import time
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -398,6 +399,35 @@ class ApplicationRuleExecutor:
         bindings: List[Tuple[Dict[str, str], List[str]]] = [({}, [])]
         deadline = time.monotonic() + 5
         work = 0
+        # Index the bounded input once. Joining a characteristic, inspection and
+        # value must not rescan every unrelated fact for each bound inspection.
+        by_predicate, by_subject, by_object, by_class = (defaultdict(list) for _ in range(4))
+        for fact in facts:
+            by_predicate[fact.predicate].append(fact)
+            by_subject[(fact.predicate, fact.subject)].append(fact)
+            by_object[(fact.predicate, fact.object)].append(fact)
+            if fact.predicate in {'rdf:type', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'}:
+                by_class[fact.object].append(fact)
+        def candidates(atom, binding):
+            if len(atom.arguments) == 1:
+                pool = by_class.get(atom.predicate, ())
+                subject = atom.arguments[0]
+                if not subject.startswith('?') or subject in binding:
+                    value = binding.get(subject, subject)
+                    matching = [*by_subject.get(('rdf:type', value), ()),
+                        *by_subject.get(('http://www.w3.org/1999/02/22-rdf-syntax-ns#type', value), ())]
+                    if len(matching) < len(pool):
+                        pool = matching
+            else:
+                pool = by_predicate.get(atom.predicate, ())
+                subject, obj = atom.arguments
+                if not subject.startswith('?') or subject in binding:
+                    pool = by_subject.get((atom.predicate, binding.get(subject, subject)), ())
+                if not obj.startswith('?') or obj in binding:
+                    matching = by_object.get((atom.predicate, binding.get(obj, obj)), ())
+                    if len(matching) < len(pool):
+                        pool = matching
+            return pool
         # Comparison built-ins consume bindings; conjunction order must not
         # change the result when a built-in precedes its binding fact atom.
         for atom in sorted(body, key=lambda item: item.is_builtin):
@@ -411,7 +441,7 @@ class ApplicationRuleExecutor:
 
             next_bindings: List[Tuple[Dict[str, str], List[str]]] = []
             for binding, fact_ids in bindings:
-                for fact in facts:
+                for fact in candidates(atom, binding):
                     work += 1
                     if work > 1000000 or len(next_bindings) >= 10000 or time.monotonic() >= deadline:
                         raise ValueError("Rule execution budget exceeded; narrow the supplied facts")
@@ -465,11 +495,13 @@ class ApplicationRuleExecutor:
             return left.startswith(right)
         if atom.predicate in {"swrlb:greaterThan", "swrlb:lessThan"}:
             try:
-                left_num = float(left)
-                right_num = float(right)
-            except ValueError:
+                if len(left) > 1000 or len(right) > 1000:
+                    return False
+                left_num = Decimal(left)
+                right_num = Decimal(right)
+            except (InvalidOperation, ValueError):
                 return False
-            if not math.isfinite(left_num) or not math.isfinite(right_num):
+            if not left_num.is_finite() or not right_num.is_finite():
                 return False
             return left_num > right_num if atom.predicate == "swrlb:greaterThan" else left_num < right_num
         return False

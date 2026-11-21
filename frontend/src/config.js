@@ -226,6 +226,7 @@ const ONTOLOGY_ENDPOINTS = {
   skosTraverse: setting('API_ONTOLOGY_SKOS_TRAVERSE') || '/api/v1/ontology/semantic/skos/traverse',
   skosStoragePlan: setting('API_ONTOLOGY_SKOS_STORAGE_PLAN') || '/api/v1/ontology/semantic/skos/storage-plan',
   ruleValidate: setting('API_ONTOLOGY_RULE_VALIDATE') || '/api/v1/ontology/semantic/rules/validate',
+  retainedRuleAssessment: setting('API_ONTOLOGY_RETAINED_RULE_ASSESSMENT') || '/api/v1/ontologies/{ontology}/inspection-rules/assessment',
   ruleExecutePreview: setting('API_ONTOLOGY_RULE_EXECUTE_PREVIEW') || '/api/v1/ontology/semantic/rules/execute-preview',
   ruleMaterializationPlan: setting('API_ONTOLOGY_RULE_MATERIALIZATION_PLAN') || '/api/v1/ontology/semantic/rules/materialization-plan',
   dataDictionary: setting('API_ONTOLOGY_DATA_DICTIONARY') || '/api/v1/ontology/{ontology}/data-dictionary',

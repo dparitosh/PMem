@@ -185,3 +185,34 @@ def test_rule_api_keeps_zero_valued_facts():
     result = asyncio.run(execute_swrl_rule_preview(request))
     assert result['summary']['source_facts'] == 1
     assert result['inferred_facts'][0]['sourceFacts'] == ['zero']
+
+
+def test_custom_measurement_uses_declared_superclass_without_rewriting_asserted_type():
+    from rdflib import Graph, URIRef
+    from rdflib.namespace import RDF, RDFS, OWL
+    from backend.graph_service.business_types import is_canonical_business_instance
+    graph=Graph(); custom=URIRef('urn:inspection'); intermediate=URIRef('urn:observation')
+    canonical=URIRef('https://depo.example.org/ceim/0.1/QualityMeasurement'); item=URIRef('urn:record:1')
+    graph.add((custom,RDF.type,OWL.Class));graph.add((intermediate,RDF.type,OWL.Class))
+    graph.add((custom,RDFS.subClassOf,intermediate));graph.add((intermediate,RDFS.subClassOf,canonical))
+    graph.add((item,RDF.type,custom))
+    rows,_,_=build_projection(graph)
+    row=next(row for row in rows if row['iri']==str(item))
+    assert row['rdf_types']==[str(custom)]
+    assert str(canonical) in row['inferred_rdf_types']
+    assert is_canonical_business_instance({'properties':row})
+    assert (item,RDF.type,canonical) not in graph
+
+
+def test_superclass_closure_cycles_terminate_and_labels_do_not_infer_types():
+    from rdflib import Graph, URIRef, Literal
+    from rdflib.namespace import RDF,RDFS,OWL
+    from backend.depo_platform.ontology_semantics import subclass_type_resolver
+    graph=Graph(); a,b=URIRef('urn:a'),URIRef('urn:b')
+    graph.add((a,RDFS.subClassOf,b));graph.add((b,RDFS.subClassOf,a))
+    graph.add((a,RDFS.label,Literal('QualityMeasurement')))
+    resolve=subclass_type_resolver(graph)
+    assert resolve({a})=={b}
+    assert resolve({b})=={a}
+    with pytest.raises(ValueError,match='budget'):
+        subclass_type_resolver(graph,max_steps=0)({a})

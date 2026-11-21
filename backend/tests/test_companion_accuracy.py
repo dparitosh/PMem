@@ -88,3 +88,24 @@ def test_engineering_decision_values_reach_safe_evidence_and_display():
     assert 'password' not in projected and 'password' not in props
     details=instance_details(props)
     assert 'Temperature: 76' in details and 'Estimated incremental cost: 8' in details
+
+
+def test_context_selection_keeps_root_and_requested_alternative_over_storage_order():
+    from backend.agentic_service.companion import select_context_evidence
+    def node(identity, label, **properties):
+        return {'elementId':identity,'properties':{'label':label,'kind':'individual',**properties}}
+    nodes=[node('0','Batch 1'),node('1','Batch 2'),node('99','Investigation'),
+           node('100','Supplier review',description='Review supplier process centering'),
+           node('101','Design alternative',description='Compare design alternatives')]
+    result=select_context_evidence(nodes,'99','Compare design alternatives',2)
+    assert [row['elementId'] for row in result]==['99','101']
+    assert select_context_evidence(list(reversed(nodes)),'99','Compare design alternatives',2)==result
+
+
+def test_context_ranking_does_not_use_secret_properties_or_schema_rows():
+    from backend.agentic_service.companion import select_context_evidence
+    nodes=[{'elementId':'root','properties':{'label':'Root','kind':'individual'}},
+           {'elementId':'bad','properties':{'label':'A','kind':'individual','password':'inspection evidence'}},
+           {'elementId':'good','properties':{'label':'Inspection evidence','kind':'individual'}},
+           {'elementId':'schema','properties':{'label':'Inspection evidence','kind':'class'}}]
+    assert [n['elementId'] for n in select_context_evidence(nodes,'root','inspection evidence',2)]==['root','good']
