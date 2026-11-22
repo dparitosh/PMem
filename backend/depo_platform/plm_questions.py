@@ -36,7 +36,7 @@ def business_subject(question, node_id=''):
     # A selected identity resolves pronouns; do not search its label for "it".
     reference = re.split(r'[?!]|\.(?:\s|$)', subject, maxsplit=1)[0].strip().casefold()
     if node_id and (reference in {'it','its','them','their','this','that'} or re.fullmatch(
-        r'(?:this|that|the selected|selected) (?:part|product|housing|bearing|shaft|race|feature|component|assembly|object|item|design|model|record)', reference
+        r'(?:this|that|the selected|selected) (?:part|product|housing|bearing|shaft|race|feature|component|assembly|object|item|design|model|model element|element|record)', reference
     )):
         return ''
     return subject

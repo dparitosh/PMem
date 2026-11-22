@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -28,11 +29,16 @@ def test_token_mode_requires_the_configured_approval_token(monkeypatch) -> None:
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("DATA_PRODUCT_APPROVAL_TOKEN", "test-token")
 
+    monkeypatch.setattr("backend.depo_platform.credentials.uses_postgres", lambda: False)
+    monkeypatch.setattr("backend.depo_platform.authorization.token_actor", lambda _, default: default)
+    profile = "DATA_PRODUCT_APPROVAL_TOKEN"
+    request = _request("10.0.0.2")
     assert approval_identity(
-        _request("10.0.0.2"),
-        {"approved_by": "bootstrap-user", "approval_token": "test-token"},
-        token_env="DATA_PRODUCT_APPROVAL_TOKEN",
-    ) == "bootstrap-user"
+        request, {"approved_by": "forged-actor", "approval_token": "test-token"}, token_env=profile,
+    ) == f"credential:{profile}"
+    with pytest.raises(HTTPException) as error:
+        approval_identity(request, {"approval_token": "wrong-token"}, token_env=profile)
+    assert error.value.status_code == 403
 
 
 def test_graph_read_token_uses_bearer_header(monkeypatch) -> None:

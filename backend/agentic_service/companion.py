@@ -199,10 +199,11 @@ class KnowledgeCompanion:
             named = business_subject(query, node_id)
             if named:
                 return unresolved_identity(named, self._graph_root() + '/graph/business-answer')
-        graph_status = 'not_requested' if typed_answer else 'available'
+        include_record_context = bool(node_id and typed_answer and typed_answer.get('intent') == 'associated_requirements')
+        graph_status = 'not_requested' if typed_answer and not include_record_context else 'available'
         resolved_context = None
         try:
-            if typed_answer:
+            if typed_answer and not include_record_context:
                 graph={'nodes':[],'relationships':[],'view':{'truncated':bool((typed_answer.get('coverage') or {}).get('has_more'))}}
             elif node_id:
                 from .companion_context import business_context
@@ -359,7 +360,7 @@ class KnowledgeCompanion:
         if business_items:
             from .business_answers import render
             response_text=render(business_items)
-        if labels and not business_items:
+        if labels and (not business_items or include_record_context):
             from .business_answers import cell
             response_text += ("\n\n" if response_text else '') + 'Retrieved business records:\n\n| Name | Description / value | Evidence |\n|---|---|---|'
             missing_record_details = False
@@ -377,11 +378,11 @@ class KnowledgeCompanion:
             connection_text = render_instance_connections(evidence)
             if connection_text:
                 response_text += '\n\n' + connection_text
-        if retrieval['truncated'] or selection_truncated: response_text += '\n\nThis answer uses a limited evidence selection; it does not establish whole-graph counts, completeness or absence of other matches.'
+        if retrieval['truncated'] or selection_truncated or any((item.get('coverage') or {}).get('has_more') for item in business_items): response_text += '\n\nThis answer uses a limited evidence selection; it does not establish whole-graph counts, completeness or absence of other matches.'
         if page_result.get('representation') == 'postgres_business_context':
             response_text += '\n\nBusiness-context evidence comes from the PostgreSQL-backed Semantica context graph; synchronization with Neo4j is not established.'
         if page_result['status']=='unavailable': response_text+='\n\nThe current page service could not be checked; this answer does not establish its current state.'
-        if graph_status == 'unavailable': response_text += '\n\nGraph retrieval is unavailable; this answer uses owning-service records only.'
+        if graph_status == 'unavailable': response_text += '\n\nGraph retrieval is unavailable; this answer uses the evidence that could be retrieved.'
         if context['status'] == 'unavailable': response_text += '\n\nSaved mapping history could not be checked. Verify ontology service readiness and read access in Admin.'
         if document_result['status'] in {'unavailable','not_indexed'}:
             response_text += '\n\nIndexed document evidence could not be checked; this answer does not establish document coverage.'

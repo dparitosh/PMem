@@ -18,6 +18,7 @@ Start with [current audit status](audits/README.md), [installation](../INSTALLAT
 | [backend/legacy/README.md](../backend/legacy/README.md) | Legacy monolith retirement boundary | Component / operator / developer reference |
 | [config/README.md](../config/README.md) | Environment configuration | Component / operator / developer reference |
 | [deliverables/DEPO_Environment_Configuration_Reference.md](../deliverables/DEPO_Environment_Configuration_Reference.md) | DEPO Environment Configuration Reference | Human-readable deliverable |
+| [NEXUS short-release tracker](audits/NEXUS-short-release-tracker-2026-11-13.md) | Current open actions and latest acceptance evidence | Active release register |
 | [docs/ACCELERATED_DELIVERY_TRACKER.md](ACCELERATED_DELIVERY_TRACKER.md) | DEPO Focused Delivery Tracker | Component / operator / developer reference |
 | [docs/AGENTIC_PRODUCTION_AUDIT.md](AGENTIC_PRODUCTION_AUDIT.md) | Agentic execution and UI audit — 8 October 2026 | Component / operator / developer reference |
 | [docs/AGENTIC_SERVICE_SETUP.md](AGENTIC_SERVICE_SETUP.md) | Agentic service installation and API-key integration | Component / operator / developer reference |

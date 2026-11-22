@@ -2,6 +2,7 @@
 import hashlib
 import json
 from backend.depo_platform.graph_access import graph_projection_reader
+from backend.graph_service.business_types import canonical_business_filter
 from backend.depo_platform.plm_questions import intent, business_subject
 
 CEIM='https://depo.example.org/ceim/0.1/'
@@ -65,7 +66,8 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
         if subject or node_id:
             rows = publisher._session_rows(
                 'MATCH (p) WHERE NOT (p:StagedOntologyResource OR p:OntologyPublication OR p:RetainedOntologyIdentity) '
-                'AND (any(t IN coalesce(p.rdf_types,[]) WHERE t IN $business_types) '
+                'AND (' + canonical_business_filter('p') +
+                ' OR any(t IN coalesce(p.rdf_types,[]) WHERE t IN $business_types) '
                 'OR (p.import_id IS NOT NULL AND p.import_row_key IS NOT NULL AND any(l IN labels(p) WHERE l IN $business_labels))) '
                 "AND ($scope='' OR p.ontology_id=$scope OR p.source_ontology=$scope) "
                 "AND ($prefix='' OR p.prefix=$prefix OR p.ontology_prefix=$prefix) "
@@ -80,6 +82,10 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 'AND all(r IN relationships(path)[0..-1] WHERE r.predicate IN $composition_predicates '
                 'OR (r.predicate IS NULL AND type(r) IN $composition_types)) '
                 'AND (last(relationships(path)).predicate IN $requirement_predicates '
+                # Domain vocabularies can retain the same explicit association
+                # under their own namespace. Limit aliases to direct links.
+                'OR (length(path)=1 AND last(split(replace(last(relationships(path)).predicate, "#", "/"), "/")) '
+                'IN $direct_requirement_names) '
                 'OR (last(relationships(path)).predicate IS NULL AND type(last(relationships(path))) IN $requirement_rel_types))) '
                 'OR (length(path)=1 AND startNode(last(relationships(path)))=q '
                 'AND (last(relationships(path)).predicate IN $inverse_requirement_predicates '
@@ -91,7 +97,7 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 "AND NOT any(t IN coalesce(n.rdf_types,[]) WHERE t IN $schema_types) "
                 "AND ($scope='' OR n.ontology_id=$scope OR n.source_ontology=$scope) "
                 "AND ($prefix='' OR n.prefix=$prefix OR n.ontology_prefix=$prefix)) "
-                'AND (any(t IN coalesce(q.rdf_types,[]) WHERE t IN $requirement_types) '
+                'AND (any(t IN (coalesce(q.rdf_types,[]) + coalesce(q.inferred_rdf_types,[])) WHERE t IN $requirement_types) '
                 'OR (q.import_id IS NOT NULL AND q.import_row_key IS NOT NULL '
                 'AND any(l IN labels(q) WHERE l IN $requirement_labels))) '
                 # Apply the answer limit to business pairs, not alternate paths.
@@ -110,6 +116,7 @@ def retrieve(publisher, *, query, ontology_id='', ontology_prefix='', node_id=''
                 composition_types=['HAS_PART','HAS_COMPONENT','CONTAINS_PART'],
                 requirement_predicates=[CEIM+'hasRequirement',CEIM+'hasSpecification',CEIM+'satisfies'],
                 requirement_rel_types=['HAS_REQUIREMENT','HAS_SPECIFICATION','SATISFIES'],
+                direct_requirement_names=['hasRequirement','hasSpecification'],
                 inverse_requirement_predicates=[CEIM+'allocatedTo'],
                 inverse_requirement_types=['ALLOCATED_TO'],
                 business_types=[CEIM+k for k in ('Product','ProductRevision','Part','Assembly','Requirement','Specification')],

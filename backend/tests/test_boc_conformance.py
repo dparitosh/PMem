@@ -16,12 +16,21 @@ def _length(identifier: str, value: str, unit: str = "mm") -> str:
             f'<Unit>{unit}</Unit></LengthCharacteristicNominal>')
 
 
+def _qualified_qif_id(batch, source_id):
+    entity = next(entity for entity in batch["entities"]
+                  if entity["provenance"]["source_id"] == source_id)
+    assert entity["id"].startswith("qif:")
+    assert entity["id"].endswith(f":{source_id}")
+    assert entity["id"] != f"qif:{source_id}"
+    return entity["id"]
+
+
 def test_ap242_dimension_matches_qif_nominal_and_reports_tolerances_for_review():
     ap = ap242_to_ceim_batch(AP242_PART21, filename="part.stp")
     qif = qif_to_ceim_batch(_qif(_length("C-1", "25.0")))
     report = compare_boc(ap, qif)
     assert report["summary"]["matched"] == 1
-    assert report["matched"][0]["qif"]["id"] == "qif:C-1"
+    assert report["matched"][0]["qif"]["id"] == _qualified_qif_id(qif, "C-1")
     assert report["matched"][0]["qif_values"]["unit"] == "mm"
     assert report["matched"][0]["bounds_status"] == "not_available"
     assert report["ap242_tolerances_for_review"]
@@ -34,7 +43,7 @@ def test_nominal_mismatch_is_reported_on_both_sides():
     report = compare_boc(ap, qif)
     assert report["matched"] == []
     assert report["ap242_dimensions_unmatched"][0]["reason"].startswith("no QIF characteristic")
-    assert [item["id"] for item in report["qif_characteristics_unmatched"]] == ["qif:C-1"]
+    assert [item["id"] for item in report["qif_characteristics_unmatched"]] == [_qualified_qif_id(qif, "C-1")]
 
 
 def test_ambiguous_nominal_values_are_not_paired():
@@ -51,7 +60,7 @@ def test_qif_characteristic_without_nominal_is_listed_not_matched():
     qif = qif_to_ceim_batch(_qif('<LengthCharacteristicNominal id="C-9"><Unit>mm</Unit></LengthCharacteristicNominal>'))
     report = compare_boc(ap, qif)
     assert report["matched"] == []
-    assert any(item["id"] == "qif:C-9" for item in report["qif_characteristics_unmatched"])
+    assert [item["id"] for item in report["qif_characteristics_unmatched"]] == [_qualified_qif_id(qif, "C-9")]
 
 
 def test_boc_check_route_compares_uploaded_pair():

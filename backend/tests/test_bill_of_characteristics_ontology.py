@@ -37,5 +37,5 @@ def test_qif_and_ap242_instances_receive_bill_of_characteristics_types():
 
 def test_qif_characteristic_values_are_preserved_for_boc_mapping():
     qif = qif_to_ceim_batch(b'''<QIFDocument xmlns="http://qifstandards.org/xsd/qif3"><Characteristics><CharacteristicNominals><LengthCharacteristicNominal id="C-1"><NominalValue>12.5</NominalValue><LowerLimit>12.4</LowerLimit><UpperLimit>12.6</UpperLimit><Unit>mm</Unit></LengthCharacteristicNominal></CharacteristicNominals></Characteristics></QIFDocument>''')
-    characteristic = next(entity for entity in qif["entities"] if entity["id"] == "qif:C-1")
+    characteristic = next(entity for entity in qif["entities"] if entity["provenance"]["source_id"] == "C-1")
     assert characteristic["properties"] == {"external_id": "C-1", "name": "LengthCharacteristicNominal", "source_kind": "LengthCharacteristicNominal", "nominal_value": "12.5", "lower_limit": "12.4", "upper_limit": "12.6", "unit": "mm"}

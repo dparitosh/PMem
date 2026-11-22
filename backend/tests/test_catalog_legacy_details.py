@@ -18,7 +18,10 @@ class CatalogLegacyDetailsTests(unittest.TestCase):
             'demo:latest': {'latest_version': '3.0.0'},
             'other:1.0.0': {'version': '1.0.0'},
         }
-        scope = {'store': SimpleNamespace(all=lambda: records, get=records.get), 'HTTPException': RuntimeError}
+        store = SimpleNamespace(product_versions=lambda product_id: {
+            key: value for key, value in records.items() if key.startswith(f'{product_id}:')
+        })
+        scope = {'store': store, 'public_record': dict, 'HTTPException': RuntimeError}
         exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), scope)
         result = scope['product']('demo')
         self.assertEqual(result['latest_version'], '3.0.0')

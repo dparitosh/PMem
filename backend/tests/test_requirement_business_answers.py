@@ -110,3 +110,57 @@ def test_requirement_attributes_use_property_evidence_not_association_inventory(
     ):
         assert intent(question) == ''
     assert intent('What requirements are associated with the bearing?') == 'associated_requirements'
+
+def test_selected_model_requirement_query_supports_domain_namespaces():
+    publisher = Mock(_session_rows=Mock(return_value=[]))
+    retrieve(publisher, query='What requirements are associated with the selected model element?',
+             ontology_id='vehicle-controls', node_id='controller-7')
+    statement = publisher._session_rows.call_args.args[0]
+    arguments = publisher._session_rows.call_args.kwargs
+    assert arguments['scope'] == 'vehicle-controls'
+    assert arguments['node_id'] == 'controller-7'
+    assert arguments['subject'] == ''
+    assert ':OntologyResource' in statement and '/Resource' in statement
+    assert arguments['direct_requirement_names'] == ['hasRequirement', 'hasSpecification']
+    assert 'length(path)=1 AND last(split' in statement
+    assert 'q.inferred_rdf_types' in statement
+
+
+@pytest.mark.asyncio
+async def test_selected_requirements_keep_operating_and_assembly_evidence(monkeypatch):
+    from backend.agentic_service import companion, companion_context
+    from backend.depo_platform import semantic_support
+
+    monkeypatch.setenv('COMPANION_LLM_ENABLED', 'false')
+    monkeypatch.setattr(semantic_support, 'read_support', lambda *_: None)
+    monkeypatch.setattr(companion_context, 'mapping_context', AsyncMock(return_value={'status':'not_requested','evidence':[]}))
+    monkeypatch.setattr(companion_context, 'document_context', AsyncMock(return_value={'status':'no_evidence','evidence':[]}))
+    typed = AsyncMock(return_value={
+        'evidence_type':'business_answer', 'resource_id':'business-answer:controls',
+        'source':'graph-service:typed-business-read', 'intent':'associated_requirements',
+        'rows':[{'subject_id':'c1','subject':'Valve controller','requirement_id':'r1',
+                 'requirement':'Response deadline','detail':'40 ms','source':'controls-v2',
+                 'path':[{'id':'requirement-link','type':'HAS_REQUIREMENT'}]}]})
+    monkeypatch.setattr(companion_context, 'plm_context', typed)
+    graph = {
+        'nodes': [
+            {'elementId':'c1','labels':['NamedIndividual'],'properties':{
+                'label':'Valve controller','ontology_id':'controls-v2','description':'Supply voltage 24 V'}},
+            {'elementId':'a1','labels':['NamedIndividual'],'properties':{
+                'label':'Actuator assembly','ontology_id':'controls-v2','description':'Allocated assembly'}},
+        ],
+        'relationships':[{'elementId':'allocation-link','start':'c1','end':'a1','type':'ALLOCATED_TO'}],
+    }
+    context = AsyncMock(return_value=(graph, 'graph-context'))
+    monkeypatch.setattr(companion_context, 'business_context', context)
+
+    result = await companion.KnowledgeCompanion().ask(
+        'Show operating values and allocated assembly, with requirements associated with the selected model element.',
+        headers={}, node_id='c1', ontology_id='controls-v2',
+    )
+
+    assert 'Response deadline' in result['response']
+    assert '24 V' in result['response'] and 'Actuator assembly' in result['response']
+    assert any(item['resource_id'] == 'allocation-link' for item in result['evidence'])
+    assert any(item['resource_id'] == 'business-answer:controls' for item in result['evidence'])
+    context.assert_awaited_once_with('c1', headers={}, ontology_id='controls-v2', ontology_prefix='')
