@@ -9,10 +9,10 @@ from pathlib import Path
 
 # Support direct script launch from any controller working directory.
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
-from AgentsRegistry.CodedTools.nexus_graph import compute_selected_graph
+from AgentsRegistry.CodedTools.eif_dt_graph import eif_dt_compute_selected_graph
 
 VERSIONS={'2024-11-05','2025-03-26','2025-06-18'}
-TOOL={'name':'compute_selected_graph','description':'Read graph computation evidence for the operator-owned intent.',
+TOOL={'name':'eif_dt_compute_selected_graph','description':'Read graph computation evidence for the operator-owned intent.',
       'inputSchema':{'type':'object','properties':{},'additionalProperties':False},
       'annotations':{'readOnlyHint':True,'destructiveHint':False}}
 
@@ -32,7 +32,7 @@ def handle(message):
     elif method=='tools/call':
         if params.get('name')!=TOOL['name']:return error(-32601,'Unknown graph tool')
         if not isinstance(params.get('arguments',{}),dict) or params.get('arguments'):return error(-32602,'Graph intent is operator-owned; this tool takes no arguments')
-        try:result={'content':[{'type':'text','text':json.dumps(compute_selected_graph())}]}
+        try:result={'content':[{'type':'text','text':json.dumps(eif_dt_compute_selected_graph())}]}
         except Exception as failure:
             result={'isError':True,'content':[{'type':'text','text':str(failure)[:300]}]}
     else:return error(-32601,'MCP method not supported')

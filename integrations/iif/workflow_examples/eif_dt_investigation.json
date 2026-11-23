@@ -1,0 +1,8 @@
+[
+  {
+    "agent": "Graph Analyst",
+    "alias": "investigation",
+    "purpose": "Read the selected investigation, recall linked historical options and dispositions, and compare current evaluations against user criteria. Cite records and disclose missing evidence. Return an advisory recommendation.",
+    "inputs": ["User Query"]
+  }
+]

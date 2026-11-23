@@ -5502,11 +5502,11 @@ Evidence retains publication, parameters, engine/version, projection digest, cov
 Install the additive plugin from the repository root:
 
 ```powershell
-& .\integrations\iif\install-nexus-graph-plugin.ps1 -IifRoot 'D:\GenAI_Projects\IIF_DT' -CheckOnly
-& .\integrations\iif\install-nexus-graph-plugin.ps1 -IifRoot 'D:\GenAI_Projects\IIF_DT'
+& .\integrations\iif\eif_dt_install.ps1 -IifRoot 'D:\GenAI_Projects\IIF_DT' -CheckOnly
+& .\integrations\iif\eif_dt_install.ps1 -IifRoot 'D:\GenAI_Projects\IIF_DT'
 ```
 
-Installer preflights every file and refuses differing destinations before copying. It does not modify IIF.exe, core code, environment files, memories or processes. The YAML follows IIF's existing FunctionTool registry. An optional stdio MCP server is included in AgentsRegistry/MCPTools/nexus_graph_mcp.py and requires IIF's existing MCP dependencies. Register/start it explicitly; it is not an HTTP microservice. Other customer frameworks can call REST directly without NEXUS Python imports or LlamaIndex.
+Installer preflights every file and refuses differing destinations before copying. It does not modify IIF.exe, core code, environment files, memories or processes. The YAML follows IIF's existing FunctionTool registry. An optional stdio MCP server is included in AgentsRegistry/MCPTools/eif_dt_graph_mcp.py and requires IIF's existing MCP dependencies. Register/start it explicitly; it is not an HTTP microservice. Other customer frameworks can call REST directly without NEXUS Python imports or LlamaIndex.
 
 Configure in the IIF process environment:
 

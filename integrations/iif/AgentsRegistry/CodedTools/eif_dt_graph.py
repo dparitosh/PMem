@@ -39,7 +39,7 @@ def selected_intent():
     return {**value,'node_id':seed,'top_n':top}
 
 
-def compute_selected_graph():
+def eif_dt_compute_selected_graph():
     """Execute exactly the operator-selected intent. Takes no model arguments."""
     intent=selected_intent()
     base=os.environ.get('NEXUS_GRAPH_SERVICE_URL','http://127.0.0.1:8013/api/v1').rstrip('/')

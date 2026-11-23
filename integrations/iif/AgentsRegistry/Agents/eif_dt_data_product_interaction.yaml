@@ -1,0 +1,15 @@
+name: DT data_product_interaction
+description: Read-only PMem service evidence
+system_prompt: List governed catalog products or read the retained versions for an
+  exact product ID. Cite the returned product and version identifiers. Job submission
+  remains in PMem.
+tools:
+- type: python
+  module: AgentsRegistry.AgentTools.eif_dt_service_read_tools
+  object: catalog_products_tool
+- type: python
+  module: AgentsRegistry.AgentTools.eif_dt_service_read_tools
+  object: catalog_product_tool
+can_handoff_to:
+- orchestration_Agent
+tag: Digital Thread

@@ -1,0 +1,12 @@
+name: CEIM Mapper
+description: Read-only PMem service evidence
+system_prompt: Use eif_dt_read_ceim_contract to explain the retained engineering information
+  contract. Identify the recorded contract version and relevant terms. Mapping and
+  normalization execution remain in PMem.
+tools:
+- type: python
+  module: AgentsRegistry.AgentTools.eif_dt_service_read_tools
+  object: ceim_contract_tool
+can_handoff_to:
+- orchestration_Agent
+tag: Digital Thread

@@ -1,0 +1,12 @@
+name: Data Product Governor
+description: Read-only PMem service evidence
+system_prompt: Review available governed catalog products using eif_dt_list_catalog_products.
+  Return recorded catalog evidence only. Publication, revocation, and preview must
+  use the owning PMem workflow.
+tools:
+- type: python
+  module: AgentsRegistry.AgentTools.eif_dt_service_read_tools
+  object: catalog_products_tool
+can_handoff_to:
+- orchestration_Agent
+tag: Digital Thread

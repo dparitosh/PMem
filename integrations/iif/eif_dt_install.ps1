@@ -3,7 +3,7 @@ param([Parameter(Mandatory=$true)][string]$IifRoot,[switch]$CheckOnly)
 $ErrorActionPreference='Stop'
 $target=(Resolve-Path -LiteralPath $IifRoot).Path
 if (-not ((Test-Path -LiteralPath (Join-Path $target 'IIF.exe')) -or (Test-Path -LiteralPath (Join-Path $target 'bootstrap.py')))) { throw 'Choose the existing IIF runtime root.' }
-$files=@('AgentsRegistry/CodedTools/nexus_graph.py','AgentsRegistry/AgentTools/nexus_graph_tools.py','AgentsRegistry/MCPTools/nexus_graph_mcp.py','AgentsRegistry/Agents/nexus_graph_analyst.yaml')
+$files=@('AgentsRegistry/CodedTools/eif_dt_graph.py','AgentsRegistry/AgentTools/eif_dt_graph_tools.py','AgentsRegistry/MCPTools/eif_dt_graph_mcp.py','AgentsRegistry/Agents/eif_dt_graph_analyst.yaml','AgentsRegistry/CodedTools/eif_dt_investigation.py','AgentsRegistry/AgentTools/eif_dt_investigation_tools.py','AgentsRegistry/Agents/eif_dt_investigation_analyst.yaml','workflow_examples/eif_dt_investigation.json','AgentsRegistry/CodedTools/eif_dt_service_reads.py','AgentsRegistry/AgentTools/eif_dt_service_read_tools.py','AgentsRegistry/Agents/eif_dt_data_product_governor.yaml','AgentsRegistry/Agents/eif_dt_data_product_interaction.yaml','AgentsRegistry/Agents/eif_dt_ceim_mapper.yaml')
 foreach($relative in $files){
  $source=Join-Path $PSScriptRoot $relative
  $destination=Join-Path $target $relative
