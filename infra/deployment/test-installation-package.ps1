@@ -82,7 +82,12 @@ $requiredFiles = @(
   'infra/postgres/migrations/010_credential_integrity.sql'
 )
 foreach ($relative in $requiredFiles) {
-  if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
+  if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) {
+    if ($relative -eq 'backend/ontology_service/resources/reasoner/depo-owl-dl.jar') {
+      throw "Missing OWL-DL worker: $relative. Extract the matching customer release ZIP. Release maintainers using a GitHub checkout must run infra/reasoner/build.ps1, then create the customer ZIP with infra/deployment/build-release-package.py. See INSTALLATION.md section 1.1."
+    }
+    throw "Missing release file: $relative"
+  }
 }
 
 # Customer ZIPs contain the verified worker. Source checkouts must build it first.

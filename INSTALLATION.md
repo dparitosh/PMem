@@ -20,7 +20,9 @@ Upgrade preflight reviews `infra/deployment/retired-files.json`. Only exact reti
 
 ### 1.1 Check the complete release
 
-Extract a complete matching release. For an existing deployment, complete section 5's backup steps before replacing files. Do not mix scripts from different releases.
+**Before running Setup or Upgrade, extract the matching customer release ZIP.** Confirm it contains `backend/ontology_service/resources/reasoner/depo-owl-dl.jar` and the adjoining `manifest.json`. Customer ZIP recipients need no Maven build. OWL-DL execution requires Java 17 or later.
+
+**Building a release from GitHub source:** the generated JAR is absent from a clone and GitHub's source ZIP. In the source checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\reasoner\build.ps1` with approved JDK/Maven dependencies. Review the generated manifest, then run `python .\infra\deploymentuild-release-package.py --output <new-archive.zip>` from the clean, reviewed checkout. Setup checks the worker and Java source hashes before stopping services or applying migrations. For upgrades, complete section 5's backups before replacing files.
 
 | Exact relative path | Role |
 | --- | --- |
@@ -33,8 +35,6 @@ Extract a complete matching release. For an existing deployment, complete sectio
 | `infra\postgres\migrations\` | Versioned PostgreSQL migration `.sql` files. |
 
 The two files named `install-depo.ps1` have different purposes. Run the customer launcher once; do not run both scripts manually.
-
-**Customer ZIP versus GitHub source:** the customer release builder includes the checksum-verified OWL-DL worker JAR and exact Java source. A GitHub source ZIP/clone does not contain the ignored generated JAR. Release maintainers must run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\reasoner\build.ps1` with approved JDK/Maven dependencies, review its updated manifest, and build the customer ZIP using `python .\infra\deployment\build-release-package.py --output <new-archive.zip>`. Do not mix an older worker with newer source. Offline release preflight rejects mismatches before shutdown/migration. Customer ZIP recipients do not need Maven just to use the bundled worker; the configured Java runtime is still required for OWL-DL execution.
 
 ### 1.2 Install and start prerequisites
 
