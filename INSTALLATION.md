@@ -22,7 +22,7 @@ Upgrade preflight reviews `infra/deployment/retired-files.json`. Only exact reti
 
 **Before running Setup or Upgrade, extract the matching customer release ZIP.** Confirm it contains `backend/ontology_service/resources/reasoner/depo-owl-dl.jar` and the adjoining `manifest.json`. Customer ZIP recipients need no Maven build. OWL-DL execution requires Java 17 or later.
 
-**Building a release from GitHub source:** the generated JAR is absent from a clone and GitHub's source ZIP. In the source checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\reasoner\build.ps1` with approved JDK/Maven dependencies. Review the generated manifest, then run `python .\infra\deploymentuild-release-package.py --output <new-archive.zip>` from the clean, reviewed checkout. Setup checks the worker and Java source hashes before stopping services or applying migrations. For upgrades, complete section 5's backups before replacing files.
+**Building a release from GitHub source:** the generated JAR is absent from a clone and GitHub's source ZIP. In the source checkout, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\reasoner\build.ps1` after completing [Windows JDK and Maven setup](docs/EMBEDDED_SEMANTIC_FOUNDATION.md#windows-jdk-and-maven-setup). Review the generated manifest, then run `python .\infra\deployment\build-release-package.py --output <new-archive.zip>` from the clean, reviewed checkout. Setup checks the worker and Java source hashes before stopping services or applying migrations. For upgrades, complete section 5's backups before replacing files.
 
 | Exact relative path | Role |
 | --- | --- |

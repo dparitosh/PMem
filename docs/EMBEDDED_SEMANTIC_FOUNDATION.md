@@ -22,6 +22,32 @@ The resources live in `backend/ontology_service/resources/foundation/`. `foundat
 6. Deploy the complete release and use the normal repository-root installer/updater. It preserves PostgreSQL, graph data, credentials and existing artifacts. Restart through `manage-depo.ps1` after changing configuration. A missing Java runtime or bad/missing JAR makes this capability unavailable; it does not make unrelated APIs falsely claim a reasoning result.
 7. Reconnect browser access. In Ontology Junction → Inference Workbench inspect **Embedded semantic foundation**, select a retained ontology, then choose **Check OWL-DL consistency**. No LLM is needed. No ontology or instance publication occurs.
 
+
+### Windows JDK and Maven setup
+
+These steps are for release maintainers building the OWL-DL worker from GitHub source. A customer installing the verified release ZIP needs Java 17+ to run OWL-DL and can skip Maven setup.
+
+1. Install an approved 64-bit **JDK 17 or later**. The build needs the JDK tools, including `javac` and `jar`. Record the JDK distribution and version used for the release build.
+2. Download the **Apache Maven 3.10.2 binary ZIP** from Apache and verify it against the published checksum or signature. Extract it to a writable tools directory such as `C:\Tools\apache-maven-3.10.2`. This is an example stable Maven version, and PMem does not pin Maven itself. [Apache Maven downloads](https://maven.apache.org/download.cgi)
+3. In Windows **Environment Variables**, set `JAVA_HOME` to the JDK root. Add `%JAVA_HOME%\bin` and `C:\Tools\apache-maven-3.10.2\bin` to the release builder's user `Path`. Alternatively, set them for the current PowerShell session using the actual installation paths.
+
+```powershell
+$env:JAVA_HOME = 'C:\Tools\jdk-17'
+$env:Path = "$env:JAVA_HOME\bin;C:\Tools\apache-maven-3.10.2\bin;$env:Path"
+java -version
+javac -version
+mvn.cmd -version
+```
+
+For persistent settings, open a new PowerShell window before verifying. Check that Maven reports the intended JDK. On a restricted network, use the organization's approved Maven mirror or proxy in `%USERPROFILE%\.m2\settings.xml` and keep repository credentials out of the checkout. A first source build needs access to the pinned dependencies through that repository or an already populated Maven cache. [Apache Maven installation](https://maven.apache.org/install.html) · [Maven settings](https://maven.apache.org/settings.html)
+
+From the PMem repository root, build and verify the worker.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\reasoner\build.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-installation-package.ps1
+```
+
 ## Execution contract
 
 `GET /api/v1/ontologies/foundation` reports the embedded reference and engine availability. `GET /api/v1/ontologies/{ontology_id}/consistency` checks the retained ontology plus the embedded foundation under authenticated read access. The selected file is obtained only through the owning ontology catalog; callers cannot provide process commands or arbitrary file paths.

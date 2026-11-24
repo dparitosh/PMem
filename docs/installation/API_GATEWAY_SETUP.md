@@ -121,6 +121,26 @@ Keep existing database settings and application credentials. Keep `DEPO_SERVICE_
 
 From the repository root, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\update-depo.ps1`. The normal update preserves configuration, applies pending schema migrations, builds and restarts. It does not update APIM. Connect the browser through Admin API access with the configured gateway subscription and application access. A server-side APIM key does not automatically provision a browser session or insert a key into browser build variables. Where browser-readable gateway keys are prohibited, use an approved same-origin backend proxy instead.
 
+### Example with an Azure VM frontend on port 2200
+
+Suppose users open `http://azdtlabs.southindia.cloudapp.azure.com:2200` and PMem's private backend listens on `10.0.2.16:8010-8019`. The frontend listener alone cannot provide API access. Before sending credentials, configure an HTTPS endpoint for remote users and verify the API routes.
+
+- **Port 2200 serves only the frontend.** Set `DEPO_API_GATEWAY_URL` to the separately deployed HTTPS APIM endpoint. APIM must have private network reachability to the PMem listeners. Set the subscription key in the root configuration when APIM requires it.
+- **An HTTPS reverse proxy serves the frontend and the APIs.** Forward each service prefix according to the service manifest. For example, route `/ontology/api/v1/ontologies/health` to `http://10.0.2.16:8011/api/v1/ontologies/health`. Use the proxy's actual HTTPS origin as the gateway base. A proxy that does not check an APIM subscription key can leave the subscription setting blank.
+
+Example root `.env.local` for a separate APIM gateway. Replace the example hosts with the deployed HTTPS endpoints. Preserve existing database and application credentials.
+
+```dotenv
+DEPO_ROUTING_MODE=gateway
+DEPO_SERVICE_HOST=10.0.2.16
+DEPO_BROWSER_AUTH_MODE=manual
+DEPO_API_GATEWAY_URL=https://customer-nexus.azure-api.net
+DEPO_APIM_SUBSCRIPTION_KEY=YOUR-ACTIVE-PRODUCT-SUBSCRIPTION-KEY
+ALLOWED_ORIGINS=https://nexus.customer.example
+```
+
+For a same-origin HTTPS proxy, use its origin for both `DEPO_API_GATEWAY_URL` and `ALLOWED_ORIGINS`. In `frontend/.env.local`, clear any stale gateway override such as `VITE_API_GATEWAY_URL=10.0.2.16`. Restart PMem with the root routing configuration, then open the public page and inspect the first API request in DevTools. A request still targeting `10.0.2.16:801x` indicates direct browser routing. HTML or 404 on the gateway API path calls for checking proxy routes. A 401 or 403 calls for checking gateway and application authorization separately.
+
 ## 7. Verify and maintain
 
 For token/PostgreSQL deployments run:
